@@ -1,3 +1,5 @@
+use std::{collections::HashSet, hash::Hash, slice::Iter};
+
 use crate::model::{Sort, Variable};
 
 /// Represents a pattern symbol, which can be either a constant word or a variable.
@@ -34,6 +36,33 @@ impl Pattern {
         Self { symbols: symbols }
     }
 
+    /// Returns the alphabet of the pattern, i.e. the set of constant characters that occur in the pattern.
+    pub fn alphabet(&self) -> HashSet<char> {
+        let mut alphabet = HashSet::new();
+        for symbol in &self.symbols {
+            if let Symbol::LiteralWord(word) = symbol {
+                for c in word.chars() {
+                    if !alphabet.contains(&c) {
+                        alphabet.insert(c);
+                    }
+                }
+            }
+        }
+        alphabet
+    }
+
+    /// Returns the set of variables that occur in the pattern.
+    pub fn vars(&self) -> HashSet<Variable> {
+        self.symbols
+            .iter()
+            .filter_map(|x| match x {
+                Symbol::Variable(v) => Some(v),
+                _ => None,
+            })
+            .cloned()
+            .collect()
+    }
+
     /// Appends a symbol to the end of the pattern.
     ///
     /// # Panics
@@ -64,6 +93,17 @@ impl Pattern {
             .symbols
             .iter()
             .any(|x| matches!(x, Symbol::Variable(_)))
+    }
+
+    /// Returns true iff the pattern contains at least one constant word
+    pub fn contains_constant(&self) -> bool {
+        self.symbols
+            .iter()
+            .any(|x| matches!(x, Symbol::LiteralWord(_)))
+    }
+
+    pub fn symbols(&self) -> Iter<Symbol> {
+        self.symbols.iter()
     }
 }
 
@@ -156,6 +196,26 @@ impl WordEquation {
             lhs: normalize_pattern(lhs),
             rhs: normalize_pattern(rhs),
         }
+    }
+
+    pub fn lhs(&self) -> &Pattern {
+        &self.lhs
+    }
+
+    pub fn rhs(&self) -> &Pattern {
+        &self.rhs
+    }
+
+    pub fn variables(&self) -> HashSet<Variable> {
+        self.lhs.vars().union(&self.rhs.vars()).cloned().collect()
+    }
+
+    pub fn alphabet(&self) -> HashSet<char> {
+        self.lhs
+            .alphabet()
+            .union(&self.rhs.alphabet())
+            .cloned()
+            .collect()
     }
 }
 
