@@ -1,4 +1,9 @@
-use std::{collections::HashSet, hash::Hash, slice::Iter};
+use std::{
+    collections::HashSet,
+    fmt::{Display, Formatter},
+    hash::Hash,
+    slice::Iter,
+};
 
 use crate::model::{Sort, Variable};
 
@@ -107,6 +112,18 @@ impl Pattern {
     }
 }
 
+impl Display for Pattern {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        for symbol in &self.symbols {
+            match symbol {
+                Symbol::LiteralWord(word) => write!(f, "{}", word)?,
+                Symbol::Variable(var) => write!(f, "{}", var)?,
+            }
+        }
+        Ok(())
+    }
+}
+
 impl From<Vec<Symbol>> for Pattern {
     fn from(value: Vec<Symbol>) -> Self {
         Self::new(value)
@@ -185,6 +202,7 @@ fn normalize_pattern(pattern: Pattern) -> Pattern {
     Pattern::new(res)
 }
 
+#[derive(Clone, Debug)]
 pub struct WordEquation {
     lhs: Pattern,
     rhs: Pattern,
@@ -216,6 +234,12 @@ impl WordEquation {
             .union(&self.rhs.alphabet())
             .cloned()
             .collect()
+    }
+}
+
+impl Display for WordEquation {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{} = {}", self.lhs, self.rhs)
     }
 }
 

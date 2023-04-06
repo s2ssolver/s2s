@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::slice::Iter;
 
 use super::{
@@ -7,7 +7,7 @@ use super::{
 };
 use crate::model::words::{Pattern, Symbol, WordEquation};
 use crate::model::Variable;
-use crate::sat::{as_lit, neg, pvar, Cnf, PVar};
+use crate::sat::{as_lit, neg, pvar, Clause, Cnf, PVar};
 
 /// A position in a filled pattern.
 /// Either a constant word or a position within a variable.
@@ -72,7 +72,7 @@ impl WoorpjeEncoder {
         lhs: &FilledPattern,
         rhs: &FilledPattern,
         subs: &SubstitutionEncoding,
-    ) -> (HashMap<(usize, usize), PVar>, Cnf) {
+    ) -> (HashMap<(usize, usize), PVar>, Vec<Clause>) {
         let mut wm = HashMap::new();
         let mut cnf = Cnf::new();
         for i in 0..lhs.length() {
@@ -84,8 +84,10 @@ impl WoorpjeEncoder {
                         let wm_var = pvar();
                         wm.insert((i, j), wm_var);
                         if a == b {
-                            cnf.push(vec![as_lit(wm_var)])
+                            cnf.push(vec![as_lit(wm_var)]);
+                            println!("({} == {}) <--> {}; {{{}}}", a, b, wm_var, wm_var);
                         } else {
+                            println!("({} == {}) <--> {}; {{{}}} ", a, b, wm_var, neg(wm_var));
                             cnf.push(vec![neg(wm_var)])
                         }
                     }
@@ -134,12 +136,13 @@ impl PredicateEncoder for WoorpjeEncoder {
         let mut cnf = Cnf::new();
         let lhs = FilledPattern::fill(&self.equation.lhs(), bounds);
         let rhs = FilledPattern::fill(&self.equation.rhs(), bounds);
+        log::debug!("Encoding {}", self.equation);
 
+        println!("{}", self.equation);
         let (wm, wm_cnf) = self.match_vars(&lhs, &rhs, subs);
         cnf.extend(wm_cnf);
         let n = lhs.length();
         let m = rhs.length();
-
         if n == 0 {
             return EncodingResult::Trivial(!self.equation.rhs().contains_constant());
         }
@@ -148,29 +151,35 @@ impl PredicateEncoder for WoorpjeEncoder {
         }
 
         // Initialize state variables
-        let mut state_vars = vec![vec![0; m]; n];
+        let mut state_vars = vec![vec![0; m + 1]; n + 1];
+
         state_vars
             .iter_mut()
             .for_each(|v| v.iter_mut().for_each(|x| *x = pvar()));
 
-        for i in 0..(n - 1) {
-            for j in 0..(m - 1) {
+        for i in 0..n {
+            for j in 0..m {
                 let s_00 = as_lit(state_vars[i][j]);
                 let s_10 = as_lit(state_vars[i + 1][j]);
                 let s_01 = as_lit(state_vars[i][j + 1]);
                 let s_11 = as_lit(state_vars[i + 1][j + 1]);
-                // 1.
+
+                // 1. At least one successor state
                 cnf.push(vec![-s_00, s_01, s_10, s_11]);
-                // 2.
-                cnf.push(vec![-s_00, -s_01, -s_11]);
-                cnf.push(vec![-s_00, -s_01, -s_10]);
-                // 3.
-                cnf.push(vec![-s_00, -s_10, -s_11]);
-                cnf.push(vec![-s_00, -s_10, -s_01]);
-                // 4.
-                cnf.push(vec![-s_00, -s_11, -s_10]);
-                cnf.push(vec![-s_00, -s_11, -s_01]);
-                // 5.
+
+                // 2. At most one successor state (a)
+                cnf.push(vec![-s_00, -s_01, -s_11]); // s_00 /\ s_01 --> -s_11
+                cnf.push(vec![-s_00, -s_01, -s_10]); // s_00 /\ s_01 --> -s_10
+
+                // 3. At most one successor state (b)
+                cnf.push(vec![-s_00, -s_10, -s_11]); // s_00 /\ s_10 --> -s_11
+                cnf.push(vec![-s_00, -s_10, -s_01]); // s_00 /\ s_10 --> -s_01
+
+                // 4. At most one successor state (c)
+                cnf.push(vec![-s_00, -s_11, -s_10]); // s_00 /\ s_11 --> -s_10
+                cnf.push(vec![-s_00, -s_11, -s_01]); // s_00 /\ s_11 --> -s_01
+
+                // 5. Substitution transition  (a)
                 match lhs.at(i).unwrap() {
                     FilledPos::Const(_) => {}
                     FilledPos::FilleVar(u, ui) => {
@@ -189,7 +198,8 @@ impl PredicateEncoder for WoorpjeEncoder {
                         }
                     }
                 }
-                // 6.
+
+                // 6. Substitution transition (b)
                 match rhs.at(j).unwrap() {
                     FilledPos::Const(_) => {}
                     FilledPos::FilleVar(v, vj) => {
@@ -208,7 +218,8 @@ impl PredicateEncoder for WoorpjeEncoder {
                         }
                     }
                 }
-                // 7.
+
+                // 7. Match two lambda transitions
                 if let FilledPos::FilleVar(u, ui) = lhs.at(i).unwrap() {
                     if let FilledPos::FilleVar(v, vj) = rhs.at(j).unwrap() {
                         cnf.push(vec![
@@ -219,36 +230,18 @@ impl PredicateEncoder for WoorpjeEncoder {
                         ]);
                     }
                 }
-                // 8.
+
+                // 8. Matching letters at position i,j
                 cnf.push(vec![-s_00, -s_11, as_lit(*wm.get(&(i, j)).unwrap())]);
-                // 9.
-                let a = as_lit(pvar());
-                let b = as_lit(pvar());
-                let c = as_lit(pvar());
 
-                cnf.push(vec![-s_11, a, b, c]);
-                cnf.push(vec![-a, s_11]);
-                cnf.push(vec![-b, s_11]);
-                cnf.push(vec![-c, s_11]);
-
-                cnf.push(vec![-a, s_00]);
-                cnf.push(vec![-a, as_lit(*wm.get(&(i, j)).unwrap())]);
-                cnf.push(vec![-as_lit(*wm.get(&(i, j)).unwrap()), -s_00, a]);
-
-                cnf.push(vec![-b, s_10]);
-                cnf.push(vec![-b, as_lit(*wm.get(&(i + 1, j)).unwrap())]);
-                cnf.push(vec![-as_lit(*wm.get(&(i + 1, j)).unwrap()), -s_10, b]);
-
-                cnf.push(vec![-c, s_01]);
-                cnf.push(vec![-c, as_lit(*wm.get(&(i, j + 1)).unwrap())]);
-                cnf.push(vec![-as_lit(*wm.get(&(i, j + 1)).unwrap()), -s_01, c]);
+                // 9. Possible transitions
 
                 // 10.
                 cnf.push(vec![-s_11, s_00, s_10, s_01])
             }
 
             cnf.push(vec![as_lit(state_vars[0][0])]);
-            cnf.push(vec![as_lit(state_vars[n - 1][m - 1])]);
+            cnf.push(vec![as_lit(state_vars[n][m])]);
         }
 
         EncodingResult::Cnf(cnf)
@@ -263,6 +256,8 @@ impl WordEquationEncoder for WoorpjeEncoder {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashSet;
+
     use cadical::Solver;
 
     use crate::{
@@ -295,16 +290,15 @@ mod tests {
     }
 
     fn solve_woorpje(
-        eq: WordEquation,
+        eq: &WordEquation,
         bounds: VariableBounds,
         alphabet: &HashSet<char>,
     ) -> Option<bool> {
         let mut encoding = EncodingResult::empty();
-
         let mut subs_encoder = SubstitutionEncoder::new(alphabet.clone(), eq.variables());
         encoding.join(subs_encoder.encode(&bounds));
 
-        let encoder = WoorpjeEncoder::new(eq);
+        let encoder = WoorpjeEncoder::new(eq.clone());
         encoding.join(encoder.encode(&bounds, subs_encoder.get_encoding()));
 
         let mut solver: Solver = Solver::default();
@@ -324,35 +318,32 @@ mod tests {
     #[test]
     fn woorpje_empty_eq() {
         let eq = WordEquation::new(Pattern::from(vec![]), Pattern::from(vec![]));
-        let alphabet = HashSet::from_iter(vec!['f', 'o']);
         let bounds = VariableBounds::new(10);
-        let res = solve_woorpje(eq, bounds, &alphabet);
+        let res = solve_woorpje(&eq, bounds, &eq.alphabet());
         assert!(matches!(res, Some(true)));
     }
 
     #[test]
     fn woorpje_trivial_sat_consts() {
         let eq = WordEquation::new(
-            Pattern::from(vec![Symbol::LiteralWord(String::from("foo"))]),
-            Pattern::from(vec![Symbol::LiteralWord(String::from("foo"))]),
+            Pattern::from(vec![Symbol::LiteralWord(String::from("bar"))]),
+            Pattern::from(vec![Symbol::LiteralWord(String::from("bar"))]),
         );
-        let alphabet = HashSet::from_iter(vec!['f', 'o']);
         let bounds = VariableBounds::new(10);
 
-        let res = solve_woorpje(eq, bounds, &alphabet);
+        let res = solve_woorpje(&eq, bounds, &eq.alphabet());
         assert!(matches!(res, Some(true)));
     }
 
     #[test]
     fn woorpje_trivial_unsat_consts() {
         let eq = WordEquation::new(
-            Pattern::from(vec![Symbol::LiteralWord(String::from("foo"))]),
-            Pattern::from(vec![Symbol::LiteralWord(String::from("fooo"))]),
+            Pattern::from(vec![Symbol::LiteralWord(String::from("a"))]),
+            Pattern::from(vec![Symbol::LiteralWord(String::from("b"))]),
         );
-        let alphabet = HashSet::from_iter(vec!['f', 'o']);
         let bounds = VariableBounds::new(10);
 
-        let res = solve_woorpje(eq, bounds, &alphabet);
+        let res = solve_woorpje(&eq, bounds, &eq.alphabet());
         assert!(matches!(res, Some(false)));
     }
 
@@ -365,20 +356,17 @@ mod tests {
         let alphabet = HashSet::from_iter(vec!['f', 'o']);
         let bounds = VariableBounds::new(10);
 
-        let res = solve_woorpje(eq, bounds, &alphabet);
+        let res = solve_woorpje(&eq, bounds, &alphabet);
         assert!(matches!(res, Some(true)));
     }
 
     #[test]
     fn woorpje_trivial_sat_vars() {
-        let eq = WordEquation::new(
-            Pattern::from(vec![Symbol::LiteralWord(String::from("Y"))]),
-            Pattern::from(vec![Symbol::LiteralWord(String::from("X"))]),
-        );
-        let alphabet = HashSet::from_iter(vec!['a', 'b', 'c']);
+        let var = Pattern::from(vec![Symbol::Variable(Variable::tmp_var(Sort::String))]);
+        let eq = WordEquation::new(var.clone(), var);
         let bounds = VariableBounds::new(10);
 
-        let res = solve_woorpje(eq, bounds, &alphabet);
+        let res = solve_woorpje(&eq, bounds, &eq.alphabet());
         assert!(matches!(res, Some(true)));
     }
 
@@ -392,7 +380,7 @@ mod tests {
 
         let bounds = VariableBounds::new(1);
 
-        let res = solve_woorpje(eq, bounds, &alphabet);
+        let res = solve_woorpje(&eq, bounds, &alphabet);
         assert!(matches!(res, Some(false)));
     }
 }

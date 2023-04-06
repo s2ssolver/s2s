@@ -55,9 +55,11 @@ impl SubstitutionEncoder {
 
     pub fn encode(&mut self, bounds: &VariableBounds) -> EncodingResult {
         let mut cnf = Cnf::new();
+        log::debug!("Encoding substitutions");
         for var in &self.vars {
             let bound = bounds.get(var);
             let last_bound = self.pre_bounds(var).unwrap_or(0);
+            log::debug!("Variable {} - Positions {} to {}", var, last_bound, bound);
             // Todo: this is bad because it clones the alphabet
             let alph = self.encoding.alphabet.clone();
             for b in (last_bound..bound).rev() {
@@ -81,7 +83,6 @@ impl SubstitutionEncoder {
                     ];
                     cnf.push(clause);
                 }
-                assert!(false);
                 // Exactly one needs to be selected
                 cnf.extend(exactly_one(&pos_subs));
             }

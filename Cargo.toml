@@ -7,3 +7,5 @@ edition = "2021"
 
 [dependencies]
 cadical = "0.1.14"
+env_logger = "0.10.0"
+log = "0.4.17"

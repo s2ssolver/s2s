@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 use crate::{
     model::{words::WordEquation, Variable},
-    sat::Cnf,
+    sat::{Cnf, PLit},
 };
 
 use self::substitution::SubstitutionEncoding;
