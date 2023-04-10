@@ -257,8 +257,19 @@ impl PredicateEncoder for WoorpjeEncoder {
 
                 // 9. Possible transitions
 
-                // 10.
-                cnf.push(vec![-s_11, s_00, s_10, s_01])
+                // 10. Predecessor states
+                if (i, j) != (0, 0) {
+                    let mut predecessors = vec![-s_00];
+                    if i > 0 {
+                        predecessors.push(as_lit(state_vars[i - 1][j]));
+                    }
+                    if j > 0 {
+                        predecessors.push(as_lit(state_vars[i][j - 1]));
+                    }
+                    if i > 0 && j > 0 {
+                        predecessors.push(as_lit(state_vars[i - 1][j - 1]));
+                    }
+                }
             }
         }
         cnf.push(vec![as_lit(state_vars[0][0])]);
@@ -320,7 +331,7 @@ mod tests {
         let mut encoding = EncodingResult::empty();
         let mut subs_encoder = SubstitutionEncoder::new(alphabet.clone(), eq.variables());
         encoding.join(subs_encoder.encode(&bounds));
-
+        println!("Solving {}", eq);
         let mut encoder = WoorpjeEncoder::new(eq.clone());
         encoding.join(encoder.encode(&bounds, subs_encoder.get_encoding()));
 
