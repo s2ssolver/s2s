@@ -14,7 +14,7 @@ use crate::sat::{as_lit, neg, pvar, Clause, Cnf, PVar};
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum FilledPos {
     Const(char),
-    FilleVar(Variable, usize),
+    FilledVar(Variable, usize),
 }
 /// A filled pattern is a pattern with a set of bounds on the variables.
 /// Each position in the pattern is either a constant word or a position within a variable.
@@ -41,7 +41,7 @@ impl FilledPattern {
                 Symbol::Variable(v) => {
                     let len = bounds.get(v);
                     for i in 0..len {
-                        positions.push(FilledPos::FilleVar(v.clone(), i))
+                        positions.push(FilledPos::FilledVar(v.clone(), i))
                     }
                 }
             }
@@ -91,21 +91,21 @@ impl WoorpjeEncoder {
                             cnf.push(vec![neg(wm_var)])
                         }
                     }
-                    (FilledPos::Const(a), FilledPos::FilleVar(v, vj)) => {
+                    (FilledPos::Const(a), FilledPos::FilledVar(v, vj)) => {
                         let sub_u = subs.get(&v, *vj, *a).unwrap();
                         let wm_var = pvar();
                         wm.insert((i, j), wm_var);
                         cnf.push(vec![neg(wm_var), as_lit(sub_u)]);
                         cnf.push(vec![as_lit(wm_var), neg(sub_u)]);
                     }
-                    (FilledPos::FilleVar(u, ui), FilledPos::Const(b)) => {
+                    (FilledPos::FilledVar(u, ui), FilledPos::Const(b)) => {
                         let sub_u = subs.get(&u, *ui, *b).unwrap();
                         let wm_var = pvar();
                         wm.insert((i, j), wm_var);
                         cnf.push(vec![neg(wm_var), as_lit(sub_u)]);
                         cnf.push(vec![as_lit(wm_var), neg(sub_u)]);
                     }
-                    (FilledPos::FilleVar(u, ui), FilledPos::FilleVar(v, vj)) => {
+                    (FilledPos::FilledVar(u, ui), FilledPos::FilledVar(v, vj)) => {
                         for chr in subs.alphabet() {
                             let sub_u = subs.get(u, *ui, *chr).unwrap();
                             let sub_v = subs.get(v, *vj, *chr).unwrap();
@@ -189,13 +189,17 @@ impl PredicateEncoder for WoorpjeEncoder {
 
                 // 5. Substitution transition  (a)
                 match lhs.at(i).unwrap() {
-                    FilledPos::Const(_) => {}
-                    FilledPos::FilleVar(u, ui) => {
+                    FilledPos::Const(_) => {
+                        cnf.push(vec![-s_00, s_10]);
+                    }
+                    FilledPos::FilledVar(u, ui) => {
                         cnf.push(vec![-s_00, subs.get_lit(u, *ui, LAMBDA).unwrap(), s_10]);
 
                         match rhs.at(j).unwrap() {
-                            FilledPos::Const(_) => {}
-                            FilledPos::FilleVar(v, vj) => {
+                            FilledPos::Const(_) => {
+                                cnf.push(vec![-s_00, -subs.get_lit(u, *ui, LAMBDA).unwrap(), s_10]);
+                            }
+                            FilledPos::FilledVar(v, vj) => {
                                 cnf.push(vec![
                                     -s_00,
                                     -subs.get_lit(u, *ui, LAMBDA).unwrap(),
@@ -209,18 +213,22 @@ impl PredicateEncoder for WoorpjeEncoder {
 
                 // 6. Substitution transition (b)
                 match rhs.at(j).unwrap() {
-                    FilledPos::Const(_) => {}
-                    FilledPos::FilleVar(v, vj) => {
+                    FilledPos::Const(_) => {
+                        cnf.push(vec![-s_00, s_01]);
+                    }
+                    FilledPos::FilledVar(v, vj) => {
                         cnf.push(vec![-s_00, subs.get_lit(v, *vj, LAMBDA).unwrap(), s_01]);
 
                         match lhs.at(i).unwrap() {
-                            FilledPos::Const(_) => {}
-                            FilledPos::FilleVar(u, ui) => {
+                            FilledPos::Const(_) => {
+                                cnf.push(vec![-s_00, -subs.get_lit(v, *vj, LAMBDA).unwrap(), s_01]);
+                            }
+                            FilledPos::FilledVar(u, ui) => {
                                 cnf.push(vec![
                                     -s_00,
                                     -subs.get_lit(v, *vj, LAMBDA).unwrap(),
                                     subs.get_lit(u, *ui, LAMBDA).unwrap(),
-                                    s_10,
+                                    s_01,
                                 ]);
                             }
                         }
@@ -228,8 +236,8 @@ impl PredicateEncoder for WoorpjeEncoder {
                 }
 
                 // 7. Match two lambda transitions
-                if let FilledPos::FilleVar(u, ui) = lhs.at(i).unwrap() {
-                    if let FilledPos::FilleVar(v, vj) = rhs.at(j).unwrap() {
+                if let FilledPos::FilledVar(u, ui) = lhs.at(i).unwrap() {
+                    if let FilledPos::FilledVar(v, vj) = rhs.at(j).unwrap() {
                         cnf.push(vec![
                             -s_00,
                             -subs.get_lit(u, *ui, LAMBDA).unwrap(),
