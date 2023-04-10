@@ -36,6 +36,11 @@ impl SubstitutionEncoding {
     pub fn alphabet(&self) -> &HashSet<char> {
         &self.alphabet
     }
+
+    pub fn alphabet_lambda(&self) -> HashSet<char> {
+        let l = HashSet::from_iter(vec![LAMBDA]);
+        self.alphabet.union(&l).cloned().collect()
+    }
 }
 
 pub struct SubstitutionEncoder {
@@ -101,6 +106,27 @@ impl SubstitutionEncoder {
 
     pub fn get_encoding(&self) -> &SubstitutionEncoding {
         &self.encoding
+    }
+
+    pub fn get_substitutions(&self, solver: &cadical::Solver) -> HashMap<&Variable, String> {
+        let mut subs = HashMap::new();
+        for v in &self.vars {
+            let mut sub = String::new();
+            for b in 0..self.pre_bounds(v).unwrap_or(0) {
+                for c in self.encoding.alphabet_lambda() {
+                    let lit = self.encoding.get_lit(&v, b, c).unwrap();
+                    if let Some(true) = solver.value(lit) {
+                        if c == LAMBDA {
+                            sub.push('_');
+                        } else {
+                            sub.push(c);
+                        }
+                    }
+                }
+            }
+            subs.insert(v, sub);
+        }
+        subs
     }
 }
 

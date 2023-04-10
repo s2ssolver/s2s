@@ -337,6 +337,7 @@ mod tests {
 
         let res = solver.solve();
         if let Some(true) = res {
+            println!("{:?}", subs_encoder.get_substitutions(&solver));
             if let Some(svs) = encoder.get_state_vars() {
                 println!("{:?}", svs);
                 for j in 0..svs[0].len() {
@@ -395,12 +396,12 @@ mod tests {
     fn woorpje_trivial_sat_const_var() {
         let eq = WordEquation::new(
             Pattern::from(vec![Symbol::LiteralWord(String::from("foo"))]),
-            Pattern::from(vec![Symbol::LiteralWord(String::from("X"))]),
+            Pattern::from(vec![Symbol::Variable(Variable::tmp_var(Sort::String))]),
         );
-        let alphabet = HashSet::from_iter(vec!['f', 'o']);
+
         let bounds = VariableBounds::new(10);
 
-        let res = solve_woorpje(&eq, bounds, &alphabet);
+        let res = solve_woorpje(&eq, bounds, &eq.alphabet());
         assert!(matches!(res, Some(true)));
     }
 
@@ -417,13 +418,12 @@ mod tests {
     fn woorpje_trivial_unsat_const_var_too_small() {
         let eq = WordEquation::new(
             Pattern::from(vec![Symbol::LiteralWord(String::from("foo"))]),
-            Pattern::from(vec![Symbol::LiteralWord(String::from("X"))]),
+            Pattern::from(vec![Symbol::Variable(Variable::tmp_var(Sort::String))]),
         );
-        let alphabet = HashSet::from_iter(vec!['f', 'o']);
 
         let bounds = VariableBounds::new(1);
 
-        let res = solve_woorpje(&eq, bounds, &alphabet);
+        let res = solve_woorpje(&eq, bounds, &eq.alphabet());
         assert!(matches!(res, Some(false)));
     }
 }
