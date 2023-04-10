@@ -170,107 +170,145 @@ impl PredicateEncoder for WoorpjeEncoder {
             .iter_mut()
             .for_each(|v| v.iter_mut().for_each(|x| *x = pvar()));
 
-        for i in 0..n {
-            for j in 0..m {
+        for i in 0..=n {
+            for j in 0..=m {
                 let s_00 = as_lit(state_vars[i][j]);
-                let s_10 = as_lit(state_vars[i + 1][j]);
-                let s_01 = as_lit(state_vars[i][j + 1]);
-                let s_11 = as_lit(state_vars[i + 1][j + 1]);
 
-                // 1. At least one successor state
-                cnf.push(vec![-s_00, s_01, s_10, s_11]);
+                if i < n && j < m {
+                    let s_10 = as_lit(state_vars[i + 1][j]);
+                    let s_01 = as_lit(state_vars[i][j + 1]);
+                    let s_11 = as_lit(state_vars[i + 1][j + 1]);
 
-                // 2. At most one successor state (a)
-                cnf.push(vec![-s_00, -s_01, -s_11]); // s_00 /\ s_01 --> -s_11
-                cnf.push(vec![-s_00, -s_01, -s_10]); // s_00 /\ s_01 --> -s_10
+                    // 1. At least one successor state
+                    cnf.push(vec![-s_00, s_01, s_10, s_11]);
 
-                // 3. At most one successor state (b)
-                cnf.push(vec![-s_00, -s_10, -s_11]); // s_00 /\ s_10 --> -s_11
-                cnf.push(vec![-s_00, -s_10, -s_01]); // s_00 /\ s_10 --> -s_01
+                    // 2. At most one successor state (a)
+                    cnf.push(vec![-s_00, -s_01, -s_11]); // s_00 /\ s_01 --> -s_11
+                    cnf.push(vec![-s_00, -s_01, -s_10]); // s_00 /\ s_01 --> -s_10
 
-                // 4. At most one successor state (c)
-                cnf.push(vec![-s_00, -s_11, -s_10]); // s_00 /\ s_11 --> -s_10
-                cnf.push(vec![-s_00, -s_11, -s_01]); // s_00 /\ s_11 --> -s_01
+                    // 3. At most one successor state (b)
+                    cnf.push(vec![-s_00, -s_10, -s_11]); // s_00 /\ s_10 --> -s_11
+                    cnf.push(vec![-s_00, -s_10, -s_01]); // s_00 /\ s_10 --> -s_01
 
-                // 5. Substitution transition  (a)
-                match lhs.at(i).unwrap() {
-                    FilledPos::Const(_) => {
-                        cnf.push(vec![-s_00, -s_10]);
-                    }
-                    FilledPos::FilledVar(u, ui) => {
-                        cnf.push(vec![-s_00, subs.get_lit(u, *ui, LAMBDA).unwrap(), -s_10]);
+                    // 4. At most one successor state (c)
+                    cnf.push(vec![-s_00, -s_11, -s_10]); // s_00 /\ s_11 --> -s_10
+                    cnf.push(vec![-s_00, -s_11, -s_01]); // s_00 /\ s_11 --> -s_01
 
-                        match rhs.at(j).unwrap() {
-                            FilledPos::Const(_) => {
-                                cnf.push(vec![-s_00, -subs.get_lit(u, *ui, LAMBDA).unwrap(), s_10]);
-                            }
-                            FilledPos::FilledVar(v, vj) => {
-                                cnf.push(vec![
-                                    -s_00,
-                                    -subs.get_lit(u, *ui, LAMBDA).unwrap(),
-                                    subs.get_lit(v, *vj, LAMBDA).unwrap(),
-                                    s_10,
-                                ]);
+                    // 5. Substitution transition  (a)
+                    match lhs.at(i).unwrap() {
+                        FilledPos::Const(_) => {
+                            cnf.push(vec![-s_00, -s_10]);
+                        }
+                        FilledPos::FilledVar(u, ui) => {
+                            cnf.push(vec![-s_00, subs.get_lit(u, *ui, LAMBDA).unwrap(), -s_10]);
+
+                            match rhs.at(j).unwrap() {
+                                FilledPos::Const(_) => {
+                                    cnf.push(vec![
+                                        -s_00,
+                                        -subs.get_lit(u, *ui, LAMBDA).unwrap(),
+                                        s_10,
+                                    ]);
+                                }
+                                FilledPos::FilledVar(v, vj) => {
+                                    cnf.push(vec![
+                                        -s_00,
+                                        -subs.get_lit(u, *ui, LAMBDA).unwrap(),
+                                        subs.get_lit(v, *vj, LAMBDA).unwrap(),
+                                        s_10,
+                                    ]);
+                                }
                             }
                         }
                     }
-                }
 
-                // 6. Substitution transition (b)
-                match rhs.at(j).unwrap() {
-                    FilledPos::Const(_) => {
-                        cnf.push(vec![-s_00, -s_01]);
-                    }
-                    FilledPos::FilledVar(v, vj) => {
-                        cnf.push(vec![-s_00, subs.get_lit(v, *vj, LAMBDA).unwrap(), -s_01]);
+                    // 6. Substitution transition (b)
+                    match rhs.at(j).unwrap() {
+                        FilledPos::Const(_) => {
+                            cnf.push(vec![-s_00, -s_01]);
+                        }
+                        FilledPos::FilledVar(v, vj) => {
+                            cnf.push(vec![-s_00, subs.get_lit(v, *vj, LAMBDA).unwrap(), -s_01]);
 
-                        match lhs.at(i).unwrap() {
-                            FilledPos::Const(_) => {
-                                cnf.push(vec![-s_00, -subs.get_lit(v, *vj, LAMBDA).unwrap(), s_01]);
-                            }
-                            FilledPos::FilledVar(u, ui) => {
-                                cnf.push(vec![
-                                    -s_00,
-                                    -subs.get_lit(v, *vj, LAMBDA).unwrap(),
-                                    subs.get_lit(u, *ui, LAMBDA).unwrap(),
-                                    s_01,
-                                ]);
+                            match lhs.at(i).unwrap() {
+                                FilledPos::Const(_) => {
+                                    cnf.push(vec![
+                                        -s_00,
+                                        -subs.get_lit(v, *vj, LAMBDA).unwrap(),
+                                        s_01,
+                                    ]);
+                                }
+                                FilledPos::FilledVar(u, ui) => {
+                                    cnf.push(vec![
+                                        -s_00,
+                                        -subs.get_lit(v, *vj, LAMBDA).unwrap(),
+                                        subs.get_lit(u, *ui, LAMBDA).unwrap(),
+                                        s_01,
+                                    ]);
+                                }
                             }
                         }
                     }
-                }
 
-                // 7. Match two lambda transitions
-                if let FilledPos::FilledVar(u, ui) = lhs.at(i).unwrap() {
-                    if let FilledPos::FilledVar(v, vj) = rhs.at(j).unwrap() {
-                        cnf.push(vec![
-                            -s_00,
-                            -subs.get_lit(u, *ui, LAMBDA).unwrap(),
-                            -subs.get_lit(v, *vj, LAMBDA).unwrap(),
-                            s_11,
-                        ]);
+                    // 7. Match two lambda transitions
+                    if let FilledPos::FilledVar(u, ui) = lhs.at(i).unwrap() {
+                        if let FilledPos::FilledVar(v, vj) = rhs.at(j).unwrap() {
+                            cnf.push(vec![
+                                -s_00,
+                                -subs.get_lit(u, *ui, LAMBDA).unwrap(),
+                                -subs.get_lit(v, *vj, LAMBDA).unwrap(),
+                                s_11,
+                            ]);
+                        }
+                    }
+
+                    // 8. Matching letters at position i,j
+                    cnf.push(vec![-s_00, -s_11, as_lit(*wm.get(&(i, j)).unwrap())]);
+
+                    // 9. Possible transitions
+
+                    // 10. Predecessor states
+                    cnf.push(vec![-s_11, s_00, s_01, s_10]);
+                } else if i < n && j == m {
+                    let s_10 = as_lit(state_vars[i + 1][j]);
+
+                    // 1. At least one successor state
+                    cnf.push(vec![-s_00, s_10]);
+
+                    // 5. Substitution transition  (a)
+                    match lhs.at(i).unwrap() {
+                        FilledPos::Const(_) => {
+                            cnf.push(vec![-s_00, -s_10]);
+                        }
+                        FilledPos::FilledVar(u, ui) => {
+                            cnf.push(vec![-s_00, subs.get_lit(u, *ui, LAMBDA).unwrap(), -s_10]);
+                        }
                     }
                 }
+                if i == n && j < m {
+                    let s_01 = as_lit(state_vars[i][j + 1]);
 
-                // 8. Matching letters at position i,j
-                cnf.push(vec![-s_00, -s_11, as_lit(*wm.get(&(i, j)).unwrap())]);
+                    // 1. At least one successor state
+                    cnf.push(vec![-s_00, s_01]);
 
-                // 9. Possible transitions
-
-                // 10. Predecessor states
-                if (i, j) != (0, 0) {
-                    let mut predecessors = vec![-s_00];
-                    if i > 0 {
-                        predecessors.push(as_lit(state_vars[i - 1][j]));
-                    }
-                    if j > 0 {
-                        predecessors.push(as_lit(state_vars[i][j - 1]));
-                    }
-                    if i > 0 && j > 0 {
-                        predecessors.push(as_lit(state_vars[i - 1][j - 1]));
+                    // 6. Substitution transition (b)
+                    match rhs.at(j).unwrap() {
+                        FilledPos::Const(_) => {
+                            cnf.push(vec![-s_00, -s_01]);
+                        }
+                        FilledPos::FilledVar(v, vj) => {
+                            cnf.push(vec![-s_00, subs.get_lit(v, *vj, LAMBDA).unwrap(), -s_01]);
+                        }
                     }
                 }
             }
+        }
+        // TODO: move in loop above
+        for j in 1..=m {
+            cnf.push(vec![neg(state_vars[0][j]), as_lit(state_vars[0][j - 1])]);
+        }
+        for i in 1..=n {
+            cnf.push(vec![neg(state_vars[i][0]), as_lit(state_vars[i - 1][0])]);
         }
         cnf.push(vec![as_lit(state_vars[0][0])]);
         cnf.push(vec![as_lit(state_vars[n][m])]);
@@ -330,7 +368,9 @@ mod tests {
     ) -> Option<bool> {
         let mut encoding = EncodingResult::empty();
         let mut subs_encoder = SubstitutionEncoder::new(alphabet.clone(), eq.variables());
-        encoding.join(subs_encoder.encode(&bounds));
+
+        let subs_cnf = subs_encoder.encode(&bounds);
+        encoding.join(subs_cnf);
         println!("Solving {}", eq);
         let mut encoder = WoorpjeEncoder::new(eq.clone());
         encoding.join(encoder.encode(&bounds, subs_encoder.get_encoding()));
