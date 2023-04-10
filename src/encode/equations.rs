@@ -115,6 +115,14 @@ impl WoorpjeEncoder {
                             cnf.push(vec![neg(wm_var), as_lit(sub_v)]);
                             cnf.push(vec![neg(sub_v), neg(sub_u), as_lit(wm_var)]);
                         }
+                        // Lambda sub
+                        let sub_u = subs.get(u, *ui, LAMBDA).unwrap();
+                        let sub_v = subs.get(v, *vj, LAMBDA).unwrap();
+                        let wm_var = pvar();
+                        wm.insert((i, j), wm_var);
+                        cnf.push(vec![neg(wm_var), as_lit(sub_u)]);
+                        cnf.push(vec![neg(wm_var), as_lit(sub_v)]);
+                        cnf.push(vec![neg(sub_v), neg(sub_u), as_lit(wm_var)]);
                     }
                 }
             }
@@ -365,7 +373,6 @@ mod tests {
         let var = Pattern::from(vec![Symbol::Variable(Variable::tmp_var(Sort::String))]);
         let eq = WordEquation::new(var.clone(), var);
         let bounds = VariableBounds::new(10);
-
         let res = solve_woorpje(&eq, bounds, &eq.alphabet());
         assert!(matches!(res, Some(true)));
     }
