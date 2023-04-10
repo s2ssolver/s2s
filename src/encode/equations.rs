@@ -64,6 +64,7 @@ impl FilledPattern {
 
 pub struct WoorpjeEncoder {
     equation: WordEquation,
+    state_vars: Option<Vec<Vec<PVar>>>,
 }
 
 impl WoorpjeEncoder {
@@ -127,6 +128,13 @@ impl WoorpjeEncoder {
         }
         (wm, cnf)
     }
+
+    fn get_state_vars(&self) -> Option<&Vec<Vec<PVar>>> {
+        match self.state_vars {
+            Some(ref vars) => Some(vars),
+            None => None,
+        }
+    }
 }
 
 impl PredicateEncoder for WoorpjeEncoder {
@@ -138,7 +146,7 @@ impl PredicateEncoder for WoorpjeEncoder {
         todo!()
     }
 
-    fn encode(&self, bounds: &VariableBounds, subs: &SubstitutionEncoding) -> EncodingResult {
+    fn encode(&mut self, bounds: &VariableBounds, subs: &SubstitutionEncoding) -> EncodingResult {
         let mut cnf = Cnf::new();
         let lhs = FilledPattern::fill(&self.equation.lhs(), bounds);
         let rhs = FilledPattern::fill(&self.equation.rhs(), bounds);
@@ -187,10 +195,10 @@ impl PredicateEncoder for WoorpjeEncoder {
                 // 5. Substitution transition  (a)
                 match lhs.at(i).unwrap() {
                     FilledPos::Const(_) => {
-                        cnf.push(vec![-s_00, s_10]);
+                        cnf.push(vec![-s_00, -s_10]);
                     }
                     FilledPos::FilledVar(u, ui) => {
-                        cnf.push(vec![-s_00, subs.get_lit(u, *ui, LAMBDA).unwrap(), s_10]);
+                        cnf.push(vec![-s_00, subs.get_lit(u, *ui, LAMBDA).unwrap(), -s_10]);
 
                         match rhs.at(j).unwrap() {
                             FilledPos::Const(_) => {
@@ -211,10 +219,10 @@ impl PredicateEncoder for WoorpjeEncoder {
                 // 6. Substitution transition (b)
                 match rhs.at(j).unwrap() {
                     FilledPos::Const(_) => {
-                        cnf.push(vec![-s_00, s_01]);
+                        cnf.push(vec![-s_00, -s_01]);
                     }
                     FilledPos::FilledVar(v, vj) => {
-                        cnf.push(vec![-s_00, subs.get_lit(v, *vj, LAMBDA).unwrap(), s_01]);
+                        cnf.push(vec![-s_00, subs.get_lit(v, *vj, LAMBDA).unwrap(), -s_01]);
 
                         match lhs.at(i).unwrap() {
                             FilledPos::Const(_) => {
@@ -255,14 +263,17 @@ impl PredicateEncoder for WoorpjeEncoder {
         }
         cnf.push(vec![as_lit(state_vars[0][0])]);
         cnf.push(vec![as_lit(state_vars[n][m])]);
-
+        self.state_vars = Some(state_vars);
         EncodingResult::Cnf(cnf)
     }
 }
 
 impl WordEquationEncoder for WoorpjeEncoder {
     fn new(equation: WordEquation) -> Self {
-        Self { equation: equation }
+        Self {
+            equation: equation,
+            state_vars: None,
+        }
     }
 }
 
@@ -310,7 +321,7 @@ mod tests {
         let mut subs_encoder = SubstitutionEncoder::new(alphabet.clone(), eq.variables());
         encoding.join(subs_encoder.encode(&bounds));
 
-        let encoder = WoorpjeEncoder::new(eq.clone());
+        let mut encoder = WoorpjeEncoder::new(eq.clone());
         encoding.join(encoder.encode(&bounds, subs_encoder.get_encoding()));
 
         let mut solver: Solver = Solver::default();
@@ -324,7 +335,28 @@ mod tests {
             EncodingResult::Trivial(true) => return Some(true),
         }
 
-        solver.solve()
+        let res = solver.solve();
+        if let Some(true) = res {
+            if let Some(svs) = encoder.get_state_vars() {
+                println!("{:?}", svs);
+                for j in 0..svs[0].len() {
+                    print!("\t{}", j)
+                }
+                println!();
+                for i in 0..svs.len() {
+                    print!("{}\t", i);
+                    for j in 0..svs[i].len() {
+                        if solver.value(as_lit(svs[i][j])) == Some(true) {
+                            print!("1\t")
+                        } else {
+                            print!("0\t")
+                        }
+                    }
+                    println!();
+                }
+            }
+        }
+        res
     }
 
     #[test]

@@ -94,7 +94,7 @@ trait PredicateEncoder {
     fn reset(&self) -> bool;
 
     fn encode(
-        &self,
+        &mut self,
         bounds: &VariableBounds,
         substitution: &SubstitutionEncoding,
     ) -> EncodingResult;
