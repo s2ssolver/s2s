@@ -85,9 +85,7 @@ impl WoorpjeEncoder {
                         wm.insert((i, j), wm_var);
                         if a == b {
                             cnf.push(vec![as_lit(wm_var)]);
-                            println!("({} == {}) <--> {}; {{{}}}", a, b, wm_var, wm_var);
                         } else {
-                            println!("({} == {}) <--> {}; {{{}}} ", a, b, wm_var, neg(wm_var));
                             cnf.push(vec![neg(wm_var)])
                         }
                     }
@@ -146,7 +144,6 @@ impl PredicateEncoder for WoorpjeEncoder {
         let rhs = FilledPattern::fill(&self.equation.rhs(), bounds);
         log::debug!("Encoding {}", self.equation);
 
-        println!("{}", self.equation);
         let (wm, wm_cnf) = self.match_vars(&lhs, &rhs, subs);
         cnf.extend(wm_cnf);
         let n = lhs.length();
@@ -255,10 +252,9 @@ impl PredicateEncoder for WoorpjeEncoder {
                 // 10.
                 cnf.push(vec![-s_11, s_00, s_10, s_01])
             }
-
-            cnf.push(vec![as_lit(state_vars[0][0])]);
-            cnf.push(vec![as_lit(state_vars[n][m])]);
         }
+        cnf.push(vec![as_lit(state_vars[0][0])]);
+        cnf.push(vec![as_lit(state_vars[n][m])]);
 
         EncodingResult::Cnf(cnf)
     }
