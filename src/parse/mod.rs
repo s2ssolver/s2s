@@ -1,4 +1,7 @@
-use std::collections::{HashMap, HashSet};
+use std::{
+    collections::{HashMap, HashSet},
+    path::PathBuf,
+};
 
 use crate::{
     formula::{Atom, Formula},
@@ -9,7 +12,22 @@ use crate::{
     Instance,
 };
 
-pub fn parse_woorpje(input: &str) -> Result<Instance, String> {
+pub enum Parser {
+    WoorpjeParser,
+    Smt2Parser,
+}
+
+impl Parser {
+    pub fn parse(&self, input: PathBuf) -> Result<Instance, String> {
+        let input = std::fs::read_to_string(input).map_err(|e| e.to_string())?;
+        match self {
+            Parser::WoorpjeParser => parse_woorpje(&input),
+            Parser::Smt2Parser => unimplemented!("SMT2 parsing not implemented yet"),
+        }
+    }
+}
+
+fn parse_woorpje(input: &str) -> Result<Instance, String> {
     let mut vars = HashMap::new();
     let mut alphabet = HashSet::new();
     let mut formula = Formula::True;
@@ -81,11 +99,7 @@ pub fn parse_woorpje(input: &str) -> Result<Instance, String> {
         }
     }
 
-    Ok(Instance {
-        formula,
-        vars: vars.values().cloned().collect(),
-        ubound: None,
-    })
+    Ok(Instance::new(formula, vars.values().cloned().collect()))
 }
 
 #[cfg(test)]
@@ -99,7 +113,7 @@ Terminals {ab}
 Equation: aX = ab"#;
 
         let instance = parse_woorpje(input).unwrap();
-        assert_eq!(instance.vars.len(), 1);
+        assert_eq!(instance.get_vars().len(), 1);
         let expected_lhs = Pattern::from(vec![
             Symbol::LiteralWord("a".to_string()),
             Symbol::Variable(Variable::new("X".to_string(), crate::model::Sort::String)),
@@ -110,7 +124,7 @@ Equation: aX = ab"#;
         ]);
         let expected_eq = WordEquation::new(expected_lhs, expected_rhs);
         assert_eq!(
-            instance.formula,
+            *instance.get_formula(),
             Formula::Atom(Atom::word_equation(expected_eq))
         );
     }

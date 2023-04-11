@@ -1,4 +1,4 @@
-use satstr::{parse::parse_woorpje, Instance, Solver, SolverResult, Woorpje};
+use satstr::{Parser, Solver, Woorpje};
 use std::{fs, io::Write};
 
 #[test]
@@ -12,8 +12,7 @@ fn track1() {
         let test_name = format!("{}", path.display());
         println!("Name: {}", test_name);
         std::io::stdout().flush().unwrap();
-        let input = fs::read_to_string(path).unwrap();
-        let mut instance = parse_woorpje(&input).unwrap();
+        let mut instance = Parser::WoorpjeParser.parse(path.to_path_buf()).unwrap();
         instance.set_bound(20);
         let mut solver = Woorpje::new(&instance).unwrap();
 
