@@ -1,5 +1,5 @@
 use std::{
-    collections::HashSet,
+    collections::{HashMap, HashSet},
     fmt::{Display, Formatter},
     slice::Iter,
 };
@@ -79,6 +79,16 @@ impl Pattern {
         self.symbols.push(symbol.clone())
     }
 
+    pub fn append_var(&mut self, var: &Variable) -> &mut Self {
+        self.append(&Symbol::Variable(var.clone()));
+        self
+    }
+
+    pub fn append_word(&mut self, word: &str) -> &mut Self {
+        self.append(&Symbol::LiteralWord(word.to_owned()));
+        self
+    }
+
     /// Prepends a symbol to the beginning of the pattern.
     ///
     /// # Panics
@@ -108,6 +118,25 @@ impl Pattern {
 
     pub fn symbols(&self) -> Iter<Symbol> {
         self.symbols.iter()
+    }
+
+    /// Applies a substitution to the pattern.
+    /// Returns `None` if the substitution is not defined for all variables in the pattern.
+    pub fn substitute(&self, substitution: HashMap<Variable, String>) -> Option<String> {
+        let mut res = String::new();
+        for symbol in &self.symbols {
+            match symbol {
+                Symbol::LiteralWord(word) => res.push_str(word),
+                Symbol::Variable(var) => {
+                    if let Some(value) = substitution.get(var) {
+                        res.push_str(value)
+                    } else {
+                        return None;
+                    }
+                }
+            }
+        }
+        Some(res)
     }
 }
 
@@ -177,9 +206,7 @@ fn normalize_pattern(pattern: Pattern) -> Pattern {
     for symbol in pattern.into_iter() {
         match symbol {
             Symbol::LiteralWord(w) => {
-                last_literal
-                    .get_or_insert_with(String::new)
-                    .push_str(&w);
+                last_literal.get_or_insert_with(String::new).push_str(&w);
             }
             Symbol::Variable(v) => {
                 if v.sort() != Sort::String {
@@ -188,14 +215,20 @@ fn normalize_pattern(pattern: Pattern) -> Pattern {
                 if let Some(x) = last_literal
                     .take()
                     .filter(|x| !x.is_empty())
-                    .map(Symbol::LiteralWord) { res.push(x) }
+                    .map(Symbol::LiteralWord)
+                {
+                    res.push(x)
+                }
                 res.push(Symbol::Variable(v.clone()));
             }
         }
     }
     if let Some(x) = last_literal
         .filter(|x| !x.is_empty())
-        .map(Symbol::LiteralWord) { res.push(x) }
+        .map(Symbol::LiteralWord)
+    {
+        res.push(x)
+    }
     Pattern::new(res)
 }
 
@@ -223,6 +256,11 @@ impl WordEquation {
 
     pub fn variables(&self) -> HashSet<Variable> {
         self.lhs.vars().union(&self.rhs.vars()).cloned().collect()
+    }
+
+    /// Returns true iff the equation is a solution for the given substitution.
+    pub fn is_solution(&self, substitution: &HashMap<Variable, String>) -> bool {
+        self.lhs.substitute(substitution.clone()) == self.rhs.substitute(substitution.clone())
     }
 
     pub fn alphabet(&self) -> HashSet<char> {

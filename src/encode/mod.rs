@@ -1,7 +1,10 @@
-use std::{cmp::min, collections::HashMap};
+use std::{cmp::min, collections::HashMap, slice::Iter};
 
 use crate::{
-    model::{words::WordEquation, Variable},
+    model::{
+        words::{Pattern, Symbol, WordEquation},
+        Variable,
+    },
     sat::Cnf,
 };
 
@@ -91,6 +94,60 @@ impl std::fmt::Display for VariableBounds {
 
 /// The character used to represent unused positions
 const LAMBDA: char = char::REPLACEMENT_CHARACTER;
+
+/// A position in a filled pattern.
+/// Either a constant word or a position within a variable.
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum FilledPos {
+    Const(char),
+    FilledVar(Variable, usize),
+}
+/// A filled pattern is a pattern with a set of bounds on the variables.
+/// Each position in the pattern is either a constant word or a position within a variable.
+struct FilledPattern {
+    positions: Vec<FilledPos>,
+}
+
+impl FilledPattern {
+    fn fill(pattern: &Pattern, bounds: &VariableBounds) -> Self {
+        Self {
+            positions: Self::convert(pattern, bounds),
+        }
+    }
+
+    fn convert(pattern: &Pattern, bounds: &VariableBounds) -> Vec<FilledPos> {
+        let mut positions = vec![];
+        for symbol in pattern.symbols() {
+            match symbol {
+                Symbol::LiteralWord(s) => {
+                    for c in s.chars() {
+                        positions.push(FilledPos::Const(c))
+                    }
+                }
+                Symbol::Variable(v) => {
+                    let len = bounds.get(v);
+                    for i in 0..len {
+                        positions.push(FilledPos::FilledVar(v.clone(), i))
+                    }
+                }
+            }
+        }
+        positions
+    }
+
+    pub fn length(&self) -> usize {
+        self.positions.len()
+    }
+
+    fn at(&self, i: usize) -> Option<&FilledPos> {
+        self.positions.get(i)
+    }
+
+    #[allow(dead_code)]
+    fn iter(&self) -> Iter<FilledPos> {
+        self.positions.iter()
+    }
+}
 
 pub enum EncodingResult {
     /// The CNF encoding of the problem

@@ -1,67 +1,12 @@
 use std::collections::HashMap;
-use std::slice::Iter;
 
 use super::{
     EncodingResult, PredicateEncoder, SubstitutionEncoding, VariableBounds, WordEquationEncoder,
     LAMBDA,
 };
-use crate::model::words::{Pattern, Symbol, WordEquation};
-use crate::model::Variable;
+use crate::encode::{FilledPattern, FilledPos};
+use crate::model::words::WordEquation;
 use crate::sat::{as_lit, neg, pvar, Clause, Cnf, PVar};
-
-/// A position in a filled pattern.
-/// Either a constant word or a position within a variable.
-#[derive(Debug, Clone, PartialEq, Eq)]
-enum FilledPos {
-    Const(char),
-    FilledVar(Variable, usize),
-}
-/// A filled pattern is a pattern with a set of bounds on the variables.
-/// Each position in the pattern is either a constant word or a position within a variable.
-struct FilledPattern {
-    positions: Vec<FilledPos>,
-}
-
-impl FilledPattern {
-    fn fill(pattern: &Pattern, bounds: &VariableBounds) -> Self {
-        Self {
-            positions: Self::convert(pattern, bounds),
-        }
-    }
-
-    fn convert(pattern: &Pattern, bounds: &VariableBounds) -> Vec<FilledPos> {
-        let mut positions = vec![];
-        for symbol in pattern.symbols() {
-            match symbol {
-                Symbol::LiteralWord(s) => {
-                    for c in s.chars() {
-                        positions.push(FilledPos::Const(c))
-                    }
-                }
-                Symbol::Variable(v) => {
-                    let len = bounds.get(v);
-                    for i in 0..len {
-                        positions.push(FilledPos::FilledVar(v.clone(), i))
-                    }
-                }
-            }
-        }
-        positions
-    }
-
-    pub fn length(&self) -> usize {
-        self.positions.len()
-    }
-
-    fn at(&self, i: usize) -> Option<&FilledPos> {
-        self.positions.get(i)
-    }
-
-    #[allow(dead_code)]
-    fn iter(&self) -> Iter<FilledPos> {
-        self.positions.iter()
-    }
-}
 
 pub struct WoorpjeEncoder {
     equation: WordEquation,
@@ -329,14 +274,16 @@ impl WordEquationEncoder for WoorpjeEncoder {
 mod tests {
     use std::collections::HashSet;
 
+    use super::*;
     use cadical::Solver;
 
     use crate::{
         encode::substitution::SubstitutionEncoder,
-        model::{Sort, Variable},
+        model::{
+            words::{Pattern, Symbol},
+            Sort, Variable,
+        },
     };
-
-    use super::*;
 
     #[test]
     fn length_literal_word() {
@@ -387,7 +334,8 @@ mod tests {
 
         let res = solver.solve();
         if let Some(true) = res {
-            println!("{:?}", subs_encoder.get_substitutions(&solver));
+            let solution = subs_encoder.get_substitutions(&solver);
+            assert!(eq.is_solution(&solution));
             if let Some(svs) = encoder.get_state_vars() {
                 println!("{:?}", svs);
                 for j in 0..svs[0].len() {
@@ -465,6 +413,20 @@ mod tests {
     }
 
     #[test]
+    fn woorpje_sat_commute() {
+        let var_a = Variable::new("a".to_string(), Sort::String);
+        let var_b = Variable::new("a".to_string(), Sort::String);
+        let mut lhs = Pattern::empty();
+        lhs.append_word("a").append_var(&var_a).append_var(&var_b);
+        let mut rhs = Pattern::empty();
+        rhs.append_var(&var_b).append_var(&var_a).append_word("a");
+        let eq = WordEquation::new(lhs, rhs);
+        let bounds = VariableBounds::new(10);
+        let res = solve_woorpje(&eq, bounds, &eq.alphabet());
+        assert!(matches!(res, Some(true)));
+    }
+
+    #[test]
     fn woorpje_trivial_unsat_const_var_too_small() {
         let eq = WordEquation::new(
             Pattern::from(vec![Symbol::LiteralWord(String::from("foo"))]),
@@ -475,5 +437,71 @@ mod tests {
 
         let res = solve_woorpje(&eq, bounds, &eq.alphabet());
         assert!(matches!(res, Some(false)));
+    }
+
+    #[test]
+    fn woorpje_sat_complex() {
+        // Track1, Instance 2
+        //BabbabbadeeadAacbacaHaebHedbAcAcHebabccEcbcHH = AbbHabbAbbaHeFcadEbdeHbAcacdebabccAecbcdH
+        let var_a = Variable::new("A".to_string(), Sort::String);
+        let var_b = Variable::new("B".to_string(), Sort::String);
+        let var_h = Variable::new("H".to_string(), Sort::String);
+        let var_f = Variable::new("F".to_string(), Sort::String);
+        let var_e = Variable::new("E".to_string(), Sort::String);
+
+        // B abbabbadeead A acbaca H aeb H edb A c A c H ebabcc E cbc HH
+        let mut lhs = Pattern::empty();
+        lhs.append_var(&var_b)
+            .append_word("abbabbadeead")
+            .append_var(&var_a)
+            .append_word("acbaca")
+            .append_var(&var_h)
+            .append_word("aeb")
+            .append_var(&var_h)
+            .append_word("edb")
+            .append_var(&var_a)
+            .append_word("c")
+            .append_var(&var_a)
+            .append_word("c")
+            .append_var(&var_h)
+            .append_word("ebabcc")
+            .append_var(&var_e)
+            .append_word("cbc")
+            .append_word("HH");
+
+        // A bb H abb A bba H e F cad E bde H b A cacdebabcc A ecbcd H
+        let mut rhs = Pattern::empty();
+        rhs.append_var(&var_a)
+            .append_word("bb")
+            .append_var(&var_h)
+            .append_word("abb")
+            .append_var(&var_a)
+            .append_word("bba")
+            .append_var(&var_h)
+            .append_word("e")
+            .append_var(&var_f)
+            .append_word("cad")
+            .append_var(&var_e)
+            .append_word("bde")
+            .append_var(&var_h)
+            .append_word("b")
+            .append_var(&var_a)
+            .append_word("cacdebabcc")
+            .append_var(&var_a)
+            .append_word("ecbcd")
+            .append_var(&var_h);
+
+        assert_eq!(
+            format!("{}", lhs),
+            "BabbabbadeeadAacbacaHaebHedbAcAcHebabccEcbcHH"
+        );
+        assert_eq!(
+            format!("{}", rhs),
+            "AbbHabbAbbaHeFcadEbdeHbAcacdebabccAecbcdH"
+        );
+        let eq = WordEquation::new(lhs, rhs);
+        let bounds = VariableBounds::new(10);
+        let res = solve_woorpje(&eq, bounds, &eq.alphabet());
+        assert!(matches!(res, Some(true)));
     }
 }

@@ -106,7 +106,7 @@ impl SubstitutionEncoder {
     }
 
     #[allow(dead_code)]
-    pub fn get_substitutions(&self, solver: &cadical::Solver) -> HashMap<&Variable, String> {
+    pub fn get_substitutions(&self, solver: &cadical::Solver) -> HashMap<Variable, String> {
         let mut subs = HashMap::new();
         for v in &self.vars {
             let mut sub = String::new();
@@ -115,28 +115,42 @@ impl SubstitutionEncoder {
                     let lit = self.encoding.get_lit(v, b, c).unwrap();
                     if let Some(true) = solver.value(lit) {
                         if c == LAMBDA {
-                            sub.push('_');
+                            // Do nothing
                         } else {
                             sub.push(c);
                         }
                     }
                 }
             }
-            subs.insert(v, sub);
+            subs.insert(v.clone(), sub);
         }
         subs
     }
 }
 
+#[cfg(test)]
 mod tests {
+    use std::collections::HashSet;
+
+    use crate::{encode::VariableBounds, model::Variable};
+
+    use super::SubstitutionEncoder;
 
     #[test]
     fn all_subst_defined() {
-        todo!()
-    }
+        let var = Variable::tmp_var(crate::model::Sort::String);
+        let alphabet = HashSet::from_iter(vec!['a', 'b', 'c']);
+        let vars = HashSet::from_iter(vec![var.clone()]);
+        let mut encoder = SubstitutionEncoder::new(alphabet, vars);
+        let mb = 10;
+        let bounds = VariableBounds::new(mb);
 
-    #[test]
-    fn all_subst_defined_incremental() {
-        todo!()
+        encoder.encode(&bounds);
+
+        for b in 0..mb {
+            for c in encoder.get_encoding().alphabet_lambda() {
+                assert!(encoder.get_encoding().get_lit(&var, b, c).is_some());
+            }
+        }
     }
 }
