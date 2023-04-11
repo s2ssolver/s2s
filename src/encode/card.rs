@@ -23,9 +23,15 @@ fn eo_naive(vars: &[PVar]) -> Cnf {
 #[cfg(test)]
 mod tests {
 
+    use std::cmp::min;
+
+    use itertools::Itertools;
+    use quickcheck::TestResult;
+    use quickcheck_macros::quickcheck;
+
     use super::*;
     #[test]
-    fn test_eo_naive() {
+    fn test_eo_naive_encoding() {
         let cnf = eo_naive(&[1, 2, 3]);
         assert_eq!(
             cnf,
@@ -38,5 +44,23 @@ mod tests {
         );
     }
 
-    // TODO use quickcheck to test arbitrary inputs with Cadical
+    #[quickcheck]
+    fn test_eo_naive_correct(vars: Vec<u8>) -> TestResult {
+        let vars: Vec<_> = vars.iter().map(|x| *x as PVar + 1).unique().collect();
+        if vars.len() < 2 {
+            return TestResult::discard();
+        }
+        let cnf = eo_naive(&vars);
+        let mut solver: cadical::Solver = cadical::Solver::new();
+        for clause in cnf {
+            solver.add_clause(clause);
+        }
+        assert!(matches!(solver.solve(), Some(true)));
+        let ts = vars
+            .iter()
+            .map(|x| solver.value(*x as PLit).unwrap())
+            .filter(|x| *x)
+            .count();
+        TestResult::from_bool(ts == 1)
+    }
 }

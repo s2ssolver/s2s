@@ -10,4 +10,10 @@ description = "Eager SMT solver for strings"
 cadical = "0.1.14"
 clap = { version = "4.2.1", features = ["derive"]}
 env_logger = "0.10.0"
+itertools = "0.10.5"
 log = "0.4.17"
+
+
+[dev-dependencies]
+quickcheck_macros = "1"
+quickcheck = "1.0.3"

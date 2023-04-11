@@ -272,7 +272,7 @@ impl WordEquationEncoder for WoorpjeEncoder {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashSet;
+    use std::{collections::HashSet, hash::Hash};
 
     use super::*;
     use cadical::Solver;
@@ -467,7 +467,8 @@ mod tests {
             .append_word("ebabcc")
             .append_var(&var_e)
             .append_word("cbc")
-            .append_word("HH");
+            .append_var(&var_h)
+            .append_var(&var_h);
 
         // A bb H abb A bba H e F cad E bde H b A cacdebabcc A ecbcd H
         let mut rhs = Pattern::empty();
@@ -499,9 +500,19 @@ mod tests {
             format!("{}", rhs),
             "AbbHabbAbbaHeFcadEbdeHbAcacdebabccAecbcdH"
         );
-        let eq = WordEquation::new(lhs, rhs);
+
+        let eq = WordEquation::new(lhs.clone(), rhs.clone());
+        let solution = HashMap::from([
+            (var_a, "a".to_string()),
+            (var_b, "abbd".to_string()),
+            (var_h, "d".to_string()),
+            (var_f, "eadaacba".to_string()),
+            (var_e, "ae".to_string()),
+        ]);
+        assert!(eq.is_solution(&solution));
         let bounds = VariableBounds::new(10);
         let res = solve_woorpje(&eq, bounds, &eq.alphabet());
+
         assert!(matches!(res, Some(true)));
     }
 }

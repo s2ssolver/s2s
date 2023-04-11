@@ -122,7 +122,7 @@ impl Pattern {
 
     /// Applies a substitution to the pattern.
     /// Returns `None` if the substitution is not defined for all variables in the pattern.
-    pub fn substitute(&self, substitution: HashMap<Variable, String>) -> Option<String> {
+    pub fn substitute(&self, substitution: &HashMap<Variable, String>) -> Option<String> {
         let mut res = String::new();
         for symbol in &self.symbols {
             match symbol {
@@ -260,7 +260,8 @@ impl WordEquation {
 
     /// Returns true iff the equation is a solution for the given substitution.
     pub fn is_solution(&self, substitution: &HashMap<Variable, String>) -> bool {
-        self.lhs.substitute(substitution.clone()) == self.rhs.substitute(substitution.clone())
+        self.lhs.substitute(substitution) == self.rhs.substitute(substitution)
+            && self.lhs.substitute(substitution).is_some()
     }
 
     pub fn alphabet(&self) -> HashSet<char> {
