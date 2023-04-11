@@ -202,7 +202,7 @@ fn normalize_pattern(pattern: Pattern) -> Pattern {
     Pattern::new(res)
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct WordEquation {
     lhs: Pattern,
     rhs: Pattern,

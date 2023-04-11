@@ -6,6 +6,7 @@ use model::Variable;
 mod encode;
 mod formula;
 mod model;
+mod parse;
 mod sat;
 
 pub struct Instance {
