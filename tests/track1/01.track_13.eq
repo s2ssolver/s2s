@@ -1,0 +1,4 @@
+Variables {LAD}
+Terminals {gacbfhdei}
+Equation: dbcAhAhhcahiigibAieAdgcgacihfifdALeAdahgeeibhhfiaeehhaAfccgfeagegg = dbcADiffAaggAAAbafeAdaAgeeibhhfiaeeAAaAfccgfeagegg
+SatGlucose(100)

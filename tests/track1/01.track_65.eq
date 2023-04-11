@@ -1,0 +1,4 @@
+Variables {BCI}
+Terminals {facbde}
+Equation: dabcfdcadfaccfccdbbBCcbeddebceedfdbaccdfeeaebeecaecddbeaced = dabcfdcadfaccfIdfdbaccdfeeaebeecaecddbeaced
+SatGlucose(100)

@@ -1,0 +1,4 @@
+Variables {ADI}
+Terminals {gfacbde}
+Equation: dbebgddbecfcbbAadeeaecAgebegeecafegebdbagddaadbddcaeeebfabfefabfacdgAgaabgegagf = dbebgddbeAfcbbAaIegeeAaDegagf
+SatGlucose(100)

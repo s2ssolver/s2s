@@ -84,6 +84,7 @@ pub fn parse_woorpje(input: &str) -> Result<Instance, String> {
     Ok(Instance {
         formula,
         vars: vars.values().cloned().collect(),
+        ubound: None,
     })
 }
 
