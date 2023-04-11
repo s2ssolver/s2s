@@ -39,9 +39,8 @@ fn parse_woorpje(input: &str) -> Result<Instance, String> {
             "Variables" => {
                 let second = tokens.next().ok_or("missing variables")?;
                 let varsnames = second
-                    .strip_prefix("{")
-                    .map(|r| r.strip_suffix('}'))
-                    .flatten()
+                    .strip_prefix('{')
+                    .and_then(|r| r.strip_suffix('}'))
                     .ok_or("invalid variables")?;
                 for v in varsnames.chars() {
                     if alphabet.contains(&v) {
@@ -54,9 +53,8 @@ fn parse_woorpje(input: &str) -> Result<Instance, String> {
             "Terminals" => {
                 let second = tokens.next().ok_or("missing alphabet")?;
                 let alph = second
-                    .strip_prefix("{")
-                    .map(|r| r.strip_suffix('}'))
-                    .flatten()
+                    .strip_prefix('{')
+                    .and_then(|r| r.strip_suffix('}'))
                     .ok_or("invalid alphabet")?;
                 alph.chars().for_each(|c| {
                     if vars.contains_key(&c) {
@@ -67,7 +65,7 @@ fn parse_woorpje(input: &str) -> Result<Instance, String> {
             }
             "Equation:" => {
                 let second: String = tokens.collect();
-                let sides: Vec<&str> = second.split("=").collect();
+                let sides: Vec<&str> = second.split('=').collect();
                 assert!(
                     sides.len() == 2,
                     "Must have exactly one '=' in an equation. Was: '{}'",

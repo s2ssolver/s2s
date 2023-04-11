@@ -63,18 +63,12 @@ pub enum SolverResult {
 impl SolverResult {
     /// Returns true if the instance is satisfiable
     pub fn is_sat(&self) -> bool {
-        match self {
-            SolverResult::Sat => true,
-            _ => false,
-        }
+        matches!(self, SolverResult::Sat)
     }
 
     /// Returns true if the instance is unsatisfiable
     pub fn is_unsat(&self) -> bool {
-        match self {
-            SolverResult::Unsat => true,
-            _ => false,
-        }
+        matches!(self, SolverResult::Unsat)
     }
 }
 

@@ -1,4 +1,4 @@
-use crate::sat::{as_lit, neg, Cnf, PLit, PVar};
+use crate::sat::{as_lit, Cnf, PLit, PVar};
 
 pub fn exactly_one(lits: &[PVar]) -> Cnf {
     eo_naive(lits)
@@ -20,9 +20,10 @@ fn eo_naive(vars: &[PVar]) -> Cnf {
     cnf
 }
 
+#[cfg(test)]
 mod tests {
-    use super::*;
 
+    use super::*;
     #[test]
     fn test_eo_naive() {
         let cnf = eo_naive(&[1, 2, 3]);

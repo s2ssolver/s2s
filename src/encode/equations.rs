@@ -57,6 +57,7 @@ impl FilledPattern {
         self.positions.get(i)
     }
 
+    #[allow(dead_code)]
     fn iter(&self) -> Iter<FilledPos> {
         self.positions.iter()
     }
@@ -91,14 +92,14 @@ impl WoorpjeEncoder {
                         }
                     }
                     (FilledPos::Const(a), FilledPos::FilledVar(v, vj)) => {
-                        let sub_u = subs.get(&v, *vj, *a).unwrap();
+                        let sub_u = subs.get(v, *vj, *a).unwrap();
                         let wm_var = pvar();
                         wm.insert((i, j), wm_var);
                         cnf.push(vec![neg(wm_var), as_lit(sub_u)]);
                         cnf.push(vec![as_lit(wm_var), neg(sub_u)]);
                     }
                     (FilledPos::FilledVar(u, ui), FilledPos::Const(b)) => {
-                        let sub_u = subs.get(&u, *ui, *b).unwrap();
+                        let sub_u = subs.get(u, *ui, *b).unwrap();
                         let wm_var = pvar();
                         wm.insert((i, j), wm_var);
                         cnf.push(vec![neg(wm_var), as_lit(sub_u)]);
@@ -129,11 +130,9 @@ impl WoorpjeEncoder {
         (wm, cnf)
     }
 
+    #[allow(dead_code)]
     fn get_state_vars(&self) -> Option<&Vec<Vec<PVar>>> {
-        match self.state_vars {
-            Some(ref vars) => Some(vars),
-            None => None,
-        }
+        self.state_vars.as_ref()
     }
 }
 
@@ -148,8 +147,8 @@ impl PredicateEncoder for WoorpjeEncoder {
 
     fn encode(&mut self, bounds: &VariableBounds, subs: &SubstitutionEncoding) -> EncodingResult {
         let mut cnf = Cnf::new();
-        let lhs = FilledPattern::fill(&self.equation.lhs(), bounds);
-        let rhs = FilledPattern::fill(&self.equation.rhs(), bounds);
+        let lhs = FilledPattern::fill(self.equation.lhs(), bounds);
+        let rhs = FilledPattern::fill(self.equation.rhs(), bounds);
         log::debug!("Encoding {}", self.equation);
 
         let (wm, wm_cnf) = self.match_vars(&lhs, &rhs, subs);
@@ -320,7 +319,7 @@ impl PredicateEncoder for WoorpjeEncoder {
 impl WordEquationEncoder for WoorpjeEncoder {
     fn new(equation: WordEquation) -> Self {
         Self {
-            equation: equation,
+            equation,
             state_vars: None,
         }
     }

@@ -52,7 +52,7 @@ pub struct SubstitutionEncoder {
 impl SubstitutionEncoder {
     pub fn new(alphabet: HashSet<char>, vars: HashSet<Variable>) -> Self {
         Self {
-            encoding: SubstitutionEncoding::new(alphabet.clone()),
+            encoding: SubstitutionEncoding::new(alphabet),
             vars,
             last_bounds: None,
         }
@@ -98,23 +98,21 @@ impl SubstitutionEncoder {
     }
 
     fn pre_bounds(&self, var: &Variable) -> Option<usize> {
-        match &self.last_bounds {
-            Some(bs) => Some(bs.get(var)),
-            None => None,
-        }
+        self.last_bounds.as_ref().map(|bs| bs.get(var))
     }
 
     pub fn get_encoding(&self) -> &SubstitutionEncoding {
         &self.encoding
     }
 
+    #[allow(dead_code)]
     pub fn get_substitutions(&self, solver: &cadical::Solver) -> HashMap<&Variable, String> {
         let mut subs = HashMap::new();
         for v in &self.vars {
             let mut sub = String::new();
             for b in 0..self.pre_bounds(v).unwrap_or(0) {
                 for c in self.encoding.alphabet_lambda() {
-                    let lit = self.encoding.get_lit(&v, b, c).unwrap();
+                    let lit = self.encoding.get_lit(v, b, c).unwrap();
                     if let Some(true) = solver.value(lit) {
                         if c == LAMBDA {
                             sub.push('_');
@@ -131,7 +129,6 @@ impl SubstitutionEncoder {
 }
 
 mod tests {
-    use super::*;
 
     #[test]
     fn all_subst_defined() {

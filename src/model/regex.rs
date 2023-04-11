@@ -57,10 +57,12 @@ impl Regex {
     }
 }
 
+#[cfg(test)]
 mod tests {
+
+    use crate::model::{words::Symbol, Sort, Variable};
+
     use super::*;
-    use crate::model::words::Symbol;
-    use crate::model::{Sort, Variable};
 
     #[test]
     fn test_is_grounded_constant_literal() {

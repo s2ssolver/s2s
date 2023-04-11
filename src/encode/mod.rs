@@ -1,11 +1,8 @@
-use std::{
-    cmp::{max, min},
-    collections::{HashMap, HashSet},
-};
+use std::{cmp::min, collections::HashMap};
 
 use crate::{
     model::{words::WordEquation, Variable},
-    sat::{Cnf, PLit},
+    sat::Cnf,
 };
 
 use self::substitution::SubstitutionEncoding;
@@ -36,14 +33,17 @@ impl VariableBounds {
         self.bounds.get(var).cloned().unwrap_or(self.default)
     }
 
+    #[allow(dead_code)]
     pub fn set(&mut self, var: &Variable, bound: usize) {
         self.bounds.insert(var.clone(), bound);
     }
 
+    #[allow(dead_code)]
     pub fn set_default(&mut self, bound: usize) {
         self.default = bound;
     }
 
+    #[allow(dead_code)]
     pub fn iter(&self) -> impl Iterator<Item = (&Variable, &usize)> {
         self.bounds.iter()
     }
@@ -91,10 +91,6 @@ impl std::fmt::Display for VariableBounds {
 
 /// The character used to represent unused positions
 const LAMBDA: char = char::REPLACEMENT_CHARACTER;
-
-fn init_var_bounds(vars: HashSet<Variable>, init_value: usize) {
-    todo!()
-}
 
 pub enum EncodingResult {
     /// The CNF encoding of the problem

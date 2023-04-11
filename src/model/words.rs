@@ -1,7 +1,6 @@
 use std::{
     collections::HashSet,
     fmt::{Display, Formatter},
-    hash::Hash,
     slice::Iter,
 };
 
@@ -38,7 +37,7 @@ impl Pattern {
     }
 
     fn new(symbols: Vec<Symbol>) -> Self {
-        Self { symbols: symbols }
+        Self { symbols }
     }
 
     /// Returns the alphabet of the pattern, i.e. the set of constant characters that occur in the pattern.
@@ -179,26 +178,24 @@ fn normalize_pattern(pattern: Pattern) -> Pattern {
         match symbol {
             Symbol::LiteralWord(w) => {
                 last_literal
-                    .get_or_insert_with(|| String::new())
+                    .get_or_insert_with(String::new)
                     .push_str(&w);
             }
             Symbol::Variable(v) => {
                 if v.sort() != Sort::String {
                     panic!("Patterns must only contain variables of sort String");
                 }
-                last_literal
+                if let Some(x) = last_literal
                     .take()
                     .filter(|x| !x.is_empty())
-                    .map(Symbol::LiteralWord)
-                    .map(|x| res.push(x));
+                    .map(Symbol::LiteralWord) { res.push(x) }
                 res.push(Symbol::Variable(v.clone()));
             }
         }
     }
-    last_literal
+    if let Some(x) = last_literal
         .filter(|x| !x.is_empty())
-        .map(Symbol::LiteralWord)
-        .map(|x| res.push(x));
+        .map(Symbol::LiteralWord) { res.push(x) }
     Pattern::new(res)
 }
 

@@ -1,4 +1,4 @@
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use clap::{Parser as ClapParser, ValueEnum};
 
@@ -31,7 +31,7 @@ enum SolverType {
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum, Debug)]
 enum Format {
     Woorpje,
-    SMT,
+    Smt,
 }
 
 fn main() {
@@ -39,7 +39,7 @@ fn main() {
     let cli = Options::parse();
     let parser = match cli.format {
         Format::Woorpje => Parser::WoorpjeParser,
-        Format::SMT => Parser::Smt2Parser,
+        Format::Smt => Parser::Smt2Parser,
     };
     let file = Path::new(&cli.file);
     if !file.exists() {
