@@ -52,23 +52,25 @@ impl WoorpjeEncoder {
                         cnf.push(vec![as_lit(wm_var), neg(sub_u)]);
                     }
                     (FilledPos::FilledPos(u, ui), FilledPos::FilledPos(v, vj)) => {
-                        for chr in subs.alphabet() {
-                            let sub_u = subs.get(u, *ui, *chr).unwrap();
-                            let sub_v = subs.get(v, *vj, *chr).unwrap();
-                            let wm_var = pvar();
-                            wm.insert((i, j), wm_var);
-                            cnf.push(vec![neg(wm_var), as_lit(sub_u)]);
-                            cnf.push(vec![neg(wm_var), as_lit(sub_v)]);
-                            cnf.push(vec![neg(sub_v), neg(sub_u), as_lit(wm_var)]);
-                        }
-                        // Lambda sub
-                        let sub_u = subs.get(u, *ui, LAMBDA).unwrap();
-                        let sub_v = subs.get(v, *vj, LAMBDA).unwrap();
                         let wm_var = pvar();
                         wm.insert((i, j), wm_var);
-                        cnf.push(vec![neg(wm_var), as_lit(sub_u)]);
-                        cnf.push(vec![neg(wm_var), as_lit(sub_v)]);
-                        cnf.push(vec![neg(sub_v), neg(sub_u), as_lit(wm_var)]);
+                        // Clause for /\... -> wm_var
+                        let mut clause = vec![as_lit(wm_var)];
+                        for chr in subs.alphabet_lambda() {
+                            let sub_u = subs.get(u, *ui, chr).unwrap();
+                            let sub_v = subs.get(v, *vj, chr).unwrap();
+
+                            // wm_var => sub_u /\ sub_v
+                            cnf.push(vec![neg(wm_var), neg(sub_u), as_lit(sub_v)]);
+                            // TODO: Do we actually need the other direction? We don't do decisions based on wm_{i,j}
+
+                            // Tseitin encoding for ltr implication
+                            let t = pvar();
+                            clause.push(as_lit(t));
+                            cnf.push(vec![neg(t), as_lit(sub_u)]);
+                            cnf.push(vec![neg(t), as_lit(sub_v)]);
+                            cnf.push(vec![neg(sub_u), neg(sub_v), as_lit(t)]);
+                        }
                     }
                 }
             }
@@ -145,7 +147,7 @@ impl PredicateEncoder for WoorpjeEncoder {
                             cnf.push(vec![-s_00, -s_10]);
                         }
                         FilledPos::FilledPos(u, ui) => {
-                            //cnf.push(vec![-s_00, subs.get_lit(u, *ui, LAMBDA).unwrap(), -s_10]);
+                            cnf.push(vec![-s_00, subs.get_lit(u, *ui, LAMBDA).unwrap(), -s_10]);
 
                             match rhs.at(j).unwrap() {
                                 FilledPos::Const(_) => {
@@ -346,6 +348,7 @@ mod tests {
                 eq.lhs().substitute(&solution),
                 eq.rhs().substitute(&solution)
             );
+            println!("Solution: {:?}", solution);
             if let Some(svs) = encoder.get_state_vars() {
                 println!("{:?}", svs);
                 for j in 0..svs[0].len() {
@@ -407,7 +410,7 @@ mod tests {
             Pattern::from(vec![Symbol::Variable(Variable::tmp_var(Sort::String))]),
         );
 
-        let bounds = VariableBounds::new(10);
+        let bounds = VariableBounds::new(19);
 
         let res = solve_woorpje(&eq, bounds, &eq.alphabet());
         assert!(matches!(res, Some(true)));
@@ -424,14 +427,28 @@ mod tests {
 
     #[test]
     fn woorpje_sat_commute() {
+        // AB = BA
         let var_a = Variable::new("a".to_string(), Sort::String);
-        let var_b = Variable::new("a".to_string(), Sort::String);
+        let var_b = Variable::new("b".to_string(), Sort::String);
         let mut lhs = Pattern::empty();
-        lhs.append_word("a").append_var(&var_a).append_var(&var_b);
+        lhs.append_var(&var_a).append_var(&var_b);
         let mut rhs = Pattern::empty();
-        rhs.append_var(&var_b).append_var(&var_a).append_word("a");
+        rhs.append_var(&var_b).append_var(&var_a);
         let eq = WordEquation::new(lhs, rhs);
         let bounds = VariableBounds::new(10);
+        let res = solve_woorpje(&eq, bounds, &eq.alphabet());
+        assert!(matches!(res, Some(true)));
+    }
+
+    #[test]
+    fn woorpje_sat_pattern_const() {
+        let var_a = Variable::new("A".to_string(), Sort::String);
+
+        let mut lhs = Pattern::empty();
+        lhs.append_word("a").append_var(&var_a).append_word("c");
+        let rhs = Pattern::constant("abc");
+        let eq = WordEquation::new(lhs, rhs);
+        let bounds = VariableBounds::new(3);
         let res = solve_woorpje(&eq, bounds, &eq.alphabet());
         assert!(matches!(res, Some(true)));
     }
