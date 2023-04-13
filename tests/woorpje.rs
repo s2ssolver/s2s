@@ -1,22 +1,13 @@
 use satstr::{Parser, Solver, Woorpje};
-use std::{fs, io::Write};
+use test_generator::test_resources;
 
-#[test]
-fn track1() {
-    env_logger::init();
-    let paths = fs::read_dir("./tests/track1").expect("Could not find tests/track1 directory");
+#[test_resources("res/track1/*.eq")]
+fn track1(f: &str) {
+    let mut instance = Parser::WoorpjeParser.parse(f.into()).unwrap();
+    // All equations have solution with bounds at most 80
+    instance.set_bound(80);
+    let mut solver = Woorpje::new(&instance).unwrap();
 
-    for path in paths {
-        let path = path.unwrap().path();
-
-        let test_name = format!("{}", path.display());
-        println!("Name: {}", test_name);
-        std::io::stdout().flush().unwrap();
-        let mut instance = Parser::WoorpjeParser.parse(path.to_path_buf()).unwrap();
-        instance.set_bound(20);
-        let mut solver = Woorpje::new(&instance).unwrap();
-
-        let res = solver.solve();
-        assert!(res.is_sat());
-    }
+    let res = solver.solve();
+    assert!(res.is_sat());
 }
