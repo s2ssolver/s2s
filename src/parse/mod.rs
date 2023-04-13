@@ -78,7 +78,7 @@ fn parse_woorpje(input: &str) -> Result<Instance, String> {
                 let mut lhs = Pattern::empty();
                 for c in sides[0].chars() {
                     if alphabet.contains(&c) {
-                        lhs.append(&Symbol::LiteralWord(c.to_string()));
+                        lhs.append(&Symbol::Constant(c));
                     } else if let Some(v) = vars.get(&c) {
                         lhs.append(&Symbol::Variable(v.clone()));
                     } else {
@@ -88,7 +88,7 @@ fn parse_woorpje(input: &str) -> Result<Instance, String> {
                 let mut rhs = Pattern::empty();
                 for c in sides[1].chars() {
                     if alphabet.contains(&c) {
-                        rhs.append(&Symbol::LiteralWord(c.to_string()));
+                        rhs.append(&Symbol::Constant(c));
                     } else if let Some(v) = vars.get(&c) {
                         rhs.append(&Symbol::Variable(v.clone()));
                     } else {
@@ -117,13 +117,10 @@ Equation: aX = ab"#;
         let instance = parse_woorpje(input).unwrap();
         assert_eq!(instance.get_vars().len(), 1);
         let expected_lhs = Pattern::from(vec![
-            Symbol::LiteralWord("a".to_string()),
+            Symbol::Constant('a'),
             Symbol::Variable(Variable::new("X".to_string(), crate::model::Sort::String)),
         ]);
-        let expected_rhs = Pattern::from(vec![
-            Symbol::LiteralWord("a".to_string()),
-            Symbol::LiteralWord("b".to_string()),
-        ]);
+        let expected_rhs = Pattern::constant("ab");
         let expected_eq = WordEquation::new(expected_lhs, expected_rhs);
         assert_eq!(
             *instance.get_formula(),

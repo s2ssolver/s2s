@@ -60,26 +60,21 @@ impl Regex {
 #[cfg(test)]
 mod tests {
 
-    use crate::model::{words::Symbol, Sort, Variable};
+    use crate::model::{Sort, Variable};
 
     use super::*;
 
     #[test]
     fn test_is_grounded_constant_literal() {
-        let p = Pattern::from(vec![
-            Symbol::LiteralWord(String::from("foo")),
-            Symbol::LiteralWord(String::from("bar")),
-        ]);
+        let p = Pattern::constant("foo");
         let r = Regex::Literal(p);
         assert!(r.is_grounded());
     }
 
     #[test]
     fn test_is_grounded_variable_literal() {
-        let p = Pattern::from(vec![
-            Symbol::LiteralWord(String::from("foo")),
-            Symbol::Variable(Variable::new("X".to_owned(), Sort::String)),
-        ]);
+        let mut p = Pattern::constant("foo");
+        p.append_var(&Variable::new("X".to_owned(), Sort::String));
         let r = Regex::Literal(p);
         assert!(!r.is_grounded());
     }

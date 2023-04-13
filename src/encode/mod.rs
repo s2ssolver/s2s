@@ -121,11 +121,7 @@ impl FilledPattern {
         let mut positions = vec![];
         for symbol in pattern.symbols() {
             match symbol {
-                Symbol::LiteralWord(s) => {
-                    for c in s.chars() {
-                        positions.push(FilledPos::Const(c))
-                    }
-                }
+                Symbol::Constant(c) => positions.push(FilledPos::Const(*c)),
                 Symbol::Variable(v) => {
                     let len = bounds.get(v);
                     for i in 0..len {

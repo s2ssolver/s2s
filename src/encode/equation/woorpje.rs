@@ -121,7 +121,7 @@ impl PredicateEncoder for WoorpjeEncoder {
         state_vars
             .iter_mut()
             .for_each(|v| v.iter_mut().for_each(|x| *x = pvar()));
-
+        log::debug!("Created {} state variables", n * m);
         for i in 0..=n {
             for j in 0..=m {
                 let s_00 = as_lit(state_vars[i][j]);
@@ -280,10 +280,12 @@ impl WordEquationEncoder for WoorpjeEncoder {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashSet;
+    use std::{collections::HashSet, default};
 
     use super::*;
     use cadical::Solver;
+    use quickcheck::TestResult;
+    use quickcheck_macros::quickcheck;
 
     use crate::{
         encode::substitution::SubstitutionEncoder,
@@ -293,26 +295,46 @@ mod tests {
         },
     };
 
-    #[test]
-    fn length_literal_word() {
-        let pattern = Pattern::from(vec![
-            Symbol::LiteralWord(String::from("foo")),
-            Symbol::LiteralWord(String::from("bar")),
-        ]);
-        let bounds = VariableBounds::new(5);
-        assert_eq!(FilledPattern::fill(&pattern, &bounds).length(), 6);
+    #[quickcheck]
+    fn length_literal_word(word: String, bound: u8) {
+        let bound = bound as usize;
+        let pattern = Pattern::constant(&word);
+        let bounds = VariableBounds::new(bound);
+        assert_eq!(
+            FilledPattern::fill(&pattern, &bounds).length(),
+            word.chars().count()
+        );
     }
 
-    #[test]
-    fn length_variable() {
-        let pattern = Pattern::from(vec![
-            Symbol::LiteralWord(String::from("foo")),
-            Symbol::Variable(Variable::new("X".to_string(), Sort::String)),
-            Symbol::LiteralWord(String::from("bar")),
-        ]);
-        let mut bounds = VariableBounds::new(5);
-        bounds.set(&Variable::new("X".to_string(), Sort::String), 3);
-        assert_eq!(FilledPattern::fill(&pattern, &bounds).length(), 9);
+    #[quickcheck]
+    fn length_single_var_pattern(prefix: String, bound: u8, suffix: String) {
+        let bound = bound as usize;
+        let v = Variable::tmp_var(Sort::String);
+        let mut pattern = Pattern::constant(&prefix);
+        pattern.append_var(&v).append_word(&suffix);
+
+        let mut bounds = VariableBounds::new(1);
+        bounds.set(&v, bound);
+        assert_eq!(
+            FilledPattern::fill(&pattern, &bounds).length(),
+            bound + prefix.chars().count() + suffix.chars().count()
+        );
+    }
+
+    #[quickcheck]
+    fn length_default_bound(prefix: String, default_bound: u8, suffix: String) {
+        let default_bound = default_bound as usize;
+        let v = Variable::tmp_var(Sort::String);
+        let y = Variable::tmp_var(Sort::String);
+        let mut pattern = Pattern::constant(&prefix);
+        pattern.append_var(&v).append_var(&y).append_word(&suffix);
+
+        let mut bounds = VariableBounds::new(default_bound);
+        bounds.set(&v, 1);
+        assert_eq!(
+            FilledPattern::fill(&pattern, &bounds).length(),
+            1 + prefix.chars().count() + suffix.chars().count() + default_bound
+        );
     }
 
     fn solve_woorpje(
@@ -386,10 +408,7 @@ mod tests {
 
     #[test]
     fn woorpje_trivial_sat_consts() {
-        let eq = WordEquation::new(
-            Pattern::from(vec![Symbol::LiteralWord(String::from("bar"))]),
-            Pattern::from(vec![Symbol::LiteralWord(String::from("bar"))]),
-        );
+        let eq = WordEquation::constant("bar", "bar");
         let bounds = VariableBounds::new(10);
 
         let res = solve_woorpje(&eq, bounds, &eq.alphabet());
@@ -398,10 +417,7 @@ mod tests {
 
     #[test]
     fn woorpje_trivial_unsat_consts() {
-        let eq = WordEquation::new(
-            Pattern::from(vec![Symbol::LiteralWord(String::from("bar"))]),
-            Pattern::from(vec![Symbol::LiteralWord(String::from("barr"))]),
-        );
+        let eq = WordEquation::constant("bar", "barr");
         let bounds = VariableBounds::new(10);
 
         let res = solve_woorpje(&eq, bounds, &eq.alphabet());
@@ -411,8 +427,8 @@ mod tests {
     #[test]
     fn woorpje_trivial_sat_const_var() {
         let eq = WordEquation::new(
-            Pattern::from(vec![Symbol::LiteralWord(String::from("foo"))]),
-            Pattern::from(vec![Symbol::Variable(Variable::tmp_var(Sort::String))]),
+            Pattern::constant("bar"),
+            Pattern::variable(&Variable::tmp_var(Sort::String)),
         );
 
         let bounds = VariableBounds::new(19);
@@ -423,7 +439,7 @@ mod tests {
 
     #[test]
     fn woorpje_trivial_sat_vars() {
-        let var = Pattern::from(vec![Symbol::Variable(Variable::tmp_var(Sort::String))]);
+        let var = Pattern::variable(&Variable::tmp_var(Sort::String));
         let eq = WordEquation::new(var.clone(), var);
         let bounds = VariableBounds::new(10);
         let res = solve_woorpje(&eq, bounds, &eq.alphabet());
@@ -433,8 +449,8 @@ mod tests {
     #[test]
     fn woorpje_sat_commute() {
         // AB = BA
-        let var_a = Variable::new("a".to_string(), Sort::String);
-        let var_b = Variable::new("b".to_string(), Sort::String);
+        let var_a = Variable::tmp_var(Sort::String);
+        let var_b = Variable::tmp_var(Sort::String);
         let mut lhs = Pattern::empty();
         lhs.append_var(&var_a).append_var(&var_b);
         let mut rhs = Pattern::empty();
@@ -447,7 +463,7 @@ mod tests {
 
     #[test]
     fn woorpje_sat_pattern_const() {
-        let var_a = Variable::new("A".to_string(), Sort::String);
+        let var_a = Variable::tmp_var(Sort::String);
 
         let mut lhs = Pattern::empty();
         lhs.append_word("a").append_var(&var_a).append_word("c");
@@ -461,8 +477,8 @@ mod tests {
     #[test]
     fn woorpje_trivial_unsat_const_var_too_small() {
         let eq = WordEquation::new(
-            Pattern::from(vec![Symbol::LiteralWord(String::from("foo"))]),
-            Pattern::from(vec![Symbol::Variable(Variable::tmp_var(Sort::String))]),
+            Pattern::constant("foo"),
+            Pattern::variable(&Variable::tmp_var(Sort::String)),
         );
 
         let bounds = VariableBounds::new(1);

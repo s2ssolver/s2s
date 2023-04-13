@@ -36,6 +36,10 @@ impl Instance {
         self.ubound = Some(bound);
     }
 
+    pub fn set_formula(&mut self, formula: Formula) {
+        self.formula = formula;
+    }
+
     pub fn remove_bound(&mut self) {
         self.ubound = None;
     }
@@ -122,7 +126,7 @@ impl Woorpje {
             }),
             Formula::False => {
                 let mut lhs = Pattern::empty();
-                lhs.append(&Symbol::LiteralWord("a".to_string()));
+                lhs.append(&Symbol::Constant('a'));
                 Ok(Self {
                     equation: WordEquation::new(lhs, Pattern::empty()),
                     bounds: VariableBounds::new(1),

@@ -1,8 +1,11 @@
 use std::{
+    cmp::min,
     collections::{HashMap, HashSet},
     fmt::{Display, Formatter},
     slice::Iter,
 };
+
+use quickcheck::Arbitrary;
 
 use crate::model::{Sort, Variable};
 
@@ -10,7 +13,7 @@ use crate::model::{Sort, Variable};
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Symbol {
     /// A constant word
-    LiteralWord(String),
+    Constant(char),
     /// A variable. If the sort is not string, then the program will panic at runtime
     Variable(Variable),
 }
@@ -18,7 +21,7 @@ pub enum Symbol {
 impl Symbol {
     fn is_string_sort(&self) -> bool {
         match self {
-            Symbol::LiteralWord(_) => true,
+            Symbol::Constant(_) => true,
             Symbol::Variable(v) => v.sort() == Sort::String,
         }
     }
@@ -41,19 +44,27 @@ impl Pattern {
     }
 
     pub fn constant(word: &str) -> Self {
-        Self::new(vec![Symbol::LiteralWord(word.to_owned())])
+        let mut symbols = vec![];
+        for c in word.chars() {
+            symbols.push(Symbol::Constant(c));
+        }
+        Self::new(symbols)
+    }
+
+    pub fn variable(var: &Variable) -> Self {
+        Self::new(vec![Symbol::Variable(var.clone())])
+    }
+
+    pub fn length(&self) -> usize {
+        self.symbols.len()
     }
 
     /// Returns the alphabet of the pattern, i.e. the set of constant characters that occur in the pattern.
     pub fn alphabet(&self) -> HashSet<char> {
         let mut alphabet = HashSet::new();
         for symbol in &self.symbols {
-            if let Symbol::LiteralWord(word) = symbol {
-                for c in word.chars() {
-                    if !alphabet.contains(&c) {
-                        alphabet.insert(c);
-                    }
-                }
+            if let Symbol::Constant(c) = symbol {
+                alphabet.insert(*c);
             }
         }
         alphabet
@@ -89,7 +100,9 @@ impl Pattern {
     }
 
     pub fn append_word(&mut self, word: &str) -> &mut Self {
-        self.append(&Symbol::LiteralWord(word.to_owned()));
+        for c in word.chars() {
+            self.append(&Symbol::Constant(c));
+        }
         self
     }
 
@@ -117,11 +130,43 @@ impl Pattern {
     pub fn contains_constant(&self) -> bool {
         self.symbols
             .iter()
-            .any(|x| matches!(x, Symbol::LiteralWord(_)))
+            .any(|x| matches!(x, Symbol::Constant(_)))
     }
 
     pub fn symbols(&self) -> Iter<Symbol> {
         self.symbols.iter()
+    }
+
+    /// Returns the factor of the pattern between the given indices.
+    /// If indices are out of bounds, they are clamped to the pattern length.
+    /// Returns `None` if `i > j`.
+    pub fn factor(&self, i: usize, j: usize) -> Option<Self> {
+        if i > j {
+            return None;
+        }
+        let i = min(i, self.symbols.len());
+        let j = min(j, self.symbols.len());
+        Some(Self::new(self.symbols[i..j].to_vec()))
+    }
+
+    pub fn starts_with(&self, other: &Self) -> bool {
+        if other.length() > self.length() {
+            return false;
+        }
+        for (i, symbol) in other.symbols.iter().enumerate() {
+            if symbol != &self.symbols[i] {
+                return false;
+            }
+        }
+        true
+    }
+
+    pub fn reverse(&self) -> Self {
+        Self::new(self.symbols.iter().rev().cloned().collect())
+    }
+
+    pub fn ends_with(&self, other: &Self) -> bool {
+        self.reverse().starts_with(&other.reverse())
     }
 
     /// Applies a substitution to the pattern.
@@ -130,7 +175,7 @@ impl Pattern {
         let mut res = String::new();
         for symbol in &self.symbols {
             match symbol {
-                Symbol::LiteralWord(word) => res.push_str(word),
+                Symbol::Constant(c) => res.push(*c),
                 Symbol::Variable(var) => {
                     if let Some(value) = substitution.get(var) {
                         res.push_str(value)
@@ -148,11 +193,19 @@ impl Display for Pattern {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         for symbol in &self.symbols {
             match symbol {
-                Symbol::LiteralWord(word) => write!(f, "{}", word)?,
+                Symbol::Constant(word) => write!(f, "{}", word)?,
                 Symbol::Variable(var) => write!(f, "{}", var)?,
             }
         }
         Ok(())
+    }
+}
+
+impl std::ops::Index<usize> for Pattern {
+    type Output = Symbol;
+
+    fn index(&self, index: usize) -> &Self::Output {
+        &self.symbols[index]
     }
 }
 
@@ -171,71 +224,6 @@ impl IntoIterator for Pattern {
     }
 }
 
-/// Normalizes a pattern by concatenating consecutive `LiteralWord` symbols into a single `LiteralWord`.
-///
-/// # Examples
-///
-/// ```
-/// use crate::normalize_pattern;
-///
-/// let pattern = vec![
-///     Symbol::LiteralWord("hello".to_owned()),
-///     Symbol::LiteralWord("world".to_owned()),
-/// ];
-/// assert_eq!(
-///     normalize_pattern(&pattern),
-///     vec![Symbol::LiteralWord("helloworld".to_owned())],
-/// );
-/// ```
-///
-/// # Arguments
-///
-/// * `pattern`: A reference to a vector of `Symbol` values representing the pattern to normalize.
-///
-/// # Returns
-///
-/// A vector of `Symbol` values representing the normalized pattern.
-///
-/// # Panics
-///
-/// This function will panic at runtime if a `Variable` symbol has a sort other than `Sort::String`.
-///
-/// # Notes
-///
-/// This function modifies the input pattern by consuming the `Symbol` values. If you need to preserve the input pattern,
-/// you should make a copy of it before calling this function.
-fn normalize_pattern(pattern: Pattern) -> Pattern {
-    let mut res = vec![];
-    let mut last_literal: Option<String> = None;
-    for symbol in pattern.into_iter() {
-        match symbol {
-            Symbol::LiteralWord(w) => {
-                last_literal.get_or_insert_with(String::new).push_str(&w);
-            }
-            Symbol::Variable(v) => {
-                if v.sort() != Sort::String {
-                    panic!("Patterns must only contain variables of sort String");
-                }
-                if let Some(x) = last_literal
-                    .take()
-                    .filter(|x| !x.is_empty())
-                    .map(Symbol::LiteralWord)
-                {
-                    res.push(x)
-                }
-                res.push(Symbol::Variable(v.clone()));
-            }
-        }
-    }
-    if let Some(x) = last_literal
-        .filter(|x| !x.is_empty())
-        .map(Symbol::LiteralWord)
-    {
-        res.push(x)
-    }
-    Pattern::new(res)
-}
-
 #[derive(Clone, Debug, PartialEq)]
 pub struct WordEquation {
     lhs: Pattern,
@@ -244,10 +232,12 @@ pub struct WordEquation {
 
 impl WordEquation {
     pub fn new(lhs: Pattern, rhs: Pattern) -> Self {
-        Self {
-            lhs: normalize_pattern(lhs),
-            rhs: normalize_pattern(rhs),
-        }
+        Self { lhs, rhs }
+    }
+
+    /// Creates a new equation from two constant strings.
+    pub fn constant(lhs: &str, rhs: &str) -> Self {
+        Self::new(Pattern::constant(lhs), Pattern::constant(rhs))
     }
 
     pub fn lhs(&self) -> &Pattern {
@@ -256,6 +246,11 @@ impl WordEquation {
 
     pub fn rhs(&self) -> &Pattern {
         &self.rhs
+    }
+
+    /// Reverses both sides of the equation.
+    pub fn reverse(&self) -> Self {
+        Self::new(self.rhs.reverse(), self.lhs.reverse())
     }
 
     pub fn variables(&self) -> HashSet<Variable> {
@@ -283,94 +278,43 @@ impl Display for WordEquation {
     }
 }
 
+// Arbitrary generation of patterns
+
+use quickcheck;
+
+impl Arbitrary for Symbol {
+    fn arbitrary(g: &mut quickcheck::Gen) -> Self {
+        let choices = &[
+            Symbol::Constant(char::arbitrary(g)),
+            Symbol::Constant(char::arbitrary(g)),
+            Symbol::Variable(Variable::tmp_var(Sort::String)),
+        ];
+
+        g.choose(choices).unwrap().clone()
+    }
+}
+
+impl Arbitrary for Pattern {
+    fn arbitrary(g: &mut quickcheck::Gen) -> Self {
+        let mut symbols = vec![];
+        for _ in 0..g.size() {
+            symbols.push(Symbol::arbitrary(g));
+        }
+        Self::new(symbols)
+    }
+}
+
+impl Arbitrary for WordEquation {
+    fn arbitrary(g: &mut quickcheck::Gen) -> Self {
+        WordEquation::new(Pattern::arbitrary(g), Pattern::arbitrary(g))
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    use quickcheck_macros::quickcheck;
+
     use super::*;
-
-    #[test]
-    fn normalize_pattern_empty() {
-        let pattern = Pattern::empty();
-        assert_eq!(normalize_pattern(pattern), Pattern::empty());
-    }
-
-    #[test]
-    fn normalize_pattern_single_literal() {
-        let pattern = Pattern::new(vec![Symbol::LiteralWord("foo".to_owned())]);
-        assert_eq!(
-            normalize_pattern(pattern).symbols,
-            vec![Symbol::LiteralWord("foo".to_owned())]
-        );
-    }
-
-    #[test]
-    fn normalize_pattern_multiple_literals() {
-        let pattern = Pattern::new(vec![
-            Symbol::LiteralWord("foo".to_owned()),
-            Symbol::LiteralWord("bar".to_owned()),
-            Symbol::LiteralWord("baz".to_owned()),
-        ]);
-        assert_eq!(
-            normalize_pattern(pattern).symbols,
-            vec![Symbol::LiteralWord("foobarbaz".to_owned())]
-        );
-    }
-
-    #[test]
-    fn normalize_pattern_single_variable() {
-        let pattern = Pattern::new(vec![Symbol::Variable(Variable::new(
-            "X".to_owned(),
-            Sort::String,
-        ))]);
-        assert_eq!(
-            normalize_pattern(pattern).symbols,
-            vec![Symbol::Variable(Variable::new(
-                "X".to_owned(),
-                Sort::String
-            )),]
-        );
-    }
-
-    #[test]
-    fn normalize_empty_strings() {
-        let pattern = Pattern::new(vec![
-            Symbol::LiteralWord("".to_owned()),
-            Symbol::LiteralWord("".to_owned()),
-        ]);
-        assert_eq!(normalize_pattern(pattern).symbols, vec![]);
-    }
-
-    #[test]
-    fn normalize_remove_empty_string() {
-        let pattern = Pattern::new(vec![
-            Symbol::LiteralWord("".to_owned()),
-            Symbol::Variable(Variable::new("X".to_owned(), Sort::String)),
-        ]);
-        assert_eq!(
-            normalize_pattern(pattern).symbols,
-            vec![Symbol::Variable(Variable::new(
-                "X".to_owned(),
-                Sort::String
-            )),]
-        );
-    }
-
-    #[test]
-    fn normalize_pattern_literals_and_variables() {
-        let pattern = Pattern::new(vec![
-            Symbol::LiteralWord("foo".to_owned()),
-            Symbol::Variable(Variable::new("X".to_owned(), Sort::String)),
-            Symbol::LiteralWord("bar".to_owned()),
-            Symbol::LiteralWord("baz".to_owned()),
-        ]);
-        assert_eq!(
-            normalize_pattern(pattern).symbols,
-            vec![
-                Symbol::LiteralWord("foo".to_owned()),
-                Symbol::Variable(Variable::new("X".to_owned(), Sort::String)),
-                Symbol::LiteralWord("barbaz".to_owned()),
-            ]
-        );
-    }
 
     #[test]
     fn is_constant_with_empty_pattern() {
@@ -380,7 +324,7 @@ mod tests {
 
     #[test]
     fn is_constant_with_constant_pattern() {
-        let pattern = Pattern::new(vec![Symbol::LiteralWord("foo".to_string())]);
+        let pattern = Pattern::constant("foo");
         assert!(pattern.is_constant());
     }
 
@@ -395,11 +339,20 @@ mod tests {
 
     #[test]
     fn is_constant_with_mixed_pattern() {
-        let pattern = Pattern::new(vec![
-            Symbol::LiteralWord("foo".to_string()),
-            Symbol::Variable(Variable::new("x".to_string(), Sort::String)),
-            Symbol::LiteralWord("bar".to_string()),
-        ]);
-        assert!(!pattern.is_constant());
+        let mut pat = Pattern::empty();
+        pat.append_word("foo")
+            .append_var(&Variable::new("x".to_string(), Sort::String))
+            .append_word("bar");
+        assert!(!pat.is_constant());
+    }
+
+    #[quickcheck]
+    fn pattern_reverse_reverse_is_identity(pat: Pattern) -> bool {
+        pat == pat.reverse().reverse()
+    }
+
+    #[quickcheck]
+    fn equation_reverse_reverse_is_identity(eq: WordEquation) -> bool {
+        eq == eq.reverse().reverse()
     }
 }

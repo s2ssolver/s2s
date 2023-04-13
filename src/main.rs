@@ -2,7 +2,7 @@ use std::path::Path;
 
 use clap::{Parser as ClapParser, ValueEnum};
 
-use satstr::{Parser, Solver, Woorpje};
+use satstr::{preprocess, Parser, Solver, Woorpje};
 #[derive(ClapParser, Debug)]
 #[command(author, version, about, long_about = None)] // Read from `Cargo.toml`
 struct Options {
@@ -50,6 +50,7 @@ fn main() {
     if let Some(bound) = cli.max_bound {
         instance.set_bound(bound);
     }
+    instance.set_formula(preprocess(&instance.get_formula()));
     log::debug!("Parsed instance: {:?}", instance);
     let mut solver = match cli.solver {
         SolverType::Woorpje => Woorpje::new(&instance),
