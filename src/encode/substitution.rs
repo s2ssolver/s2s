@@ -121,7 +121,7 @@ impl SubstitutionEncoder {
             let bound = bounds.get(var);
             let last_bound = self.pre_bounds(var).unwrap_or(0);
             let encoding = self.encoding.as_mut().unwrap();
-            log::debug!("Variable {} - Positions {} to {}", var, last_bound, bound);
+
             // Todo: this is bad because it clones the alphabet
             let alph = self.alphabet.clone();
             for b in (last_bound..bound).rev() {

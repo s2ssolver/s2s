@@ -23,8 +23,6 @@ fn eo_naive(vars: &[PVar]) -> Cnf {
 #[cfg(test)]
 mod tests {
 
-    use std::cmp::min;
-
     use itertools::Itertools;
     use quickcheck::TestResult;
     use quickcheck_macros::quickcheck;

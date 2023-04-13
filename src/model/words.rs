@@ -40,6 +40,10 @@ impl Pattern {
         Self { symbols }
     }
 
+    pub fn constant(word: &str) -> Self {
+        Self::new(vec![Symbol::LiteralWord(word.to_owned())])
+    }
+
     /// Returns the alphabet of the pattern, i.e. the set of constant characters that occur in the pattern.
     pub fn alphabet(&self) -> HashSet<char> {
         let mut alphabet = HashSet::new();

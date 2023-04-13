@@ -35,6 +35,10 @@ fn parse_woorpje(input: &str) -> Result<Instance, String> {
     for line in input.lines() {
         let mut tokens = line.split_ascii_whitespace();
         let first = tokens.next().ok_or("empty line")?;
+        if first.starts_with("#") {
+            // comment
+            continue;
+        }
         match first {
             "Variables" => {
                 let second = tokens.next().ok_or("missing variables")?;
