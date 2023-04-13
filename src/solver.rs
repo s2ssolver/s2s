@@ -151,7 +151,7 @@ impl Woorpje {
         encoding.join(subs_cnf);
         let sub_encoding = subs_encoder.get_encoding().unwrap();
         let mut encoder = WoorpjeEncoder::new(self.equation.clone());
-        encoding.join(encoder.encode(&self.bounds, &sub_encoding));
+        encoding.join(encoder.encode(&self.bounds, sub_encoding));
         self.sub_encoding = Some(sub_encoding.clone());
         encoding
     }

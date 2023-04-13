@@ -36,6 +36,7 @@ impl SubstitutionEncoding {
         self.encodings.insert((var.clone(), pos, chr), v);
     }
 
+    #[allow(dead_code)]
     pub fn alphabet(&self) -> &HashSet<char> {
         &self.alphabet
     }
@@ -61,7 +62,7 @@ impl SubstitutionEncoding {
             // initialize substitutions
             subs.insert(var.clone(), vec![None; self.bounds.get(var)]);
         }
-        for ((var, pos, chr), v) in self.encodings.iter() {
+        for ((var, pos, chr), _v) in self.encodings.iter() {
             if let Some(true) = solver.value(as_lit(self.get(var, *pos, *chr).unwrap())) {
                 let sub = subs.get_mut(var).unwrap();
                 // This could be more efficient by going over the positions only once, however, this way we can check for invalid substitutions
