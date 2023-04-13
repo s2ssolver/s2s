@@ -1,0 +1,4 @@
+Variables {DJ}
+Terminals {bac}
+Equation: bbaabbbacbJccbccccbabaacbabaabbaacbbacaaaaabcbabccccbccaabacbbccbcbaaD = bbaabbbacbbbbbcbcbcacbbabDaabaaabacDbbcbbcacccbbDaccabbaabccccDaccbccccbabaacbabaabbaacbbacaaaaabcbabccccbcDabacbbccbcbaaca
+SatGlucose(100)

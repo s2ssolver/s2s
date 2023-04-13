@@ -1,16 +1,9 @@
-use std::collections::HashSet;
-
-use formula::Formula;
-use model::Variable;
-
 mod encode;
 mod formula;
 mod model;
+pub mod parse;
 mod sat;
+mod solver;
 
-pub struct Instance {
-    /// The formula to solve
-    formula: Formula,
-    /// The set of all variables
-    vars: HashSet<Variable>,
-}
+pub use parse::Parser;
+pub use solver::{Instance, Solver, SolverResult, Woorpje};

@@ -1,0 +1,4 @@
+Variables {MEI}
+Terminals {gacbjfhdei}
+Equation: gaeaiiEcgcjagjeffgghaff = gaIbjgfbeadhbehdifeijieadddjaidjhgMjjajjjhebcedeifhiaiejfdcdfcgcjagjeffgghaff
+SatGlucose(100)

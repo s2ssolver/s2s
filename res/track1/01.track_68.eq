@@ -1,0 +1,4 @@
+Variables {HJE}
+Terminals {gfacbde}
+Equation: ccdegdegecdfbbfdgeedcaHafacbdfaeegdbaJeaacaEgefffccecfddcddcbgffcdaagebfeafddedegcdfe = ccdegdegecdfbbfdgeedcafacafacbdfaeegdbaJeaacaEgefffccecfddcddcbgffcdaagebfeafddedegcdfe
+SatGlucose(100)

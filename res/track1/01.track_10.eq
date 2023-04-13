@@ -1,0 +1,4 @@
+Variables {HLF}
+Terminals {bac}
+Equation: abbbcaabbabccbcabaacbcbacabHccabbcacbbbcaaLaacc = abbbcaabbabccbcabaacbcLFbaabcaabacabbcacbccaaccbabbbccbccabbcacbbbcaabacaacc
+SatGlucose(100)

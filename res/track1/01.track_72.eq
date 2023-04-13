@@ -1,0 +1,4 @@
+Variables {HFI}
+Terminals {abcde}
+Equation: dIdedacdcccbecaeaddbcbccdebababbbbecadeddHec = dIdedacdcccbecaeaddbcbccdebababbbbecadeddbaeaFabbecabcbec
+SatGlucose(100)

@@ -1,7 +1,10 @@
-use std::collections::{HashMap, HashSet};
+use std::{cmp::min, collections::HashMap, slice::Iter};
 
 use crate::{
-    model::{words::WordEquation, Variable},
+    model::{
+        words::{Pattern, Symbol},
+        Variable,
+    },
     sat::Cnf,
 };
 
@@ -10,18 +13,175 @@ use self::substitution::SubstitutionEncoding;
 /// Facilities for encoding cardinality constraints
 mod card;
 /// Encoder for word equations
-pub mod equations;
+mod equation;
 /// Encoder for substitutions
 pub mod substitution;
 
+pub use equation::{WoorpjeEncoder, WordEquationEncoder};
+
 /// Bound for each variable
-type VariableBounds = HashMap<Variable, usize>;
+#[derive(Clone, Debug)]
+pub struct VariableBounds {
+    bounds: HashMap<Variable, usize>,
+    default: usize,
+}
+
+impl VariableBounds {
+    pub fn new(default: usize) -> Self {
+        Self {
+            bounds: HashMap::new(),
+            default,
+        }
+    }
+
+    pub fn get(&self, var: &Variable) -> usize {
+        self.bounds.get(var).cloned().unwrap_or(self.default)
+    }
+
+    #[allow(dead_code)]
+    pub fn set(&mut self, var: &Variable, bound: usize) {
+        self.bounds.insert(var.clone(), bound);
+    }
+
+    #[allow(dead_code)]
+    pub fn set_default(&mut self, bound: usize) {
+        self.default = bound;
+    }
+
+    #[allow(dead_code)]
+    pub fn iter(&self) -> impl Iterator<Item = (&Variable, &usize)> {
+        self.bounds.iter()
+    }
+
+    /// Updates the bounds of the variables by calling the given function on each bound, including the default bound.
+    /// Additionally, an optional clamp can be provided to limit the maximum value of the bounds.
+    /// If no clamp is provided, the bounds are limited by `usize::MAX`.
+    /// Returns true if any bound was changed and false otherwise.
+    pub fn update(&mut self, updater: impl Fn(usize) -> usize, clamp: Option<usize>) -> bool {
+        let clamp = clamp.unwrap_or(usize::MAX);
+        let mut any_changed = false;
+        for (_, bound) in self.bounds.iter_mut() {
+            let new_bound = min(updater(*bound), clamp);
+            if new_bound != *bound {
+                *bound = new_bound;
+                any_changed = true;
+            }
+        }
+        let new_default = min(updater(self.default), clamp);
+        if new_default != self.default {
+            self.default = new_default;
+            any_changed = true;
+        }
+        any_changed
+    }
+
+    /// Doubles the bounds of all variables, including the default bound.
+    /// The optional clamp can be used to limit the maximum value of the bounds.
+    /// Returns true if any bound was changed and false otherwise.
+    pub fn double(&mut self, clamp: Option<usize>) -> bool {
+        self.update(|b| b * 2, clamp)
+    }
+}
+
+impl std::fmt::Display for VariableBounds {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{{")?;
+        for (var, bound) in self.bounds.iter() {
+            write!(f, ", {}: {}", var, bound)?;
+        }
+        write!(f, ", default: {}}}", self.default)?;
+        Ok(())
+    }
+}
 
 /// The character used to represent unused positions
 const LAMBDA: char = char::REPLACEMENT_CHARACTER;
 
-fn init_var_bounds(vars: HashSet<Variable>, init_value: usize) {
-    todo!()
+/// A position in a filled pattern.
+/// Either a constant word or a position within a variable.
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum FilledPos {
+    Const(char),
+    FilledPos(Variable, usize),
+}
+/// A filled pattern is a pattern with a set of bounds on the variables.
+/// Each position in the pattern is either a constant word or a position within a variable.
+struct FilledPattern {
+    positions: Vec<FilledPos>,
+}
+
+impl FilledPattern {
+    fn fill(pattern: &Pattern, bounds: &VariableBounds) -> Self {
+        Self {
+            positions: Self::convert(pattern, bounds),
+        }
+    }
+
+    fn convert(pattern: &Pattern, bounds: &VariableBounds) -> Vec<FilledPos> {
+        let mut positions = vec![];
+        for symbol in pattern.symbols() {
+            match symbol {
+                Symbol::LiteralWord(s) => {
+                    for c in s.chars() {
+                        positions.push(FilledPos::Const(c))
+                    }
+                }
+                Symbol::Variable(v) => {
+                    let len = bounds.get(v);
+                    for i in 0..len {
+                        positions.push(FilledPos::FilledPos(v.clone(), i))
+                    }
+                }
+            }
+        }
+        positions
+    }
+
+    pub fn length(&self) -> usize {
+        self.positions.len()
+    }
+
+    fn at(&self, i: usize) -> Option<&FilledPos> {
+        self.positions.get(i)
+    }
+
+    #[allow(dead_code)]
+    fn iter(&self) -> Iter<FilledPos> {
+        self.positions.iter()
+    }
+}
+
+pub enum EncodingResult {
+    /// The CNF encoding of the problem
+    Cnf(Cnf),
+    /// The encoding is trivially valid or unsat
+    Trivial(bool),
+}
+
+impl EncodingResult {
+    pub fn empty() -> Self {
+        EncodingResult::Cnf(vec![])
+    }
+
+    pub fn length(&self) -> usize {
+        match self {
+            EncodingResult::Cnf(cnf) => cnf.len(),
+            EncodingResult::Trivial(_) => 0,
+        }
+    }
+
+    /// Joins two encoding results, consumes the other one
+    pub fn join(&mut self, other: EncodingResult) {
+        match self {
+            EncodingResult::Cnf(ref mut cnf) => match other {
+                EncodingResult::Cnf(mut cnf_other) => cnf.append(&mut cnf_other),
+                EncodingResult::Trivial(false) => *self = other,
+                EncodingResult::Trivial(true) => {}
+            },
+            EncodingResult::Trivial(true) => *self = other,
+            EncodingResult::Trivial(false) => {}
+        }
+    }
 }
 
 /// This trait is implemented by structs that encode predicates. It is a general trait that is
@@ -39,9 +199,9 @@ pub trait PredicateEncoder {
     /// This has no effect on non-incremental encoders.
     fn reset(&self) -> bool;
 
-    fn encode(&self, bounds: &VariableBounds, substitution: &SubstitutionEncoding) -> Cnf;
-}
-
-pub trait WordEquationEncoder: PredicateEncoder {
-    fn new(equation: WordEquation) -> Self;
+    fn encode(
+        &mut self,
+        bounds: &VariableBounds,
+        substitution: &SubstitutionEncoding,
+    ) -> EncodingResult;
 }
