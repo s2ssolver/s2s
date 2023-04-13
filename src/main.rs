@@ -36,6 +36,7 @@ enum Format {
 
 fn main() {
     env_logger::init();
+    let ts = std::time::Instant::now();
     let cli = Options::parse();
     let parser = match cli.format {
         Format::Woorpje => Parser::WoorpjeParser,
@@ -57,6 +58,7 @@ fn main() {
     .unwrap();
 
     let res = solver.solve();
+    log::info!("Done ({}ms).", ts.elapsed().as_millis());
     println!("{}", res);
     if let Some(model) = res.get_model() {
         println!("Model: {:?}", model);

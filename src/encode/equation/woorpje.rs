@@ -97,7 +97,12 @@ impl PredicateEncoder for WoorpjeEncoder {
         let mut cnf = Cnf::new();
         let lhs = FilledPattern::fill(self.equation.lhs(), bounds);
         let rhs = FilledPattern::fill(self.equation.rhs(), bounds);
-        log::debug!("Encoding {}", self.equation);
+        log::debug!(
+            "Encoding {} ({} x {})",
+            self.equation,
+            lhs.length(),
+            rhs.length()
+        );
 
         let (wm, wm_cnf) = self.match_vars(&lhs, &rhs, subs);
         cnf.extend(wm_cnf);

@@ -1,4 +1,5 @@
 use std::collections::{HashMap, HashSet};
+use std::time::Instant;
 
 use crate::encode::{EncodingResult, VariableBounds};
 use crate::encode::{PredicateEncoder, WoorpjeEncoder, WordEquationEncoder};
@@ -147,7 +148,13 @@ impl Woorpje {
             SubstitutionEncoder::new(self.equation.alphabet(), self.equation.variables());
         let mut encoding = EncodingResult::empty();
 
+        let ts = Instant::now();
         let subs_cnf = subs_encoder.encode(&self.bounds);
+        log::debug!(
+            "Encoded substitution in {} clauses ({} ms)",
+            subs_cnf.length(),
+            ts.elapsed().as_millis()
+        );
         encoding.join(subs_cnf);
         let sub_encoding = subs_encoder.get_encoding().unwrap();
         let mut encoder = WoorpjeEncoder::new(self.equation.clone());
@@ -159,16 +166,31 @@ impl Woorpje {
 
 impl Solver for Woorpje {
     fn solve(&mut self) -> SolverResult {
+        log::info!("Started solving loop");
         loop {
-            log::info!("Solving {} with bounds {}", self.equation, self.bounds);
+            log::info!("Current bounds {}", self.bounds);
+            let ts = Instant::now();
             let encoding = self.encode_bounded();
+            let elapsed = ts.elapsed().as_millis();
+            log::info!("Encoding took {} ms", elapsed);
             match encoding {
                 EncodingResult::Cnf(clauses) => {
                     let mut cadical: cadical::Solver = cadical::Solver::new();
+                    let n_clauses = clauses.len();
+                    let ts = Instant::now();
                     for clause in clauses.into_iter() {
                         cadical.add_clause(clause);
                     }
-                    if let Some(true) = cadical.solve() {
+                    log::info!(
+                        "Added {} ({}) clauses in {} ms",
+                        n_clauses,
+                        cadical.num_clauses(),
+                        ts.elapsed().as_millis()
+                    );
+                    let ts = Instant::now();
+                    let res = cadical.solve();
+                    log::info!("Solving took {} ms", ts.elapsed().as_millis());
+                    if let Some(true) = res {
                         let solution = match &self.sub_encoding {
                             Some(sub_encoding) => sub_encoding.get_substitutions(&cadical),
                             None => HashMap::new(),

@@ -163,6 +163,13 @@ impl EncodingResult {
         EncodingResult::Cnf(vec![])
     }
 
+    pub fn length(&self) -> usize {
+        match self {
+            EncodingResult::Cnf(cnf) => cnf.len(),
+            EncodingResult::Trivial(_) => 0,
+        }
+    }
+
     /// Joins two encoding results, consumes the other one
     pub fn join(&mut self, other: EncodingResult) {
         match self {
