@@ -8,16 +8,19 @@ use std::collections::{HashMap, HashSet};
 
 use super::VariableBounds;
 
+#[derive(Clone, Debug)]
 pub struct SubstitutionEncoding {
     encodings: HashMap<(Variable, usize, char), PVar>,
+    bounds: VariableBounds,
     alphabet: HashSet<char>,
 }
 
 impl SubstitutionEncoding {
-    pub fn new(alphabet: HashSet<char>) -> Self {
+    pub fn new(alphabet: HashSet<char>, bounds: VariableBounds) -> Self {
         Self {
             encodings: HashMap::new(),
             alphabet,
+            bounds,
         }
     }
 
@@ -41,50 +44,104 @@ impl SubstitutionEncoding {
         let l = HashSet::from_iter(vec![LAMBDA]);
         self.alphabet.union(&l).cloned().collect()
     }
+
+    fn vars(&self) -> HashSet<&Variable> {
+        self.encodings.keys().map(|(v, _, _)| v).collect()
+    }
+
+    /// Reads the substitutions from the model.
+    /// Panics if the solver is not in a SAT state.
+    #[allow(dead_code)]
+    pub fn get_substitutions(&self, solver: &cadical::Solver) -> HashMap<Variable, String> {
+        if solver.status() != Some(true) {
+            panic!("Solver is not in a SAT state")
+        }
+        let mut subs = HashMap::new();
+        for var in self.vars() {
+            // initialize substitutions
+            subs.insert(var.clone(), vec![None; self.bounds.get(var)]);
+        }
+        for ((var, pos, chr), v) in self.encodings.iter() {
+            if let Some(true) = solver.value(as_lit(self.get(var, *pos, *chr).unwrap())) {
+                let sub = subs.get_mut(var).unwrap();
+                // This could be more efficient by going over the positions only once, however, this way we can check for invalid substitutions
+                assert!(
+                    sub[*pos].is_none(),
+                    "Multiple substitutions for {} at position {}",
+                    var,
+                    pos
+                );
+
+                sub[*pos] = Some(*chr);
+            }
+        }
+        let mut subs_str = HashMap::new();
+        for (var, sub) in subs.into_iter() {
+            let mut s = String::new();
+            for c in sub.iter() {
+                match c {
+                    Some(LAMBDA) => {}
+                    Some(c) => s.push(*c),
+                    None => panic!("No substitution for {} at position {}", var, s.len()),
+                }
+            }
+            subs_str.insert(var.clone(), s);
+        }
+        subs_str
+    }
 }
 
 pub struct SubstitutionEncoder {
-    encoding: SubstitutionEncoding,
+    encoding: Option<SubstitutionEncoding>,
     vars: HashSet<Variable>,
     last_bounds: Option<VariableBounds>,
+    alphabet: HashSet<char>,
 }
 
 impl SubstitutionEncoder {
     pub fn new(alphabet: HashSet<char>, vars: HashSet<Variable>) -> Self {
         Self {
-            encoding: SubstitutionEncoding::new(alphabet),
+            encoding: None,
             vars,
+            alphabet,
             last_bounds: None,
         }
     }
 
     pub fn encode(&mut self, bounds: &VariableBounds) -> EncodingResult {
         let mut cnf = Cnf::new();
+        if self.encoding.is_none() {
+            self.encoding = Some(SubstitutionEncoding::new(
+                self.alphabet.clone(),
+                bounds.clone(),
+            ));
+        }
         log::debug!("Encoding substitutions");
         for var in &self.vars {
             let bound = bounds.get(var);
             let last_bound = self.pre_bounds(var).unwrap_or(0);
+            let encoding = self.encoding.as_mut().unwrap();
             log::debug!("Variable {} - Positions {} to {}", var, last_bound, bound);
             // Todo: this is bad because it clones the alphabet
-            let alph = self.encoding.alphabet.clone();
+            let alph = self.alphabet.clone();
             for b in (last_bound..bound).rev() {
                 let mut pos_subs = vec![];
                 for c in &alph {
                     // subvar <--> `var` at position `b` is substituted with `c`
                     let subvar = pvar();
-                    self.encoding.add(var, b, *c, subvar);
+                    encoding.add(var, b, *c, subvar);
                     pos_subs.push(subvar)
                 }
                 // Lambda
                 let subvar_lambda = pvar();
-                self.encoding.add(var, b, LAMBDA, subvar_lambda);
+                encoding.add(var, b, LAMBDA, subvar_lambda);
                 pos_subs.push(subvar_lambda);
 
                 // If current position is LAMBDA, then all following must be LAMBDA
                 if b + 1 < bound {
                     let clause = vec![
                         neg(subvar_lambda),
-                        as_lit(self.encoding.get(var, b + 1, LAMBDA).unwrap()),
+                        as_lit(encoding.get(var, b + 1, LAMBDA).unwrap()),
                     ];
                     cnf.push(clause);
                 }
@@ -101,30 +158,10 @@ impl SubstitutionEncoder {
         self.last_bounds.as_ref().map(|bs| bs.get(var))
     }
 
-    pub fn get_encoding(&self) -> &SubstitutionEncoding {
-        &self.encoding
-    }
-
-    #[allow(dead_code)]
-    pub fn get_substitutions(&self, solver: &cadical::Solver) -> HashMap<Variable, String> {
-        let mut subs = HashMap::new();
-        for v in &self.vars {
-            let mut sub = String::new();
-            for b in 0..self.pre_bounds(v).unwrap_or(0) {
-                for c in self.encoding.alphabet_lambda() {
-                    let lit = self.encoding.get_lit(v, b, c).unwrap();
-                    if let Some(true) = solver.value(lit) {
-                        if c == LAMBDA {
-                            // Do nothing
-                        } else {
-                            sub.push(c);
-                        }
-                    }
-                }
-            }
-            subs.insert(v.clone(), sub);
-        }
-        subs
+    /// Returns the encoding for the substitutions.
+    /// Returns `None` if the encoding has not been created yet, i.e., if `encode` has not been called.
+    pub fn get_encoding(&self) -> Option<&SubstitutionEncoding> {
+        self.encoding.as_ref()
     }
 }
 
@@ -148,8 +185,12 @@ mod tests {
         encoder.encode(&bounds);
 
         for b in 0..mb {
-            for c in encoder.get_encoding().alphabet_lambda() {
-                assert!(encoder.get_encoding().get_lit(&var, b, c).is_some());
+            for c in encoder.get_encoding().unwrap().alphabet_lambda() {
+                assert!(encoder
+                    .get_encoding()
+                    .unwrap()
+                    .get_lit(&var, b, c)
+                    .is_some());
             }
         }
     }

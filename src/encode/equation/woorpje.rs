@@ -1,12 +1,13 @@
 use std::collections::HashMap;
 
-use super::{
-    EncodingResult, PredicateEncoder, SubstitutionEncoding, VariableBounds, WordEquationEncoder,
-    LAMBDA,
+use crate::encode::substitution::SubstitutionEncoding;
+use crate::encode::{
+    EncodingResult, FilledPattern, FilledPos, PredicateEncoder, VariableBounds, LAMBDA,
 };
-use crate::encode::{FilledPattern, FilledPos};
 use crate::model::words::WordEquation;
 use crate::sat::{as_lit, neg, pvar, Clause, Cnf, PVar};
+
+use super::WordEquationEncoder;
 
 pub struct WoorpjeEncoder {
     equation: WordEquation,
@@ -36,21 +37,21 @@ impl WoorpjeEncoder {
                             cnf.push(vec![neg(wm_var)])
                         }
                     }
-                    (FilledPos::Const(a), FilledPos::FilledVar(v, vj)) => {
+                    (FilledPos::Const(a), FilledPos::FilledPos(v, vj)) => {
                         let sub_u = subs.get(v, *vj, *a).unwrap();
                         let wm_var = pvar();
                         wm.insert((i, j), wm_var);
                         cnf.push(vec![neg(wm_var), as_lit(sub_u)]);
                         cnf.push(vec![as_lit(wm_var), neg(sub_u)]);
                     }
-                    (FilledPos::FilledVar(u, ui), FilledPos::Const(b)) => {
+                    (FilledPos::FilledPos(u, ui), FilledPos::Const(b)) => {
                         let sub_u = subs.get(u, *ui, *b).unwrap();
                         let wm_var = pvar();
                         wm.insert((i, j), wm_var);
                         cnf.push(vec![neg(wm_var), as_lit(sub_u)]);
                         cnf.push(vec![as_lit(wm_var), neg(sub_u)]);
                     }
-                    (FilledPos::FilledVar(u, ui), FilledPos::FilledVar(v, vj)) => {
+                    (FilledPos::FilledPos(u, ui), FilledPos::FilledPos(v, vj)) => {
                         for chr in subs.alphabet() {
                             let sub_u = subs.get(u, *ui, *chr).unwrap();
                             let sub_v = subs.get(v, *vj, *chr).unwrap();
@@ -143,8 +144,8 @@ impl PredicateEncoder for WoorpjeEncoder {
                         FilledPos::Const(_) => {
                             cnf.push(vec![-s_00, -s_10]);
                         }
-                        FilledPos::FilledVar(u, ui) => {
-                            cnf.push(vec![-s_00, subs.get_lit(u, *ui, LAMBDA).unwrap(), -s_10]);
+                        FilledPos::FilledPos(u, ui) => {
+                            //cnf.push(vec![-s_00, subs.get_lit(u, *ui, LAMBDA).unwrap(), -s_10]);
 
                             match rhs.at(j).unwrap() {
                                 FilledPos::Const(_) => {
@@ -154,7 +155,7 @@ impl PredicateEncoder for WoorpjeEncoder {
                                         s_10,
                                     ]);
                                 }
-                                FilledPos::FilledVar(v, vj) => {
+                                FilledPos::FilledPos(v, vj) => {
                                     cnf.push(vec![
                                         -s_00,
                                         -subs.get_lit(u, *ui, LAMBDA).unwrap(),
@@ -171,7 +172,7 @@ impl PredicateEncoder for WoorpjeEncoder {
                         FilledPos::Const(_) => {
                             cnf.push(vec![-s_00, -s_01]);
                         }
-                        FilledPos::FilledVar(v, vj) => {
+                        FilledPos::FilledPos(v, vj) => {
                             cnf.push(vec![-s_00, subs.get_lit(v, *vj, LAMBDA).unwrap(), -s_01]);
 
                             match lhs.at(i).unwrap() {
@@ -182,7 +183,7 @@ impl PredicateEncoder for WoorpjeEncoder {
                                         s_01,
                                     ]);
                                 }
-                                FilledPos::FilledVar(u, ui) => {
+                                FilledPos::FilledPos(u, ui) => {
                                     cnf.push(vec![
                                         -s_00,
                                         -subs.get_lit(v, *vj, LAMBDA).unwrap(),
@@ -195,8 +196,8 @@ impl PredicateEncoder for WoorpjeEncoder {
                     }
 
                     // 7. Match two lambda transitions
-                    if let FilledPos::FilledVar(u, ui) = lhs.at(i).unwrap() {
-                        if let FilledPos::FilledVar(v, vj) = rhs.at(j).unwrap() {
+                    if let FilledPos::FilledPos(u, ui) = lhs.at(i).unwrap() {
+                        if let FilledPos::FilledPos(v, vj) = rhs.at(j).unwrap() {
                             cnf.push(vec![
                                 -s_00,
                                 -subs.get_lit(u, *ui, LAMBDA).unwrap(),
@@ -224,7 +225,7 @@ impl PredicateEncoder for WoorpjeEncoder {
                         FilledPos::Const(_) => {
                             cnf.push(vec![-s_00, -s_10]);
                         }
-                        FilledPos::FilledVar(u, ui) => {
+                        FilledPos::FilledPos(u, ui) => {
                             cnf.push(vec![-s_00, subs.get_lit(u, *ui, LAMBDA).unwrap(), -s_10]);
                         }
                     }
@@ -240,7 +241,7 @@ impl PredicateEncoder for WoorpjeEncoder {
                         FilledPos::Const(_) => {
                             cnf.push(vec![-s_00, -s_01]);
                         }
-                        FilledPos::FilledVar(v, vj) => {
+                        FilledPos::FilledPos(v, vj) => {
                             cnf.push(vec![-s_00, subs.get_lit(v, *vj, LAMBDA).unwrap(), -s_01]);
                         }
                     }
@@ -272,7 +273,7 @@ impl WordEquationEncoder for WoorpjeEncoder {
 
 #[cfg(test)]
 mod tests {
-    use std::{collections::HashSet, hash::Hash};
+    use std::collections::HashSet;
 
     use super::*;
     use cadical::Solver;
@@ -319,7 +320,7 @@ mod tests {
         encoding.join(subs_cnf);
         println!("Solving {}", eq);
         let mut encoder = WoorpjeEncoder::new(eq.clone());
-        encoding.join(encoder.encode(&bounds, subs_encoder.get_encoding()));
+        encoding.join(encoder.encode(&bounds, subs_encoder.get_encoding().unwrap()));
 
         let mut solver: Solver = Solver::default();
         match encoding {
@@ -334,8 +335,17 @@ mod tests {
 
         let res = solver.solve();
         if let Some(true) = res {
-            let solution = subs_encoder.get_substitutions(&solver);
-            assert!(eq.is_solution(&solution));
+            let solution = subs_encoder
+                .get_encoding()
+                .unwrap()
+                .get_substitutions(&solver);
+            assert!(
+                eq.is_solution(&solution),
+                "{:?} is not a solution: {:?} != {:?}",
+                solution,
+                eq.lhs().substitute(&solution),
+                eq.rhs().substitute(&solution)
+            );
             if let Some(svs) = encoder.get_state_vars() {
                 println!("{:?}", svs);
                 for j in 0..svs[0].len() {
@@ -381,8 +391,8 @@ mod tests {
     #[test]
     fn woorpje_trivial_unsat_consts() {
         let eq = WordEquation::new(
-            Pattern::from(vec![Symbol::LiteralWord(String::from("a"))]),
-            Pattern::from(vec![Symbol::LiteralWord(String::from("b"))]),
+            Pattern::from(vec![Symbol::LiteralWord(String::from("bar"))]),
+            Pattern::from(vec![Symbol::LiteralWord(String::from("barr"))]),
         );
         let bounds = VariableBounds::new(10);
 
@@ -440,7 +450,7 @@ mod tests {
     }
 
     #[test]
-    fn woorpje_sat_complex() {
+    fn woorpje_sat_t1i2() {
         // Track1, Instance 2
         //BabbabbadeeadAacbacaHaebHedbAcAcHebabccEcbcHH = AbbHabbAbbaHeFcadEbdeHbAcacdebabccAecbcdH
         let var_a = Variable::new("A".to_string(), Sort::String);

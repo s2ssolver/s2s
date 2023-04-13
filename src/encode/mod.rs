@@ -2,7 +2,7 @@ use std::{cmp::min, collections::HashMap, slice::Iter};
 
 use crate::{
     model::{
-        words::{Pattern, Symbol, WordEquation},
+        words::{Pattern, Symbol},
         Variable,
     },
     sat::Cnf,
@@ -13,9 +13,11 @@ use self::substitution::SubstitutionEncoding;
 /// Facilities for encoding cardinality constraints
 mod card;
 /// Encoder for word equations
-pub mod equations;
+mod equation;
 /// Encoder for substitutions
 pub mod substitution;
+
+pub use equation::{WoorpjeEncoder, WordEquationEncoder};
 
 /// Bound for each variable
 #[derive(Clone, Debug)]
@@ -100,7 +102,7 @@ const LAMBDA: char = char::REPLACEMENT_CHARACTER;
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum FilledPos {
     Const(char),
-    FilledVar(Variable, usize),
+    FilledPos(Variable, usize),
 }
 /// A filled pattern is a pattern with a set of bounds on the variables.
 /// Each position in the pattern is either a constant word or a position within a variable.
@@ -127,7 +129,7 @@ impl FilledPattern {
                 Symbol::Variable(v) => {
                     let len = bounds.get(v);
                     for i in 0..len {
-                        positions.push(FilledPos::FilledVar(v.clone(), i))
+                        positions.push(FilledPos::FilledPos(v.clone(), i))
                     }
                 }
             }
@@ -195,8 +197,4 @@ pub trait PredicateEncoder {
         bounds: &VariableBounds,
         substitution: &SubstitutionEncoding,
     ) -> EncodingResult;
-}
-
-pub trait WordEquationEncoder: PredicateEncoder {
-    fn new(equation: WordEquation) -> Self;
 }

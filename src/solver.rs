@@ -1,14 +1,12 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
-use crate::encode::{
-    equations::WoorpjeEncoder, EncodingResult, PredicateEncoder, VariableBounds,
-    WordEquationEncoder,
-};
+use crate::encode::{EncodingResult, VariableBounds};
+use crate::encode::{PredicateEncoder, WoorpjeEncoder, WordEquationEncoder};
 use crate::formula::{Atom, Formula, Predicate};
 use crate::model::words::{Pattern, Symbol};
 use crate::model::{words::WordEquation, Variable};
 
-use crate::encode::substitution::SubstitutionEncoder;
+use crate::encode::substitution::{SubstitutionEncoder, SubstitutionEncoding};
 /// A problem instance, consisting of a formula and a set of variables
 /// Should be created using the `parse` module
 #[derive(Clone, Debug)]
@@ -52,8 +50,8 @@ impl Instance {
 
 /// The result of a satisfiability check
 pub enum SolverResult {
-    /// The instance is satisfiable
-    Sat,
+    /// The instance is satisfiable with the given model
+    Sat(HashMap<Variable, String>),
     /// The instance is unsatisfiable
     Unsat,
     /// The solver could not determine the satisfiability of the instance
@@ -63,7 +61,7 @@ pub enum SolverResult {
 impl SolverResult {
     /// Returns true if the instance is satisfiable
     pub fn is_sat(&self) -> bool {
-        matches!(self, SolverResult::Sat)
+        matches!(self, SolverResult::Sat(_))
     }
 
     /// Returns true if the instance is unsatisfiable
@@ -75,7 +73,7 @@ impl SolverResult {
 impl std::fmt::Display for SolverResult {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            SolverResult::Sat => write!(f, "sat"),
+            SolverResult::Sat(_) => write!(f, "sat"),
             SolverResult::Unsat => write!(f, "unsat"),
             SolverResult::Unknown => write!(f, "unknown"),
         }
@@ -98,6 +96,8 @@ pub struct Woorpje {
     equation: WordEquation,
     bounds: VariableBounds,
     max_bound: Option<usize>,
+    /// The encoding of the substitution variables. Needed to create the solution.
+    sub_encoding: Option<SubstitutionEncoding>,
 }
 
 impl Woorpje {
@@ -109,6 +109,7 @@ impl Woorpje {
                 equation: eq.clone(),
                 bounds: VariableBounds::new(1),
                 max_bound: instance.ubound,
+                sub_encoding: None,
             }),
             Formula::False => {
                 let mut lhs = Pattern::empty();
@@ -117,12 +118,14 @@ impl Woorpje {
                     equation: WordEquation::new(lhs, Pattern::empty()),
                     bounds: VariableBounds::new(1),
                     max_bound: instance.ubound,
+                    sub_encoding: None,
                 })
             }
             Formula::True => Ok(Self {
                 equation: WordEquation::new(Pattern::empty(), Pattern::empty()),
                 bounds: VariableBounds::new(1),
                 max_bound: instance.ubound,
+                sub_encoding: None,
             }),
             _ => Err("Instance is not a single word equation".to_string()),
         }
@@ -130,16 +133,18 @@ impl Woorpje {
 }
 
 impl Woorpje {
-    fn encode_bounded(&self) -> EncodingResult {
-        let mut encoding = EncodingResult::empty();
+    fn encode_bounded(&mut self) -> EncodingResult {
+        // Create a new one for each call to encode_bounded because woorpje is not incremental
         let mut subs_encoder =
             SubstitutionEncoder::new(self.equation.alphabet(), self.equation.variables());
+        let mut encoding = EncodingResult::empty();
 
         let subs_cnf = subs_encoder.encode(&self.bounds);
         encoding.join(subs_cnf);
-
+        let sub_encoding = subs_encoder.get_encoding().unwrap();
         let mut encoder = WoorpjeEncoder::new(self.equation.clone());
-        encoding.join(encoder.encode(&self.bounds, subs_encoder.get_encoding()));
+        encoding.join(encoder.encode(&self.bounds, &sub_encoding));
+        self.sub_encoding = Some(sub_encoding.clone());
         encoding
     }
 }
@@ -156,11 +161,15 @@ impl Solver for Woorpje {
                         cadical.add_clause(clause);
                     }
                     if let Some(true) = cadical.solve() {
-                        return SolverResult::Sat;
+                        let solution = match &self.sub_encoding {
+                            Some(sub_encoding) => sub_encoding.get_substitutions(&cadical),
+                            None => HashMap::new(),
+                        };
+                        return SolverResult::Sat(solution);
                     }
                 }
                 EncodingResult::Trivial(false) => return SolverResult::Unsat,
-                EncodingResult::Trivial(true) => return SolverResult::Sat,
+                EncodingResult::Trivial(true) => return SolverResult::Sat(HashMap::new()),
             }
         }
         SolverResult::Unsat
