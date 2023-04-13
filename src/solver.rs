@@ -159,7 +159,7 @@ impl Woorpje {
 
 impl Solver for Woorpje {
     fn solve(&mut self) -> SolverResult {
-        while self.bounds.double(self.max_bound) {
+        loop {
             log::info!("Solving {} with bounds {}", self.equation, self.bounds);
             let encoding = self.encode_bounded();
             match encoding {
@@ -178,6 +178,9 @@ impl Solver for Woorpje {
                 }
                 EncodingResult::Trivial(false) => return SolverResult::Unsat,
                 EncodingResult::Trivial(true) => return SolverResult::Sat(HashMap::new()),
+            }
+            if !self.bounds.double(self.max_bound) {
+                break;
             }
         }
         SolverResult::Unsat
