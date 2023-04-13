@@ -58,4 +58,7 @@ fn main() {
 
     let res = solver.solve();
     println!("{}", res);
+    if let Some(model) = res.get_model() {
+        println!("Model: {:?}", model);
+    }
 }

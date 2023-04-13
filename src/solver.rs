@@ -64,6 +64,14 @@ impl SolverResult {
         matches!(self, SolverResult::Sat(_))
     }
 
+    /// Returns the model if the instance is satisfiable
+    pub fn get_model(&self) -> Option<&HashMap<Variable, String>> {
+        match self {
+            SolverResult::Sat(model) => Some(model),
+            _ => None,
+        }
+    }
+
     /// Returns true if the instance is unsatisfiable
     pub fn is_unsat(&self) -> bool {
         matches!(self, SolverResult::Unsat)
