@@ -95,8 +95,8 @@ impl PredicateEncoder for WoorpjeEncoder {
 
     fn encode(&mut self, bounds: &VariableBounds, subs: &SubstitutionEncoding) -> EncodingResult {
         let mut cnf = Cnf::new();
-        let lhs = FilledPattern::fill(self.equation.lhs(), bounds);
-        let rhs = FilledPattern::fill(self.equation.rhs(), bounds);
+        let lhs = FilledPattern::fill(self.equation.lhs(), &bounds);
+        let rhs = FilledPattern::fill(self.equation.rhs(), &bounds);
         log::debug!(
             "Encoding {} ({} x {})",
             self.equation,
@@ -280,19 +280,16 @@ impl WordEquationEncoder for WoorpjeEncoder {
 
 #[cfg(test)]
 mod tests {
-    use std::{collections::HashSet, default};
+    use std::collections::HashSet;
 
     use super::*;
     use cadical::Solver;
-    use quickcheck::TestResult;
+
     use quickcheck_macros::quickcheck;
 
     use crate::{
         encode::substitution::SubstitutionEncoder,
-        model::{
-            words::{Pattern, Symbol},
-            Sort, Variable,
-        },
+        model::{words::Pattern, Sort, Variable},
     };
 
     #[quickcheck]

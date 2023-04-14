@@ -48,11 +48,6 @@ impl VariableBounds {
         self.default = bound;
     }
 
-    #[allow(dead_code)]
-    pub fn iter(&self) -> impl Iterator<Item = (&Variable, &usize)> {
-        self.bounds.iter()
-    }
-
     /// Updates the bounds of the variables by calling the given function on each bound, including the default bound.
     /// Additionally, an optional clamp can be provided to limit the maximum value of the bounds.
     /// If no clamp is provided, the bounds are limited by `usize::MAX`.

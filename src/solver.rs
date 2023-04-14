@@ -1,3 +1,4 @@
+use std::cmp::min;
 use std::collections::{HashMap, HashSet};
 use std::time::Instant;
 
@@ -147,13 +148,16 @@ impl Woorpje {
 
 impl Woorpje {
     fn encode_bounded(&mut self) -> EncodingResult {
+        let bounds = sharpen_bounds(&self.equation, &self.bounds, &self.equation.variables());
+        log::debug!("Sharpened bounds: {:?}", bounds);
+        //let bounds = &self.bounds;
         // Create a new one for each call to encode_bounded because woorpje is not incremental
         let mut subs_encoder =
             SubstitutionEncoder::new(self.equation.alphabet(), self.equation.variables());
         let mut encoding = EncodingResult::empty();
 
         let ts = Instant::now();
-        let subs_cnf = subs_encoder.encode(&self.bounds);
+        let subs_cnf = subs_encoder.encode(&bounds);
         log::debug!(
             "Encoded substitution in {} clauses ({} ms)",
             subs_cnf.length(),
@@ -162,7 +166,7 @@ impl Woorpje {
         encoding.join(subs_cnf);
         let sub_encoding = subs_encoder.get_encoding().unwrap();
         let mut encoder = WoorpjeEncoder::new(self.equation.clone());
-        encoding.join(encoder.encode(&self.bounds, sub_encoding));
+        encoding.join(encoder.encode(&bounds, sub_encoding));
         self.sub_encoding = Some(sub_encoding.clone());
         encoding
     }
@@ -211,4 +215,52 @@ impl Solver for Woorpje {
         }
         SolverResult::Unsat
     }
+}
+
+fn sharpen_bounds(
+    eq: &WordEquation,
+    bounds: &VariableBounds,
+    vars: &HashSet<Variable>,
+) -> VariableBounds {
+    let mut new_bounds = bounds.clone();
+    // Todo: Cache this or do linearly
+    let mut abs_consts: isize = 0;
+    for c in eq.alphabet() {
+        let rhs_c = eq.rhs().count(&Symbol::Constant(c)) as isize;
+        let lhs_c = eq.lhs().count(&Symbol::Constant(c)) as isize;
+        abs_consts += rhs_c - lhs_c;
+    }
+
+    for var_k in vars {
+        let denominator = eq.lhs().count(&Symbol::Variable(var_k.clone())) as isize
+            - eq.rhs().count(&Symbol::Variable(var_k.clone())) as isize;
+        if denominator == 0 {
+            continue;
+        }
+        let mut abs_k: isize = 0;
+        for var_j in vars {
+            if var_j == var_k {
+                continue;
+            }
+            let abs_j = eq.lhs().count(&Symbol::Variable(var_j.clone())) as isize
+                - eq.rhs().count(&Symbol::Variable(var_j.clone())) as isize;
+            if abs_j * denominator < 0 {
+                abs_k += abs_j * bounds.get(var_j) as isize;
+            }
+        }
+        let sharpened = std::cmp::max((abs_consts - abs_k) / denominator, 0) as usize;
+        /*assert!(
+            sharpened >= 0,
+            "Var {}: {} - {} / {} = {}",
+            var_k,
+            abs_consts,
+            abs_k,
+            denominator,
+            sharpened
+        );*/
+        if sharpened < bounds.get(var_k) {
+            new_bounds.set(var_k, sharpened as usize);
+        }
+    }
+    new_bounds
 }

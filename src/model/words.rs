@@ -70,6 +70,10 @@ impl Pattern {
         alphabet
     }
 
+    pub fn count(&self, symbol: &Symbol) -> usize {
+        self.symbols.iter().filter(|x| x == &symbol).count()
+    }
+
     /// Returns the set of variables that occur in the pattern.
     pub fn vars(&self) -> HashSet<Variable> {
         self.symbols
