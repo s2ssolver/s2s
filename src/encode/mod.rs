@@ -76,6 +76,11 @@ impl VariableBounds {
     pub fn double(&mut self, clamp: Option<usize>) -> bool {
         self.update(|b| b * 2, clamp)
     }
+
+    /// Updates the bounds of all variables such that they are the next square number greater than the current value.
+    pub fn next_square(&mut self, clamp: Option<usize>) -> bool {
+        self.update(|b| ((b as f64).sqrt() + 1f64).powi(2) as usize, clamp)
+    }
 }
 
 impl std::fmt::Display for VariableBounds {

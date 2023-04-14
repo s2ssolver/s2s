@@ -209,7 +209,7 @@ impl Solver for Woorpje {
                 EncodingResult::Trivial(false) => return SolverResult::Unsat,
                 EncodingResult::Trivial(true) => return SolverResult::Sat(HashMap::new()),
             }
-            if !self.bounds.double(self.max_bound) {
+            if !self.bounds.next_square(self.max_bound) {
                 break;
             }
         }
@@ -249,15 +249,6 @@ fn sharpen_bounds(
             }
         }
         let sharpened = std::cmp::max((abs_consts - abs_k) / denominator, 0) as usize;
-        /*assert!(
-            sharpened >= 0,
-            "Var {}: {} - {} / {} = {}",
-            var_k,
-            abs_consts,
-            abs_k,
-            denominator,
-            sharpened
-        );*/
         if sharpened < bounds.get(var_k) {
             new_bounds.set(var_k, sharpened as usize);
         }
