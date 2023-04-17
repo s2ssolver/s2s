@@ -1,4 +1,3 @@
-use std::cmp::min;
 use std::collections::{HashMap, HashSet};
 use std::time::Instant;
 
@@ -250,7 +249,7 @@ fn sharpen_bounds(
         }
         let sharpened = std::cmp::max((abs_consts - abs_k) / denominator, 0) as usize;
         if sharpened < bounds.get(var_k) {
-            new_bounds.set(var_k, sharpened as usize);
+            new_bounds.set(var_k, sharpened);
         }
     }
     new_bounds

@@ -9,7 +9,7 @@ import joblib
 def parse():
     parser = argparse.ArgumentParser()
     parser.add_argument("dir", help="Directory containing the benchmarks")
-    parser.add_argument("-b", help="Max bound", type=int, default=10)
+    parser.add_argument("-b", help="Max bound", type=int, default=80)
     return parser.parse_args()
 
 

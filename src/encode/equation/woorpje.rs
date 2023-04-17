@@ -1,3 +1,16 @@
+//! Contains the original Woorpje encoding for word equations introduced in
+//!
+//! > Day, J.D., Ehlers, T., Kulczynski, M., Manea, F., Nowotka, D., Poulsen, D.B. (2019).
+//! > On Solving Word Equations Using SAT. In: Filiot, E., Jungers, R., Potapov, I. (eds) Reachability Problems. RP 2019.
+//! > Lecture Notes in Computer Science(), vol 11674. Springer, Cham. https://doi.org/10.1007/978-3-030-30806-3_8
+//!
+//! This is a non-complete re-implementation of the original version, which can be found in the [Woorpje repository](https://git.zs.informatik.uni-kiel.de/dbp/wordsolve).
+//! Encoding of linear arithmetic over the length abstraction is not included in this implementation.
+//!
+//! The following changes have been made:
+//! - Constraint (9) is no used, as it seems to be redundant. The original implementation does not use it either.
+//! - Only one implication of $wm_{i,j}$ variables is encoded: $wm_{i,j} \rigtharrow ...$, but not $... \rigtharrow wm_{i,j}$. Again, this aligns with the original implementation. Satisfiability is not affected with this change.
+//! - The fixes a bug where some unsat equations were incorrectly reported as sat due the original encoding did not correctly constraint the state variables in some corner cases.
 use std::collections::HashMap;
 
 use crate::encode::substitution::SubstitutionEncoding;
@@ -55,22 +68,23 @@ impl WoorpjeEncoder {
                         let wm_var = pvar();
                         wm.insert((i, j), wm_var);
                         // Clause for /\... -> wm_var
-                        let mut clause = vec![as_lit(wm_var)];
+                        // let mut clause = vec![as_lit(wm_var)];
                         for chr in subs.alphabet_lambda() {
                             let sub_u = subs.get(u, *ui, chr).unwrap();
                             let sub_v = subs.get(v, *vj, chr).unwrap();
 
                             // wm_var => sub_u /\ sub_v
                             cnf.push(vec![neg(wm_var), neg(sub_u), as_lit(sub_v)]);
-                            // TODO: Do we actually need the other direction? We don't do decisions based on wm_{i,j}
 
+                            // We don't (seem to) actually need the other direction as we don't do decisions based on wm_{i,j}.
                             // Tseitin encoding for ltr implication
-                            let t = pvar();
+                            /*let t = pvar();
                             clause.push(as_lit(t));
                             cnf.push(vec![neg(t), as_lit(sub_u)]);
                             cnf.push(vec![neg(t), as_lit(sub_v)]);
-                            cnf.push(vec![neg(sub_u), neg(sub_v), as_lit(t)]);
+                            cnf.push(vec![neg(sub_u), neg(sub_v), as_lit(t)]);*/
                         }
+                        //cnf.push(clause);
                     }
                 }
             }
@@ -95,8 +109,8 @@ impl PredicateEncoder for WoorpjeEncoder {
 
     fn encode(&mut self, bounds: &VariableBounds, subs: &SubstitutionEncoding) -> EncodingResult {
         let mut cnf = Cnf::new();
-        let lhs = FilledPattern::fill(self.equation.lhs(), &bounds);
-        let rhs = FilledPattern::fill(self.equation.rhs(), &bounds);
+        let lhs = FilledPattern::fill(self.equation.lhs(), bounds);
+        let rhs = FilledPattern::fill(self.equation.rhs(), bounds);
         log::debug!(
             "Encoding {} ({} x {})",
             self.equation,

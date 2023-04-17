@@ -73,6 +73,7 @@ impl VariableBounds {
     /// Doubles the bounds of all variables, including the default bound.
     /// The optional clamp can be used to limit the maximum value of the bounds.
     /// Returns true if any bound was changed and false otherwise.
+    #[allow(dead_code)]
     pub fn double(&mut self, clamp: Option<usize>) -> bool {
         self.update(|b| b * 2, clamp)
     }

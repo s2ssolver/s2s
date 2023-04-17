@@ -64,8 +64,8 @@ pub fn preprocess(formula: &Formula) -> Formula {
             Atom::Predicate(p) => Atom::Predicate(preprocess_predicate(p)),
             Atom::BoolVar(v) => Atom::BoolVar(*v),
         }),
-        Formula::Or(f) => Formula::Or(f.iter().map(|t| preprocess(t)).collect()),
-        Formula::And(f) => Formula::And(f.iter().map(|t| preprocess(t)).collect()),
+        Formula::Or(f) => Formula::Or(f.iter().map(preprocess).collect()),
+        Formula::And(f) => Formula::And(f.iter().map(preprocess).collect()),
         Formula::Not(f) => Formula::Not(Box::new(preprocess(f.as_ref()))),
     }
 }

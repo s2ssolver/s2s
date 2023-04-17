@@ -50,7 +50,7 @@ fn main() {
     if let Some(bound) = cli.max_bound {
         instance.set_bound(bound);
     }
-    instance.set_formula(preprocess(&instance.get_formula()));
+    instance.set_formula(preprocess(instance.get_formula()));
     log::debug!("Parsed instance: {:?}", instance);
     let mut solver = match cli.solver {
         SolverType::Woorpje => Woorpje::new(&instance),

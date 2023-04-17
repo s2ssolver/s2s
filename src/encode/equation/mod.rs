@@ -1,15 +1,10 @@
 mod woorpje;
 
-use std::collections::HashSet;
-
 pub use woorpje::WoorpjeEncoder;
 
-use crate::model::{
-    words::{Symbol, WordEquation},
-    Variable,
-};
+use crate::model::words::WordEquation;
 
-use super::{PredicateEncoder, VariableBounds};
+use super::PredicateEncoder;
 
 pub trait WordEquationEncoder: PredicateEncoder {
     fn new(equation: WordEquation) -> Self;
