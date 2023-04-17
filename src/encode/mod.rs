@@ -1,6 +1,7 @@
 use std::{
     cmp::min,
     collections::{HashMap, HashSet},
+    ops::Index,
     slice::Iter,
 };
 
@@ -152,6 +153,14 @@ impl FilledPattern {
     }
 }
 
+impl Index<usize> for FilledPattern {
+    type Output = FilledPos;
+
+    fn index(&self, index: usize) -> &Self::Output {
+        &self.positions[index]
+    }
+}
+
 pub enum EncodingResult {
     /// The CNF encoding of the problem
     Cnf(Cnf, HashSet<PLit>),
@@ -167,6 +176,13 @@ impl EncodingResult {
     /// Conjunctive normal form with no assumptions
     pub fn cnf(cnf: Cnf) -> Self {
         EncodingResult::Cnf(cnf, HashSet::new())
+    }
+
+    /// Empty CNF with a single assumption
+    pub fn assumption(assumption: PLit) -> Self {
+        let mut asm = HashSet::new();
+        asm.insert(assumption);
+        EncodingResult::Cnf(vec![], asm)
     }
 
     /// Returns the number of clauses in the encoding, not counting assumptions

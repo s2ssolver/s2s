@@ -1,5 +1,5 @@
+mod iwoorpje;
 mod woorpje;
-
 pub use woorpje::WoorpjeEncoder;
 
 use crate::model::words::WordEquation;
