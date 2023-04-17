@@ -159,7 +159,7 @@ impl Woorpje {
         let subs_cnf = subs_encoder.encode(&bounds);
         log::debug!(
             "Encoded substitution in {} clauses ({} ms)",
-            subs_cnf.length(),
+            subs_cnf.clauses(),
             ts.elapsed().as_millis()
         );
         encoding.join(subs_cnf);
@@ -181,7 +181,7 @@ impl Solver for Woorpje {
             let elapsed = ts.elapsed().as_millis();
             log::info!("Encoding took {} ms", elapsed);
             match encoding {
-                EncodingResult::Cnf(clauses) => {
+                EncodingResult::Cnf(clauses, assms) => {
                     let mut cadical: cadical::Solver = cadical::Solver::new();
                     let n_clauses = clauses.len();
                     let ts = Instant::now();
@@ -195,7 +195,7 @@ impl Solver for Woorpje {
                         ts.elapsed().as_millis()
                     );
                     let ts = Instant::now();
-                    let res = cadical.solve();
+                    let res = cadical.solve_with(assms.iter().cloned());
                     log::info!("Solving took {} ms", ts.elapsed().as_millis());
                     if let Some(true) = res {
                         let solution = match &self.sub_encoding {

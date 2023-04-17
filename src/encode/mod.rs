@@ -1,11 +1,15 @@
-use std::{cmp::min, collections::HashMap, slice::Iter};
+use std::{
+    cmp::min,
+    collections::{HashMap, HashSet},
+    slice::Iter,
+};
 
 use crate::{
     model::{
         words::{Pattern, Symbol},
         Variable,
     },
-    sat::Cnf,
+    sat::{Cnf, PLit},
 };
 
 use self::substitution::SubstitutionEncoding;
@@ -150,19 +154,33 @@ impl FilledPattern {
 
 pub enum EncodingResult {
     /// The CNF encoding of the problem
-    Cnf(Cnf),
+    Cnf(Cnf, HashSet<PLit>),
     /// The encoding is trivially valid or unsat
     Trivial(bool),
 }
 
 impl EncodingResult {
     pub fn empty() -> Self {
-        EncodingResult::Cnf(vec![])
+        EncodingResult::Cnf(vec![], HashSet::new())
     }
 
-    pub fn length(&self) -> usize {
+    /// Conjunctive normal form with no assumptions
+    pub fn cnf(cnf: Cnf) -> Self {
+        EncodingResult::Cnf(cnf, HashSet::new())
+    }
+
+    /// Returns the number of clauses in the encoding, not counting assumptions
+    pub fn clauses(&self) -> usize {
         match self {
-            EncodingResult::Cnf(cnf) => cnf.len(),
+            EncodingResult::Cnf(cnf, _) => cnf.len(),
+            EncodingResult::Trivial(_) => 0,
+        }
+    }
+
+    /// Returns the number of assumptions in the encoding
+    pub fn assumptions(&self) -> usize {
+        match self {
+            EncodingResult::Cnf(_, assumptions) => assumptions.len(),
             EncodingResult::Trivial(_) => 0,
         }
     }
@@ -170,8 +188,11 @@ impl EncodingResult {
     /// Joins two encoding results, consumes the other one
     pub fn join(&mut self, other: EncodingResult) {
         match self {
-            EncodingResult::Cnf(ref mut cnf) => match other {
-                EncodingResult::Cnf(mut cnf_other) => cnf.append(&mut cnf_other),
+            EncodingResult::Cnf(ref mut cnf, ref mut asms) => match other {
+                EncodingResult::Cnf(mut cnf_other, mut asm_other) => {
+                    cnf.append(&mut cnf_other);
+                    asms.extend(asm_other);
+                }
                 EncodingResult::Trivial(false) => *self = other,
                 EncodingResult::Trivial(true) => {}
             },
@@ -194,7 +215,7 @@ pub trait PredicateEncoder {
     /// Resets the encoder to the initial state.
     /// After calling this functions, the next call to the `encode` function will completely re-encode the problem with the provided bounds.
     /// This has no effect on non-incremental encoders.
-    fn reset(&self) -> bool;
+    fn reset(&mut self);
 
     fn encode(
         &mut self,

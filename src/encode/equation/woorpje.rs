@@ -103,8 +103,7 @@ impl PredicateEncoder for WoorpjeEncoder {
         false
     }
 
-    fn reset(&self) -> bool {
-        todo!()
+    fn reset(&mut self) { // do nothing}
     }
 
     fn encode(&mut self, bounds: &VariableBounds, subs: &SubstitutionEncoding) -> EncodingResult {
@@ -279,7 +278,7 @@ impl PredicateEncoder for WoorpjeEncoder {
         cnf.push(vec![as_lit(state_vars[0][0])]);
         cnf.push(vec![as_lit(state_vars[n][m])]);
         self.state_vars = Some(state_vars);
-        EncodingResult::Cnf(cnf)
+        EncodingResult::cnf(cnf)
     }
 }
 
@@ -364,7 +363,7 @@ mod tests {
 
         let mut solver: Solver = Solver::default();
         match encoding {
-            EncodingResult::Cnf(cnf) => {
+            EncodingResult::Cnf(cnf, _) => {
                 for clause in cnf {
                     solver.add_clause(clause);
                 }

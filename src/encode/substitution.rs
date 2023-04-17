@@ -152,7 +152,7 @@ impl SubstitutionEncoder {
         }
 
         self.last_bounds = Some(bounds.clone());
-        EncodingResult::Cnf(cnf)
+        EncodingResult::cnf(cnf)
     }
 
     fn pre_bounds(&self, var: &Variable) -> Option<usize> {
