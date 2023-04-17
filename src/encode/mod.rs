@@ -48,11 +48,6 @@ impl VariableBounds {
         self.default = bound;
     }
 
-    #[allow(dead_code)]
-    pub fn iter(&self) -> impl Iterator<Item = (&Variable, &usize)> {
-        self.bounds.iter()
-    }
-
     /// Updates the bounds of the variables by calling the given function on each bound, including the default bound.
     /// Additionally, an optional clamp can be provided to limit the maximum value of the bounds.
     /// If no clamp is provided, the bounds are limited by `usize::MAX`.
@@ -78,8 +73,14 @@ impl VariableBounds {
     /// Doubles the bounds of all variables, including the default bound.
     /// The optional clamp can be used to limit the maximum value of the bounds.
     /// Returns true if any bound was changed and false otherwise.
+    #[allow(dead_code)]
     pub fn double(&mut self, clamp: Option<usize>) -> bool {
         self.update(|b| b * 2, clamp)
+    }
+
+    /// Updates the bounds of all variables such that they are the next square number greater than the current value.
+    pub fn next_square(&mut self, clamp: Option<usize>) -> bool {
+        self.update(|b| ((b as f64).sqrt() + 1f64).powi(2) as usize, clamp)
     }
 }
 
