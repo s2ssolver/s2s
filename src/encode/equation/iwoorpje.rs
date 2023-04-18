@@ -6,7 +6,7 @@ use crate::encode::{
     EncodingResult, FilledPattern, FilledPos, PredicateEncoder, VariableBounds, LAMBDA,
 };
 use crate::model::words::WordEquation;
-use crate::sat::{as_lit, neg, pvar, Clause, Cnf, PVar};
+use crate::sat::{as_lit, neg, pvar, Cnf, PVar};
 
 use super::WordEquationEncoder;
 
@@ -23,7 +23,6 @@ pub struct IWoorpjeEncoder {
 impl IWoorpjeEncoder {
     fn update_pattern(
         &mut self,
-        bounds: &VariableBounds,
         lhs: &FilledPattern,
         rhs: &FilledPattern,
         subs: &SubstitutionEncoding,
@@ -84,6 +83,8 @@ impl IWoorpjeEncoder {
                         let sub_p = as_lit(self.pat_lhs[&(i, c)]);
                         let sub_x = as_lit(subs.get(&v, *j, c).unwrap());
                         // selector -> (sub_p <-> sub_x)
+                        // <=> selector -> (sub_p -> sub_x) /\ selector -> (sub_x -> sub_p)
+                        // <=> (-selector \/ -sub_p \/ sub_x) /\ (-selector \/ -sub_x \/ sub_p)
                         cnf.push(vec![-selector, -sub_p, sub_x]);
                         cnf.push(vec![-selector, sub_p, -sub_x]);
                     }
@@ -100,7 +101,7 @@ impl IWoorpjeEncoder {
                     for c in subs.alphabet_lambda() {
                         let sub_p = as_lit(self.pat_rhs[&(i, c)]);
                         let sub_x = as_lit(subs.get(&v, *j, c).unwrap());
-                        // selector -> (sub_p <-> sub_x)
+                        // see above
                         cnf.push(vec![-selector, -sub_p, sub_x]);
                         cnf.push(vec![-selector, sub_p, -sub_x]);
                     }
@@ -116,13 +117,13 @@ impl IWoorpjeEncoder {
         for i in 0..u_size + 1 {
             if i < n_old {
                 // Extend existing row
-                for j in self.state_vars[i].len()..v_size + 1 {
+                for _ in self.state_vars[i].len()..v_size + 1 {
                     self.state_vars[i].push(pvar());
                 }
             } else {
                 // Add new row
                 let mut row = Vec::new();
-                for j in 0..v_size + 1 {
+                for _ in 0..v_size + 1 {
                     row.push(pvar());
                 }
                 self.state_vars.push(row);
@@ -136,6 +137,7 @@ impl IWoorpjeEncoder {
     fn encode_successors(&mut self) -> EncodingResult {
         let mut cnf = Cnf::new();
         let (n, m) = self.last_len;
+        // Todo: Do in one loop
         for i in n..self.state_vars.len() - 1 {
             for j in m..self.state_vars[i].len() - 1 {
                 let s_00 = as_lit(self.state_vars[i][j]);
@@ -188,22 +190,30 @@ impl IWoorpjeEncoder {
     fn encode_transitions(&mut self, subs: &SubstitutionEncoding) -> EncodingResult {
         let mut cnf = Cnf::new();
         let (n, m) = self.last_len;
-
-        for i in n..self.state_vars.len() - 1 {
-            for j in m..self.state_vars[i].len() - 1 {
+        for i in n..self.state_vars.len() {
+            for j in m..self.state_vars[i].len() {
                 let s_00 = as_lit(self.state_vars[i][j]);
-                let s_01 = as_lit(self.state_vars[i][j + 1]);
-                let s_10 = as_lit(self.state_vars[i + 1][j]);
-                let s_11 = as_lit(self.state_vars[i + 1][j + 1]);
-                cnf.push(vec![-s_00, -s_10, as_lit(self.pat_lhs[&(i, LAMBDA)])]);
-                cnf.push(vec![-s_00, -s_01, as_lit(self.pat_rhs[&(j, LAMBDA)])]);
-                for c in subs.alphabet() {
-                    let sub_l = self.pat_lhs[&(i, *c)];
-                    let sub_r = self.pat_rhs[&(j, *c)];
-                    cnf.push(vec![-s_00, -s_11, neg(sub_l), as_lit(sub_r)])
+                if i < self.state_vars.len() - 1 && j < self.state_vars[i].len() - 1 {
+                    let s_01 = as_lit(self.state_vars[i][j + 1]);
+                    let s_10 = as_lit(self.state_vars[i + 1][j]);
+                    let s_11 = as_lit(self.state_vars[i + 1][j + 1]);
+                    cnf.push(vec![-s_00, -s_10, as_lit(self.pat_lhs[&(i, LAMBDA)])]);
+                    cnf.push(vec![-s_00, -s_01, as_lit(self.pat_rhs[&(j, LAMBDA)])]);
+                    for c in subs.alphabet_lambda() {
+                        let sub_l = self.pat_lhs[&(i, c)];
+                        let sub_r = self.pat_rhs[&(j, c)];
+                        cnf.push(vec![-s_00, -s_11, neg(sub_l), as_lit(sub_r)])
+                    }
+                } else if i < self.state_vars.len() - 1 && j == self.state_vars[i].len() - 1 {
+                    let s_10 = as_lit(self.state_vars[i + 1][j]);
+                    cnf.push(vec![-s_00, -s_10, as_lit(self.pat_lhs[&(i, LAMBDA)])]);
+                } else if i == self.state_vars.len() - 1 && j < self.state_vars[i].len() - 1 {
+                    let s_01 = as_lit(self.state_vars[i][j + 1]);
+                    cnf.push(vec![-s_00, -s_01, as_lit(self.pat_rhs[&(j, LAMBDA)])]);
                 }
             }
         }
+
         EncodingResult::cnf(cnf)
     }
 
@@ -252,7 +262,7 @@ impl PredicateEncoder for IWoorpjeEncoder {
         // TODO: Check if (lhs.len, rhs.len) == last_len and return assumptions from last call
 
         self.update_state_vars(lhs.length(), rhs.length());
-        res.join(self.update_pattern(bounds, lhs, rhs, substitution));
+        res.join(self.update_pattern(lhs, rhs, substitution));
         res.join(self.align_patter(lhs, rhs, substitution));
         res.join(self.encode_successors());
         res.join(self.encode_predecessors());
@@ -296,7 +306,6 @@ mod tests {
 
         let subs_cnf = subs_encoder.encode(&bounds);
         encoding.join(subs_cnf);
-        println!("Solving {}", eq);
         let mut encoder = IWoorpjeEncoder::new(eq.clone());
         encoding.join(encoder.encode(&bounds, subs_encoder.get_encoding().unwrap()));
 
@@ -312,7 +321,6 @@ mod tests {
             EncodingResult::Trivial(false) => return Some(false),
             EncodingResult::Trivial(true) => return Some(true),
         }
-        println!("Assumptions: {:?}", assumptions);
         let res = solver.solve_with(assumptions.into_iter());
         if let Some(true) = res {
             let solution = subs_encoder
@@ -378,11 +386,11 @@ mod tests {
     #[test]
     fn iwoorpje_trivial_sat_const_var() {
         let eq = WordEquation::new(
-            Pattern::constant("bar"),
             Pattern::variable(&Variable::tmp_var(Sort::String)),
+            Pattern::constant("bar"),
         );
 
-        let bounds = VariableBounds::new(19);
+        let bounds = VariableBounds::new(5);
 
         let res = solve_iwoorpje(&eq, bounds, &eq.alphabet());
         assert!(matches!(res, Some(true)));
@@ -420,6 +428,14 @@ mod tests {
         lhs.append_word("a").append_var(&var_a).append_word("c");
         let rhs = Pattern::constant("abc");
         let eq = WordEquation::new(lhs, rhs);
+        let bounds = VariableBounds::new(3);
+        let res = solve_iwoorpje(&eq, bounds, &eq.alphabet());
+        assert!(matches!(res, Some(true)));
+    }
+
+    #[test]
+    fn iwoorpje_test() {
+        let eq = WordEquation::parse_simple("aXb", "YXb");
         let bounds = VariableBounds::new(3);
         let res = solve_iwoorpje(&eq, bounds, &eq.alphabet());
         assert!(matches!(res, Some(true)));
