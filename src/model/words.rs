@@ -239,6 +239,27 @@ impl WordEquation {
         Self { lhs, rhs }
     }
 
+    /// Parses a word equation from two strings, where lowercase chars are interpreted as constants and uppercase chars are interpreted as variables.
+    pub fn parse_simple(lhs: &str, rhs: &str) -> Self {
+        let mut pat_lhs = Pattern::empty();
+        for c in lhs.chars() {
+            if c.is_lowercase() {
+                pat_lhs.append_word(&c.to_string());
+            } else {
+                pat_lhs.append_var(&Variable::new(c.to_string(), Sort::String));
+            }
+        }
+        let mut pat_rhs = Pattern::empty();
+        for c in rhs.chars() {
+            if c.is_lowercase() {
+                pat_rhs.append_word(&c.to_string());
+            } else {
+                pat_rhs.append_var(&Variable::new(c.to_string(), Sort::String));
+            }
+        }
+        Self::new(pat_lhs, pat_rhs)
+    }
+
     /// Creates a new equation from two constant strings.
     pub fn constant(lhs: &str, rhs: &str) -> Self {
         Self::new(Pattern::constant(lhs), Pattern::constant(rhs))
