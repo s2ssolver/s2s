@@ -2,7 +2,7 @@ use std::path::Path;
 
 use clap::{Parser as ClapParser, ValueEnum};
 
-use satstr::{preprocess, Parser, Solver, Woorpje};
+use satstr::{preprocess, IWoorpje, Parser, Solver, Woorpje};
 #[derive(ClapParser, Debug)]
 #[command(author, version, about, long_about = None)] // Read from `Cargo.toml`
 struct Options {
@@ -25,6 +25,7 @@ struct Options {
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum, Debug)]
 enum SolverType {
     Woorpje,
+    Iwoorpje,
     Full,
 }
 
@@ -53,10 +54,10 @@ fn main() {
     instance.set_formula(preprocess(instance.get_formula()));
     log::debug!("Parsed instance: {:?}", instance);
     let mut solver = match cli.solver {
-        SolverType::Woorpje => Woorpje::new(&instance),
+        SolverType::Woorpje => Box::new(Woorpje::new(&instance).unwrap()) as Box<dyn Solver>,
+        SolverType::Iwoorpje => Box::new(IWoorpje::new(&instance).unwrap()) as Box<dyn Solver>,
         SolverType::Full => unimplemented!("Full solver not implemented yet"),
-    }
-    .unwrap();
+    };
 
     let res = solver.solve();
     log::info!("Done ({}ms).", ts.elapsed().as_millis());

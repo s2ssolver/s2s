@@ -10,13 +10,15 @@ def parse():
     parser = argparse.ArgumentParser()
     parser.add_argument("dir", help="Directory containing the benchmarks")
     parser.add_argument("-b", help="Max bound", type=int, default=80)
+    parser.add_argument(
+        "-s", "--solver", help="Solver to use", default="iwoorpje")
     return parser.parse_args()
 
 
-def run(file, bound):
+def run(file, bound, solver):
     print(file, end=": ")
     start = timer()
-    (stdout, stderr) = Popen(["./target/release/satstr", "-b", str(bound),  str(file)],
+    (stdout, stderr) = Popen(["./target/release/satstr", "-b", str(bound), "-s", solver, str(file)],
                              stdout=PIPE, stderr=PIPE).communicate()
 
     time = timer() - start
@@ -26,13 +28,13 @@ def run(file, bound):
         res = stdout.decode("utf-8").strip().splitlines()
         if res[0] == "sat":
             print(f"✅ SAT ({time:.2f}s)")
-            return (file, "sat")
+            return (file, "sat", time)
         elif res[0] == "unsat":
             print(f"❌ UNSAT ({time:.2f}s)")
-            return (file, "unsat")
+            return (file, "unsat", time)
         else:
             print("❔ UNKNOWN")
-            return (file, "unknown")
+            return (file, "unknown", time)
 
 
 if __name__ == "__main__":
@@ -40,11 +42,12 @@ if __name__ == "__main__":
     print("⚙️ Building...")
     Popen(["cargo", "build", "--release"],
           stdout=PIPE, stderr=PIPE).wait()
-    results = joblib.Parallel(n_jobs=8)(joblib.delayed(run)(os.path.join(args.dir, file), args.b)
+    results = joblib.Parallel(n_jobs=8)(joblib.delayed(run)(os.path.join(args.dir, file), args.b, args.solver)
                                         for file in os.listdir(args.dir))
     unsasts = [res[0] for res in results if res[1] == "unsat"]
     sats = [res[0] for res in results if res[1] == "unsat"]
-    print(f"#️⃣  Total {len(results)}")
+    t_total = sum([res[2] for res in results])
+    print(f"#️⃣  Total {len(results)} ({t_total:.2f}s)")
     print(f"❌ Unsats {len(unsasts)}: ")
     print(" ".join(unsasts).strip(), end="")
     print(f"✅ Sats {len(sats)}: ")

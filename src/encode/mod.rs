@@ -22,7 +22,7 @@ mod equation;
 /// Encoder for substitutions
 pub mod substitution;
 
-pub use equation::{WoorpjeEncoder, WordEquationEncoder};
+pub use equation::{IWoorpjeEncoder, WoorpjeEncoder, WordEquationEncoder};
 
 /// Bound for each variable
 #[derive(Clone, Debug)]
@@ -83,6 +83,19 @@ impl VariableBounds {
         self.update(|b| b * 2, clamp)
     }
 
+    /// Returns true if the bounds are less than or equal the given value.
+    pub fn leq(&self, value: usize) -> bool {
+        if self.default > value {
+            return false;
+        }
+        for (_, bound) in self.bounds.iter() {
+            if *bound > value {
+                return false;
+            }
+        }
+        true
+    }
+
     /// Updates the bounds of all variables such that they are the next square number greater than the current value.
     pub fn next_square(&mut self, clamp: Option<usize>) -> bool {
         self.update(|b| ((b as f64).sqrt() + 1f64).powi(2) as usize, clamp)
@@ -97,6 +110,24 @@ impl std::fmt::Display for VariableBounds {
         }
         write!(f, ", default: {}}}", self.default)?;
         Ok(())
+    }
+}
+
+impl std::cmp::PartialEq for VariableBounds {
+    fn eq(&self, other: &Self) -> bool {
+        if self.default != other.default {
+            return false;
+        }
+        // Check if all vars known by any of the bounds have the same bound
+        let mut all_vars = HashSet::new();
+        all_vars.extend(self.bounds.keys());
+        all_vars.extend(other.bounds.keys());
+        for var in all_vars {
+            if self.get(var) != other.get(var) {
+                return false;
+            }
+        }
+        true
     }
 }
 

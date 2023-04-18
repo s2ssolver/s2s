@@ -28,11 +28,21 @@ impl IWoorpjeEncoder {
         subs: &SubstitutionEncoding,
     ) -> EncodingResult {
         let mut cnf = Cnf::new();
-        assert!(self.pat_lhs.len() <= lhs.length(), "Pattern is shrinking");
-        assert!(self.pat_rhs.len() <= rhs.length(), "Pattern is shrinking");
+        assert!(
+            self.last_len.0 <= lhs.length(),
+            "Pattern shrinking: {} <= {}",
+            lhs.length(),
+            self.last_len.0
+        );
+        assert!(
+            self.last_len.1 <= rhs.length(),
+            "Pattern shrinking: {} <= {}",
+            lhs.length(),
+            self.last_len.0
+        );
 
         // Left-hand side
-        for i in self.pat_lhs.len()..lhs.length() {
+        for i in self.last_len.0..lhs.length() {
             let mut choices = Vec::new();
             for c in subs.alphabet_lambda() {
                 let v = pvar();
@@ -42,7 +52,7 @@ impl IWoorpjeEncoder {
             cnf.extend(exactly_one(&choices));
         }
         // Right-hand side
-        for i in self.pat_rhs.len()..rhs.length() {
+        for i in self.last_len.1..rhs.length() {
             let mut choices = Vec::new();
             for c in subs.alphabet_lambda() {
                 let v = pvar();
@@ -255,7 +265,7 @@ impl PredicateEncoder for IWoorpjeEncoder {
         bounds: &VariableBounds,
         substitution: &SubstitutionEncoding,
     ) -> EncodingResult {
-        let mut res = EncodingResult::Trivial(true);
+        let mut res = EncodingResult::empty();
         let lhs = &FilledPattern::fill(self.equation.lhs(), bounds);
         let rhs = &FilledPattern::fill(self.equation.rhs(), bounds);
 
@@ -269,7 +279,6 @@ impl PredicateEncoder for IWoorpjeEncoder {
         res.join(self.encode_transitions(substitution));
         res.join(self.encode_initial_state());
         res.join(self.encode_accepting_state());
-        // TODO: All positions that have no match on the other side are unconstrained, needs to be fixed
         self.last_len = (lhs.length(), rhs.length());
         res
     }
@@ -355,6 +364,45 @@ mod tests {
             );
         }
         res
+    }
+
+    fn solve_iwoorpje_incremental(
+        eq: &WordEquation,
+        limit: usize,
+        alphabet: &HashSet<char>,
+    ) -> Option<bool> {
+        let mut bounds = VariableBounds::new(1);
+
+        let mut encoder = IWoorpjeEncoder::new(eq.clone());
+        let mut subs_encoder = SubstitutionEncoder::new(alphabet.clone(), eq.variables());
+
+        let mut result = None;
+        let mut done = bounds.leq(limit);
+        let mut solver: cadical::Solver = cadical::Solver::new();
+        while done {
+            let mut encoding = EncodingResult::empty();
+            println!("{}", bounds);
+            encoding.join(subs_encoder.encode(&bounds));
+            encoding.join(encoder.encode(&bounds, subs_encoder.get_encoding().unwrap()));
+            result = match encoding {
+                EncodingResult::Cnf(cnf, assm) => {
+                    for clause in cnf {
+                        solver.add_clause(clause);
+                    }
+                    solver.solve_with(assm.into_iter())
+                }
+                EncodingResult::Trivial(f) => Some(f),
+            };
+            done = bounds.next_square(Some(limit));
+        }
+        result
+    }
+
+    #[test]
+    fn iwoorpje_incremental_sat() {
+        let eq = WordEquation::parse_simple("abc", "X");
+        let res = solve_iwoorpje_incremental(&eq, 10, &eq.alphabet());
+        assert!(matches!(res, Some(true)));
     }
 
     #[test]

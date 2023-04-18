@@ -239,6 +239,11 @@ impl WordEquation {
         Self { lhs, rhs }
     }
 
+    /// Returns the empty word equation.
+    pub fn empty() -> Self {
+        Self::new(Pattern::empty(), Pattern::empty())
+    }
+
     /// Parses a word equation from two strings, where lowercase chars are interpreted as constants and uppercase chars are interpreted as variables.
     pub fn parse_simple(lhs: &str, rhs: &str) -> Self {
         let mut pat_lhs = Pattern::empty();

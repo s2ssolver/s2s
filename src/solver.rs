@@ -1,13 +1,14 @@
 use std::collections::{HashMap, HashSet};
+
 use std::time::Instant;
 
 use crate::encode::{EncodingResult, VariableBounds};
-use crate::encode::{PredicateEncoder, WoorpjeEncoder, WordEquationEncoder};
+use crate::encode::{IWoorpjeEncoder, WoorpjeEncoder, WordEquationEncoder};
 use crate::formula::{Atom, Formula, Predicate};
 use crate::model::words::{Pattern, Symbol};
 use crate::model::{words::WordEquation, Variable};
 
-use crate::encode::substitution::{SubstitutionEncoder, SubstitutionEncoding};
+use crate::encode::substitution::SubstitutionEncoder;
 /// A problem instance, consisting of a formula and a set of variables
 /// Should be created using the `parse` module
 #[derive(Clone, Debug)]
@@ -102,78 +103,72 @@ pub trait Solver {
     fn solve(&mut self) -> SolverResult;
 }
 
-/// The Woorpje solver for word equations.
-/// This solver uses a SAT solver to check whether a word equation is satisfiable.
-/// Can only solver instances with a single word equation.
-pub struct Woorpje {
+/// Solver for a single word equation that uses a WordEquationEncoder to encode the instance.
+struct EquationSolver<T: WordEquationEncoder> {
     equation: WordEquation,
     bounds: VariableBounds,
     max_bound: Option<usize>,
-    /// The encoding of the substitution variables. Needed to create the solution.
-    sub_encoding: Option<SubstitutionEncoding>,
+    encoder: T,
+    subs_encoder: SubstitutionEncoder,
 }
 
-impl Woorpje {
+impl<T: WordEquationEncoder> EquationSolver<T> {
     /// Create a new Woorpje solver for the given instance.
     /// Returns an error if the instance is not a single word equation.
     pub fn new(instance: &Instance) -> Result<Self, String> {
-        match &instance.formula {
-            Formula::Atom(Atom::Predicate(Predicate::WordEquation(eq))) => Ok(Self {
-                equation: eq.clone(),
-                bounds: VariableBounds::new(1),
-                max_bound: instance.ubound,
-                sub_encoding: None,
-            }),
+        let eq = match &instance.formula {
+            Formula::Atom(Atom::Predicate(Predicate::WordEquation(eq))) => Ok(eq.clone()),
             Formula::False => {
                 let mut lhs = Pattern::empty();
                 lhs.append(&Symbol::Constant('a'));
-                Ok(Self {
-                    equation: WordEquation::new(lhs, Pattern::empty()),
-                    bounds: VariableBounds::new(1),
-                    max_bound: instance.ubound,
-                    sub_encoding: None,
-                })
+                Ok(WordEquation::new(lhs, Pattern::empty()))
             }
-            Formula::True => Ok(Self {
-                equation: WordEquation::new(Pattern::empty(), Pattern::empty()),
-                bounds: VariableBounds::new(1),
-                max_bound: instance.ubound,
-                sub_encoding: None,
-            }),
+            Formula::True => Ok(WordEquation::empty()),
             _ => Err("Instance is not a single word equation".to_string()),
-        }
+        }?;
+        let subs_encoder = SubstitutionEncoder::new(eq.alphabet(), eq.variables());
+        Ok(Self {
+            encoder: T::new(eq.clone()),
+            equation: eq,
+            bounds: VariableBounds::new(1),
+            max_bound: instance.ubound,
+            subs_encoder,
+        })
     }
 }
 
-impl Woorpje {
+impl<T: WordEquationEncoder> EquationSolver<T> {
     fn encode_bounded(&mut self) -> EncodingResult {
         let bounds = sharpen_bounds(&self.equation, &self.bounds, &self.equation.variables());
         log::debug!("Sharpened bounds: {:?}", bounds);
-        //let bounds = &self.bounds;
-        // Create a new one for each call to encode_bounded because woorpje is not incremental
-        let mut subs_encoder =
-            SubstitutionEncoder::new(self.equation.alphabet(), self.equation.variables());
+
         let mut encoding = EncodingResult::empty();
 
         let ts = Instant::now();
-        let subs_cnf = subs_encoder.encode(&bounds);
+        let subs_cnf = self.subs_encoder.encode(&bounds);
         log::debug!(
             "Encoded substitution in {} clauses ({} ms)",
             subs_cnf.clauses(),
             ts.elapsed().as_millis()
         );
         encoding.join(subs_cnf);
-        let sub_encoding = subs_encoder.get_encoding().unwrap();
-        let mut encoder = WoorpjeEncoder::new(self.equation.clone());
-        encoding.join(encoder.encode(&bounds, sub_encoding));
-        self.sub_encoding = Some(sub_encoding.clone());
+        let sub_encoding = self.subs_encoder.get_encoding().unwrap();
+        encoding.join(self.encoder.encode(&bounds, sub_encoding));
         encoding
+    }
+
+    // Reset all states
+    fn reset(&mut self) {
+        self.subs_encoder =
+            SubstitutionEncoder::new(self.equation.alphabet(), self.equation.variables());
+        self.encoder.reset();
     }
 }
 
-impl Solver for Woorpje {
+impl<T: WordEquationEncoder> Solver for EquationSolver<T> {
     fn solve(&mut self) -> SolverResult {
         log::info!("Started solving loop");
+        let mut cadical: cadical::Solver = cadical::Solver::new();
         loop {
             log::info!("Current bounds {}", self.bounds);
             let ts = Instant::now();
@@ -182,27 +177,37 @@ impl Solver for Woorpje {
             log::info!("Encoding took {} ms", elapsed);
             match encoding {
                 EncodingResult::Cnf(clauses, assms) => {
-                    let mut cadical: cadical::Solver = cadical::Solver::new();
                     let n_clauses = clauses.len();
                     let ts = Instant::now();
                     for clause in clauses.into_iter() {
                         cadical.add_clause(clause);
                     }
                     log::info!(
-                        "Added {} ({}) clauses in {} ms",
+                        "Added {} (total {}) clauses in {} ms",
                         n_clauses,
                         cadical.num_clauses(),
                         ts.elapsed().as_millis()
                     );
                     let ts = Instant::now();
                     let res = cadical.solve_with(assms.iter().cloned());
-                    log::info!("Solving took {} ms", ts.elapsed().as_millis());
+                    log::info!(
+                        "Done SAT solving: {} ({}ms)",
+                        res.unwrap_or(false),
+                        ts.elapsed().as_millis()
+                    );
                     if let Some(true) = res {
-                        let solution = match &self.sub_encoding {
+                        let solution = match &self.subs_encoder.get_encoding() {
                             Some(sub_encoding) => sub_encoding.get_substitutions(&cadical),
                             None => HashMap::new(),
                         };
                         return SolverResult::Sat(solution);
+                    } else {
+                        if !self.encoder.is_incremental() {
+                            // reset states if solver is not incremental
+                            self.reset();
+                            cadical = cadical::Solver::new();
+                            log::debug!("Reset state");
+                        }
                     }
                 }
                 EncodingResult::Trivial(false) => return SolverResult::Unsat,
@@ -253,4 +258,43 @@ fn sharpen_bounds(
         }
     }
     new_bounds
+}
+
+/// The Woorpje solver for word equations.
+/// This solver uses a SAT solver to check whether a word equation is satisfiable.
+/// Can only solver instances with a single word equation.
+pub struct Woorpje {
+    solver: EquationSolver<WoorpjeEncoder>,
+}
+
+impl Solver for Woorpje {
+    fn solve(&mut self) -> SolverResult {
+        self.solver.solve()
+    }
+}
+
+impl Woorpje {
+    pub fn new(instance: &Instance) -> Result<Self, String> {
+        let solver = EquationSolver::new(instance)?;
+        Ok(Self { solver })
+    }
+}
+
+/// The incremental extension of the Woorpje solver for word equations.
+/// Can only solver instances with a single word equation.
+pub struct IWoorpje {
+    solver: EquationSolver<IWoorpjeEncoder>,
+}
+
+impl Solver for IWoorpje {
+    fn solve(&mut self) -> SolverResult {
+        self.solver.solve()
+    }
+}
+
+impl IWoorpje {
+    pub fn new(instance: &Instance) -> Result<Self, String> {
+        let solver = EquationSolver::new(instance)?;
+        Ok(Self { solver })
+    }
 }

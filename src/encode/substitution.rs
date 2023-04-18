@@ -97,6 +97,8 @@ pub struct SubstitutionEncoder {
     vars: HashSet<Variable>,
     last_bounds: Option<VariableBounds>,
     alphabet: HashSet<char>,
+    // If true, then no lambda substitutions are allowed
+    singular: bool,
 }
 
 impl SubstitutionEncoder {
@@ -106,6 +108,7 @@ impl SubstitutionEncoder {
             vars,
             alphabet,
             last_bounds: None,
+            singular: false,
         }
     }
 
@@ -122,7 +125,7 @@ impl SubstitutionEncoder {
             let bound = bounds.get(var);
             let last_bound = self.pre_bounds(var).unwrap_or(0);
             let encoding = self.encoding.as_mut().unwrap();
-
+            encoding.bounds = bounds.clone();
             // Todo: this is bad because it clones the alphabet
             let alph = self.alphabet.clone();
             for b in (last_bound..bound).rev() {
@@ -133,18 +136,20 @@ impl SubstitutionEncoder {
                     encoding.add(var, b, *c, subvar);
                     pos_subs.push(subvar)
                 }
-                // Lambda
-                let subvar_lambda = pvar();
-                encoding.add(var, b, LAMBDA, subvar_lambda);
-                pos_subs.push(subvar_lambda);
+                if !self.singular {
+                    // Lambda
+                    let subvar_lambda = pvar();
+                    encoding.add(var, b, LAMBDA, subvar_lambda);
+                    pos_subs.push(subvar_lambda);
 
-                // If current position is LAMBDA, then all following must be LAMBDA
-                if b + 1 < bound {
-                    let clause = vec![
-                        neg(subvar_lambda),
-                        as_lit(encoding.get(var, b + 1, LAMBDA).unwrap()),
-                    ];
-                    cnf.push(clause);
+                    // If current position is LAMBDA, then all following must be LAMBDA
+                    if b + 1 < bound {
+                        let clause = vec![
+                            neg(subvar_lambda),
+                            as_lit(encoding.get(var, b + 1, LAMBDA).unwrap()),
+                        ];
+                        cnf.push(clause);
+                    }
                 }
                 // Exactly one needs to be selected
                 cnf.extend(exactly_one(&pos_subs));
@@ -170,6 +175,9 @@ impl SubstitutionEncoder {
 mod tests {
     use std::collections::HashSet;
 
+    use quickcheck::TestResult;
+    use quickcheck_macros::quickcheck;
+
     use crate::{encode::VariableBounds, model::Variable};
 
     use super::SubstitutionEncoder;
@@ -194,5 +202,111 @@ mod tests {
                     .is_some());
             }
         }
+    }
+
+    #[test]
+    fn all_subst_defined_incremental() {
+        let var = Variable::tmp_var(crate::model::Sort::String);
+        let alphabet = HashSet::from_iter(vec!['a', 'b', 'c']);
+        let vars = HashSet::from_iter(vec![var.clone()]);
+        let mut encoder = SubstitutionEncoder::new(alphabet, vars);
+
+        let bounds = VariableBounds::new(5);
+        encoder.encode(&bounds);
+        let bounds = VariableBounds::new(10);
+        encoder.encode(&bounds);
+
+        for b in 0..10 {
+            for c in encoder.get_encoding().unwrap().alphabet_lambda() {
+                assert!(encoder
+                    .get_encoding()
+                    .unwrap()
+                    .get_lit(&var, b, c)
+                    .is_some());
+            }
+        }
+    }
+
+    #[quickcheck]
+    fn solution_is_valid_substitution(len: u8) -> TestResult {
+        if len == 0 {
+            return TestResult::discard();
+        }
+        let var = Variable::tmp_var(crate::model::Sort::String);
+        let alphabet = HashSet::from_iter(vec!['a', 'b', 'c', 'd']);
+        let vars = HashSet::from_iter(vec![var.clone()]);
+        let mut encoder = SubstitutionEncoder::new(alphabet, vars);
+        encoder.singular = true;
+
+        let bounds = VariableBounds::new(len as usize);
+        let mut solver: cadical::Solver = cadical::Solver::new();
+        match encoder.encode(&bounds) {
+            crate::encode::EncodingResult::Cnf(cnf, _) => {
+                cnf.into_iter().for_each(|cl| solver.add_clause(cl));
+                solver.solve();
+            }
+            crate::encode::EncodingResult::Trivial(_) => unreachable!(),
+        }
+
+        // This will panic if the substitution is not valid
+        let subs = encoder.get_encoding().unwrap().get_substitutions(&solver);
+        assert!(
+            subs.get(&var).is_some(),
+            "No substitution found (length is {})",
+            len
+        );
+        let sub = subs.get(&var).unwrap();
+        assert!(
+            sub.chars().count() == len as usize,
+            "Substitution is too long"
+        );
+        TestResult::passed()
+    }
+
+    #[quickcheck]
+    fn incremental_solution_is_valid_substitution(len: u8) -> TestResult {
+        if len == 0 {
+            return TestResult::discard();
+        }
+        let var = Variable::tmp_var(crate::model::Sort::String);
+        let alphabet = HashSet::from_iter(vec!['a', 'b', 'c', 'd']);
+        let vars = HashSet::from_iter(vec![var.clone()]);
+        let mut encoder = SubstitutionEncoder::new(alphabet, vars);
+
+        let mut bounds = VariableBounds::new(len as usize);
+        let mut solver: cadical::Solver = cadical::Solver::new();
+        match encoder.encode(&bounds) {
+            crate::encode::EncodingResult::Cnf(cnf, _) => {
+                cnf.into_iter().for_each(|cl| solver.add_clause(cl));
+                solver.solve();
+            }
+            crate::encode::EncodingResult::Trivial(_) => unreachable!(),
+        }
+        bounds.double(None);
+        match encoder.encode(&bounds) {
+            crate::encode::EncodingResult::Cnf(cnf, _) => {
+                cnf.into_iter().for_each(|cl| solver.add_clause(cl));
+                solver.solve();
+            }
+            crate::encode::EncodingResult::Trivial(_) => unreachable!(),
+        }
+
+        // This will panic if the substitution is not valid
+        let subs = encoder.get_encoding().unwrap().get_substitutions(&solver);
+        assert!(
+            subs.get(&var).is_some(),
+            "No substitution found (length is {})",
+            len
+        );
+        let sub = subs.get(&var).unwrap();
+        let expected_len = (len as usize) * 2;
+        assert!(
+            sub.chars().count() == expected_len,
+            "Expected length {}, got {}: {}",
+            expected_len,
+            sub.chars().count(),
+            sub
+        );
+        TestResult::passed()
     }
 }
