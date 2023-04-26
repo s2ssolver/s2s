@@ -1,7 +1,6 @@
-use std::{
-    collections::{HashMap, HashSet},
-    path::PathBuf,
-};
+use std::{collections::HashMap, path::PathBuf};
+
+use indexmap::IndexSet;
 
 use crate::{
     formula::{Atom, Formula},
@@ -29,7 +28,7 @@ impl Parser {
 
 fn parse_woorpje(input: &str) -> Result<Instance, String> {
     let mut vars = HashMap::new();
-    let mut alphabet = HashSet::new();
+    let mut alphabet = IndexSet::new();
     let mut formula = Formula::True;
 
     for line in input.lines() {

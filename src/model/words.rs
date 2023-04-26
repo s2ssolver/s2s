@@ -1,10 +1,11 @@
 use std::{
     cmp::min,
-    collections::{HashMap, HashSet},
+    collections::HashMap,
     fmt::{Display, Formatter},
     slice::Iter,
 };
 
+use indexmap::IndexSet;
 use quickcheck::Arbitrary;
 
 use crate::model::{Sort, Variable};
@@ -60,8 +61,8 @@ impl Pattern {
     }
 
     /// Returns the alphabet of the pattern, i.e. the set of constant characters that occur in the pattern.
-    pub fn alphabet(&self) -> HashSet<char> {
-        let mut alphabet = HashSet::new();
+    pub fn alphabet(&self) -> IndexSet<char> {
+        let mut alphabet = IndexSet::new();
         for symbol in &self.symbols {
             if let Symbol::Constant(c) = symbol {
                 alphabet.insert(*c);
@@ -75,7 +76,7 @@ impl Pattern {
     }
 
     /// Returns the set of variables that occur in the pattern.
-    pub fn vars(&self) -> HashSet<Variable> {
+    pub fn vars(&self) -> IndexSet<Variable> {
         self.symbols
             .iter()
             .filter_map(|x| match x {
@@ -283,7 +284,7 @@ impl WordEquation {
         Self::new(self.rhs.reverse(), self.lhs.reverse())
     }
 
-    pub fn variables(&self) -> HashSet<Variable> {
+    pub fn variables(&self) -> IndexSet<Variable> {
         self.lhs.vars().union(&self.rhs.vars()).cloned().collect()
     }
 
@@ -293,7 +294,7 @@ impl WordEquation {
             && self.lhs.substitute(substitution).is_some()
     }
 
-    pub fn alphabet(&self) -> HashSet<char> {
+    pub fn alphabet(&self) -> IndexSet<char> {
         self.lhs
             .alphabet()
             .union(&self.rhs.alphabet())

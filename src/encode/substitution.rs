@@ -1,10 +1,12 @@
+use indexmap::IndexSet;
+
 use super::{card::exactly_one, EncodingResult};
 use crate::{
     encode::LAMBDA,
     model::Variable,
     sat::{as_lit, neg, pvar, Cnf, PLit, PVar},
 };
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 use super::VariableBounds;
 
@@ -12,11 +14,11 @@ use super::VariableBounds;
 pub struct SubstitutionEncoding {
     encodings: HashMap<(Variable, usize, char), PVar>,
     bounds: VariableBounds,
-    alphabet: HashSet<char>,
+    alphabet: IndexSet<char>,
 }
 
 impl SubstitutionEncoding {
-    pub fn new(alphabet: HashSet<char>, bounds: VariableBounds) -> Self {
+    pub fn new(alphabet: IndexSet<char>, bounds: VariableBounds) -> Self {
         Self {
             encodings: HashMap::new(),
             alphabet,
@@ -37,16 +39,16 @@ impl SubstitutionEncoding {
     }
 
     #[allow(dead_code)]
-    pub fn alphabet(&self) -> &HashSet<char> {
+    pub fn alphabet(&self) -> &IndexSet<char> {
         &self.alphabet
     }
 
-    pub fn alphabet_lambda(&self) -> HashSet<char> {
-        let l = HashSet::from_iter(vec![LAMBDA]);
+    pub fn alphabet_lambda(&self) -> IndexSet<char> {
+        let l: IndexSet<char> = IndexSet::from_iter(vec![LAMBDA]);
         self.alphabet.union(&l).cloned().collect()
     }
 
-    fn vars(&self) -> HashSet<&Variable> {
+    fn vars(&self) -> IndexSet<&Variable> {
         self.encodings.keys().map(|(v, _, _)| v).collect()
     }
 
@@ -94,15 +96,15 @@ impl SubstitutionEncoding {
 
 pub struct SubstitutionEncoder {
     encoding: Option<SubstitutionEncoding>,
-    vars: HashSet<Variable>,
+    vars: IndexSet<Variable>,
     last_bounds: Option<VariableBounds>,
-    alphabet: HashSet<char>,
+    alphabet: IndexSet<char>,
     // If true, then no lambda substitutions are allowed
     singular: bool,
 }
 
 impl SubstitutionEncoder {
-    pub fn new(alphabet: HashSet<char>, vars: HashSet<Variable>) -> Self {
+    pub fn new(alphabet: IndexSet<char>, vars: IndexSet<Variable>) -> Self {
         Self {
             encoding: None,
             vars,
@@ -173,8 +175,8 @@ impl SubstitutionEncoder {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashSet;
 
+    use indexmap::IndexSet;
     use quickcheck::TestResult;
     use quickcheck_macros::quickcheck;
 
@@ -185,8 +187,8 @@ mod tests {
     #[test]
     fn all_subst_defined() {
         let var = Variable::tmp_var(crate::model::Sort::String);
-        let alphabet = HashSet::from_iter(vec!['a', 'b', 'c']);
-        let vars = HashSet::from_iter(vec![var.clone()]);
+        let alphabet = IndexSet::from_iter(vec!['a', 'b', 'c']);
+        let vars = IndexSet::from_iter(vec![var.clone()]);
         let mut encoder = SubstitutionEncoder::new(alphabet, vars);
         let mb = 10;
         let bounds = VariableBounds::new(mb);
@@ -207,8 +209,8 @@ mod tests {
     #[test]
     fn all_subst_defined_incremental() {
         let var = Variable::tmp_var(crate::model::Sort::String);
-        let alphabet = HashSet::from_iter(vec!['a', 'b', 'c']);
-        let vars = HashSet::from_iter(vec![var.clone()]);
+        let alphabet = IndexSet::from_iter(vec!['a', 'b', 'c']);
+        let vars = IndexSet::from_iter(vec![var.clone()]);
         let mut encoder = SubstitutionEncoder::new(alphabet, vars);
 
         let bounds = VariableBounds::new(5);
@@ -233,8 +235,8 @@ mod tests {
             return TestResult::discard();
         }
         let var = Variable::tmp_var(crate::model::Sort::String);
-        let alphabet = HashSet::from_iter(vec!['a', 'b', 'c', 'd']);
-        let vars = HashSet::from_iter(vec![var.clone()]);
+        let alphabet = IndexSet::from_iter(vec!['a', 'b', 'c', 'd']);
+        let vars = IndexSet::from_iter(vec![var.clone()]);
         let mut encoder = SubstitutionEncoder::new(alphabet, vars);
         encoder.singular = true;
 
@@ -269,8 +271,8 @@ mod tests {
             return TestResult::discard();
         }
         let var = Variable::tmp_var(crate::model::Sort::String);
-        let alphabet = HashSet::from_iter(vec!['a', 'b', 'c', 'd']);
-        let vars = HashSet::from_iter(vec![var.clone()]);
+        let alphabet = IndexSet::from_iter(vec!['a', 'b', 'c', 'd']);
+        let vars = IndexSet::from_iter(vec![var.clone()]);
         let mut encoder = SubstitutionEncoder::new(alphabet, vars);
 
         let mut bounds = VariableBounds::new(len as usize);

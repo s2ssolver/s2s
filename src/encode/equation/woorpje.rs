@@ -293,11 +293,11 @@ impl WordEquationEncoder for WoorpjeEncoder {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashSet;
 
     use super::*;
     use cadical::Solver;
 
+    use indexmap::IndexSet;
     use quickcheck_macros::quickcheck;
 
     use crate::{
@@ -350,7 +350,7 @@ mod tests {
     fn solve_woorpje(
         eq: &WordEquation,
         bounds: VariableBounds,
-        alphabet: &HashSet<char>,
+        alphabet: &IndexSet<char>,
     ) -> Option<bool> {
         let mut encoding = EncodingResult::empty();
         let mut subs_encoder = SubstitutionEncoder::new(alphabet.clone(), eq.variables());

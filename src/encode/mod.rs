@@ -1,9 +1,4 @@
-use std::{
-    cmp::min,
-    collections::{HashMap, HashSet},
-    ops::Index,
-    slice::Iter,
-};
+use std::{cmp::min, collections::HashMap, ops::Index, slice::Iter};
 
 use crate::{
     model::{
@@ -23,6 +18,7 @@ mod equation;
 pub mod substitution;
 
 pub use equation::{IWoorpjeEncoder, WoorpjeEncoder, WordEquationEncoder};
+use indexmap::IndexSet;
 
 /// Bound for each variable
 #[derive(Clone, Debug)]
@@ -119,7 +115,7 @@ impl std::cmp::PartialEq for VariableBounds {
             return false;
         }
         // Check if all vars known by any of the bounds have the same bound
-        let mut all_vars = HashSet::new();
+        let mut all_vars = IndexSet::new();
         all_vars.extend(self.bounds.keys());
         all_vars.extend(other.bounds.keys());
         for var in all_vars {
@@ -194,24 +190,24 @@ impl Index<usize> for FilledPattern {
 
 pub enum EncodingResult {
     /// The CNF encoding of the problem
-    Cnf(Cnf, HashSet<PLit>),
+    Cnf(Cnf, IndexSet<PLit>),
     /// The encoding is trivially valid or unsat
     Trivial(bool),
 }
 
 impl EncodingResult {
     pub fn empty() -> Self {
-        EncodingResult::Cnf(vec![], HashSet::new())
+        EncodingResult::Cnf(vec![], IndexSet::new())
     }
 
     /// Conjunctive normal form with no assumptions
     pub fn cnf(cnf: Cnf) -> Self {
-        EncodingResult::Cnf(cnf, HashSet::new())
+        EncodingResult::Cnf(cnf, IndexSet::new())
     }
 
     /// Empty CNF with a single assumption
     pub fn assumption(assumption: PLit) -> Self {
-        let mut asm = HashSet::new();
+        let mut asm = IndexSet::new();
         asm.insert(assumption);
         EncodingResult::Cnf(vec![], asm)
     }

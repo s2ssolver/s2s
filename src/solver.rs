@@ -1,7 +1,8 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
-use std::fmt::Display;
 use std::time::Instant;
+
+use indexmap::IndexSet;
 
 use crate::encode::{EncodingResult, VariableBounds};
 use crate::encode::{IWoorpjeEncoder, WoorpjeEncoder, WordEquationEncoder};
@@ -17,7 +18,7 @@ pub struct Instance {
     /// The formula to solve
     formula: Formula,
     /// The set of all variables
-    vars: HashSet<Variable>,
+    vars: IndexSet<Variable>,
     /// The maximum bound for any variable to check.
     /// If `None`, no bound is set, which will might in an infinite search if the instance is not satisfiable.
     /// If `Some(n)`, the solver will only check for a solution with a bound of `n`.
@@ -57,7 +58,7 @@ impl Instance {
         &self.formula
     }
 
-    pub fn get_vars(&self) -> &HashSet<Variable> {
+    pub fn get_vars(&self) -> &IndexSet<Variable> {
         &self.vars
     }
 }
@@ -244,7 +245,7 @@ impl<T: WordEquationEncoder> Solver for EquationSolver<T> {
 fn sharpen_bounds(
     eq: &WordEquation,
     bounds: &VariableBounds,
-    vars: &HashSet<Variable>,
+    vars: &IndexSet<Variable>,
 ) -> VariableBounds {
     let mut new_bounds = bounds.clone();
     // Todo: Cache this or do linearly
