@@ -16,7 +16,7 @@ struct Options {
     #[arg(short = 'b', long, value_enum, default_value = None)]
     max_bound: Option<usize>,
     /// The minimal initial variable bound to start the search with
-    #[arg(long, value_enum, default_value = "1")]
+    #[arg(long, short = 'm', value_enum, default_value = "1")]
     min_bound: usize,
     /// The input file to use, must be either in SMT2 or WOORPJE format, according to the `format` argument
     file: String,
@@ -49,9 +49,11 @@ fn main() {
     }
     let mut instance = parser.parse(file.to_path_buf()).unwrap();
     if let Some(bound) = cli.max_bound {
-        instance.set_bound(bound);
+        instance.set_ubound(bound);
     }
+    instance.set_lbound(cli.min_bound);
     instance.set_formula(preprocess(instance.get_formula()));
+
     let mut solver = match cli.solver {
         SolverType::Woorpje => Box::new(Woorpje::new(&instance).unwrap()) as Box<dyn Solver>,
         SolverType::Iwoorpje => Box::new(IWoorpje::new(&instance).unwrap()) as Box<dyn Solver>,

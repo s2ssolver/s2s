@@ -23,19 +23,26 @@ pub struct Instance {
     /// If `Some(n)`, the solver will only check for a solution with a bound of `n`.
     /// If no solution is found with every variable bound to `n`, the solver will return `Unsat`.
     ubound: Option<usize>,
+    /// The bound to initialize all variables with, defaults to 1
+    lbound: usize,
 }
 
 impl Instance {
-    pub fn new(formula: Formula, vars: HashSet<Variable>) -> Self {
+    pub fn new(formula: Formula, vars: IndexSet<Variable>) -> Self {
         Instance {
             formula,
             vars,
             ubound: None,
+            lbound: 1,
         }
     }
 
-    pub fn set_bound(&mut self, bound: usize) {
+    pub fn set_ubound(&mut self, bound: usize) {
         self.ubound = Some(bound);
+    }
+
+    pub fn set_lbound(&mut self, bound: usize) {
+        self.lbound = bound;
     }
 
     pub fn set_formula(&mut self, formula: Formula) {
@@ -131,7 +138,7 @@ impl<T: WordEquationEncoder> EquationSolver<T> {
         Ok(Self {
             encoder: T::new(eq.clone()),
             equation: eq,
-            bounds: VariableBounds::new(1),
+            bounds: VariableBounds::new(instance.lbound),
             max_bound: instance.ubound,
             subs_encoder,
         })
