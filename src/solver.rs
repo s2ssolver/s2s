@@ -1,5 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
+use std::fmt::Display;
 use std::time::Instant;
 
 use crate::encode::{EncodingResult, VariableBounds};
@@ -167,14 +168,17 @@ impl<T: WordEquationEncoder> EquationSolver<T> {
 
 impl<T: WordEquationEncoder> Solver for EquationSolver<T> {
     fn solve(&mut self) -> SolverResult {
-        log::info!("Started solving loop");
+        log::info!("Started solving loop for equation {}", self.equation);
         let mut cadical: cadical::Solver = cadical::Solver::new();
+        let mut time_encoding = 0;
+        let mut time_solving = 0;
         loop {
             log::info!("Current bounds {}", self.bounds);
             let ts = Instant::now();
             let encoding = self.encode_bounded();
             let elapsed = ts.elapsed().as_millis();
             log::info!("Encoding took {} ms", elapsed);
+            time_encoding += elapsed;
             match encoding {
                 EncodingResult::Cnf(clauses, assms) => {
                     let n_clauses = clauses.len();
@@ -182,24 +186,33 @@ impl<T: WordEquationEncoder> Solver for EquationSolver<T> {
                     for clause in clauses.into_iter() {
                         cadical.add_clause(clause);
                     }
+                    let t_adding = ts.elapsed().as_millis();
                     log::info!(
                         "Added {} (total {}) clauses in {} ms",
                         n_clauses,
                         cadical.num_clauses(),
-                        ts.elapsed().as_millis()
+                        t_adding
                     );
+                    time_encoding += t_adding;
                     let ts = Instant::now();
                     let res = cadical.solve_with(assms.iter().cloned());
+                    let t_solving = ts.elapsed().as_millis();
                     log::info!(
                         "Done SAT solving: {} ({}ms)",
                         res.unwrap_or(false),
-                        ts.elapsed().as_millis()
+                        t_solving
                     );
+                    time_solving += t_solving;
                     if let Some(true) = res {
                         let solution = match &self.subs_encoder.get_encoding() {
                             Some(sub_encoding) => sub_encoding.get_substitutions(&cadical),
                             None => HashMap::new(),
                         };
+                        log::info!(
+                            "Done. Total time encoding/solving: {}/{} ms",
+                            time_encoding,
+                            time_solving
+                        );
                         return SolverResult::Sat(solution);
                     } else {
                         if !self.encoder.is_incremental() {

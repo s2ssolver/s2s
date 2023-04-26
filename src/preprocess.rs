@@ -34,7 +34,9 @@ fn strip(weq: &WordEquation) -> WordEquation {
 
 /// Preprocesses the given word equation by stripping the longest common prefix and suffix from both sides.
 fn preprocess_word_equation(weq: &WordEquation) -> WordEquation {
-    strip(weq)
+    let sripped = strip(weq);
+    log::debug!("Stripped {} to {}", weq, sripped);
+    sripped
 }
 
 fn preprocess_predicate(pred: &Predicate) -> Predicate {

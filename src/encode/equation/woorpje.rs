@@ -357,7 +357,7 @@ mod tests {
 
         let subs_cnf = subs_encoder.encode(&bounds);
         encoding.join(subs_cnf);
-        println!("Solving {}", eq);
+
         let mut encoder = WoorpjeEncoder::new(eq.clone());
         encoding.join(encoder.encode(&bounds, subs_encoder.get_encoding().unwrap()));
 
@@ -387,7 +387,6 @@ mod tests {
             );
             println!("Solution: {:?}", solution);
             if let Some(svs) = encoder.get_state_vars() {
-                println!("{:?}", svs);
                 for j in 0..svs[0].len() {
                     print!("\t{}", j)
                 }
@@ -401,7 +400,6 @@ mod tests {
                             print!("0\t")
                         }
                     }
-                    println!();
                 }
             }
         }

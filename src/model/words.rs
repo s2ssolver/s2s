@@ -300,6 +300,12 @@ impl WordEquation {
             .cloned()
             .collect()
     }
+
+    pub fn apply(&self, substitution: &HashMap<Variable, String>) -> Option<Self> {
+        let lhs = self.lhs.substitute(substitution)?;
+        let rhs = self.rhs.substitute(substitution)?;
+        Some(Self::constant(&lhs, &rhs))
+    }
 }
 
 impl Display for WordEquation {

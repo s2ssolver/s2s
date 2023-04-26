@@ -121,27 +121,39 @@ impl IWoorpjeEncoder {
         EncodingResult::Cnf(cnf, assms)
     }
 
-    fn update_state_vars(&mut self, u_size: usize, v_size: usize) {
+    fn update_state_vars(&mut self, u_size: usize, v_size: usize) -> EncodingResult {
         let n_old = self.state_vars.len();
 
-        for i in 0..u_size + 1 {
+        for i in 0..u_size + 2 {
             if i < n_old {
                 // Extend existing row
-                for _ in self.state_vars[i].len()..v_size + 1 {
+                for _ in self.state_vars[i].len()..v_size + 2 {
                     self.state_vars[i].push(pvar());
                 }
             } else {
                 // Add new row
                 let mut row = Vec::new();
-                for _ in 0..v_size + 1 {
+                for _ in 0..v_size + 2 {
                     row.push(pvar());
                 }
                 self.state_vars.push(row);
             }
         }
 
-        assert_eq!(u_size + 1, self.state_vars.len());
-        assert_eq!(v_size + 1, self.state_vars[0].len());
+        assert_eq!(u_size + 2, self.state_vars.len());
+        assert_eq!(v_size + 2, self.state_vars[0].len());
+
+        let xborder = self.state_vars.len() - 1;
+        let yborder = self.state_vars[0].len() - 1;
+        let mut disallowed = HashSet::new();
+        for i in 0..self.state_vars.len() {
+            disallowed.insert(neg(self.state_vars[i][yborder]));
+        }
+        for j in 0..self.state_vars[0].len() {
+            disallowed.insert(neg(self.state_vars[xborder][j]));
+        }
+
+        EncodingResult::Cnf(vec![], disallowed)
     }
 
     fn encode_successors(&mut self) -> EncodingResult {
@@ -150,22 +162,26 @@ impl IWoorpjeEncoder {
         // Todo: Do in one loop
         for i in n..self.state_vars.len() - 1 {
             for j in m..self.state_vars[i].len() - 1 {
+                if i == self.state_vars.len() - 2 && j == self.state_vars[i].len() - 2 {
+                    // Last cell does not have successors (yet)
+                    continue;
+                }
                 let s_00 = as_lit(self.state_vars[i][j]);
                 let s_01 = as_lit(self.state_vars[i][j + 1]);
                 let s_10 = as_lit(self.state_vars[i + 1][j]);
                 let s_11 = as_lit(self.state_vars[i + 1][j + 1]);
+
                 cnf.push(vec![-s_00, s_01, s_10, s_11]);
             }
         }
-        for i in n..self.state_vars.len() - 1 {
-            let s_00 = as_lit(self.state_vars[i][self.state_vars[i].len() - 1]);
-            let s_10 = as_lit(self.state_vars[i + 1][self.state_vars[i].len() - 1]);
-            cnf.push(vec![-s_00, s_10]);
-        }
-        for j in m..self.state_vars[self.state_vars.len() - 1].len() - 1 {
-            let s_00 = as_lit(self.state_vars[self.state_vars.len() - 1][j]);
-            let s_01 = as_lit(self.state_vars[self.state_vars.len() - 1][j + 1]);
-            cnf.push(vec![-s_00, s_01]);
+        // Last cell from previous iteration needs successors now
+        if self.last_len != (0, 0) {
+            cnf.push(vec![
+                neg(self.state_vars[self.last_len.0][self.last_len.1]),
+                as_lit(self.state_vars[self.last_len.0 + 1][self.last_len.1]),
+                as_lit(self.state_vars[self.last_len.0][self.last_len.1 + 1]),
+                as_lit(self.state_vars[self.last_len.0 + 1][self.last_len.1 + 1]),
+            ]);
         }
         EncodingResult::cnf(cnf)
     }
@@ -173,25 +189,35 @@ impl IWoorpjeEncoder {
     fn encode_predecessors(&mut self) -> EncodingResult {
         let mut cnf = Cnf::new();
         let (mut n, mut m) = self.last_len;
-        n = std::cmp::max(n, 1);
-        m = std::cmp::max(m, 1);
-        for i in n..self.state_vars.len() {
-            for j in m..self.state_vars[i].len() {
+
+        // +1 will lead to one redundant encoding of the predecessor of the bot right cell from the previous iteration
+        n += 1;
+        m += 1;
+
+        for i in 1..self.state_vars.len() {
+            for j in 1..self.state_vars[i].len() {
+                if i < n && j < m {
+                    // Already encoded
+                    continue;
+                }
                 let s_00 = as_lit(self.state_vars[i][j]);
                 let s_01 = as_lit(self.state_vars[i][j - 1]);
                 let s_10 = as_lit(self.state_vars[i - 1][j]);
                 let s_11 = as_lit(self.state_vars[i - 1][j - 1]);
+
                 cnf.push(vec![-s_00, s_01, s_10, s_11]);
             }
         }
         for i in n..self.state_vars.len() {
             let s_00 = as_lit(self.state_vars[i][0]);
             let s_10 = as_lit(self.state_vars[i - 1][0]);
+
             cnf.push(vec![-s_00, s_10]);
         }
         for j in m..self.state_vars[0].len() {
             let s_00 = as_lit(self.state_vars[0][j]);
             let s_01 = as_lit(self.state_vars[0][j - 1]);
+
             cnf.push(vec![-s_00, s_01]);
         }
         EncodingResult::cnf(cnf)
@@ -199,11 +225,16 @@ impl IWoorpjeEncoder {
 
     fn encode_transitions(&mut self, subs: &SubstitutionEncoding) -> EncodingResult {
         let mut cnf = Cnf::new();
-        let (n, m) = self.last_len;
-        for i in n..self.state_vars.len() {
-            for j in m..self.state_vars[i].len() {
+        let (mut n, mut m) = self.last_len;
+
+        for i in 0..self.state_vars.len() {
+            for j in 0..self.state_vars[i].len() {
+                if i < n && j < m {
+                    // Already encoded
+                    continue;
+                }
                 let s_00 = as_lit(self.state_vars[i][j]);
-                if i < self.state_vars.len() - 1 && j < self.state_vars[i].len() - 1 {
+                if i < self.state_vars.len() - 2 && j < self.state_vars[i].len() - 2 {
                     let s_01 = as_lit(self.state_vars[i][j + 1]);
                     let s_10 = as_lit(self.state_vars[i + 1][j]);
                     let s_11 = as_lit(self.state_vars[i + 1][j + 1]);
@@ -214,10 +245,10 @@ impl IWoorpjeEncoder {
                         let sub_r = self.pat_rhs[&(j, c)];
                         cnf.push(vec![-s_00, -s_11, neg(sub_l), as_lit(sub_r)])
                     }
-                } else if i < self.state_vars.len() - 1 && j == self.state_vars[i].len() - 1 {
+                } else if i < self.state_vars.len() - 2 && j == self.state_vars[i].len() - 2 {
                     let s_10 = as_lit(self.state_vars[i + 1][j]);
                     cnf.push(vec![-s_00, -s_10, as_lit(self.pat_lhs[&(i, LAMBDA)])]);
-                } else if i == self.state_vars.len() - 1 && j < self.state_vars[i].len() - 1 {
+                } else if i == self.state_vars.len() - 2 && j < self.state_vars[i].len() - 2 {
                     let s_01 = as_lit(self.state_vars[i][j + 1]);
                     cnf.push(vec![-s_00, -s_01, as_lit(self.pat_rhs[&(j, LAMBDA)])]);
                 }
@@ -241,8 +272,9 @@ impl IWoorpjeEncoder {
     }
 
     fn encode_accepting_state(&self) -> EncodingResult {
-        let n = self.state_vars.len() - 1;
-        let m = self.state_vars[n].len() - 1;
+        let n = self.state_vars.len() - 2;
+        let m = self.state_vars[n].len() - 2;
+
         EncodingResult::assumption(as_lit(self.state_vars[n][m]))
     }
 }
@@ -271,7 +303,7 @@ impl PredicateEncoder for IWoorpjeEncoder {
 
         // TODO: Check if (lhs.len, rhs.len) == last_len and return assumptions from last call
 
-        self.update_state_vars(lhs.length(), rhs.length());
+        res.join(self.update_state_vars(lhs.length(), rhs.length()));
         res.join(self.update_pattern(lhs, rhs, substitution));
         res.join(self.align_patter(lhs, rhs, substitution));
         res.join(self.encode_successors());
@@ -337,13 +369,12 @@ mod tests {
                 .unwrap()
                 .get_substitutions(&solver);
 
-            println!("Solution: {:?}", solution);
             let svs = encoder.get_state_vars();
 
             for j in 0..svs[0].len() {
                 print!("\t{}", j)
             }
-            println!();
+
             for i in 0..svs.len() {
                 print!("{}\t", i);
                 for j in 0..svs[i].len() {
@@ -353,7 +384,6 @@ mod tests {
                         print!("0\t")
                     }
                 }
-                println!();
             }
             assert!(
                 eq.is_solution(&solution),
@@ -380,8 +410,9 @@ mod tests {
         let mut done = bounds.leq(limit);
         let mut solver: cadical::Solver = cadical::Solver::new();
         while done {
+            println!("Next Round");
             let mut encoding = EncodingResult::empty();
-            println!("{}", bounds);
+
             encoding.join(subs_encoder.encode(&bounds));
             encoding.join(encoder.encode(&bounds, subs_encoder.get_encoding().unwrap()));
             result = match encoding {
@@ -394,6 +425,34 @@ mod tests {
                 EncodingResult::Trivial(f) => Some(f),
             };
             done = bounds.next_square(Some(limit));
+        }
+        match result {
+            Some(true) => {
+                let sol = subs_encoder
+                    .get_encoding()
+                    .unwrap()
+                    .get_substitutions(&solver);
+                let svs = encoder.get_state_vars();
+                for j in 0..svs[0].len() {
+                    print!("\t{}", j)
+                }
+                println!();
+                for i in 0..svs.len() {
+                    print!("{}\t", i);
+                    for j in 0..svs[i].len() {
+                        if solver.value(as_lit(svs[i][j])) == Some(true) {
+                            print!("1\t")
+                        } else {
+                            print!("0\t")
+                        }
+                    }
+                    println!();
+                }
+
+                assert!(eq.is_solution(&sol), "Not a solution: {:?} ({})", sol, eq);
+            }
+
+            _ => {}
         }
         result
     }
@@ -503,78 +562,10 @@ mod tests {
     }
 
     #[test]
-    fn iwoorpje_sat_t1i2() {
-        // Track1, Instance 2
-        //BabbabbadeeadAacbacaHaebHedbAcAcHebabccEcbcHH = AbbHabbAbbaHeFcadEbdeHbAcacdebabccAecbcdH
-        let var_a = Variable::new("A".to_string(), Sort::String);
-        let var_b = Variable::new("B".to_string(), Sort::String);
-        let var_h = Variable::new("H".to_string(), Sort::String);
-        let var_f = Variable::new("F".to_string(), Sort::String);
-        let var_e = Variable::new("E".to_string(), Sort::String);
+    fn iwoorpje_sat_t1i74() {
+        let eq = WordEquation::parse_simple("A", "dFg");
 
-        // B abbabbadeead A acbaca H aeb H edb A c A c H ebabcc E cbc HH
-        let mut lhs = Pattern::empty();
-        lhs.append_var(&var_b)
-            .append_word("abbabbadeead")
-            .append_var(&var_a)
-            .append_word("acbaca")
-            .append_var(&var_h)
-            .append_word("aeb")
-            .append_var(&var_h)
-            .append_word("edb")
-            .append_var(&var_a)
-            .append_word("c")
-            .append_var(&var_a)
-            .append_word("c")
-            .append_var(&var_h)
-            .append_word("ebabcc")
-            .append_var(&var_e)
-            .append_word("cbc")
-            .append_var(&var_h)
-            .append_var(&var_h);
-
-        // A bb H abb A bba H e F cad E bde H b A cacdebabcc A ecbcd H
-        let mut rhs = Pattern::empty();
-        rhs.append_var(&var_a)
-            .append_word("bb")
-            .append_var(&var_h)
-            .append_word("abb")
-            .append_var(&var_a)
-            .append_word("bba")
-            .append_var(&var_h)
-            .append_word("e")
-            .append_var(&var_f)
-            .append_word("cad")
-            .append_var(&var_e)
-            .append_word("bde")
-            .append_var(&var_h)
-            .append_word("b")
-            .append_var(&var_a)
-            .append_word("cacdebabcc")
-            .append_var(&var_a)
-            .append_word("ecbcd")
-            .append_var(&var_h);
-
-        assert_eq!(
-            format!("{}", lhs),
-            "BabbabbadeeadAacbacaHaebHedbAcAcHebabccEcbcHH"
-        );
-        assert_eq!(
-            format!("{}", rhs),
-            "AbbHabbAbbaHeFcadEbdeHbAcacdebabccAecbcdH"
-        );
-
-        let eq = WordEquation::new(lhs.clone(), rhs.clone());
-        let solution = HashMap::from([
-            (var_a, "a".to_string()),
-            (var_b, "abbd".to_string()),
-            (var_h, "d".to_string()),
-            (var_f, "eadaacba".to_string()),
-            (var_e, "ae".to_string()),
-        ]);
-        assert!(eq.is_solution(&solution));
-        let bounds = VariableBounds::new(10);
-        let res = solve_iwoorpje(&eq, bounds, &eq.alphabet());
+        let res = solve_iwoorpje_incremental(&eq, 4, &eq.alphabet());
 
         assert!(matches!(res, Some(true)));
     }

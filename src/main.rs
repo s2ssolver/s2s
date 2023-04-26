@@ -52,7 +52,6 @@ fn main() {
         instance.set_bound(bound);
     }
     instance.set_formula(preprocess(instance.get_formula()));
-    log::debug!("Parsed instance: {:?}", instance);
     let mut solver = match cli.solver {
         SolverType::Woorpje => Box::new(Woorpje::new(&instance).unwrap()) as Box<dyn Solver>,
         SolverType::Iwoorpje => Box::new(IWoorpje::new(&instance).unwrap()) as Box<dyn Solver>,
@@ -63,6 +62,14 @@ fn main() {
     log::info!("Done ({}ms).", ts.elapsed().as_millis());
     println!("{}", res);
     if let Some(model) = res.get_model() {
+        // The model might be incomplete due to preprocessing, we need to add the missing variables
+        let mut model = model.clone();
+        for v in instance.get_vars() {
+            if !model.contains_key(v) {
+                model.insert(v.clone(), String::new());
+            }
+        }
+        // TODO: Check if the model is correct
         println!("Model: {:?}", model);
     }
 }
