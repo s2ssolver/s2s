@@ -1,6 +1,9 @@
 use std::collections::{HashMap, HashSet};
+use std::io::Write;
+use std::{fmt, fs, path};
 
 use indexmap::IndexSet;
+use itertools::Itertools;
 
 use std::time::Instant;
 
@@ -11,7 +14,7 @@ use crate::model::words::{Pattern, Symbol};
 use crate::model::{words::WordEquation, Variable};
 
 use crate::encode::substitution::SubstitutionEncoder;
-use crate::sat::Cnf;
+use crate::sat::{Cnf, PLit};
 /// A problem instance, consisting of a formula and a set of variables
 /// Should be created using the `parse` module
 #[derive(Clone, Debug)]
@@ -123,6 +126,40 @@ struct EquationSolver<T: WordEquationEncoder> {
 }
 
 impl<T: WordEquationEncoder> EquationSolver<T> {
+    pub fn write_dimacs(&self, clauses: &Cnf, assms: Vec<PLit>) {
+        let num_clauses = clauses.len() + assms.len();
+        let mut vars = HashSet::new();
+        for clause in clauses {
+            for lit in clause {
+                vars.insert(lit.abs());
+            }
+        }
+        for a in &assms {
+            vars.insert(a.abs());
+        }
+        let num_vars = vars.len();
+
+        let mut f = fs::File::options()
+            .create(true)
+            .write(true)
+            .truncate(true)
+            .open(".local/fm.dimacs")
+            .unwrap();
+
+        f.write_fmt(format_args!("p cnf {} {}\n", num_vars, num_clauses))
+            .unwrap();
+        for clause in clauses {
+            for lit in clause {
+                f.write_fmt(format_args!("{} ", lit)).unwrap();
+            }
+            f.write_fmt(format_args!("0\n")).unwrap();
+        }
+
+        for a in assms {
+            f.write_fmt(format_args!("{} 0\n", a)).unwrap();
+        }
+    }
+
     /// Create a new Woorpje solver for the given instance.
     /// Returns an error if the instance is not a single word equation.
     pub fn new(instance: &Instance) -> Result<Self, String> {
@@ -193,13 +230,13 @@ impl<T: WordEquationEncoder> Solver for EquationSolver<T> {
                 EncodingResult::Cnf(mut clauses, assms) => {
                     let n_clauses = clauses.len();
                     let ts = Instant::now();
+                    fm.extend(clauses.clone());
 
                     for clause in clauses.into_iter() {
                         cadical.add_clause(clause);
                     }
 
-                    /*fm.extend(clauses);
-                    fm.shuffle(&mut thread_rng());
+                    /*fm.shuffle(&mut thread_rng());
                     cadical = cadical::Solver::new();
                     fm.iter()
                         .for_each(|clause| cadical.add_clause(clause.clone()));*/
@@ -215,6 +252,7 @@ impl<T: WordEquationEncoder> Solver for EquationSolver<T> {
                     time_encoding += t_adding;
                     let ts = Instant::now();
                     let res = cadical.solve_with(assms.iter().cloned());
+
                     let t_solving = ts.elapsed().as_millis();
                     log::info!(
                         "Done SAT solving: {} ({}ms)",
@@ -223,6 +261,7 @@ impl<T: WordEquationEncoder> Solver for EquationSolver<T> {
                     );
                     time_solving += t_solving;
                     if let Some(true) = res {
+                        //self.write_dimacs(&fm, assms.iter().cloned().collect_vec());
                         // self.encoder.print_state_table(&cadical);
                         let solution = match &self.subs_encoder.get_encoding() {
                             Some(sub_encoding) => sub_encoding.get_substitutions(&cadical),

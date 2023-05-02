@@ -223,48 +223,43 @@ impl IWoorpjeEncoder {
         self.selector
     }
 
-    fn encode_successors(&mut self) -> EncodingResult {
+    fn encode_successors(&mut self, i: usize, j: usize) -> EncodingResult {
         let mut cnf = Cnf::new();
         let assm = IndexSet::new();
         let (n_last, m_last) = self.prev_lens();
         let (n, m) = self.lens();
-        for i in 0..=n {
-            for j in 0..=m {
-                if i < n_last && j < m_last
-                    || i < n_last && j == m_last
-                    || i == n_last && j < m_last
-                {
-                    // Skip states that are not in the current round
-                    // Does not skip (n_last, m_last), which now has successors
-                    continue;
-                }
 
-                if i == n && j == m {
-                    // Last state does not need to have successors in this round
-                    // Will be handled by the next round, if necessary
-                    continue;
-                }
-                let s_00 = self.state_vars[i][j];
-                let s_01 = self.state_vars[i][j + 1];
-                let s_10 = self.state_vars[i + 1][j];
-                let s_11 = self.state_vars[i + 1][j + 1];
-                let clause = vec![neg(s_00), as_lit(s_01), as_lit(s_10), as_lit(s_11)];
-
-                cnf.push(clause);
-
-                // At most one successor
-                cnf.push(vec![neg(s_00), neg(s_01), neg(s_10)]);
-                cnf.push(vec![neg(s_00), neg(s_01), neg(s_11)]);
-
-                cnf.push(vec![neg(s_00), neg(s_10), neg(s_01)]);
-                cnf.push(vec![neg(s_00), neg(s_10), neg(s_11)]);
-
-                cnf.push(vec![neg(s_00), neg(s_11), neg(s_01)]);
-                cnf.push(vec![neg(s_00), neg(s_11), neg(s_10)]);
-
-                self.enc_successors.insert((i, j));
-            }
+        if i < n_last && j < m_last || i < n_last && j == m_last || i == n_last && j < m_last {
+            // Skip states that are not in the current round
+            // Does not skip (n_last, m_last), which now has successors
+            return EncodingResult::Trivial(true);
         }
+
+        if i == n && j == m {
+            // Last state does not need to have successors in this round
+            // Will be handled by the next round, if necessary
+            return EncodingResult::empty();
+        }
+        let s_00 = self.state_vars[i][j];
+        let s_01 = self.state_vars[i][j + 1];
+        let s_10 = self.state_vars[i + 1][j];
+        let s_11 = self.state_vars[i + 1][j + 1];
+        let clause = vec![neg(s_00), as_lit(s_01), as_lit(s_10), as_lit(s_11)];
+
+        cnf.push(clause);
+
+        // At most one successor
+        cnf.push(vec![neg(s_00), neg(s_01), neg(s_10)]);
+        cnf.push(vec![neg(s_00), neg(s_01), neg(s_11)]);
+
+        cnf.push(vec![neg(s_00), neg(s_10), neg(s_01)]);
+        cnf.push(vec![neg(s_00), neg(s_10), neg(s_11)]);
+
+        cnf.push(vec![neg(s_00), neg(s_11), neg(s_01)]);
+        cnf.push(vec![neg(s_00), neg(s_11), neg(s_10)]);
+
+        self.enc_successors.insert((i, j));
+
         // Don't skip first row/column in first iteration
         /* let n_start = if n_last == 0 { 0 } else { n_last + 1 };
         let m_start = if m_last == 0 { 0 } else { m_last + 1 };
@@ -364,23 +359,61 @@ impl IWoorpjeEncoder {
     fn encode_move_right(&mut self, i: usize, j: usize) -> EncodingResult {
         let mut cnf = Cnf::with_capacity(2);
         let s_00 = self.state_vars[i][j];
-        let s_01 = self.state_vars[i][j + 1];
 
-        let rhs_lambda = self.subs_rhs.get(&(j, LAMBDA)).unwrap();
+        if j < self.lens().1 {
+            let s_01 = self.state_vars[i][j + 1];
+            let rhs_lambda = self.subs_rhs.get(&(j, LAMBDA)).unwrap();
 
-        if i > self.prev_lens().0 || j >= self.prev_lens().1 {
-            // Clause redundant if state existed in previous round, we only need the next one
-            cnf.push(vec![neg(s_00), neg(s_01), as_lit(*rhs_lambda)]);
-            assert!(self.enc_transitions.insert(((i, j), (i, j + 1)), 1) == None);
-        }
+            // i < n' && j < m': All encoded in previous round
 
-        if i < self.lens().0 {
-            let lhs_lambda = self.subs_lhs.get(&(i, LAMBDA)).unwrap();
-            cnf.push(vec![neg(s_00), neg(s_01), neg(*lhs_lambda)]);
-            assert!(matches!(
-                self.enc_transitions.insert(((i, j), (i, j + 1)), 2),
-                Some(1)
-            ));
+            // i == n' && j < m': i is on previous margin => encode that lhs[i] must not be lambda if going rightwards
+            if i == self.prev_lens().0
+                && j < self.prev_lens().1
+                && self.prev_lens().0 < self.lens().0
+            {
+                let lhs_lambda = self.subs_lhs.get(&(i, LAMBDA)).unwrap();
+                cnf.push(vec![neg(s_00), neg(s_01), neg(*lhs_lambda)]);
+                cnf.push(vec![
+                    neg(*rhs_lambda),
+                    as_lit(*lhs_lambda),
+                    neg(s_00),
+                    as_lit(s_01),
+                ])
+            }
+
+            // j < m' && i > n' && i < n: Encode rhs[j] must be lambda and lhs[i] must not be lambda
+            if j < self.prev_lens().1 && i > self.prev_lens().0 && i < self.lens().0 {
+                let lhs_lambda = self.subs_lhs.get(&(i, LAMBDA)).unwrap();
+                cnf.push(vec![neg(s_00), neg(s_01), as_lit(*rhs_lambda)]);
+                cnf.push(vec![neg(s_00), neg(s_01), neg(*lhs_lambda)]);
+
+                cnf.push(vec![
+                    neg(*rhs_lambda),
+                    as_lit(*lhs_lambda),
+                    neg(s_00),
+                    as_lit(s_01),
+                ])
+            }
+
+            // j >= m' && i < n: Encode rhs[j] must be lambda and lhs[i] must not be lambda
+            if j >= self.prev_lens().1 && i < self.lens().0 {
+                let lhs_lambda = self.subs_lhs.get(&(i, LAMBDA)).unwrap();
+                cnf.push(vec![neg(s_00), neg(s_01), as_lit(*rhs_lambda)]);
+                cnf.push(vec![neg(s_00), neg(s_01), neg(*lhs_lambda)]);
+                cnf.push(vec![
+                    neg(*rhs_lambda),
+                    as_lit(*lhs_lambda),
+                    neg(s_00),
+                    as_lit(s_01),
+                ])
+            }
+
+            // j >=m' && i==n: i is on current margin, encode that rhs[j] must be lambda if going rightwards
+            if j >= self.prev_lens().1 && i == self.lens().0 {
+                cnf.push(vec![neg(s_00), neg(s_01), as_lit(*rhs_lambda)]);
+                let s = *self.selector.as_ref().unwrap();
+                cnf.push(vec![neg(s), neg(*rhs_lambda), neg(s_00), as_lit(s_01)]);
+            }
         }
 
         EncodingResult::cnf(cnf)
@@ -389,20 +422,58 @@ impl IWoorpjeEncoder {
     fn encode_move_down(&mut self, i: usize, j: usize) -> EncodingResult {
         let mut cnf = Cnf::with_capacity(2);
         let s_00 = self.state_vars[i][j];
-        let s_10 = self.state_vars[i + 1][j];
 
-        let lhs_lambda = self.subs_lhs.get(&(i, LAMBDA)).unwrap();
+        if i < self.lens().0 {
+            let s_10 = self.state_vars[i + 1][j];
+            let lhs_lambda = self.subs_lhs.get(&(i, LAMBDA)).unwrap();
 
-        if i >= self.prev_lens().0 || j > self.prev_lens().1 {
-            cnf.push(vec![neg(s_00), neg(s_10), as_lit(*lhs_lambda)]);
-            assert!(self.enc_transitions.insert(((i, j), (i + 1, j)), 1) == None);
-        }
+            // i < n' && j < m': All encoded in previous round
 
-        if j < self.lens().1 {
-            let rhs_lambda = self.subs_rhs.get(&(j, LAMBDA)).unwrap();
-            cnf.push(vec![neg(s_00), neg(s_10), neg(*rhs_lambda)]);
-            let old = self.enc_transitions.insert(((i, j), (i + 1, j)), 2);
-            assert!(matches!(old, Some(1)), "({}, {}): {:?}", i, j, old);
+            // i < n' && j == m': j is on previous margin => encode that rhs[j] must not be lambda if going downwards
+            if i < self.prev_lens().0
+                && j == self.prev_lens().1
+                && self.prev_lens().1 < self.lens().1
+            {
+                let rhs_lambda = self.subs_rhs.get(&(j, LAMBDA)).unwrap();
+                cnf.push(vec![neg(s_00), neg(s_10), neg(*rhs_lambda)]);
+                cnf.push(vec![
+                    as_lit(*rhs_lambda),
+                    neg(*lhs_lambda),
+                    neg(s_00),
+                    as_lit(s_10),
+                ])
+            }
+
+            // i < n' && j > m' && j < m: Encode lhs[i] must be lambda and rhs[j] must not be lambda
+            if i < self.prev_lens().0 && j > self.prev_lens().1 && j < self.lens().1 {
+                let rhs_lambda = self.subs_rhs.get(&(j, LAMBDA)).unwrap();
+                cnf.push(vec![neg(s_00), neg(s_10), as_lit(*lhs_lambda)]);
+                cnf.push(vec![neg(s_00), neg(s_10), neg(*rhs_lambda)]);
+                cnf.push(vec![
+                    as_lit(*rhs_lambda),
+                    neg(*lhs_lambda),
+                    neg(s_00),
+                    as_lit(s_10),
+                ])
+            }
+            // i >= n && j < m: Encode lhs[i] must be lambda and rhs[j] must not be lambda
+            if i >= self.prev_lens().0 && j < self.lens().1 {
+                let rhs_lambda = self.subs_rhs.get(&(j, LAMBDA)).unwrap();
+                cnf.push(vec![neg(s_00), neg(s_10), as_lit(*lhs_lambda)]);
+                cnf.push(vec![neg(s_00), neg(s_10), neg(*rhs_lambda)]);
+                cnf.push(vec![
+                    as_lit(*rhs_lambda),
+                    neg(*lhs_lambda),
+                    neg(s_00),
+                    as_lit(s_10),
+                ])
+            }
+            // i >= n && j == m: j is on current margin, encode that lhs[i] must be lambda if going downwards
+            if i >= self.prev_lens().0 && j == self.lens().1 {
+                cnf.push(vec![neg(s_00), neg(s_10), as_lit(*lhs_lambda)]);
+                let s = self.selector.unwrap();
+                cnf.push(vec![neg(s), neg(*lhs_lambda), neg(s_00), as_lit(s_10)]);
+            }
         }
 
         EncodingResult::cnf(cnf)
@@ -418,45 +489,60 @@ impl IWoorpjeEncoder {
         let s_00 = self.state_vars[i][j];
         let s_11 = self.state_vars[i + 1][j + 1];
 
-        for c in subs.alphabet_lambda() {
-            let lhs_sub = self.subs_lhs.get(&(i, c)).unwrap();
-            let rhs_sub = self.subs_rhs.get(&(j, c)).unwrap();
+        if i < self.lens().0
+            && j < self.lens().1
+            && (j >= self.prev_lens().1 || i >= self.prev_lens().0)
+        {
+            for c in subs.alphabet_lambda() {
+                let lhs_sub = self.subs_lhs.get(&(i, c)).unwrap();
+                let rhs_sub = self.subs_rhs.get(&(j, c)).unwrap();
 
-            cnf.push(vec![neg(s_00), neg(s_11), neg(*lhs_sub), as_lit(*rhs_sub)]);
+                cnf.push(vec![neg(s_00), neg(s_11), neg(*lhs_sub), as_lit(*rhs_sub)]);
+
+                cnf.push(vec![neg(*lhs_sub), neg(*rhs_sub), neg(s_00), as_lit(s_11)])
+            }
+
+            let lhs_lambda = *self.subs_lhs.get(&(i, LAMBDA)).unwrap();
+            let rhs_lambda = *self.subs_rhs.get(&(j, LAMBDA)).unwrap();
+
+            cnf.push(vec![
+                neg(s_00),
+                neg(lhs_lambda),
+                as_lit(rhs_lambda),
+                neg(s_11),
+            ]);
+            cnf.push(vec![
+                neg(s_00),
+                as_lit(lhs_lambda),
+                neg(rhs_lambda),
+                neg(s_11),
+            ]);
+
+            assert!(self.enc_transitions.insert(((i, j), (i + 1, j + 1)), 1) == None);
         }
-        assert!(self.enc_transitions.insert(((i, j), (i + 1, j + 1)), 1) == None);
-
         EncodingResult::cnf(cnf)
     }
 
     fn encode_moves(&mut self, i: usize, j: usize, subs: &SubstitutionEncoding) -> EncodingResult {
         let mut res = EncodingResult::empty();
-        if j < self.lens().1 {
-            res.join(self.encode_move_right(i, j));
-        }
-        if i < self.lens().0 {
-            res.join(self.encode_move_down(i, j));
-        }
-        if i < self.lens().0 && j < self.lens().1 {
-            res.join(self.encode_move_forward(i, j, subs));
-        }
+
+        res.join(self.encode_move_right(i, j));
+
+        res.join(self.encode_move_down(i, j));
+
+        res.join(self.encode_move_forward(i, j, subs));
+
         res
     }
 
-    fn encode_valid(&mut self, subs: &SubstitutionEncoding) -> EncodingResult {
+    fn encode_valid(&mut self, subs: &SubstitutionEncoding, i: usize, j: usize) -> EncodingResult {
         let mut res = EncodingResult::empty();
         let (n_last, m_last) = self.prev_lens();
-        let (n, m) = self.lens();
-
-        for i in 0..=n {
-            for j in 0..=m {
-                if i <= n_last && j <= m_last {
-                    // Already encoded
-                    continue;
-                }
-                res.join(self.encode_moves(i, j, subs));
-            }
+        if i < n_last && j < m_last {
+            // Already encoded
+            return res;
         }
+        res.join(self.encode_moves(i, j, subs));
 
         res
     }
@@ -635,13 +721,17 @@ impl PredicateEncoder for IWoorpjeEncoder {
         // TODO: Check if (lhs.len, rhs.len) == last_len and return assumptions from last call
 
         res.join(self.update_state_vars());
-
         res.join(self.update_pattern(substitution));
         res.join(self.align_pattern(substitution));
 
-        res.join(self.encode_successors());
+        let (n, m) = self.lens();
+        for i in 0..=n {
+            for j in 0..=m {
+                res.join(self.encode_successors(i, j));
+                res.join(self.encode_valid(substitution, i, j));
+            }
+        }
 
-        res.join(self.encode_valid(substitution));
         res.join(self.encode_initial_state());
         res.join(self.encode_accepting_state());
         //res.join(self.guide(substitution));
@@ -721,6 +811,23 @@ mod tests {
                     v,
                     solver.value(v as i32).unwrap()
                 );
+            }
+            let svs = encoder.state_vars.clone();
+            print!("  ");
+            for j in 0..svs[0].len() {
+                print!(" {} ", j)
+            }
+            println!();
+            for i in 0..svs.len() {
+                print!("{} ", i);
+                for j in &svs[i] {
+                    if solver.value(*j as i32).unwrap() {
+                        print!(" 1 ");
+                    } else {
+                        print!(" 0 ");
+                    }
+                }
+                println!();
             }
             assert!(
                 eq.is_solution(&solution),
