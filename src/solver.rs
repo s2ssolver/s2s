@@ -1,8 +1,8 @@
-use std::collections::HashMap;
-
-use std::time::Instant;
+use std::collections::{HashMap, HashSet};
 
 use indexmap::IndexSet;
+
+use std::time::Instant;
 
 use crate::encode::{EncodingResult, VariableBounds};
 use crate::encode::{IWoorpjeEncoder, WoorpjeEncoder, WordEquationEncoder};
@@ -11,6 +11,7 @@ use crate::model::words::{Pattern, Symbol};
 use crate::model::{words::WordEquation, Variable};
 
 use crate::encode::substitution::SubstitutionEncoder;
+use crate::sat::Cnf;
 /// A problem instance, consisting of a formula and a set of variables
 /// Should be created using the `parse` module
 #[derive(Clone, Debug)]
@@ -18,18 +19,18 @@ pub struct Instance {
     /// The formula to solve
     formula: Formula,
     /// The set of all variables
-    vars: IndexSet<Variable>,
+    vars: HashSet<Variable>,
     /// The maximum bound for any variable to check.
     /// If `None`, no bound is set, which will might in an infinite search if the instance is not satisfiable.
     /// If `Some(n)`, the solver will only check for a solution with a bound of `n`.
     /// If no solution is found with every variable bound to `n`, the solver will return `Unsat`.
     ubound: Option<usize>,
-    /// The bound to initialize all variables with, defaults to 1
+
     lbound: usize,
 }
 
 impl Instance {
-    pub fn new(formula: Formula, vars: IndexSet<Variable>) -> Self {
+    pub fn new(formula: Formula, vars: HashSet<Variable>) -> Self {
         Instance {
             formula,
             vars,
@@ -58,7 +59,7 @@ impl Instance {
         &self.formula
     }
 
-    pub fn get_vars(&self) -> &IndexSet<Variable> {
+    pub fn get_vars(&self) -> &HashSet<Variable> {
         &self.vars
     }
 }
@@ -180,6 +181,7 @@ impl<T: WordEquationEncoder> Solver for EquationSolver<T> {
         let mut cadical: cadical::Solver = cadical::Solver::new();
         let mut time_encoding = 0;
         let mut time_solving = 0;
+        let mut fm = Cnf::new();
         loop {
             log::info!("Current bounds {}", self.bounds);
             let ts = Instant::now();
@@ -188,12 +190,20 @@ impl<T: WordEquationEncoder> Solver for EquationSolver<T> {
             log::info!("Encoding took {} ms", elapsed);
             time_encoding += elapsed;
             match encoding {
-                EncodingResult::Cnf(clauses, assms) => {
+                EncodingResult::Cnf(mut clauses, assms) => {
                     let n_clauses = clauses.len();
                     let ts = Instant::now();
+
                     for clause in clauses.into_iter() {
                         cadical.add_clause(clause);
                     }
+
+                    /*fm.extend(clauses);
+                    fm.shuffle(&mut thread_rng());
+                    cadical = cadical::Solver::new();
+                    fm.iter()
+                        .for_each(|clause| cadical.add_clause(clause.clone()));*/
+
                     let t_adding = ts.elapsed().as_millis();
                     log::info!(
                         "Added {} (total {}) clauses in {} ms",
@@ -201,6 +211,7 @@ impl<T: WordEquationEncoder> Solver for EquationSolver<T> {
                         cadical.num_clauses(),
                         t_adding
                     );
+
                     time_encoding += t_adding;
                     let ts = Instant::now();
                     let res = cadical.solve_with(assms.iter().cloned());
@@ -212,6 +223,7 @@ impl<T: WordEquationEncoder> Solver for EquationSolver<T> {
                     );
                     time_solving += t_solving;
                     if let Some(true) = res {
+                        // self.encoder.print_state_table(&cadical);
                         let solution = match &self.subs_encoder.get_encoding() {
                             Some(sub_encoding) => sub_encoding.get_substitutions(&cadical),
                             None => HashMap::new(),
