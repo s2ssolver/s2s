@@ -23,9 +23,13 @@ def run(file, bound, solver):
 
     time = timer() - start
     if stderr is not None and stderr.decode("utf-8").strip() != "":
-        print(stderr.decode("utf-8").strip())
+        # print(stderr.decode("utf-8").strip())
+        pass
     if stdout is not None:
         res = stdout.decode("utf-8").strip().splitlines()
+        if len(res) == 0:
+            print("❔ UNKNOWN: ", res)
+            return (file, "unknown", time)
         if res[0] == "sat":
             print(f"✅ SAT ({time:.2f}s)")
             return (file, "sat", time)
@@ -33,7 +37,7 @@ def run(file, bound, solver):
             print(f"❌ UNSAT ({time:.2f}s)")
             return (file, "unsat", time)
         else:
-            print("❔ UNKNOWN")
+            print("❔ UNKNOWN: ", res)
             return (file, "unknown", time)
 
 

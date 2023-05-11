@@ -7,7 +7,7 @@ use itertools::Itertools;
 
 use std::time::Instant;
 
-use crate::encode::{EncodingResult, VariableBounds};
+use crate::encode::{BindepEncoder, EncodingResult, VariableBounds};
 use crate::encode::{IWoorpjeEncoder, WoorpjeEncoder, WordEquationEncoder};
 use crate::formula::{Atom, ConstVal, Formula, Predicate, Substitution};
 use crate::model::words::{Pattern, Symbol};
@@ -370,6 +370,23 @@ impl Solver for IWoorpje {
 }
 
 impl IWoorpje {
+    pub fn new(instance: &Instance) -> Result<Self, String> {
+        let solver = EquationSolver::new(instance)?;
+        Ok(Self { solver })
+    }
+}
+
+pub struct Bindep {
+    solver: EquationSolver<BindepEncoder>,
+}
+
+impl Solver for Bindep {
+    fn solve(&mut self) -> SolverResult {
+        self.solver.solve()
+    }
+}
+
+impl Bindep {
     pub fn new(instance: &Instance) -> Result<Self, String> {
         let solver = EquationSolver::new(instance)?;
         Ok(Self { solver })

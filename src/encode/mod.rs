@@ -17,7 +17,7 @@ mod equation;
 /// Encoder for substitutions
 pub mod substitution;
 
-pub use equation::{IWoorpjeEncoder, WoorpjeEncoder, WordEquationEncoder};
+pub use equation::{BindepEncoder, IWoorpjeEncoder, WoorpjeEncoder, WordEquationEncoder};
 use indexmap::IndexSet;
 
 /// Bound for each variable
