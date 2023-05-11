@@ -1,6 +1,7 @@
 use std::cmp::max;
 use std::collections::HashMap;
 use std::fmt::Display;
+use std::time::Instant;
 
 use crate::encode::card::{amo, exactly_one};
 use crate::encode::substitution::SubstitutionEncoding;
@@ -104,7 +105,7 @@ impl SegmentedPattern {
         pos
     }
 
-    fn followers(&self, i: usize) -> usize {
+    fn suffix_len(&self, i: usize) -> usize {
         let mut f = 0;
         for j in i + 1..self.length() {
             if let PatternSegment::Word(w) = self.get(j) {
@@ -280,7 +281,7 @@ impl BindepEncoder {
                             let len_var = lens[&(v.clone(), len)];
                             // S_i^p /\ len_var -> S_{i+1}^(p+len)
                             let svar = starts[&(i, pos)];
-                            if pos + len < bound - (segments.followers(i).saturating_sub(1)) {
+                            if pos + len < bound - (segments.suffix_len(i).saturating_sub(1)) {
                                 clauses.push(vec![
                                     neg(svar),
                                     neg(len_var),
@@ -297,7 +298,7 @@ impl BindepEncoder {
                     for pos in segments.earliest_start(i)..bound {
                         let len = w.len();
                         let svar = starts[&(i, pos)];
-                        if pos + len < bound - segments.followers(i) {
+                        if pos + len < bound - segments.suffix_len(i) {
                             // S_i^p /\ len_var -> S_{i+1}^(p+len)
                             clauses.push(vec![neg(svar), as_lit(starts[&(i + 1, pos + len)])]);
                         } else {
@@ -325,7 +326,7 @@ impl BindepEncoder {
                 PatternSegment::Variable(_) => {}
                 PatternSegment::Word(w) => {
                     for p in
-                        segments.earliest_start(i)..bound - (w.len() - 1) - segments.followers(i)
+                        segments.earliest_start(i)..bound - (w.len() - 1) - segments.suffix_len(i)
                     {
                         let start_var = starts[&(i, p)];
                         // If segment starts here, then the next |w| positions must match w
@@ -342,7 +343,7 @@ impl BindepEncoder {
         EncodingResult::cnf(clauses)
     }
 
-    fn match_var_candidate(
+    fn match_candidate(
         &self,
         segments: &SegmentedPattern,
         starts: &IndexMap<(usize, usize), PVar>,
@@ -353,6 +354,7 @@ impl BindepEncoder {
         bound: usize,
     ) -> EncodingResult {
         let mut clauses = Cnf::new();
+        let mut var_matches: IndexMap<(&Variable, usize, usize), PVar> = IndexMap::new();
         for (i, s) in segments.segments.iter().enumerate() {
             match s {
                 PatternSegment::Variable(x) => {
@@ -361,9 +363,35 @@ impl BindepEncoder {
                         for p in segments.earliest_start(i)..bound {
                             let start_var = starts[&(i, p)];
 
-                            if l + p <= bound - segments.followers(i) {
+                            if l + p <= bound - segments.suffix_len(i) {
                                 // If segment starts here, then the next |w| positions must match substitution of x
-                                for k in 0..l {
+
+                                if l == 1 {
+                                    let m_var = pvar();
+                                    var_matches.insert((x, p, l), m_var);
+                                    for c in subs.alphabet() {
+                                        let cand_c = candidate[&(p, *c)];
+                                        let sub_c = subs.get(x, 0, *c).unwrap();
+                                        clauses.push(vec![neg(m_var), neg(cand_c), as_lit(sub_c)]);
+                                        clauses.push(vec![neg(m_var), as_lit(cand_c), neg(sub_c)]);
+                                    }
+                                    clauses.push(vec![neg(start_var), neg(len_var), as_lit(m_var)]);
+                                } else if l > 1 {
+                                    let m_var = pvar();
+                                    let pred_m_var = var_matches[&(x, p, l - 1)];
+                                    clauses.push(vec![neg(m_var), as_lit(pred_m_var)]);
+                                    var_matches.insert((x, p, l), m_var);
+                                    for c in subs.alphabet() {
+                                        let cand_c = candidate[&(p + (l - 1), *c)];
+                                        let sub_c = subs.get(x, l - 1, *c).unwrap();
+                                        clauses.push(vec![neg(m_var), neg(cand_c), as_lit(sub_c)]);
+                                        clauses.push(vec![neg(m_var), as_lit(cand_c), neg(sub_c)]);
+                                    }
+
+                                    clauses.push(vec![neg(start_var), neg(len_var), as_lit(m_var)]);
+                                }
+
+                                /*for k in 0..l {
                                     for c in subs.alphabet() {
                                         let cand_c = candidate[&(p + k, *c)];
                                         let sub_c = subs.get(x, k, *c).unwrap();
@@ -380,7 +408,7 @@ impl BindepEncoder {
                                             neg(sub_c),
                                         ]);
                                     }
-                                }
+                                }*/
                             }
                         }
                         // Next position in variable, if exists, is lambda
@@ -392,7 +420,7 @@ impl BindepEncoder {
                 }
                 PatternSegment::Word(w) => {
                     for p in
-                        segments.earliest_start(i)..bound - (w.len() - 1) - segments.followers(i)
+                        segments.earliest_start(i)..bound - (w.len() - 1) - segments.suffix_len(i)
                     {
                         let start_var = starts[&(i, p)];
                         // If segment starts here, then the next |w| positions must match w
@@ -680,13 +708,23 @@ impl PredicateEncoder for BindepEncoder {
         res.join(len_enc);
 
         // Encode alignment of segments with candidates LHS
+        let ts = Instant::now();
         let (align_enc, starts_lhs) = self.encode_alignment(&lhs_segs, &var_lens, bounds, bound);
-        log::info!("Clauses for alignments LHS: {}", align_enc.clauses());
+        log::info!(
+            "Clauses for alignments LHS: {} ({} ms)",
+            align_enc.clauses(),
+            ts.elapsed().as_millis()
+        );
         res.join(align_enc);
 
         // Encode alignment of segments with candidates RHS
+        let ts = Instant::now();
         let (align_enc, starts_rhs) = self.encode_alignment(&rhs_segs, &var_lens, bounds, bound);
-        log::info!("Clauses for alignments RHS: {}", align_enc.clauses());
+        log::info!(
+            "Clauses for alignments RHS: {} ({} ms)",
+            align_enc.clauses(),
+            ts.elapsed().as_millis()
+        );
         res.join(align_enc);
 
         // Encode matching constants LHS
@@ -707,7 +745,8 @@ impl PredicateEncoder for BindepEncoder {
         );
         res.join(const_match_enc);*/
 
-        let vars_match_lhs_enc = self.match_var_candidate(
+        let ts = Instant::now();
+        let vars_match_lhs_enc = self.match_candidate(
             &lhs_segs,
             &starts_lhs,
             &cand_positions,
@@ -717,12 +756,14 @@ impl PredicateEncoder for BindepEncoder {
             bound,
         );
         log::info!(
-            "Clauses for variable matching LHS: {}",
-            vars_match_lhs_enc.clauses()
+            "Clauses for variable matching LHS: {} ({} ms)",
+            vars_match_lhs_enc.clauses(),
+            ts.elapsed().as_millis()
         );
         res.join(vars_match_lhs_enc);
 
-        let vars_match_rhs_enc = self.match_var_candidate(
+        let ts = Instant::now();
+        let vars_match_rhs_enc = self.match_candidate(
             &rhs_segs,
             &starts_rhs,
             &cand_positions,
@@ -732,8 +773,9 @@ impl PredicateEncoder for BindepEncoder {
             bound,
         );
         log::info!(
-            "Clauses for variable matching RHS: {}",
-            vars_match_rhs_enc.clauses()
+            "Clauses for variable matching RHS: {} ({} ms)",
+            vars_match_rhs_enc.clauses(),
+            ts.elapsed().as_millis()
         );
         res.join(vars_match_rhs_enc);
 
