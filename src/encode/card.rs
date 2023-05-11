@@ -1,7 +1,11 @@
 use crate::sat::{as_lit, Cnf, PLit, PVar};
 
-pub fn exactly_one(lits: &[PVar]) -> Cnf {
-    eo_naive(lits)
+pub fn exactly_one(vars: &[PVar]) -> Cnf {
+    eo_naive(vars)
+}
+
+pub fn amo(vars: &[PVar]) -> Cnf {
+    amo_binomial(vars)
 }
 
 /// Naive encoding of at least one and at most one constraints.
@@ -12,6 +16,17 @@ fn eo_naive(vars: &[PVar]) -> Cnf {
     let as_lits: Vec<PLit> = vars.iter().copied().map(as_lit).collect();
     cnf.push(as_lits.clone());
     // At most one
+    for (i, x) in as_lits.iter().enumerate() {
+        for y in as_lits.iter().skip(i + 1) {
+            cnf.push(vec![-(*x), -(*y)]);
+        }
+    }
+    cnf
+}
+
+fn amo_binomial(vars: &[PVar]) -> Cnf {
+    let mut cnf = Cnf::new();
+    let as_lits: Vec<PLit> = vars.iter().copied().map(as_lit).collect();
     for (i, x) in as_lits.iter().enumerate() {
         for y in as_lits.iter().skip(i + 1) {
             cnf.push(vec![-(*x), -(*y)]);
