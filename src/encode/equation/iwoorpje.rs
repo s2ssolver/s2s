@@ -759,6 +759,7 @@ mod tests {
 
     use crate::{
         encode::substitution::SubstitutionEncoder,
+        formula::Substitution,
         model::{words::Pattern, Sort, Variable},
     };
 
@@ -793,6 +794,7 @@ mod tests {
                 .get_encoding()
                 .unwrap()
                 .get_substitutions(&solver);
+            let solution = Substitution::from(solution);
 
             for ((i, c), v) in encoder.subs_lhs {
                 println!(
@@ -830,8 +832,8 @@ mod tests {
                 println!();
             }
             assert!(
-                eq.is_solution(&solution),
-                "{:?} is not a solution: {:?} != {:?}",
+                eq.is_solution(&solution).unwrap(),
+                "{} is not a solution: {:?} != {:?}",
                 solution,
                 eq.lhs().substitute(&solution),
                 eq.rhs().substitute(&solution)
@@ -875,6 +877,7 @@ mod tests {
                     .get_encoding()
                     .unwrap()
                     .get_substitutions(&solver);
+                let solution = Substitution::from(sol);
                 let svs = encoder.get_state_vars();
                 for j in 0..svs[0].len() {
                     print!("\t{}", j)
@@ -892,7 +895,12 @@ mod tests {
                     println!();
                 }
 
-                assert!(eq.is_solution(&sol), "Not a solution: {:?} ({})", sol, eq);
+                assert!(
+                    eq.is_solution(&solution).unwrap(),
+                    "Not a solution: {} ({})",
+                    solution,
+                    eq
+                );
             }
 
             _ => {}

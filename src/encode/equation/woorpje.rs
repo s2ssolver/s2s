@@ -302,6 +302,7 @@ mod tests {
 
     use crate::{
         encode::substitution::SubstitutionEncoder,
+        formula::{ConstVal, Substitution},
         model::{words::Pattern, Sort, Variable},
     };
 
@@ -374,18 +375,22 @@ mod tests {
 
         let res = solver.solve();
         if let Some(true) = res {
-            let solution = subs_encoder
+            let subs = subs_encoder
                 .get_encoding()
                 .unwrap()
                 .get_substitutions(&solver);
+            let mut solution = Substitution::with_defaults();
+            for (v, val) in subs {
+                solution.set(&v, ConstVal::String(val));
+            }
             assert!(
-                eq.is_solution(&solution),
-                "{:?} is not a solution: {:?} != {:?}",
+                eq.is_solution(&solution).unwrap(),
+                "{} is not a solution: {:?} != {:?}",
                 solution,
                 eq.lhs().substitute(&solution),
                 eq.rhs().substitute(&solution)
             );
-            println!("Solution: {:?}", solution);
+            println!("Solution: {}", solution);
             if let Some(svs) = encoder.get_state_vars() {
                 for j in 0..svs[0].len() {
                     print!("\t{}", j)
@@ -558,14 +563,14 @@ mod tests {
         );
 
         let eq = WordEquation::new(lhs.clone(), rhs.clone());
-        let solution = HashMap::from([
-            (var_a, "a".to_string()),
-            (var_b, "abbd".to_string()),
-            (var_h, "d".to_string()),
-            (var_f, "eadaacba".to_string()),
-            (var_e, "ae".to_string()),
+        let solution: HashMap<Variable, Vec<char>> = HashMap::from([
+            (var_a, "a".chars().collect()),
+            (var_b, "abbd".chars().collect()),
+            (var_h, "d".chars().collect()),
+            (var_f, "eadaacba".chars().collect()),
+            (var_e, "ae".chars().collect()),
         ]);
-        assert!(eq.is_solution(&solution));
+        let solution = Substitution::from(solution);
         let bounds = VariableBounds::new(10);
         let res = solve_woorpje(&eq, bounds, &eq.alphabet());
 

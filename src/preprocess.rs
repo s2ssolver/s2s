@@ -64,7 +64,7 @@ pub fn preprocess(formula: &Formula) -> Formula {
         Formula::False => todo!(),
         Formula::Atom(a) => Formula::Atom(match a {
             Atom::Predicate(p) => Atom::Predicate(preprocess_predicate(p)),
-            Atom::BoolVar(v) => Atom::BoolVar(*v),
+            Atom::BoolVar(v) => Atom::BoolVar(v.clone()),
         }),
         Formula::Or(f) => Formula::Or(f.iter().map(preprocess).collect()),
         Formula::And(f) => Formula::And(f.iter().map(preprocess).collect()),

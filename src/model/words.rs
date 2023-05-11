@@ -8,7 +8,10 @@ use std::{
 use indexmap::IndexSet;
 use quickcheck::Arbitrary;
 
-use crate::model::{Sort, Variable};
+use crate::{
+    formula::{ConstVal, Substitution},
+    model::{Sort, Variable},
+};
 
 /// Represents a pattern symbol, which can be either a constant word or a variable.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -176,18 +179,15 @@ impl Pattern {
 
     /// Applies a substitution to the pattern.
     /// Returns `None` if the substitution is not defined for all variables in the pattern.
-    pub fn substitute(&self, substitution: &HashMap<Variable, String>) -> Option<String> {
+    pub fn substitute(&self, substitution: &Substitution) -> Option<String> {
         let mut res = String::new();
         for symbol in &self.symbols {
             match symbol {
                 Symbol::Constant(c) => res.push(*c),
-                Symbol::Variable(var) => {
-                    if let Some(value) = substitution.get(var) {
-                        res.push_str(value)
-                    } else {
-                        return None;
-                    }
-                }
+                Symbol::Variable(var) => match substitution.get(var) {
+                    Some(ConstVal::String(s)) => s.iter().for_each(|c| res.push(*c)),
+                    _ => return None,
+                },
             }
         }
         Some(res)
@@ -288,10 +288,17 @@ impl WordEquation {
         self.lhs.vars().union(&self.rhs.vars()).cloned().collect()
     }
 
-    /// Returns true iff the equation is a solution for the given substitution.
-    pub fn is_solution(&self, substitution: &HashMap<Variable, String>) -> bool {
-        self.lhs.substitute(substitution) == self.rhs.substitute(substitution)
-            && self.lhs.substitute(substitution).is_some()
+    /// Returns Some(true) if the substitution is a solution for the given equation.
+    /// Return Some(false) if the substitution is not a solution for the given equation.
+    /// Returns None if the substitution is not defined for all variables in the equation.
+    pub fn is_solution(&self, substitution: &Substitution) -> Option<bool> {
+        match (
+            self.lhs.substitute(substitution),
+            self.rhs.substitute(substitution),
+        ) {
+            (Some(lhs), Some(rhs)) => Some(lhs == rhs),
+            _ => None,
+        }
     }
 
     pub fn alphabet(&self) -> IndexSet<char> {
@@ -302,7 +309,7 @@ impl WordEquation {
             .collect()
     }
 
-    pub fn apply(&self, substitution: &HashMap<Variable, String>) -> Option<Self> {
+    pub fn apply(&self, substitution: &Substitution) -> Option<Self> {
         let lhs = self.lhs.substitute(substitution)?;
         let rhs = self.rhs.substitute(substitution)?;
         Some(Self::constant(&lhs, &rhs))

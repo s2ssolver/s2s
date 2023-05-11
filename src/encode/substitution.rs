@@ -55,7 +55,7 @@ impl SubstitutionEncoding {
     /// Reads the substitutions from the model.
     /// Panics if the solver is not in a SAT state.
     #[allow(dead_code)]
-    pub fn get_substitutions(&self, solver: &cadical::Solver) -> HashMap<Variable, String> {
+    pub fn get_substitutions(&self, solver: &cadical::Solver) -> HashMap<Variable, Vec<char>> {
         if solver.status() != Some(true) {
             panic!("Solver is not in a SAT state")
         }
@@ -80,7 +80,7 @@ impl SubstitutionEncoding {
         }
         let mut subs_str = HashMap::new();
         for (var, sub) in subs.into_iter() {
-            let mut s = String::new();
+            let mut s = vec![];
             for c in sub.iter() {
                 match c {
                     Some(LAMBDA) => {}
@@ -258,10 +258,7 @@ mod tests {
             len
         );
         let sub = subs.get(&var).unwrap();
-        assert!(
-            sub.chars().count() == len as usize,
-            "Substitution is too long"
-        );
+        assert!(sub.len() == len as usize, "Substitution is too long");
         TestResult::passed()
     }
 
@@ -303,10 +300,10 @@ mod tests {
         let sub = subs.get(&var).unwrap();
         let expected_len = (len as usize) * 2;
         assert!(
-            sub.chars().count() == expected_len,
-            "Expected length {}, got {}: {}",
+            sub.len() == expected_len,
+            "Expected length {}, got {}: {:?}",
             expected_len,
-            sub.chars().count(),
+            sub.len(),
             sub
         );
         TestResult::passed()

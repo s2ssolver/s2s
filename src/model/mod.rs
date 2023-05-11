@@ -8,6 +8,7 @@ pub mod words;
 pub enum Sort {
     String,
     Int,
+    Bool,
 }
 
 /// Representation of a variable of a certain sort

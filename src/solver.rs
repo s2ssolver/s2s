@@ -9,7 +9,7 @@ use std::time::Instant;
 
 use crate::encode::{EncodingResult, VariableBounds};
 use crate::encode::{IWoorpjeEncoder, WoorpjeEncoder, WordEquationEncoder};
-use crate::formula::{Atom, Formula, Predicate};
+use crate::formula::{Atom, ConstVal, Formula, Predicate, Substitution};
 use crate::model::words::{Pattern, Symbol};
 use crate::model::{words::WordEquation, Variable};
 
@@ -70,7 +70,7 @@ impl Instance {
 /// The result of a satisfiability check
 pub enum SolverResult {
     /// The instance is satisfiable with the given model
-    Sat(HashMap<Variable, String>),
+    Sat(Substitution),
     /// The instance is unsatisfiable
     Unsat,
     /// The solver could not determine the satisfiability of the instance
@@ -84,7 +84,7 @@ impl SolverResult {
     }
 
     /// Returns the model if the instance is satisfiable
-    pub fn get_model(&self) -> Option<&HashMap<Variable, String>> {
+    pub fn get_model(&self) -> Option<&Substitution> {
         match self {
             SolverResult::Sat(model) => Some(model),
             _ => None,
@@ -261,18 +261,21 @@ impl<T: WordEquationEncoder> Solver for EquationSolver<T> {
                     );
                     time_solving += t_solving;
                     if let Some(true) = res {
-                        //self.write_dimacs(&fm, assms.iter().cloned().collect_vec());
-                        // self.encoder.print_state_table(&cadical);
-                        let solution = match &self.subs_encoder.get_encoding() {
-                            Some(sub_encoding) => sub_encoding.get_substitutions(&cadical),
-                            None => HashMap::new(),
+                        let mut model = Substitution::with_defaults();
+                        match &self.subs_encoder.get_encoding() {
+                            Some(sub_encoding) => {
+                                for (v, s) in sub_encoding.get_substitutions(&cadical) {
+                                    model.set(&v, ConstVal::String(s.clone()));
+                                }
+                            }
+                            _ => panic!("No substitution encoding found"),
                         };
                         log::info!(
                             "Done. Total time encoding/solving: {}/{} ms",
                             time_encoding,
                             time_solving
                         );
-                        return SolverResult::Sat(solution);
+                        return SolverResult::Sat(model);
                     } else {
                         if !self.encoder.is_incremental() {
                             // reset states if solver is not incremental
@@ -283,7 +286,9 @@ impl<T: WordEquationEncoder> Solver for EquationSolver<T> {
                     }
                 }
                 EncodingResult::Trivial(false) => return SolverResult::Unsat,
-                EncodingResult::Trivial(true) => return SolverResult::Sat(HashMap::new()),
+                EncodingResult::Trivial(true) => {
+                    return SolverResult::Sat(Substitution::with_defaults())
+                }
             }
             if !self.bounds.next_square(self.max_bound) {
                 break;
