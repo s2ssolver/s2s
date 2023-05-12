@@ -396,9 +396,9 @@ mod tests {
                     print!("\t{}", j)
                 }
                 println!();
-                for i in 0..svs.len() {
+                for (i, s) in svs.iter().enumerate() {
                     print!("{}\t", i);
-                    for j in 0..svs[i].len() {
+                    for j in 0..s.len() {
                         if solver.value(as_lit(svs[i][j])) == Some(true) {
                             print!("1\t")
                         } else {
@@ -570,7 +570,7 @@ mod tests {
             (var_f, "eadaacba".chars().collect()),
             (var_e, "ae".chars().collect()),
         ]);
-        let solution = Substitution::from(solution);
+        let _solution = Substitution::from(solution);
         let bounds = VariableBounds::new(10);
         let res = solve_woorpje(&eq, bounds, &eq.alphabet());
 

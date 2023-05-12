@@ -80,6 +80,7 @@ impl VariableBounds {
     }
 
     /// Returns true if the bounds are less than or equal the given value.
+    #[allow(unused)]
     pub fn leq(&self, value: usize) -> bool {
         if self.default > value {
             return false;
@@ -220,19 +221,11 @@ impl EncodingResult {
         }
     }
 
-    /// Returns the number of assumptions in the encoding
-    pub fn assumptions(&self) -> usize {
-        match self {
-            EncodingResult::Cnf(_, assumptions) => assumptions.len(),
-            EncodingResult::Trivial(_) => 0,
-        }
-    }
-
     /// Joins two encoding results, consumes the other one
     pub fn join(&mut self, other: EncodingResult) {
         match self {
             EncodingResult::Cnf(ref mut cnf, ref mut asms) => match other {
-                EncodingResult::Cnf(mut cnf_other, mut asm_other) => {
+                EncodingResult::Cnf(mut cnf_other, asm_other) => {
                     cnf.append(&mut cnf_other);
                     asms.extend(asm_other);
                 }
