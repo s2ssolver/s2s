@@ -3,7 +3,7 @@ use std::cmp::max;
 use std::fmt::Display;
 use std::time::Instant;
 
-use crate::encode::card::{amo, exactly_one};
+use crate::encode::card::{amo, exactly_one, IncrementalAMO, IncrementalEO};
 use crate::encode::substitution::SubstitutionEncoding;
 use crate::encode::{EncodingResult, FilledPattern, PredicateEncoder, VariableBounds, LAMBDA};
 use crate::model::words::{Pattern, Symbol, WordEquation};
@@ -95,6 +95,7 @@ impl SegmentedPattern {
     }
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 enum EqSide {
     Lhs,
     Rhs,
@@ -109,6 +110,14 @@ pub struct BindepEncoder {
 
     /// The last bound that was used, is `None` prior to the first round.
     last_bound: Option<usize>,
+
+    /// A Boolean variable that is added as an assumption to the SAT solver for the current upper bound.
+    /// The negation of this variable is added as an assumption at the next upper bound.
+    bound_selector: Option<PVar>,
+
+    /// The variable bounds used in the last round.
+    /// Is `None` in the first round.
+    last_var_bounds: Option<VariableBounds>,
 
     /// Counts the rounds, is 0 prior to the first round and is incremented each call to `encode`.
     round: usize,
@@ -128,6 +137,15 @@ pub struct BindepEncoder {
 
     /// The encoding of the candidate solution word. Maps pairs of positions and characters to a propositional variable that is true if the character is at the position.
     cand_positions: IndexMap<(usize, char), PVar>,
+
+    /// Maps each variable to an Incremental exact-one encoder that is used to encode the variable's length.
+    var_len_eo_encoders: IndexMap<Variable, IncrementalEO>,
+
+    /// Maps each segment index to and incremental at-most-one encoder that is used to encode the possible start positions of the segment.
+    segs_starts_amo: IndexMap<(EqSide, usize), IncrementalAMO>,
+
+    /// The variable-solution matching variables.
+    var_matches: IndexMap<(Variable, usize, usize), PVar>,
 
     /// The alphabet
     alphabet: IndexSet<char>,
@@ -183,11 +201,20 @@ impl BindepEncoder {
         assert!(res.is_none());
     }
 
-    /// Returns a map that maps pairs of positions and characters to a propositional variable that is true if the character is at the position.
+    /// Returns the variables' bound used in the last round.
+    /// Returns None prior to the first round.
+    fn get_last_var_bound(&self, var: &Variable) -> Option<usize> {
+        match &self.last_var_bounds {
+            Some(bounds) => Some(bounds.get(var)),
+            None => None,
+        }
+    }
+
+    /// Encodes the possible candidates for the solution word up to bound `self.bound`.
     fn encode_candidates(&mut self) -> EncodingResult {
         let mut res = EncodingResult::empty();
-
-        for pos in 0..self.bound {
+        let last_bound = self.last_bound.unwrap_or(0);
+        for pos in last_bound..self.bound {
             let mut p_choices = vec![];
             for c in self.alphabet.clone() {
                 let v = pvar();
@@ -197,7 +224,9 @@ impl BindepEncoder {
             let v_lambda = pvar();
             p_choices.push(v_lambda);
             self.set_candidate_at(pos, LAMBDA, v_lambda);
+
             let cnf = exactly_one(&p_choices);
+            res.join(EncodingResult::cnf(cnf));
 
             // If a position is lambda, then only lambda may follow
             if pos > 0 {
@@ -207,113 +236,159 @@ impl BindepEncoder {
                     as_lit(v_lambda),
                 ]]));
             }
-
-            res.join(EncodingResult::cnf(cnf));
         }
         res
     }
 
-    /// Returns a map that maps pairs of variables and lengths to a propositional variable that is true if the variable has the given length.
+    /// Encodes the possible lengths of each variable. Any variable might have exactly one length up to its bound.
     fn encode_var_lengths(
         &mut self,
         vars: &IndexSet<Variable>,
         bounds: &VariableBounds,
     ) -> EncodingResult {
-        let mut cnf = Cnf::new();
+        let mut res = EncodingResult::empty();
 
         for v in vars {
             let mut len_choices = vec![];
-            for len in 0..=bounds.get(v) {
+            let last_bound = self.get_last_var_bound(v).map(|b| b + 1).unwrap_or(0);
+            for len in last_bound..=bounds.get(v) {
                 let choice = pvar();
                 len_choices.push(choice);
                 self.set_var_len(v, len, choice)
             }
             // Exactly one length must be true
-            let eo = exactly_one(&len_choices);
-            cnf.extend(eo);
+            let eo = self
+                .var_len_eo_encoders
+                .entry(v.clone())
+                .or_default()
+                .add(&len_choices);
+            res.join(eo);
         }
 
-        EncodingResult::cnf(cnf)
+        res
     }
 
-    /// Returns map that maps pairs of segment indices and start positions to a propositional variable that is true if the segment starts at the position.
+    /// Encodes the alignment of a segmented pattern with the solution word by matching the respective lengths.
     fn encode_alignment(&mut self, bounds: &VariableBounds, side: &EqSide) -> EncodingResult {
-        let mut clauses = Cnf::new();
+        let mut res = EncodingResult::empty();
 
         // Need to clone segments here since we borrow self mutably later to set the start positions
         let segments = self.segments(side).clone();
         let n_seg = segments.length();
-
+        let last_bound = self.last_bound.unwrap_or(0);
         for i in 0..n_seg {
             // Each segment needs to start somewhere
             let mut starts_i = vec![];
-            for pos in 0..self.bound {
+
+            for pos in last_bound..self.bound {
                 let svar = pvar();
                 self.set_start_position(i, pos, side, svar);
                 starts_i.push(svar);
             }
 
             //clauses.push(starts_i.iter().map(|v| as_lit(*v)).collect_vec()); // Not required and slows down the solver
-            clauses.extend(amo(&starts_i)); // No required but seems to help the SAT solver
+            // TODO: Incremental AMO
+            let amo = self
+                .segs_starts_amo
+                .entry((side.clone(), i))
+                .or_default()
+                .add(&starts_i);
+            res.join(amo);
         }
 
-        for pos in 0..self.bound {
+        // Encode start position needs to be 0 for the first segment
+        for pos in last_bound..self.bound {
             let var = self.start_position(0, pos, side);
             if pos == 0 {
                 // Segment 0 must start at position 0, and at no other position
-                clauses.push(vec![as_lit(var)]);
+                res.add_clause(vec![as_lit(var)]);
             } else {
-                clauses.push(vec![neg(var)]);
+                res.add_clause(vec![neg(var)]);
             }
         }
 
         for (i, s) in segments.iter().enumerate() {
             if i == n_seg - 1 {
+                // Last segment does not have a successor
                 continue;
             }
+
             // Disable all starts that are too early
-            for p in 0..segments.earliest_start(i) {
+            for p in last_bound..segments.earliest_start(i) {
                 let var = self.start_position(i, p, side);
-                clauses.push(vec![neg(var)]);
+                res.add_clause(vec![neg(var)]);
             }
+
             match s {
                 PatternSegment::Variable(v) => {
-                    for pos in segments.earliest_start(i)..self.bound {
+                    let start_pos = segments.earliest_start(i);
+                    // Incremental either: Length is longer OR start position is later OR Both
+                    for pos in start_pos..self.bound {
+                        let last_vbound = self.get_last_var_bound(v);
                         let vbound = bounds.get(v);
                         for len in 0..=vbound {
                             // Start position of next segment is i+len
                             let len_var = self.var_lens[&(v.clone(), len)];
                             // S_i^p /\ len_var -> S_{i+1}^(p+len)
                             let svar = self.start_position(i, pos, side);
+
+                            // If pos < self.last_bound AND len < last_vbound, then we already encoded this.
+                            // Check if any of the previously invalid position/length pairs became valid
+                            if pos < last_bound && len <= last_vbound.unwrap_or(0) {
+                                if pos + len
+                                    >= last_bound - (segments.suffix_len(i).saturating_sub(1))
+                                    && pos + len
+                                        < self.bound - (segments.suffix_len(i).saturating_sub(1))
+                                {
+                                    // These length/position combinations is now possible
+                                    let succ = self.start_position(i + 1, pos + len, side);
+
+                                    res.add_clause(vec![neg(svar), neg(len_var), as_lit(succ)]);
+                                }
+                                continue;
+                            }
+
+                            // Encode alignment for new position/length pairs
                             if pos + len < self.bound - (segments.suffix_len(i).saturating_sub(1)) {
                                 let succ = self.start_position(i + 1, pos + len, side);
 
-                                clauses.push(vec![neg(svar), neg(len_var), as_lit(succ)]);
+                                res.add_clause(vec![neg(svar), neg(len_var), as_lit(succ)]);
                             } else {
-                                // Cannot start here with length l (ASSUME!)
-                                clauses.push(vec![neg(svar), neg(len_var)]);
+                                // Cannot start here with length l with current bound
+                                let selector = self.bound_selector.unwrap();
+                                res.add_clause(vec![neg(selector), neg(svar), neg(len_var)]);
                             }
                         }
                     }
                 }
                 PatternSegment::Word(w) => {
-                    for pos in segments.earliest_start(i)..self.bound {
+                    // Only consider the new possible starting positions
+                    let start_pos = max(last_bound, segments.earliest_start(i));
+                    for pos in start_pos..self.bound {
                         let len = w.len();
                         let svar = self.start_position(i, pos, side);
+                        if pos < last_bound {
+                            if pos + len >= last_bound - segments.suffix_len(i)
+                                && pos + len < self.bound - segments.suffix_len(i)
+                            {
+                                let succ = self.start_position(i + 1, pos + len, side);
+                                res.add_clause(vec![neg(svar), as_lit(succ)]);
+                            }
+                        }
                         if pos + len < self.bound - segments.suffix_len(i) {
                             // S_i^p /\ len_var -> S_{i+1}^(p+len)
                             let succ = self.start_position(i + 1, pos + len, side);
-                            clauses.push(vec![neg(svar), as_lit(succ)]);
+                            res.add_clause(vec![neg(svar), as_lit(succ)]);
                         } else {
                             // Cannot start here (ASSUME!)
-                            clauses.push(vec![neg(svar)]);
+                            res.add_assumption(neg(svar));
                         }
                     }
                 }
             }
         }
 
-        EncodingResult::cnf(clauses)
+        res
     }
 
     fn match_candidate(
@@ -326,6 +401,7 @@ impl BindepEncoder {
         let segments = self.segments(side);
         // TODO: Need to be stateful between rounds!
         let mut var_matches: IndexMap<(&Variable, usize, usize), PVar> = IndexMap::new();
+        let last_bound = self.last_bound.unwrap_or(0);
         for (i, s) in segments.iter().enumerate() {
             match s {
                 PatternSegment::Variable(x) => {
@@ -458,16 +534,21 @@ impl WordEquationEncoder for BindepEncoder {
         let alph = equation.alphabet();
         Self {
             equation,
+            bound_selector: None,
             round: 0,
             bound: 0,
             last_bound: None,
+            last_var_bounds: None,
             alphabet: alph,
             starts_lhs: IndexMap::new(),
             starts_rhs: IndexMap::new(),
+            segs_starts_amo: IndexMap::new(),
             segments_lsh: lhs_segs,
             segments_rhs: rhs_segs,
             var_lens: IndexMap::new(),
+            var_len_eo_encoders: IndexMap::new(),
             cand_positions: IndexMap::new(),
+            var_matches: IndexMap::new(),
         }
     }
 }
@@ -485,8 +566,17 @@ impl PredicateEncoder for BindepEncoder {
             FilledPattern::fill(self.equation.lhs(), bounds).length(),
             FilledPattern::fill(self.equation.rhs(), bounds).length(),
         );
-        self.last_bound = Some(self.bound);
+        assert!(bound >= self.bound, "Bound cannot shrink");
+        // Todo: If the bound stays the same, the previous rounds' encoding is still correct.
+        // In this case, we need to return the same set of assumptions.
+
+        if let Some(v) = self.bound_selector {
+            // Deactivate all clauses that were only valid for the previous bound
+            res.join(EncodingResult::cnf(vec![vec![neg(v)]]));
+        }
         self.bound = bound;
+        // New selector for this round
+        self.bound_selector = Some(pvar());
 
         // Encode the candidates
         let cand_enc = self.encode_candidates();
@@ -550,11 +640,14 @@ impl PredicateEncoder for BindepEncoder {
         );
         res.join(suffix_enc_rhs);
 
+        // Store variable bounds for next round
+        self.last_var_bounds = Some(bounds.clone());
+        self.last_bound = Some(self.bound);
         res
     }
 
     fn is_incremental(&self) -> bool {
-        false
+        true
     }
 
     fn reset(&mut self) {
