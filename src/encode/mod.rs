@@ -5,7 +5,7 @@ use crate::{
         words::{Pattern, Symbol},
         Variable,
     },
-    sat::{Cnf, PLit},
+    sat::{Clause, Cnf, PLit},
 };
 
 use self::substitution::SubstitutionEncoding;
@@ -211,6 +211,26 @@ impl EncodingResult {
         let mut asm = IndexSet::new();
         asm.insert(assumption);
         EncodingResult::Cnf(vec![], asm)
+    }
+
+    pub fn add_clause(&mut self, clause: Clause) {
+        match self {
+            EncodingResult::Cnf(ref mut clauses, _) => clauses.push(clause),
+            EncodingResult::Trivial(true) => *self = EncodingResult::cnf(vec![clause]),
+            EncodingResult::Trivial(false) => {}
+        }
+    }
+
+    pub fn add_assumption(&mut self, assumption: PLit) {
+        match self {
+            EncodingResult::Cnf(_, ref mut asms) => {
+                asms.insert(assumption);
+            }
+            EncodingResult::Trivial(true) => {
+                *self = EncodingResult::assumption(assumption);
+            }
+            EncodingResult::Trivial(false) => {}
+        }
     }
 
     /// Returns the number of clauses in the encoding, not counting assumptions
