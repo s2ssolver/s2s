@@ -130,7 +130,7 @@ impl SubstitutionEncoder {
             encoding.bounds = bounds.clone();
             // Todo: this is bad because it clones the alphabet
             let alph = self.alphabet.clone();
-            for b in (last_bound..bound).rev() {
+            for b in last_bound..bound {
                 let mut pos_subs = vec![];
                 for c in &alph {
                     // subvar <--> `var` at position `b` is substituted with `c`
@@ -144,11 +144,11 @@ impl SubstitutionEncoder {
                     encoding.add(var, b, LAMBDA, subvar_lambda);
                     pos_subs.push(subvar_lambda);
 
-                    // If current position is LAMBDA, then all following must be LAMBDA
-                    if b + 1 < bound {
+                    // If previous position is lambda, then so is this one
+                    if b > 0 {
                         let clause = vec![
-                            neg(subvar_lambda),
-                            as_lit(encoding.get(var, b + 1, LAMBDA).unwrap()),
+                            neg(encoding.get(var, b - 1, LAMBDA).unwrap()),
+                            as_lit(subvar_lambda),
                         ];
                         cnf.push(clause);
                     }
