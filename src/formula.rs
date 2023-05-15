@@ -1,4 +1,4 @@
-use std::{collections::HashMap, default, fmt::Display};
+use std::{collections::HashMap, fmt::Display};
 
 /// Representation of formulas and predicates
 use crate::model::{
@@ -29,7 +29,7 @@ impl Predicate {
     pub fn evaluate(&self, substitution: &Substitution) -> Option<bool> {
         match self {
             Predicate::WordEquation(eq) => eq.is_solution(substitution),
-            Predicate::RegulaConstraint(p, r) => todo!(), // Derivate r w.r.t. p.substitute()
+            Predicate::RegulaConstraint(_p, _r) => todo!(), // Derivate r w.r.t. p.substitute()
         }
     }
 }

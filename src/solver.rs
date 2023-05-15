@@ -1,13 +1,12 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
+use std::fs;
 use std::io::Write;
-use std::{fmt, fs, path};
 
 use indexmap::IndexSet;
-use itertools::Itertools;
 
 use std::time::Instant;
 
-use crate::encode::{EncodingResult, VariableBounds};
+use crate::encode::{BindepEncoder, EncodingResult, VariableBounds};
 use crate::encode::{IWoorpjeEncoder, WoorpjeEncoder, WordEquationEncoder};
 use crate::formula::{Atom, ConstVal, Formula, Predicate, Substitution};
 use crate::model::words::{Pattern, Symbol};
@@ -126,6 +125,7 @@ struct EquationSolver<T: WordEquationEncoder> {
 }
 
 impl<T: WordEquationEncoder> EquationSolver<T> {
+    #[allow(unused)]
     pub fn write_dimacs(&self, clauses: &Cnf, assms: Vec<PLit>) {
         let num_clauses = clauses.len() + assms.len();
         let mut vars = HashSet::new();
@@ -227,7 +227,7 @@ impl<T: WordEquationEncoder> Solver for EquationSolver<T> {
             log::info!("Encoding took {} ms", elapsed);
             time_encoding += elapsed;
             match encoding {
-                EncodingResult::Cnf(mut clauses, assms) => {
+                EncodingResult::Cnf(clauses, assms) => {
                     let n_clauses = clauses.len();
                     let ts = Instant::now();
                     fm.extend(clauses.clone());
@@ -276,13 +276,11 @@ impl<T: WordEquationEncoder> Solver for EquationSolver<T> {
                             time_solving
                         );
                         return SolverResult::Sat(model);
-                    } else {
-                        if !self.encoder.is_incremental() {
-                            // reset states if solver is not incremental
-                            self.reset();
-                            cadical = cadical::Solver::new();
-                            log::debug!("Reset state");
-                        }
+                    } else if !self.encoder.is_incremental() {
+                        // reset states if solver is not incremental
+                        self.reset();
+                        cadical = cadical::Solver::new();
+                        log::debug!("Reset state");
                     }
                 }
                 EncodingResult::Trivial(false) => return SolverResult::Unsat,
@@ -370,6 +368,23 @@ impl Solver for IWoorpje {
 }
 
 impl IWoorpje {
+    pub fn new(instance: &Instance) -> Result<Self, String> {
+        let solver = EquationSolver::new(instance)?;
+        Ok(Self { solver })
+    }
+}
+
+pub struct Bindep {
+    solver: EquationSolver<BindepEncoder>,
+}
+
+impl Solver for Bindep {
+    fn solve(&mut self) -> SolverResult {
+        self.solver.solve()
+    }
+}
+
+impl Bindep {
     pub fn new(instance: &Instance) -> Result<Self, String> {
         let solver = EquationSolver::new(instance)?;
         Ok(Self { solver })

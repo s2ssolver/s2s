@@ -2,7 +2,7 @@ use std::path::Path;
 
 use clap::{Parser as ClapParser, ValueEnum};
 
-use satstr::{preprocess, IWoorpje, Parser, Solver, Woorpje};
+use satstr::{preprocess, Bindep, IWoorpje, Parser, Solver, Woorpje};
 #[derive(ClapParser, Debug)]
 #[command(author, version, about, long_about = None)] // Read from `Cargo.toml`
 struct Options {
@@ -32,6 +32,7 @@ struct Options {
 enum SolverType {
     Woorpje,
     Iwoorpje,
+    Bindep,
     Full,
 }
 
@@ -63,21 +64,25 @@ fn main() {
     let mut solver = match cli.solver {
         SolverType::Woorpje => Box::new(Woorpje::new(&instance).unwrap()) as Box<dyn Solver>,
         SolverType::Iwoorpje => Box::new(IWoorpje::new(&instance).unwrap()) as Box<dyn Solver>,
+        SolverType::Bindep => Box::new(Bindep::new(&instance).unwrap()) as Box<dyn Solver>,
         SolverType::Full => unimplemented!("Full solver not implemented yet"),
     };
 
     let res = solver.solve();
     log::info!("Done ({}ms).", ts.elapsed().as_millis());
-    println!("{}", res);
+
     if let Some(model) = res.get_model() {
         // TODO: Some variables were removed during preprocessing are missing from the model
-        println!("{}", model);
+
         if !cli.skip_verify {
             match instance.get_formula().evaluate(model) {
-                Some(true) => {}
+                Some(true) => println!("{}\n{}", res, model),
                 Some(false) => panic!("Model is incorrect"),
                 None => panic!("Model is incomplete"),
             }
+        } else {
+            println!("{}", res);
+            println!("{}", model);
         }
     }
 }

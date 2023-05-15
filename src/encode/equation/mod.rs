@@ -1,5 +1,7 @@
+mod bindep;
 mod iwoorpje;
 mod woorpje;
+pub use bindep::BindepEncoder;
 pub use iwoorpje::IWoorpjeEncoder;
 pub use woorpje::WoorpjeEncoder;
 

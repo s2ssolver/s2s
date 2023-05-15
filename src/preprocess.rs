@@ -102,12 +102,12 @@ mod tests {
     #[quickcheck]
     fn strip_prefix_returns_suffix(weq: WordEquation) -> bool {
         let stripped = strip_prefix(&weq);
-        weq.lhs().ends_with(&stripped.lhs()) && weq.rhs().ends_with(&stripped.rhs())
+        weq.lhs().ends_with(stripped.lhs()) && weq.rhs().ends_with(stripped.rhs())
     }
 
     #[quickcheck]
     fn strip_suffix_returns_prefix(weq: WordEquation) -> bool {
         let stripped = strip_suffix(&weq);
-        weq.lhs().starts_with(&stripped.lhs()) && weq.rhs().starts_with(&stripped.rhs())
+        weq.lhs().starts_with(stripped.lhs()) && weq.rhs().starts_with(stripped.rhs())
     }
 }

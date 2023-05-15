@@ -1,6 +1,5 @@
 use std::{
     cmp::min,
-    collections::HashMap,
     fmt::{Display, Formatter},
     slice::Iter,
 };

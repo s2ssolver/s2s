@@ -5,7 +5,7 @@ use crate::{
         words::{Pattern, Symbol},
         Variable,
     },
-    sat::{Cnf, PLit},
+    sat::{Clause, Cnf, PLit},
 };
 
 use self::substitution::SubstitutionEncoding;
@@ -17,7 +17,7 @@ mod equation;
 /// Encoder for substitutions
 pub mod substitution;
 
-pub use equation::{IWoorpjeEncoder, WoorpjeEncoder, WordEquationEncoder};
+pub use equation::{BindepEncoder, IWoorpjeEncoder, WoorpjeEncoder, WordEquationEncoder};
 use indexmap::IndexSet;
 
 /// Bound for each variable
@@ -80,6 +80,7 @@ impl VariableBounds {
     }
 
     /// Returns true if the bounds are less than or equal the given value.
+    #[allow(unused)]
     pub fn leq(&self, value: usize) -> bool {
         if self.default > value {
             return false;
@@ -212,6 +213,26 @@ impl EncodingResult {
         EncodingResult::Cnf(vec![], asm)
     }
 
+    pub fn add_clause(&mut self, clause: Clause) {
+        match self {
+            EncodingResult::Cnf(ref mut clauses, _) => clauses.push(clause),
+            EncodingResult::Trivial(true) => *self = EncodingResult::cnf(vec![clause]),
+            EncodingResult::Trivial(false) => {}
+        }
+    }
+
+    pub fn add_assumption(&mut self, assumption: PLit) {
+        match self {
+            EncodingResult::Cnf(_, ref mut asms) => {
+                asms.insert(assumption);
+            }
+            EncodingResult::Trivial(true) => {
+                *self = EncodingResult::assumption(assumption);
+            }
+            EncodingResult::Trivial(false) => {}
+        }
+    }
+
     /// Returns the number of clauses in the encoding, not counting assumptions
     pub fn clauses(&self) -> usize {
         match self {
@@ -220,19 +241,11 @@ impl EncodingResult {
         }
     }
 
-    /// Returns the number of assumptions in the encoding
-    pub fn assumptions(&self) -> usize {
-        match self {
-            EncodingResult::Cnf(_, assumptions) => assumptions.len(),
-            EncodingResult::Trivial(_) => 0,
-        }
-    }
-
     /// Joins two encoding results, consumes the other one
     pub fn join(&mut self, other: EncodingResult) {
         match self {
             EncodingResult::Cnf(ref mut cnf, ref mut asms) => match other {
-                EncodingResult::Cnf(mut cnf_other, mut asm_other) => {
+                EncodingResult::Cnf(mut cnf_other, asm_other) => {
                     cnf.append(&mut cnf_other);
                     asms.extend(asm_other);
                 }

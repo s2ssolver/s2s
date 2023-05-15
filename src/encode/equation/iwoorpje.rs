@@ -7,7 +7,7 @@ use crate::encode::{
 };
 use crate::model::words::WordEquation;
 use crate::sat::{as_lit, neg, pvar, Cnf, PVar};
-use indexmap::{IndexMap, IndexSet};
+use indexmap::IndexSet;
 
 use super::WordEquationEncoder;
 
@@ -34,10 +34,6 @@ pub struct IWoorpjeEncoder {
 
     /// Counts the rounds, is 0 prior to the first round and is incremented each call to `encode`.
     round: usize,
-
-    enc_successors: IndexSet<(usize, usize)>,
-    enc_predecessor: IndexSet<(usize, usize)>,
-    enc_transitions: IndexMap<((usize, usize), (usize, usize)), usize>,
 }
 
 impl IWoorpjeEncoder {
@@ -126,7 +122,7 @@ impl IWoorpjeEncoder {
                 FilledPos::FilledPos(v, j) => {
                     for c in subs.alphabet_lambda() {
                         let sub_p = as_lit(self.subs_lhs[&(i, c)]);
-                        let sub_x = as_lit(subs.get(&v, *j, c).unwrap());
+                        let sub_x = as_lit(subs.get(v, *j, c).unwrap());
                         // selector -> (sub_p <-> sub_x)
                         // <=> selector -> (sub_p -> sub_x) /\ selector -> (sub_x -> sub_p)
                         // <=> (-selector \/ -sub_p \/ sub_x) /\ (-selector \/ -sub_x \/ sub_p)
@@ -146,7 +142,7 @@ impl IWoorpjeEncoder {
                 FilledPos::FilledPos(v, j) => {
                     for c in subs.alphabet_lambda() {
                         let sub_p = as_lit(self.subs_rhs[&(i, c)]);
-                        let sub_x = as_lit(subs.get(&v, *j, c).unwrap());
+                        let sub_x = as_lit(subs.get(v, *j, c).unwrap());
                         // see above
                         cnf.push(vec![-selector, -sub_p, sub_x]);
                         cnf.push(vec![-selector, sub_p, -sub_x]);
@@ -219,6 +215,7 @@ impl IWoorpjeEncoder {
         EncodingResult::Cnf(vec![], disallowed)
     }
 
+    #[allow(unused)]
     pub fn get_selector(&self) -> Option<PVar> {
         self.selector
     }
@@ -229,7 +226,9 @@ impl IWoorpjeEncoder {
         let (n_last, m_last) = self.prev_lens();
         let (n, m) = self.lens();
 
-        if i < n_last && j < m_last || i < n_last && j == m_last || i == n_last && j < m_last {
+        #[allow(clippy::nonminimal_bool)]
+        if (i < n_last && j < m_last) || (i < n_last && j == m_last) || (i == n_last && j < m_last)
+        {
             // Skip states that are not in the current round
             // Does not skip (n_last, m_last), which now has successors
             return EncodingResult::Trivial(true);
@@ -258,102 +257,7 @@ impl IWoorpjeEncoder {
         cnf.push(vec![neg(s_00), neg(s_11), neg(s_01)]);
         cnf.push(vec![neg(s_00), neg(s_11), neg(s_10)]);
 
-        self.enc_successors.insert((i, j));
-
-        // Don't skip first row/column in first iteration
-        /* let n_start = if n_last == 0 { 0 } else { n_last + 1 };
-        let m_start = if m_last == 0 { 0 } else { m_last + 1 };
-        for i in n_start..=n {
-            for j in m_start..=m {
-                if (i, j) == (n, m) {
-                    // Last state is always allowed
-                    continue;
-                }
-                let s_00 = self.state_vars[i][j];
-                let s_01 = self.state_vars[i][j + 1];
-                let s_10 = self.state_vars[i + 1][j];
-                let s_11 = self.state_vars[i + 1][j + 1];
-                let clause = vec![neg(s_00), as_lit(s_01), as_lit(s_10), as_lit(s_11)];
-                cnf.push(clause);
-                self.enc_successors.insert((i, j));
-            }
-        }
-        // encode successor of previous last state
-        if (n, m) != (0, 0) {
-            let s_00 = self.state_vars[n_last][m_last];
-            let s_01 = self.state_vars[n_last][m_last + 1];
-            let s_10 = self.state_vars[n_last + 1][m_last];
-            let s_11 = self.state_vars[n_last + 1][m_last + 1];
-            let clause = vec![neg(s_00), as_lit(s_01), as_lit(s_10), as_lit(s_11)];
-            cnf.push(clause);
-            self.enc_successors.insert((n_last, m_last));
-        }*/
         EncodingResult::Cnf(cnf, assm)
-    }
-
-    fn encode_predecessors(&mut self) -> EncodingResult {
-        let mut cnf = Cnf::new();
-        let (n_last, m_last) = self.prev_lens();
-        let (n, m) = self.lens();
-
-        // Lower left
-        for i in n_last + 1..=n {
-            for j in 1..=m_last {
-                let s_00 = self.state_vars[i][j];
-                let s_01 = self.state_vars[i][j - 1];
-                let s_10 = self.state_vars[i - 1][j];
-                let s_11 = self.state_vars[i - 1][j - 1];
-                let clause = vec![neg(s_00), as_lit(s_01), as_lit(s_10), as_lit(s_11)];
-                cnf.push(clause);
-                self.enc_predecessor.insert((i, j));
-            }
-        }
-
-        // Upper right
-        for i in 1..=n_last {
-            for j in m_last + 1..=m {
-                let s_00 = self.state_vars[i][j];
-                let s_01 = self.state_vars[i][j - 1];
-                let s_10 = self.state_vars[i - 1][j];
-                let s_11 = self.state_vars[i - 1][j - 1];
-                let clause = vec![neg(s_00), as_lit(s_01), as_lit(s_10), as_lit(s_11)];
-                cnf.push(clause);
-                self.enc_predecessor.insert((i, j));
-            }
-        }
-
-        // Lower right
-        for i in n_last + 1..=n {
-            for j in m_last + 1..=m {
-                let s_00 = self.state_vars[i][j];
-                let s_01 = self.state_vars[i][j - 1];
-                let s_10 = self.state_vars[i - 1][j];
-                let s_11 = self.state_vars[i - 1][j - 1];
-                let clause = vec![neg(s_00), as_lit(s_01), as_lit(s_10), as_lit(s_11)];
-                cnf.push(clause);
-                self.enc_predecessor.insert((i, j));
-            }
-        }
-
-        // Margin left
-        for i in n_last + 1..=n + 1 {
-            let s_00 = self.state_vars[i][0];
-            let s_10 = self.state_vars[i - 1][0];
-            let clause = vec![neg(s_00), as_lit(s_10)];
-            cnf.push(clause);
-            self.enc_predecessor.insert((i, 0));
-        }
-
-        // Margin top
-        for j in m_last + 1..=m + 1 {
-            let s_00 = self.state_vars[0][j];
-            let s_01 = self.state_vars[0][j - 1];
-            let clause = vec![neg(s_00), as_lit(s_01)];
-            cnf.push(clause);
-            self.enc_predecessor.insert((0, j));
-        }
-
-        EncodingResult::cnf(cnf)
     }
 
     fn encode_move_right(&mut self, i: usize, j: usize) -> EncodingResult {
@@ -517,8 +421,6 @@ impl IWoorpjeEncoder {
                 neg(rhs_lambda),
                 neg(s_11),
             ]);
-
-            assert!(self.enc_transitions.insert(((i, j), (i + 1, j + 1)), 1) == None);
         }
         EncodingResult::cnf(cnf)
     }
@@ -605,6 +507,7 @@ impl IWoorpjeEncoder {
     }*/
 
     /// Returns the state variables of the pattern matching automaton.
+    #[allow(unused)]
     fn get_state_vars(&self) -> &Vec<Vec<PVar>> {
         &self.state_vars
     }
@@ -621,81 +524,18 @@ impl IWoorpjeEncoder {
         let (n, m) = self.lens();
         EncodingResult::assumption(as_lit(self.state_vars[n][m]))
     }
-
-    fn check(&self) {
-        let (n, m) = self.lens();
-        for i in 0..=n {
-            for j in 0..=m {
-                if (i, j) == (n, m) {
-                    continue;
-                }
-                debug_assert!(
-                    self.enc_successors.contains(&(i, j)),
-                    "Round {}: No successor encoding for ({}, {}) (States: {}x{} -> {}x{})",
-                    self.round,
-                    i,
-                    j,
-                    self.prev_lens().0 + 1,
-                    self.prev_lens().1 + 1,
-                    self.state_vars.len(),
-                    self.state_vars[i].len()
-                );
-
-                if (i, j) != (0, 0) {
-                    debug_assert!(
-                        self.enc_predecessor.contains(&(i, j)),
-                        "No predecessor encoding for ({}, {})",
-                        i,
-                        j
-                    );
-                }
-            }
-        }
-
-        for i in 0..n {
-            for j in 0..m {
-                debug_assert!(
-                    self.enc_transitions.contains_key(&((i, j), (i + 1, j + 1))),
-                    "No transition encoding for ({}, {}) -> ({}, {})",
-                    i,
-                    j,
-                    i + 1,
-                    j + 1
-                );
-                debug_assert!(
-                    self.enc_transitions.contains_key(&((i, j), (i, j + 1))),
-                    "No transition encoding for ({}, {}) -> ({}, {})",
-                    i,
-                    j,
-                    i,
-                    j + 1
-                );
-                debug_assert!(
-                    self.enc_transitions.contains_key(&((i, j), (i + 1, j))),
-                    "No transition encoding for ({}, {}) -> ({}, {})",
-                    i,
-                    j,
-                    i + 1,
-                    j
-                );
-            }
-        }
-    }
 }
 
 impl WordEquationEncoder for IWoorpjeEncoder {
     fn new(equation: WordEquation) -> Self {
         Self {
             state_vars: Vec::new(),
-            equation: equation,
+            equation,
             subs_lhs: HashMap::new(),
             subs_rhs: HashMap::new(),
             filled_equation: None,
             previous_filled_equation: None,
             selector: None,
-            enc_successors: IndexSet::new(),
-            enc_predecessor: IndexSet::new(),
-            enc_transitions: IndexMap::new(),
             round: 0,
         }
     }
@@ -883,10 +723,10 @@ mod tests {
                     print!("\t{}", j)
                 }
                 println!();
-                for i in 0..svs.len() {
+                for (i, s) in svs.iter().enumerate() {
                     print!("{}\t", i);
-                    for j in 0..svs[i].len() {
-                        if solver.value(as_lit(svs[i][j])) == Some(true) {
+                    for j in s {
+                        if solver.value(as_lit(*j)) == Some(true) {
                             print!("1\t")
                         } else {
                             print!("0\t")
