@@ -70,16 +70,19 @@ fn main() {
 
     let res = solver.solve();
     log::info!("Done ({}ms).", ts.elapsed().as_millis());
-    println!("{}", res);
+
     if let Some(model) = res.get_model() {
         // TODO: Some variables were removed during preprocessing are missing from the model
-        println!("{}", model);
+
         if !cli.skip_verify {
             match instance.get_formula().evaluate(model) {
-                Some(true) => {}
+                Some(true) => println!("{}\n{}", res, model),
                 Some(false) => panic!("Model is incorrect"),
                 None => panic!("Model is incomplete"),
             }
+        } else {
+            println!("{}", res);
+            println!("{}", model);
         }
     }
 }
