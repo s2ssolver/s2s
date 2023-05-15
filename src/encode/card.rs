@@ -1,3 +1,5 @@
+use std::fmt::Display;
+
 use indexmap::IndexSet;
 
 use crate::sat::{as_lit, neg, pvar, Cnf, PLit, PVar};
@@ -65,6 +67,7 @@ impl IncrementalAMO {
                 cnf.push(vec![-(*x), -(*y)]);
             }
         }
+        self.vars.extend(vars);
         EncodingResult::cnf(cnf)
     }
 }
@@ -121,6 +124,12 @@ impl IncrementalEO {
         let alo = self.alo.add(vars);
         amo.join(alo);
         amo
+    }
+}
+
+impl Display for IncrementalEO {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Exactly one of: {:?}", self.alo.vars)
     }
 }
 
