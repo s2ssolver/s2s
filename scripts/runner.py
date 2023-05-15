@@ -49,12 +49,12 @@ if __name__ == "__main__":
     results = joblib.Parallel(n_jobs=8)(joblib.delayed(run)(os.path.join(args.dir, file), args.b, args.solver)
                                         for file in os.listdir(args.dir))
     unsasts = [res[0] for res in results if res[1] == "unsat"]
-    sats = [res[0] for res in results if res[1] == "unsat"]
+    sats = [res[0] for res in results if res[1] == "sat"]
     t_total = sum([res[2] for res in results])
     print(f"#️⃣  Total {len(results)} ({t_total:.2f}s)")
-    print(f"❌ Unsats {len(unsasts)}: ")
-    print(" ".join(unsasts).strip(), end="")
-    print(f"✅ Sats {len(sats)}: ")
-    print(" ".join(sats).strip(), end="")
+    print(f"❌ Unsats {len(unsasts)}")
+    # print(" ".join(unsasts).strip(), end="")
+    print(f"✅ Sats {len(sats)}")
+    # print(" ".join(sats).strip(), end="")
 
 # 80
