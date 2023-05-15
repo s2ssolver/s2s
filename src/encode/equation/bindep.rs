@@ -3,7 +3,7 @@ use std::cmp::max;
 use std::fmt::Display;
 use std::time::Instant;
 
-use crate::encode::card::{amo, exactly_one, IncrementalAMO, IncrementalEO};
+use crate::encode::card::{exactly_one, IncrementalAMO, IncrementalEO};
 use crate::encode::substitution::SubstitutionEncoding;
 use crate::encode::{EncodingResult, FilledPattern, PredicateEncoder, VariableBounds, LAMBDA};
 use crate::model::words::{Pattern, Symbol, WordEquation};
@@ -213,10 +213,7 @@ impl BindepEncoder {
     /// Returns the variables' bound used in the last round.
     /// Returns None prior to the first round.
     fn get_last_var_bound(&self, var: &Variable) -> Option<usize> {
-        match &self.last_var_bounds {
-            Some(bounds) => Some(bounds.get(var)),
-            None => None,
-        }
+        self.last_var_bounds.as_ref().map(|bounds| bounds.get(var))
     }
 
     /// Encodes the possible candidates for the solution word up to bound `self.bound`.
@@ -297,8 +294,10 @@ impl BindepEncoder {
                 starts_i.push(svar);
             }
 
-            //clauses.push(starts_i.iter().map(|v| as_lit(*v)).collect_vec()); // Not required and slows down the solver
-            // TODO: Incremental AMO
+            // The "alignment" constraints ensure that *exactly* one start position is chosen.
+            // Thus, the AMO encoding here is not required but redundant.
+            // However, we still keep it as it helps the SAT solver.
+            // ALO on the other hand seems to slow the solver down, so we omit it
             let amo = self
                 .segs_starts_amo
                 .entry((side.clone(), i))
@@ -335,6 +334,7 @@ impl BindepEncoder {
                     let start_pos = segments.earliest_start(i);
                     // Incremental either: Length is longer OR start position is later OR Both
                     for pos in start_pos..self.bound {
+                        // TODO: Put all "disabled" start-length-pairs is a list and process on next iteration instead of iterating over all pairs and checking the condition
                         let last_vbound = self.get_last_var_bound(v).unwrap_or(0);
                         let vbound = bounds.get(v);
 
@@ -368,6 +368,7 @@ impl BindepEncoder {
                                         ]);
                                     }
                                 }
+                                continue;
                             }
 
                             // Encode alignment for new position/length pairs
@@ -385,12 +386,14 @@ impl BindepEncoder {
                 }
                 PatternSegment::Word(w) => {
                     // Only consider the new possible starting positions
-                    let start_pos: usize = max(last_bound, segments.earliest_start(i));
-                    for pos in 0..self.bound {
+                    for pos in segments.earliest_start(i)..self.bound {
                         let len = w.len();
                         let svar = self.start_position(i, pos, side);
+                        // Already considered last round
                         if pos < last_bound {
+                            // Extends over the last bound, but not over the current bound
                             if pos + len >= last_bound - segments.suffix_len(i) {
+                                // This position was disabled for last bound, but now became viable
                                 if pos + len < self.bound - segments.suffix_len(i) {
                                     let succ = self.start_position(i + 1, pos + len, side);
                                     res.add_clause(vec![neg(svar), as_lit(succ)]);
@@ -399,6 +402,7 @@ impl BindepEncoder {
                                     res.add_assumption(neg(svar));
                                 }
                             }
+                            // Does not extend over the last bound, so we already encoded it and can continue
                             continue;
                         }
                         if pos + len < self.bound - segments.suffix_len(i) {
@@ -406,7 +410,7 @@ impl BindepEncoder {
                             let succ = self.start_position(i + 1, pos + len, side);
                             res.add_clause(vec![neg(svar), as_lit(succ)]);
                         } else {
-                            // Cannot start here (ASSUME!)
+                            // Cannot start here. Deactivate by means of an assumption, as we might be able to activate it later, when the bound increases
                             res.add_assumption(neg(svar));
                         }
                     }
@@ -435,7 +439,13 @@ impl BindepEncoder {
                         let len_var = self.var_lens[&(x.clone(), l)];
                         for p in segments.earliest_start(i)..self.bound {
                             let start_var = self.start_position(i, p, side);
-                            // 🔧 TODO: Filter out (l,p) that have been encoded in previous rounds, i.e. l+p < last_bound-self.suffix_len(i)
+                            if p < last_bound
+                                && l < self.get_last_var_bound(x).unwrap_or(0)
+                                && l + p < last_bound.saturating_sub(segments.suffix_len(i))
+                            {
+                                // Already encoded
+                                continue;
+                            }
                             if l + p <= self.bound - segments.suffix_len(i) {
                                 // If segment starts here, then the next |w| positions must match substitution of x
                                 match l {
@@ -493,8 +503,7 @@ impl BindepEncoder {
                             }
                         }
                         // Next position in variable, if exists, is lambda
-                        // 🔧 TODO: Only if not encoded in last round, i.e., if l >= last_var_bound(x)
-                        if l < bounds.get(x) {
+                        if self.get_last_var_bound(x).unwrap_or(0) <= l && l < bounds.get(x) {
                             // If variable is assigned length l, then the position x[l] (and implicitly all following) must be lambda
                             let sub_lambda = subs.get(x, l, LAMBDA).unwrap();
 
@@ -506,6 +515,12 @@ impl BindepEncoder {
                     for p in segments.earliest_start(i)
                         ..self.bound - (w.len() - 1) - segments.suffix_len(i)
                     {
+                        if p < last_bound && p < last_bound - (w.len() - 1) - segments.suffix_len(i)
+                        {
+                            // Already encoded
+                            continue;
+                        }
+
                         let start_var = self.start_position(i, p, side);
                         // If segment starts here, then the next |w| positions must match w
                         // S_i^p  -> /\{k=0...|w|} c_{p+j} = w[k]
@@ -534,7 +549,13 @@ impl BindepEncoder {
             PatternSegment::Variable(x) => {
                 for p in 0..self.bound {
                     for l in 0..=bounds.get(x) {
-                        // 🔧 TODO: Filter out l,p pairs that have been encoded already, i.e. p+l < last_bound
+                        // Filter out l,p pairs that have been encoded already, i.e. p+l < last_bound
+                        if p < last_bound
+                            && l < self.get_last_var_bound(x).unwrap_or(0)
+                            && p + l < last_bound
+                        {
+                            continue;
+                        }
                         if p + l < self.bound {
                             let start_var = self.start_position(last, p, side);
                             let len_var = self.var_len(x, l);
@@ -548,7 +569,8 @@ impl BindepEncoder {
             PatternSegment::Word(w) => {
                 for p in 0..self.bound {
                     // 🔧 Skip p which are already encoded, i.e., skip p with p+w.len() < last_bound
-                    if p + w.len() < self.bound {
+
+                    if p + w.len() >= last_bound && p + w.len() < self.bound {
                         let start_var = self.start_position(last, p, side);
                         let cand_var = self.candidate_at(p + w.len(), LAMBDA);
                         clauses.push(vec![neg(start_var), as_lit(cand_var)]);

@@ -10,6 +10,8 @@ pub fn exactly_one(vars: &[PVar]) -> Cnf {
     eo_naive(vars)
 }
 
+/// At most one encoding
+#[allow(unused)]
 pub fn amo(vars: &[PVar]) -> Cnf {
     amo_binomial(vars)
 }
@@ -112,6 +114,7 @@ pub struct IncrementalEO {
 }
 
 impl IncrementalEO {
+    #[allow(unused)]
     pub fn new() -> Self {
         Self {
             amo: IncrementalAMO::new(),
