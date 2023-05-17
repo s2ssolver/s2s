@@ -71,18 +71,20 @@ fn main() {
     let res = solver.solve();
     log::info!("Done ({}ms).", ts.elapsed().as_millis());
 
-    if let Some(model) = res.get_model() {
-        // TODO: Some variables were removed during preprocessing are missing from the model
-
-        if !cli.skip_verify {
-            match instance.get_formula().evaluate(model) {
-                Some(true) => println!("{}\n{}", res, model),
-                Some(false) => panic!("Model is incorrect"),
-                None => panic!("Model is incomplete"),
+    match res {
+        satstr::SolverResult::Sat(m) => {
+            if !cli.skip_verify {
+                match instance.get_formula().evaluate(&m) {
+                    Some(true) => println!("sat\n{}", m),
+                    Some(false) => panic!("Model is incorrect"),
+                    None => panic!("Model is incomplete"),
+                }
+            } else {
+                println!("sat");
+                println!("{}", m);
             }
-        } else {
-            println!("{}", res);
-            println!("{}", model);
         }
+        satstr::SolverResult::Unsat => println!("unsat"),
+        satstr::SolverResult::Unknown => println!("unknown"),
     }
 }
