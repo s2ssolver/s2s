@@ -106,6 +106,15 @@ impl Formula {
             Formula::Not(f) => f.evaluate(substitution).map(|x| !x),
         }
     }
+
+    pub fn is_conjunctive(&self) -> bool {
+        match self {
+            Formula::True | Formula::False | Formula::Atom(_) => true,
+            Formula::Or(_) => false,
+            Formula::And(fs) => fs.iter().all(Self::is_conjunctive),
+            Formula::Not(f) => f.is_conjunctive(),
+        }
+    }
 }
 
 /// A constant value

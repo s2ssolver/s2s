@@ -135,9 +135,7 @@ impl<T: WordEquationEncoder> EquationSolver<T> {
             subs_encoder,
         })
     }
-}
 
-impl<T: WordEquationEncoder> EquationSolver<T> {
     fn encode_bounded(&mut self) -> EncodingResult {
         let bounds = sharpen_bounds(&self.equation, &self.bounds, &self.equation.variables());
         log::debug!("Sharpened bounds: {:?}", bounds);
@@ -249,6 +247,170 @@ impl<T: WordEquationEncoder> Solver for EquationSolver<T> {
     }
 }
 
+pub struct EquationSystemSolver<T: WordEquationEncoder> {
+    equations: Vec<WordEquation>,
+    bounds: VariableBounds,
+    alphabet: IndexSet<char>,
+    variables: IndexSet<Variable>,
+    max_bound: Option<usize>,
+    encoder: Vec<T>,
+    subs_encoder: SubstitutionEncoder,
+}
+
+impl<T: WordEquationEncoder> EquationSystemSolver<T> {
+    pub fn new(instance: &Instance) -> Result<Self, String> {
+        let mut eqs = Vec::new();
+        let mut alphabet = IndexSet::new();
+        let mut variables = IndexSet::new();
+
+        match instance.get_formula() {
+            Formula::Atom(Atom::Predicate(Predicate::WordEquation(eq))) => {
+                eqs.push(eq.clone());
+                alphabet.extend(eq.alphabet().iter().cloned());
+                variables.extend(eq.variables().iter().cloned());
+            }
+            Formula::And(fs) => {
+                for f in fs {
+                    match f {
+                        Formula::Atom(Atom::Predicate(Predicate::WordEquation(eq))) => {
+                            eqs.push(eq.clone());
+                            alphabet.extend(eq.alphabet().iter().cloned());
+                            variables.extend(eq.variables().iter().cloned());
+                        }
+                        _ => return Err(format!("Instance is not a system of word equations")),
+                    }
+                }
+            }
+            _ => return Err(format!("Instance is not a system of word equations")),
+        }
+
+        let subs_encoder = SubstitutionEncoder::new(alphabet.clone(), variables.clone());
+        let mut encoders = Vec::new();
+        for eq in &eqs {
+            encoders.push(T::new(eq.clone()));
+        }
+        Ok(Self {
+            encoder: encoders,
+            equations: eqs,
+            alphabet,
+            variables,
+            bounds: VariableBounds::new(instance.get_lower_bound()),
+            max_bound: instance.get_upper_bound(),
+            subs_encoder,
+        })
+    }
+
+    fn encode_bounded(&mut self) -> EncodingResult {
+        let mut encoding = EncodingResult::empty();
+
+        let ts = Instant::now();
+        let subs_cnf = self.subs_encoder.encode(&self.bounds);
+        log::debug!(
+            "Encoded substitution in {} clauses ({} ms)",
+            subs_cnf.clauses(),
+            ts.elapsed().as_millis()
+        );
+        encoding.join(subs_cnf);
+        let sub_encoding = self.subs_encoder.get_encoding().unwrap();
+        for enc in self.encoder.as_mut_slice() {
+            let res = enc.encode(&self.bounds, sub_encoding);
+            encoding.join(res);
+        }
+
+        encoding
+    }
+
+    // Reset all states
+    fn reset(&mut self) {
+        self.subs_encoder = SubstitutionEncoder::new(self.alphabet.clone(), self.variables.clone());
+        for encoder in self.encoder.as_mut_slice() {
+            encoder.reset();
+        }
+    }
+}
+
+impl<T: WordEquationEncoder> Solver for EquationSystemSolver<T> {
+    fn solve(&mut self) -> SolverResult {
+        log::info!(
+            "Started solving loop for system of {} equations",
+            self.equations.len()
+        );
+        let mut cadical: cadical::Solver = cadical::Solver::new();
+        let mut time_encoding = 0;
+        let mut time_solving = 0;
+        let mut fm = Cnf::new();
+        loop {
+            log::info!("Current bounds {}", self.bounds);
+            let ts = Instant::now();
+            let encoding = self.encode_bounded();
+            let elapsed = ts.elapsed().as_millis();
+            log::info!("Encoding took {} ms", elapsed);
+            time_encoding += elapsed;
+            match encoding {
+                EncodingResult::Cnf(clauses, assms) => {
+                    let n_clauses = clauses.len();
+                    let ts = Instant::now();
+                    fm.extend(clauses.clone());
+
+                    for clause in clauses.into_iter() {
+                        cadical.add_clause(clause);
+                    }
+
+                    let t_adding = ts.elapsed().as_millis();
+                    log::info!(
+                        "Added {} (total {}) clauses in {} ms",
+                        n_clauses,
+                        cadical.num_clauses(),
+                        t_adding
+                    );
+
+                    time_encoding += t_adding;
+                    let ts = Instant::now();
+                    let res = cadical.solve_with(assms.iter().cloned());
+
+                    let t_solving = ts.elapsed().as_millis();
+                    log::info!(
+                        "Done SAT solving: {} ({}ms)",
+                        res.unwrap_or(false),
+                        t_solving
+                    );
+                    time_solving += t_solving;
+                    if let Some(true) = res {
+                        let mut model = Substitution::with_defaults();
+                        match &self.subs_encoder.get_encoding() {
+                            Some(sub_encoding) => {
+                                for (v, s) in sub_encoding.get_substitutions(&cadical) {
+                                    model.set(&v, ConstVal::String(s.clone()));
+                                }
+                            }
+                            _ => panic!("No substitution encoding found"),
+                        };
+                        log::info!(
+                            "Done. Total time encoding/solving: {}/{} ms",
+                            time_encoding,
+                            time_solving
+                        );
+                        return SolverResult::Sat(model);
+                    } else if self.encoder.iter().any(|enc| !enc.is_incremental()) {
+                        // reset states if at least one solver is not incremental
+                        self.reset();
+                        cadical = cadical::Solver::new();
+                        log::debug!("Reset state");
+                    }
+                }
+                EncodingResult::Trivial(false) => return SolverResult::Unsat,
+                EncodingResult::Trivial(true) => {
+                    return SolverResult::Sat(Substitution::with_defaults())
+                }
+            }
+            if !self.bounds.next_square(self.max_bound) {
+                break;
+            }
+        }
+        SolverResult::Unsat
+    }
+}
+
 fn sharpen_bounds(
     eq: &WordEquation,
     bounds: &VariableBounds,
@@ -292,7 +454,7 @@ fn sharpen_bounds(
 /// This solver uses a SAT solver to check whether a word equation is satisfiable.
 /// Can only solver instances with a single word equation.
 pub struct Woorpje {
-    solver: EquationSolver<WoorpjeEncoder>,
+    solver: EquationSystemSolver<WoorpjeEncoder>,
 }
 
 impl Solver for Woorpje {
@@ -303,7 +465,7 @@ impl Solver for Woorpje {
 
 impl Woorpje {
     pub fn new(instance: &Instance) -> Result<Self, String> {
-        let solver = EquationSolver::new(instance)?;
+        let solver = EquationSystemSolver::new(instance)?;
         Ok(Self { solver })
     }
 }
@@ -311,7 +473,7 @@ impl Woorpje {
 /// The incremental extension of the Woorpje solver for word equations.
 /// Can only solver instances with a single word equation.
 pub struct IWoorpje {
-    solver: EquationSolver<IWoorpjeEncoder>,
+    solver: EquationSystemSolver<IWoorpjeEncoder>,
 }
 
 impl Solver for IWoorpje {
@@ -322,13 +484,13 @@ impl Solver for IWoorpje {
 
 impl IWoorpje {
     pub fn new(instance: &Instance) -> Result<Self, String> {
-        let solver = EquationSolver::new(instance)?;
+        let solver = EquationSystemSolver::new(instance)?;
         Ok(Self { solver })
     }
 }
 
 pub struct Bindep {
-    solver: EquationSolver<BindepEncoder>,
+    solver: EquationSystemSolver<BindepEncoder>,
 }
 
 impl Solver for Bindep {
@@ -339,7 +501,7 @@ impl Solver for Bindep {
 
 impl Bindep {
     pub fn new(instance: &Instance) -> Result<Self, String> {
-        let solver = EquationSolver::new(instance)?;
+        let solver = EquationSystemSolver::new(instance)?;
         Ok(Self { solver })
     }
 }

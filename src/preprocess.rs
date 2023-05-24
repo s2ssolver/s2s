@@ -36,6 +36,7 @@ fn strip(weq: &WordEquation) -> WordEquation {
 fn preprocess_word_equation(weq: &WordEquation) -> WordEquation {
     let sripped = strip(weq);
     log::debug!("Stripped {} to {}", weq, sripped);
+
     sripped
 }
 
@@ -67,7 +68,23 @@ pub fn preprocess(formula: &Formula) -> Formula {
             Atom::BoolVar(v) => Atom::BoolVar(v.clone()),
         }),
         Formula::Or(f) => Formula::Or(f.iter().map(preprocess).collect()),
-        Formula::And(f) => Formula::And(f.iter().map(preprocess).collect()),
+        Formula::And(fs) => {
+            let mut preprocessed_fs = Vec::new();
+            for f in fs {
+                let preprocessed = preprocess(f);
+                match preprocessed {
+                    Formula::True => {}                      // Skip
+                    Formula::False => return Formula::False, // Reduce to False
+                    _ => preprocessed_fs.push(preprocessed),
+                }
+            }
+
+            match preprocessed_fs.len() {
+                0 => Formula::True,
+                1 => preprocessed_fs.pop().unwrap(),
+                _ => Formula::And(preprocessed_fs),
+            }
+        }
         Formula::Not(f) => Formula::Not(Box::new(preprocess(f.as_ref()))),
     }
 }
