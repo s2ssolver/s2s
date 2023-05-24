@@ -302,9 +302,18 @@ impl<T: WordEquationEncoder> EquationSystemSolver<T> {
 
     fn encode_bounded(&mut self) -> EncodingResult {
         let mut encoding = EncodingResult::empty();
+        let bounds = if self.equations.len() == 1 {
+            sharpen_bounds(
+                &self.equations.pop().unwrap(),
+                &self.bounds,
+                &self.variables,
+            )
+        } else {
+            self.bounds.clone()
+        };
 
         let ts = Instant::now();
-        let subs_cnf = self.subs_encoder.encode(&self.bounds);
+        let subs_cnf = self.subs_encoder.encode(&bounds);
         log::debug!(
             "Encoded substitution in {} clauses ({} ms)",
             subs_cnf.clauses(),
@@ -313,7 +322,7 @@ impl<T: WordEquationEncoder> EquationSystemSolver<T> {
         encoding.join(subs_cnf);
         let sub_encoding = self.subs_encoder.get_encoding().unwrap();
         for enc in self.encoder.as_mut_slice() {
-            let res = enc.encode(&self.bounds, sub_encoding);
+            let res = enc.encode(&bounds, sub_encoding);
             encoding.join(res);
         }
 
