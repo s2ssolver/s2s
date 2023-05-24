@@ -43,6 +43,8 @@ pub struct Instance {
     ubound: Option<usize>,
 
     lbound: usize,
+
+    print_model: bool,
 }
 
 impl Instance {
@@ -52,6 +54,7 @@ impl Instance {
             vars,
             ubound: None,
             lbound: 1,
+            print_model: false,
         }
     }
 
@@ -85,6 +88,14 @@ impl Instance {
 
     pub fn get_upper_bound(&self) -> Option<usize> {
         self.ubound
+    }
+
+    pub fn set_print_model(&mut self, arg: bool) {
+        self.print_model = arg;
+    }
+
+    pub fn get_print_model(&self) -> bool {
+        self.print_model
     }
 }
 

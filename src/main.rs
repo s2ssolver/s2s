@@ -24,6 +24,10 @@ struct Options {
     #[arg(long, short = 'm', value_enum, default_value = "1")]
     min_bound: usize,
 
+    /// Print the model
+    #[arg(long)]
+    model: bool,
+
     /// The input file to use, must be either in SMT2 or WOORPJE format, according to the `format` argument
     file: String,
 }
@@ -73,6 +77,9 @@ fn main() {
     if let Some(bound) = cli.max_bound {
         instance.set_ubound(bound);
     }
+    if cli.model {
+        instance.set_print_model(true);
+    }
     instance.set_lbound(cli.min_bound);
     instance.set_formula(preprocess(instance.get_formula()));
 
@@ -96,7 +103,9 @@ fn main() {
                 }
             } else {
                 println!("sat");
-                println!("{}", m);
+                if instance.get_print_model() {
+                    println!("{}", m);
+                }
             }
         }
         satstr::SolverResult::Unsat => println!("unsat"),

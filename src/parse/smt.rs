@@ -38,6 +38,7 @@ pub fn parse_smt<R: BufRead>(smt: R) -> Result<Instance, ParseError> {
 
     let mut variables: IndexMap<String, Variable> = IndexMap::new();
     let mut asserts: Vec<Formula> = Vec::new();
+    let mut print_model = false;
 
     for command in commands {
         let command = command?;
@@ -116,9 +117,7 @@ pub fn parse_smt<R: BufRead>(smt: R) -> Result<Instance, ParseError> {
                 }
             }
             concrete::Command::GetModel => {
-                return Err(ParseError::Unsupported(
-                    "GetModel. Use command line flag instead.".to_string(),
-                ))
+                print_model = true;
             }
             concrete::Command::SetLogic { symbol } => {
                 // TODO: Check if the logic is supported
@@ -134,7 +133,7 @@ pub fn parse_smt<R: BufRead>(smt: R) -> Result<Instance, ParseError> {
     let instance = Instance::new(
         Formula::And(asserts),
         variables.into_iter().map(|(_, v)| v).collect(),
-    );
+    instance.set_print_model(print_model);
     Ok(instance)
 }
 
