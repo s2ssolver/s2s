@@ -156,6 +156,8 @@ pub struct BindepEncoder {
     /// The variable-solution matching variables.
     var_matches: IndexMap<(Variable, usize, usize), PVar>,
 
+    var_cand_match_cache: IndexMap<(Variable, usize, usize), PVar>,
+
     /// The alphabet
     alphabet: IndexSet<char>,
 }
@@ -477,20 +479,39 @@ impl BindepEncoder {
                                         let pred_m_var = self.var_matches[&(x.clone(), p, l - 1)];
                                         clauses.push(vec![neg(m_var), as_lit(pred_m_var)]);
                                         self.var_matches.insert((x.clone(), p, l), m_var);
+                                        // Cache this with variable
+                                        // I.e., match(x[l-1], cand[p+l-1]) -> EX c. such that they match
+                                        let mv = match self.var_cand_match_cache.get(&(
+                                            x.clone(),
+                                            l - 1,
+                                            p + (l - 1),
+                                        )) {
+                                            Some(mv) => {
+                                                // println!("HIT");
+                                                *mv
+                                            }
+                                            None => {
+                                                let mv = pvar();
                                         for c in subs.alphabet() {
                                             let cand_c = self.candidate_at(p + (l - 1), *c);
                                             let sub_c = subs.get(x, l - 1, *c).unwrap();
                                             clauses.push(vec![
-                                                neg(m_var),
+                                                        neg(mv),
                                                 neg(cand_c),
                                                 as_lit(sub_c),
                                             ]);
                                             clauses.push(vec![
-                                                neg(m_var),
+                                                        neg(mv),
                                                 as_lit(cand_c),
                                                 neg(sub_c),
                                             ]);
                                         }
+                                                mv
+                                            }
+                                        };
+                                        self.var_cand_match_cache
+                                            .insert((x.clone(), l - 1, p + (l - 1)), mv.clone());
+                                        clauses.push(vec![neg(m_var), as_lit(mv)]);
 
                                         clauses.push(vec![
                                             neg(start_var),
@@ -600,6 +621,7 @@ impl WordEquationEncoder for BindepEncoder {
             segs_starts_amo: IndexMap::new(),
             segments_lsh: lhs_segs,
             segments_rhs: rhs_segs,
+            var_cand_match_cache: IndexMap::new(),
             var_lens: IndexMap::new(),
             var_len_eo_encoders: IndexMap::new(),
             cand_positions: IndexMap::new(),
