@@ -121,7 +121,10 @@ impl<T: WordEquationEncoder> EquationSolver<T> {
                 Ok(WordEquation::new(lhs, Pattern::empty()))
             }
             Formula::True => Ok(WordEquation::empty()),
-            _ => Err("Instance is not a single word equation".to_string()),
+            _ => Err(format!(
+                "Instance is not a single word equation but {:?}",
+                instance.get_formula()
+            )),
         }?;
         let subs_encoder = SubstitutionEncoder::new(eq.alphabet(), eq.variables());
         Ok(Self {

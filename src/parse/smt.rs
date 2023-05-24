@@ -130,9 +130,21 @@ pub fn parse_smt<R: BufRead>(smt: R) -> Result<Instance, ParseError> {
             _ => return Err(ParseError::Unsupported(command.to_string())),
         }
     }
-    let instance = Instance::new(
-        Formula::And(asserts),
-        variables.into_iter().map(|(_, v)| v).collect(),
+
+    let mut instance = match asserts.len() {
+        0 => Instance::new(
+            Formula::True,
+            variables.into_iter().map(|(_, v)| v).collect(),
+        ),
+        1 => Instance::new(
+            asserts.pop().unwrap(),
+            variables.into_iter().map(|(_, v)| v).collect(),
+        ),
+        _ => Instance::new(
+            Formula::And(asserts),
+            variables.into_iter().map(|(_, v)| v).collect(),
+        ),
+    };
     instance.set_print_model(print_model);
     Ok(instance)
 }
