@@ -56,16 +56,26 @@ fn main() {
         Format::Woorpje => Parser::WoorpjeParser,
         Format::Smt => Parser::Smt2Parser,
         Format::Auto => {
-            if cli.file.ends_with(".eq") {
-                Parser::WoorpjeParser
-            } else if cli.file.ends_with(".smt2") || cli.file.ends_with(".smt") {
-                Parser::Smt2Parser
-            } else {
-                log::error!(
-                    "Format set to 'auto', but could not detect format from file extension"
-                );
-                println!("error");
-                exit(-1);
+            let ext = cli.file.split(".").last();
+            match ext {
+                Some("eq") => Parser::WoorpjeParser,
+                Some("smt2") | Some("smt") => Parser::Smt2Parser,
+                Some(other) => {
+                    log::error!(
+                        "Format set to 'auto', but the file extension is no supported: {}",
+                        other
+                    );
+                    println!("error");
+                    exit(-1);
+                }
+                None => {
+                    log::error!(
+                        "Format set to 'auto', but could not detect format from file extension of file {}",
+                        cli.file
+                    );
+                    println!("error");
+                    exit(-1);
+                }
             }
         }
     };

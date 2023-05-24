@@ -231,15 +231,11 @@ fn parse_patter(pat: &Term, vars: &IndexMap<String, Variable>) -> Result<Pattern
             arguments,
         } => {
             if let "str.++" = qual_identifier.to_string().as_str() {
-                if arguments.len() != 2 {
-                    return Err(ParseError::Other(
-                        format!("Expected 2 arguments for str.++, found {}", arguments.len()),
-                        None,
-                    ));
+                let mut p = Pattern::empty();
+                for t in arguments {
+                    p.extend(parse_patter(t, vars)?);
                 }
-                let mut pattern_lhs = parse_patter(&arguments[0], vars)?;
-                pattern_lhs.extend(parse_patter(&arguments[1], vars)?);
-                Ok(pattern_lhs)
+                Ok(p)
             } else {
                 return Err(ParseError::Other(
                     format!("Expected str.++, found {}", qual_identifier),
