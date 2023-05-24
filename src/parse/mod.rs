@@ -1,6 +1,10 @@
-use std::{collections::HashMap, path::PathBuf};
+use std::{
+    collections::{HashMap, HashSet},
+    path::PathBuf,
+};
 
 use indexmap::IndexSet;
+mod smt;
 
 use crate::{
     formula::{Atom, Formula},
@@ -8,8 +12,81 @@ use crate::{
         words::{Pattern, Symbol, WordEquation},
         Variable,
     },
-    Instance,
 };
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum ParseError {
+    /// Syntax error, optionally with line and column number
+    SyntaxError(String, Option<(usize, usize)>),
+    /// Other error, optionally with line and column number
+    Other(String, Option<(usize, usize)>),
+    /// Unsupported feature
+    Unsupported(String),
+    /// Unknown identifier
+    UnknownIdentifier(String),
+    /// File not found
+    FileNotFound(String),
+}
+
+/// A problem instance, consisting of a formula and a set of variables
+/// Should be created using the `parse` module
+#[derive(Clone, Debug)]
+pub struct Instance {
+    /// The formula to solve
+    formula: Formula,
+    /// The set of all variables
+    vars: IndexSet<Variable>,
+    /// The maximum bound for any variable to check.
+    /// If `None`, no bound is set, which will might in an infinite search if the instance is not satisfiable.
+    /// If `Some(n)`, the solver will only check for a solution with a bound of `n`.
+    /// If no solution is found with every variable bound to `n`, the solver will return `Unsat`.
+    ubound: Option<usize>,
+
+    lbound: usize,
+}
+
+impl Instance {
+    pub fn new(formula: Formula, vars: IndexSet<Variable>) -> Self {
+        Instance {
+            formula,
+            vars,
+            ubound: None,
+            lbound: 1,
+        }
+    }
+
+    pub fn set_ubound(&mut self, bound: usize) {
+        self.ubound = Some(bound);
+    }
+
+    pub fn set_lbound(&mut self, bound: usize) {
+        self.lbound = bound;
+    }
+
+    pub fn set_formula(&mut self, formula: Formula) {
+        self.formula = formula;
+    }
+
+    pub fn remove_bound(&mut self) {
+        self.ubound = None;
+    }
+
+    pub fn get_formula(&self) -> &Formula {
+        &self.formula
+    }
+
+    pub fn get_vars(&self) -> &IndexSet<Variable> {
+        &self.vars
+    }
+
+    pub fn get_lower_bound(&self) -> usize {
+        self.lbound
+    }
+
+    pub fn get_upper_bound(&self) -> Option<usize> {
+        self.ubound
+    }
+}
 
 pub enum Parser {
     WoorpjeParser,
@@ -17,34 +94,44 @@ pub enum Parser {
 }
 
 impl Parser {
-    pub fn parse(&self, input: PathBuf) -> Result<Instance, String> {
-        let input = std::fs::read_to_string(input).map_err(|e| e.to_string())?;
-        match self {
-            Parser::WoorpjeParser => parse_woorpje(&input),
-            Parser::Smt2Parser => unimplemented!("SMT2 parsing not implemented yet"),
+    pub fn parse(&self, input: PathBuf) -> Result<Instance, ParseError> {
+        match std::fs::read_to_string(input) {
+            Ok(input) => match self {
+                Parser::WoorpjeParser => parse_woorpje(&input),
+                Parser::Smt2Parser => smt::parse_smt(input.as_bytes()),
+            },
+            Err(e) => Err(ParseError::Other(e.to_string(), None)),
         }
     }
 }
 
-fn parse_woorpje(input: &str) -> Result<Instance, String> {
+fn parse_woorpje(input: &str) -> Result<Instance, ParseError> {
     let mut vars = HashMap::new();
     let mut alphabet = IndexSet::new();
     let mut formula = Formula::True;
 
     for line in input.lines() {
         let mut tokens = line.split_ascii_whitespace();
-        let first = tokens.next().ok_or("empty line")?;
+        let first = tokens
+            .next()
+            .ok_or(ParseError::SyntaxError("empty line".to_string(), None))?;
         if first.starts_with('#') {
             // comment
             continue;
         }
         match first {
             "Variables" => {
-                let second = tokens.next().ok_or("missing variables")?;
+                let second = tokens.next().ok_or(ParseError::SyntaxError(
+                    "missing variables".to_string(),
+                    None,
+                ))?;
                 let varsnames = second
                     .strip_prefix('{')
                     .and_then(|r| r.strip_suffix('}'))
-                    .ok_or("invalid variables")?;
+                    .ok_or(ParseError::SyntaxError(
+                        "Invalid variables".to_string(),
+                        None,
+                    ))?;
                 for v in varsnames.chars() {
                     if alphabet.contains(&v) {
                         panic!("Alphabet cannot contain variables with same name");
@@ -54,11 +141,17 @@ fn parse_woorpje(input: &str) -> Result<Instance, String> {
                 }
             }
             "Terminals" => {
-                let second = tokens.next().ok_or("missing alphabet")?;
+                let second = tokens.next().ok_or(ParseError::SyntaxError(
+                    "Missing alphabet definition".to_string(),
+                    None,
+                ))?;
                 let alph = second
                     .strip_prefix('{')
                     .and_then(|r| r.strip_suffix('}'))
-                    .ok_or("invalid alphabet")?;
+                    .ok_or(ParseError::SyntaxError(
+                        "Invalid alphabet definition".to_string(),
+                        None,
+                    ))?;
                 alph.chars().for_each(|c| {
                     if vars.contains_key(&c) {
                         panic!("Alphabet cannot contain variables with same name");

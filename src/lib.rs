@@ -9,4 +9,4 @@ mod solver;
 
 pub use parse::Parser;
 pub use preprocess::preprocess;
-pub use solver::{Bindep, IWoorpje, Instance, Solver, SolverResult, Woorpje};
+pub use solver::{Bindep, IWoorpje, Solver, SolverResult, Woorpje};

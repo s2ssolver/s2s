@@ -156,6 +156,10 @@ impl Pattern {
         Some(Self::new(self.symbols[i..j].to_vec()))
     }
 
+    pub fn extend(&mut self, other: Self) {
+        self.symbols.extend(other.symbols.into_iter())
+    }
+
     pub fn starts_with(&self, other: &Self) -> bool {
         if other.length() > self.length() {
             return false;

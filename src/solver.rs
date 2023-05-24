@@ -13,58 +13,8 @@ use crate::model::words::{Pattern, Symbol};
 use crate::model::{words::WordEquation, Variable};
 
 use crate::encode::substitution::SubstitutionEncoder;
+use crate::parse::Instance;
 use crate::sat::{Cnf, PLit};
-/// A problem instance, consisting of a formula and a set of variables
-/// Should be created using the `parse` module
-#[derive(Clone, Debug)]
-pub struct Instance {
-    /// The formula to solve
-    formula: Formula,
-    /// The set of all variables
-    vars: HashSet<Variable>,
-    /// The maximum bound for any variable to check.
-    /// If `None`, no bound is set, which will might in an infinite search if the instance is not satisfiable.
-    /// If `Some(n)`, the solver will only check for a solution with a bound of `n`.
-    /// If no solution is found with every variable bound to `n`, the solver will return `Unsat`.
-    ubound: Option<usize>,
-
-    lbound: usize,
-}
-
-impl Instance {
-    pub fn new(formula: Formula, vars: HashSet<Variable>) -> Self {
-        Instance {
-            formula,
-            vars,
-            ubound: None,
-            lbound: 1,
-        }
-    }
-
-    pub fn set_ubound(&mut self, bound: usize) {
-        self.ubound = Some(bound);
-    }
-
-    pub fn set_lbound(&mut self, bound: usize) {
-        self.lbound = bound;
-    }
-
-    pub fn set_formula(&mut self, formula: Formula) {
-        self.formula = formula;
-    }
-
-    pub fn remove_bound(&mut self) {
-        self.ubound = None;
-    }
-
-    pub fn get_formula(&self) -> &Formula {
-        &self.formula
-    }
-
-    pub fn get_vars(&self) -> &HashSet<Variable> {
-        &self.vars
-    }
-}
 
 /// The result of a satisfiability check
 pub enum SolverResult {
@@ -163,7 +113,7 @@ impl<T: WordEquationEncoder> EquationSolver<T> {
     /// Create a new Woorpje solver for the given instance.
     /// Returns an error if the instance is not a single word equation.
     pub fn new(instance: &Instance) -> Result<Self, String> {
-        let eq = match &instance.formula {
+        let eq = match instance.get_formula() {
             Formula::Atom(Atom::Predicate(Predicate::WordEquation(eq))) => Ok(eq.clone()),
             Formula::False => {
                 let mut lhs = Pattern::empty();
@@ -177,8 +127,8 @@ impl<T: WordEquationEncoder> EquationSolver<T> {
         Ok(Self {
             encoder: T::new(eq.clone()),
             equation: eq,
-            bounds: VariableBounds::new(instance.lbound),
-            max_bound: instance.ubound,
+            bounds: VariableBounds::new(instance.get_lower_bound()),
+            max_bound: instance.get_upper_bound(),
             subs_encoder,
         })
     }

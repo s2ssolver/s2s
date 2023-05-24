@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::{path::Path, process::exit};
 
 use clap::{Parser as ClapParser, ValueEnum};
 
@@ -10,7 +10,7 @@ struct Options {
     #[arg(long, short, value_enum, default_value = "woorpje")]
     solver: SolverType,
     /// The format of the input file
-    #[arg(short, long, value_enum, default_value = "woorpje")]
+    #[arg(short, long, value_enum, default_value = "auto")]
     format: Format,
 
     /// Skip the verification of the solution. If this is set to true, the solver will not check if the model is correct.
@@ -40,6 +40,8 @@ enum SolverType {
 enum Format {
     Woorpje,
     Smt,
+    // Detect format using file extension
+    Auto,
 }
 
 fn main() {
@@ -49,6 +51,19 @@ fn main() {
     let parser = match cli.format {
         Format::Woorpje => Parser::WoorpjeParser,
         Format::Smt => Parser::Smt2Parser,
+        Format::Auto => {
+            if cli.file.ends_with(".eq") {
+                Parser::WoorpjeParser
+            } else if cli.file.ends_with(".smt2") || cli.file.ends_with(".smt") {
+                Parser::Smt2Parser
+            } else {
+                log::error!(
+                    "Format set to 'auto', but could not detect format from file extension"
+                );
+                println!("error");
+                exit(-1);
+            }
+        }
     };
     let file = Path::new(&cli.file);
     if !file.exists() {
