@@ -9,7 +9,7 @@ use std::time::Instant;
 use crate::encode::{BindepEncoder, EncodingResult, VariableBounds};
 use crate::encode::{IWoorpjeEncoder, WoorpjeEncoder, WordEquationEncoder};
 use crate::formula::{Atom, ConstVal, Formula, Predicate, Substitution};
-use crate::model::words::{Pattern, Symbol};
+use crate::model::words::{Symbol};
 use crate::model::{words::WordEquation, Variable};
 
 use crate::encode::substitution::SubstitutionEncoder;
@@ -95,11 +95,11 @@ impl<T: WordEquationEncoder> EquationSystemSolver<T> {
                             alphabet.extend(eq.alphabet().iter().cloned());
                             variables.extend(eq.variables().iter().cloned());
                         }
-                        _ => return Err(format!("Instance is not a system of word equations")),
+                        _ => return Err("Instance is not a system of word equations".to_string()),
                     }
                 }
             }
-            _ => return Err(format!("Instance is not a system of word equations")),
+            _ => return Err("Instance is not a system of word equations".to_string()),
         }
 
         let subs_encoder = SubstitutionEncoder::new(alphabet.clone(), variables.clone());

@@ -3,7 +3,7 @@ use std::cmp::max;
 use std::fmt::Display;
 use std::time::Instant;
 
-use crate::encode::card::{exactly_one, IncrementalAMO, IncrementalEO};
+use crate::encode::card::{exactly_one, IncrementalAMO};
 use crate::encode::substitution::SubstitutionEncoding;
 use crate::encode::{EncodingResult, FilledPattern, PredicateEncoder, VariableBounds, LAMBDA};
 use crate::model::words::{Pattern, Symbol, WordEquation};
@@ -467,7 +467,7 @@ impl BindepEncoder {
                                             }
                                         };
                                         self.var_cand_match_cache
-                                            .insert((x.clone(), l - 1, p + (l - 1)), mv.clone());
+                                            .insert((x.clone(), l - 1, p + (l - 1)), mv);
                                         clauses.push(vec![neg(m_var), as_lit(mv)]);
 
                                         clauses.push(vec![

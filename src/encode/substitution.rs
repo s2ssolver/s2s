@@ -126,11 +126,6 @@ impl SubstitutionEncoder {
         }
     }
 
-    /// Returns the Boolean variable that is true if the variable has the given length.
-    fn var_len(&self, var: &Variable, len: usize) -> PVar {
-        self.encoding.as_ref().unwrap().length[&(var.clone(), len)]
-    }
-
     /// Sets the Boolean variable that is true if the variable has the given length.
     /// Panics if the variable was already set.
     fn set_var_len(&mut self, var: &Variable, len: usize, var_len: PVar) {
@@ -161,8 +156,29 @@ impl SubstitutionEncoder {
                 let choice = pvar();
                 len_choices.push(choice);
 
-                self.set_var_len(&v, len, choice)
+                self.set_var_len(&v, len, choice);
+                // If the variable has this length, then only lambdas follow, and no lambdas precede
+                if !self.singular {
+                    if len < bounds.get(&v) {
+                        let lambda_suffix = self
+                            .encoding
+                            .as_ref()
+                            .unwrap()
+                            .get(&v, len, LAMBDA)
+                            .unwrap();
+                        res.add_clause(vec![neg(choice), as_lit(lambda_suffix)]);
+                    }
+                    if len > 0 {
+                        let not_lambda_prefix = self
+                            .get_encoding()
+                            .unwrap()
+                            .get(&v, len - 1, LAMBDA)
+                            .unwrap();
+                        res.add_clause(vec![neg(choice), neg(not_lambda_prefix)]);
+                    }
+                }
             }
+
             // Exactly one length must be true
             let eo = self
                 .var_len_eo_encoders

@@ -70,7 +70,7 @@ pub fn parse_smt<R: BufRead>(smt: R) -> Result<Instance, ParseError> {
                             return Err(ParseError::Other(
                                 format!(
                                     "Can only assert Boolean variables (found {})",
-                                    identifier.to_string()
+                                    identifier
                                 ),
                                 None,
                             ))
@@ -80,7 +80,7 @@ pub fn parse_smt<R: BufRead>(smt: R) -> Result<Instance, ParseError> {
                         return Err(ParseError::Other(
                             format!(
                                 "Can only assert Boolean variables (found {})",
-                                identifier.to_string()
+                                identifier
                             ),
                             None,
                         ))
@@ -89,7 +89,7 @@ pub fn parse_smt<R: BufRead>(smt: R) -> Result<Instance, ParseError> {
                 _ => {
                     // Assertion must be function application or Booleans
                     return Err(ParseError::Other(
-                        format!("Can not assert {}", term.to_string()),
+                        format!("Can not assert {}", term),
                         None,
                     ));
                 }
@@ -185,7 +185,7 @@ fn parse_fun_application(
             smt2parser::visitors::Identifier::Simple { symbol } => match symbol.0.as_str() {
                 "=" => {
                     if arguments.len() == 2 {
-                        let weq = parse_word_equation(&arguments[0], &arguments[1], &vars)?;
+                        let weq = parse_word_equation(&arguments[0], &arguments[1], vars)?;
                         let atom = Atom::Predicate(crate::formula::Predicate::WordEquation(weq));
                         Ok(Formula::Atom(atom))
                     } else {
@@ -202,7 +202,7 @@ fn parse_fun_application(
                 indices: _,
             } => todo!(), // Needed to regexes
         },
-        QualIdentifier::Sorted { identifier, sort } => todo!(),
+        QualIdentifier::Sorted { identifier: _, sort: _ } => todo!(),
     }
 }
 
@@ -237,16 +237,16 @@ fn parse_patter(pat: &Term, vars: &IndexMap<String, Variable>) -> Result<Pattern
                 }
                 Ok(p)
             } else {
-                return Err(ParseError::Other(
+                Err(ParseError::Other(
                     format!("Expected str.++, found {}", qual_identifier),
                     None,
-                ));
+                ))
             }
         }
         _ => Err(ParseError::Other(
             format!(
                 "Expected string constant, variable, or concatenation, but found {}",
-                pat.to_string()
+                pat
             ),
             None,
         )),

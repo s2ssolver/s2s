@@ -56,7 +56,7 @@ fn main() {
         Format::Woorpje => Parser::WoorpjeParser,
         Format::Smt => Parser::Smt2Parser,
         Format::Auto => {
-            let ext = cli.file.split(".").last();
+            let ext = cli.file.split('.').last();
             match ext {
                 Some("eq") => Parser::WoorpjeParser,
                 Some("smt2") | Some("smt") => Parser::Smt2Parser,
