@@ -170,6 +170,7 @@ impl<T: WordEquationEncoder> Solver for EquationSolver<T> {
         let mut time_encoding = 0;
         let mut time_solving = 0;
         let mut fm = Cnf::new();
+
         loop {
             log::info!("Current bounds {}", self.bounds);
             let ts = Instant::now();
@@ -285,10 +286,8 @@ impl<T: WordEquationEncoder> EquationSystemSolver<T> {
         }
 
         let subs_encoder = SubstitutionEncoder::new(alphabet.clone(), variables.clone());
-        let mut encoders = Vec::new();
-        for eq in &eqs {
-            encoders.push(T::new(eq.clone()));
-        }
+        let encoders = Vec::new();
+
         Ok(Self {
             encoder: encoders,
             equations: eqs,
@@ -344,10 +343,17 @@ impl<T: WordEquationEncoder> Solver for EquationSystemSolver<T> {
             "Started solving loop for system of {} equations",
             self.equations.len()
         );
+        let mut mut_waitlist = IndexSet::new();
+        for eq in self.equations.iter() {
+            mut_waitlist.insert(eq.clone());
+        }
+        // Just add one encoder
+        self.encoder.push(T::new(mut_waitlist.pop().unwrap()));
         let mut cadical: cadical::Solver = cadical::Solver::new();
         let mut time_encoding = 0;
         let mut time_solving = 0;
         let mut fm = Cnf::new();
+
         loop {
             log::info!("Current bounds {}", self.bounds);
             let ts = Instant::now();
@@ -394,12 +400,37 @@ impl<T: WordEquationEncoder> Solver for EquationSystemSolver<T> {
                             }
                             _ => panic!("No substitution encoding found"),
                         };
-                        log::info!(
-                            "Done. Total time encoding/solving: {}/{} ms",
-                            time_encoding,
-                            time_solving
-                        );
-                        return SolverResult::Sat(model);
+                        // Check which equations in the waitlist are not satisfied by the model, add them to the encoding
+                        let mut to_add = Vec::new();
+                        for eq in &mut_waitlist {
+                            match eq.is_solution(&model) {
+                                None | Some(false) => {
+                                    to_add.push(eq.clone());
+                                }
+                                _ => {}
+                            }
+                        }
+
+                        if to_add.is_empty() {
+                            log::info!(
+                                "Done. Total time encoding/solving: {}/{} ms",
+                                time_encoding,
+                                time_solving
+                            );
+                            return SolverResult::Sat(model);
+                        } else {
+                            // Add some of the equations that were not satisfied to the found model
+                            log::info!(
+                                "{} out of {} ignored equations were not satisfied, adding {} equations to the model",
+                                to_add.len(),
+                                mut_waitlist.len(),
+                                to_add.len().min(3)
+                            );
+                            for eq in &to_add[0..2] {
+                                mut_waitlist.remove(eq);
+                                self.encoder.push(T::new(eq.clone()));
+                            }
+                        }
                     } else if self.encoder.iter().any(|enc| !enc.is_incremental()) {
                         // reset states if at least one solver is not incremental
                         self.reset();

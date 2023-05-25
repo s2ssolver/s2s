@@ -13,7 +13,7 @@ use crate::{
 };
 
 /// Represents a pattern symbol, which can be either a constant word or a variable.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Hash, Eq)]
 pub enum Symbol {
     /// A constant word
     Constant(char),
@@ -31,7 +31,7 @@ impl Symbol {
 }
 
 /// A pattern is a sequence of symbols, which can be either constant words or variables (of sort String).
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Hash, Eq)]
 pub struct Pattern {
     symbols: Vec<Symbol>,
 }
@@ -232,7 +232,7 @@ impl IntoIterator for Pattern {
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Hash, Eq)]
 pub struct WordEquation {
     lhs: Pattern,
     rhs: Pattern,
