@@ -136,9 +136,6 @@ pub struct BindepEncoder {
     /// The segments of the RHS of the equation.
     segments_rhs: SegmentedPattern,
 
-    /// Boolean variables that are true if the variable has the given length.
-    var_lens: IndexMap<(Variable, usize), PVar>,
-
     /// Boolean variables that are true if the segment of the LHS starts at the position.
     starts_lhs: IndexMap<(usize, usize), PVar>,
     /// Boolean variables that are true if the segment of the RHS starts at the position.
@@ -146,9 +143,6 @@ pub struct BindepEncoder {
 
     /// The encoding of the candidate solution word. Maps pairs of positions and characters to a propositional variable that is true if the character is at the position.
     cand_positions: IndexMap<(usize, char), PVar>,
-
-    /// Maps each variable to an Incremental exact-one encoder that is used to encode the variable's length.
-    var_len_eo_encoders: IndexMap<Variable, IncrementalEO>,
 
     /// Maps each segment index to and incremental at-most-one encoder that is used to encode the possible start positions of the segment.
     segs_starts_amo: IndexMap<(EqSide, usize), IncrementalAMO>,
@@ -200,18 +194,6 @@ impl BindepEncoder {
         assert!(res.is_none());
     }
 
-    /// Returns the Boolean variable that is true if the variable has the given length.
-    fn var_len(&self, var: &Variable, len: usize) -> PVar {
-        self.var_lens[&(var.clone(), len)]
-    }
-
-    /// Sets the Boolean variable that is true if the variable has the given length.
-    /// Panics if the variable was already set.
-    fn set_var_len(&mut self, var: &Variable, len: usize, var_len: PVar) {
-        let res = self.var_lens.insert((var.clone(), len), var_len);
-        assert!(res.is_none());
-    }
-
     /// Returns the variables' bound used in the last round.
     /// Returns None prior to the first round.
     fn get_last_var_bound(&self, var: &Variable) -> Option<usize> {
@@ -248,38 +230,13 @@ impl BindepEncoder {
         res
     }
 
-    /// Encodes the possible lengths of each variable. Any variable might have exactly one length up to its bound.
-    fn encode_var_lengths(
-        &mut self,
-        vars: &IndexSet<Variable>,
-        bounds: &VariableBounds,
-    ) -> EncodingResult {
-        let mut res = EncodingResult::empty();
-
-        for v in vars {
-            let mut len_choices = vec![];
-            let last_bound = self.get_last_var_bound(v).map(|b| b + 1).unwrap_or(0);
-            for len in last_bound..=bounds.get(v) {
-                let choice = pvar();
-                len_choices.push(choice);
-
-                self.set_var_len(v, len, choice)
-            }
-            // Exactly one length must be true
-            let eo = self
-                .var_len_eo_encoders
-                .entry(v.clone())
-                .or_default()
-                .add(&len_choices);
-
-            res.join(eo);
-        }
-
-        res
-    }
-
     /// Encodes the alignment of a segmented pattern with the solution word by matching the respective lengths.
-    fn encode_alignment(&mut self, bounds: &VariableBounds, side: &EqSide) -> EncodingResult {
+    fn encode_alignment(
+        &mut self,
+        bounds: &VariableBounds,
+        side: &EqSide,
+        subs: &SubstitutionEncoding,
+    ) -> EncodingResult {
         let mut res = EncodingResult::empty();
 
         // Need to clone segments here since we borrow self mutably later to set the start positions
@@ -342,7 +299,7 @@ impl BindepEncoder {
 
                         for len in 0..=vbound {
                             // Start position of next segment is i+len
-                            let len_var = self.var_lens[&(v.clone(), len)];
+                            let len_var = subs.get_len(v, len).unwrap();
                             // S_i^p /\ len_var -> S_{i+1}^(p+len)
                             let svar = self.start_position(i, pos, side);
 
@@ -438,7 +395,7 @@ impl BindepEncoder {
             match s {
                 PatternSegment::Variable(x) => {
                     for l in 0..=bounds.get(x) {
-                        let len_var = self.var_lens[&(x.clone(), l)];
+                        let len_var = subs.get_len(x, l).unwrap();
                         for p in segments.earliest_start(i)..self.bound {
                             let start_var = self.start_position(i, p, side);
                             if p < last_bound
@@ -492,20 +449,20 @@ impl BindepEncoder {
                                             }
                                             None => {
                                                 let mv = pvar();
-                                        for c in subs.alphabet() {
-                                            let cand_c = self.candidate_at(p + (l - 1), *c);
-                                            let sub_c = subs.get(x, l - 1, *c).unwrap();
-                                            clauses.push(vec![
+                                                for c in subs.alphabet() {
+                                                    let cand_c = self.candidate_at(p + (l - 1), *c);
+                                                    let sub_c = subs.get(x, l - 1, *c).unwrap();
+                                                    clauses.push(vec![
                                                         neg(mv),
-                                                neg(cand_c),
-                                                as_lit(sub_c),
-                                            ]);
-                                            clauses.push(vec![
+                                                        neg(cand_c),
+                                                        as_lit(sub_c),
+                                                    ]);
+                                                    clauses.push(vec![
                                                         neg(mv),
-                                                as_lit(cand_c),
-                                                neg(sub_c),
-                                            ]);
-                                        }
+                                                        as_lit(cand_c),
+                                                        neg(sub_c),
+                                                    ]);
+                                                }
                                                 mv
                                             }
                                         };
@@ -557,7 +514,12 @@ impl BindepEncoder {
         EncodingResult::cnf(clauses)
     }
 
-    fn lambda_suffix(&self, bounds: &VariableBounds, side: &EqSide) -> EncodingResult {
+    fn lambda_suffix(
+        &self,
+        bounds: &VariableBounds,
+        side: &EqSide,
+        subs: &SubstitutionEncoding,
+    ) -> EncodingResult {
         let segments = self.segments(side);
         if segments.length() == 0 {
             return EncodingResult::Trivial(true);
@@ -579,7 +541,7 @@ impl BindepEncoder {
                         }
                         if p + l < self.bound {
                             let start_var = self.start_position(last, p, side);
-                            let len_var = self.var_len(x, l);
+                            let len_var = subs.get_len(x, l).unwrap();
                             let cand_var = self.candidate_at(p + l, LAMBDA);
 
                             clauses.push(vec![neg(start_var), neg(len_var), as_lit(cand_var)]);
@@ -622,8 +584,6 @@ impl WordEquationEncoder for BindepEncoder {
             segments_lsh: lhs_segs,
             segments_rhs: rhs_segs,
             var_cand_match_cache: IndexMap::new(),
-            var_lens: IndexMap::new(),
-            var_len_eo_encoders: IndexMap::new(),
             cand_positions: IndexMap::new(),
             var_matches: IndexMap::new(),
         }
@@ -662,14 +622,9 @@ impl PredicateEncoder for BindepEncoder {
         log::debug!("Clauses for candidates: {}", cand_enc.clauses());
         res.join(cand_enc);
 
-        // Encode length of variables
-        let len_enc = self.encode_var_lengths(&self.equation.variables(), bounds);
-        log::debug!("Clauses for var lengths: {}", len_enc.clauses());
-        res.join(len_enc);
-
         // Encode alignment of segments with candidates LHS
         let ts = Instant::now();
-        let align_enc = self.encode_alignment(bounds, &EqSide::Lhs);
+        let align_enc = self.encode_alignment(bounds, &EqSide::Lhs, substitution);
         log::debug!(
             "Clauses for alignments LHS: {} ({} ms)",
             align_enc.clauses(),
@@ -679,7 +634,7 @@ impl PredicateEncoder for BindepEncoder {
 
         // Encode alignment of segments with candidates RHS
         let ts = Instant::now();
-        let align_enc = self.encode_alignment(bounds, &EqSide::Rhs);
+        let align_enc = self.encode_alignment(bounds, &EqSide::Rhs, substitution);
         log::debug!(
             "Clauses for alignments RHS: {} ({} ms)",
             align_enc.clauses(),
@@ -705,14 +660,14 @@ impl PredicateEncoder for BindepEncoder {
         );
         res.join(vars_match_rhs_enc);
 
-        let suffix_enc_lhs = self.lambda_suffix(bounds, &EqSide::Lhs);
+        let suffix_enc_lhs = self.lambda_suffix(bounds, &EqSide::Lhs, substitution);
         log::debug!(
             "Clauses for lambda suffix lhs: {}",
             suffix_enc_lhs.clauses()
         );
         res.join(suffix_enc_lhs);
 
-        let suffix_enc_rhs = self.lambda_suffix(bounds, &EqSide::Rhs);
+        let suffix_enc_rhs = self.lambda_suffix(bounds, &EqSide::Rhs, substitution);
         log::debug!(
             "Clauses for lambda suffix rhs: {}",
             suffix_enc_rhs.clauses()
@@ -830,7 +785,7 @@ mod tests {
             for x in eq.variables() {
                 let mut len = None;
                 for l in 0..=bounds.get(&x) {
-                    let vr = encoder.var_lens[&(x.clone(), l)];
+                    let vr = subs_encoder.get_encoding().unwrap().get_len(&x, l).unwrap();
                     if let Some(true) = solver.value(as_lit(vr)) {
                         assert!(len.is_none());
                         len = Some(l);
@@ -938,7 +893,7 @@ mod tests {
                 for x in eq.variables() {
                     let mut len: Option<(usize, u32)> = None;
                     for l in 0..=bounds.get(&x) {
-                        let vr = encoder.var_lens[&(x.clone(), l)];
+                        let vr = subs_encoder.get_encoding().unwrap().get_len(&x, l).unwrap();
                         if let Some(true) = solver.value(as_lit(vr)) {
                             assert!(
                                 len.is_none(),

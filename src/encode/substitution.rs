@@ -1,6 +1,9 @@
-use indexmap::IndexSet;
+use indexmap::{IndexMap, IndexSet};
 
-use super::{card::exactly_one, EncodingResult};
+use super::{
+    card::{exactly_one, IncrementalEO},
+    EncodingResult,
+};
 use crate::{
     encode::LAMBDA,
     model::Variable,
@@ -13,6 +16,7 @@ use super::VariableBounds;
 #[derive(Clone, Debug)]
 pub struct SubstitutionEncoding {
     encodings: HashMap<(Variable, usize, char), PVar>,
+    length: IndexMap<(Variable, usize), PVar>,
     bounds: VariableBounds,
     alphabet: IndexSet<char>,
 }
@@ -21,6 +25,7 @@ impl SubstitutionEncoding {
     pub fn new(alphabet: IndexSet<char>, bounds: VariableBounds) -> Self {
         Self {
             encodings: HashMap::new(),
+            length: IndexMap::new(),
             alphabet,
             bounds,
         }
@@ -28,6 +33,10 @@ impl SubstitutionEncoding {
 
     pub fn get(&self, var: &Variable, pos: usize, chr: char) -> Option<PVar> {
         self.encodings.get(&(var.clone(), pos, chr)).cloned()
+    }
+
+    pub fn get_len(&self, var: &Variable, len: usize) -> Option<PVar> {
+        self.length.get(&(var.clone(), len)).cloned()
     }
 
     pub fn get_lit(&self, var: &Variable, pos: usize, chr: char) -> Option<PLit> {
@@ -99,6 +108,8 @@ pub struct SubstitutionEncoder {
     vars: IndexSet<Variable>,
     last_bounds: Option<VariableBounds>,
     alphabet: IndexSet<char>,
+    /// Maps each variable to an Incremental exact-one encoder that is used to encode the variable's length.
+    var_len_eo_encoders: IndexMap<Variable, IncrementalEO>,
     // If true, then no lambda substitutions are allowed
     singular: bool,
 }
@@ -106,12 +117,63 @@ pub struct SubstitutionEncoder {
 impl SubstitutionEncoder {
     pub fn new(alphabet: IndexSet<char>, vars: IndexSet<Variable>) -> Self {
         Self {
+            var_len_eo_encoders: IndexMap::new(),
             encoding: None,
             vars,
             alphabet,
             last_bounds: None,
             singular: false,
         }
+    }
+
+    /// Returns the Boolean variable that is true if the variable has the given length.
+    fn var_len(&self, var: &Variable, len: usize) -> PVar {
+        self.encoding.as_ref().unwrap().length[&(var.clone(), len)]
+    }
+
+    /// Sets the Boolean variable that is true if the variable has the given length.
+    /// Panics if the variable was already set.
+    fn set_var_len(&mut self, var: &Variable, len: usize, var_len: PVar) {
+        let res = self
+            .encoding
+            .as_mut()
+            .unwrap()
+            .length
+            .insert((var.clone(), len), var_len);
+        assert!(res.is_none());
+    }
+
+    /// Returns the variables' bound used in the last round.
+    /// Returns None prior to the first round.
+    fn get_last_var_bound(&self, var: &Variable) -> Option<usize> {
+        self.last_bounds.as_ref().map(|bounds| bounds.get(var))
+    }
+
+    /// Encodes the possible lengths of each variable. Any variable might have exactly one length up to its bound.
+    fn encode_var_lengths(&mut self, bounds: &VariableBounds) -> EncodingResult {
+        let mut res = EncodingResult::empty();
+        let vars: Vec<Variable> = self.vars.iter().cloned().collect();
+        for v in vars {
+            let mut len_choices = vec![];
+            let last_bound = self.get_last_var_bound(&v).map(|b| b + 1).unwrap_or(0);
+
+            for len in last_bound..=bounds.get(&v) {
+                let choice = pvar();
+                len_choices.push(choice);
+
+                self.set_var_len(&v, len, choice)
+            }
+            // Exactly one length must be true
+            let eo = self
+                .var_len_eo_encoders
+                .entry(v.clone())
+                .or_default()
+                .add(&len_choices);
+
+            res.join(eo);
+        }
+
+        res
     }
 
     pub fn encode(&mut self, bounds: &VariableBounds) -> EncodingResult {
@@ -157,9 +219,11 @@ impl SubstitutionEncoder {
                 cnf.extend(exactly_one(&pos_subs));
             }
         }
+        let mut res = EncodingResult::cnf(cnf);
+        res.join(self.encode_var_lengths(bounds));
 
         self.last_bounds = Some(bounds.clone());
-        EncodingResult::cnf(cnf)
+        res
     }
 
     fn pre_bounds(&self, var: &Variable) -> Option<usize> {
