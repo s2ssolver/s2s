@@ -65,189 +65,6 @@ pub trait Solver {
     fn solve(&mut self) -> SolverResult;
 }
 
-/// Solver for a single word equation that uses a WordEquationEncoder to encode the instance.
-struct EquationSolver<T: WordEquationEncoder> {
-    equation: WordEquation,
-    bounds: VariableBounds,
-    max_bound: Option<usize>,
-    encoder: T,
-    subs_encoder: SubstitutionEncoder,
-}
-
-impl<T: WordEquationEncoder> EquationSolver<T> {
-    #[allow(unused)]
-    pub fn write_dimacs(&self, clauses: &Cnf, assms: Vec<PLit>) {
-        let num_clauses = clauses.len() + assms.len();
-        let mut vars = HashSet::new();
-        for clause in clauses {
-            for lit in clause {
-                vars.insert(lit.abs());
-            }
-        }
-        for a in &assms {
-            vars.insert(a.abs());
-        }
-        let num_vars = vars.len();
-
-        let mut f = fs::File::options()
-            .create(true)
-            .write(true)
-            .truncate(true)
-            .open(".local/fm.dimacs")
-            .unwrap();
-
-        f.write_fmt(format_args!("p cnf {} {}\n", num_vars, num_clauses))
-            .unwrap();
-        for clause in clauses {
-            for lit in clause {
-                f.write_fmt(format_args!("{} ", lit)).unwrap();
-            }
-            f.write_fmt(format_args!("0\n")).unwrap();
-        }
-
-        for a in assms {
-            f.write_fmt(format_args!("{} 0\n", a)).unwrap();
-        }
-    }
-
-    /// Create a new Woorpje solver for the given instance.
-    /// Returns an error if the instance is not a single word equation.
-    pub fn new(instance: &Instance) -> Result<Self, String> {
-        let eq = match instance.get_formula() {
-            Formula::Atom(Atom::Predicate(Predicate::WordEquation(eq))) => Ok(eq.clone()),
-            Formula::False => {
-                let mut lhs = Pattern::empty();
-                lhs.append(&Symbol::Constant('a'));
-                Ok(WordEquation::new(lhs, Pattern::empty()))
-            }
-            Formula::True => Ok(WordEquation::empty()),
-            _ => Err(format!(
-                "Instance is not a single word equation but {:?}",
-                instance.get_formula()
-            )),
-        }?;
-        let subs_encoder = SubstitutionEncoder::new(eq.alphabet(), eq.variables());
-        Ok(Self {
-            encoder: T::new(eq.clone()),
-            equation: eq,
-            bounds: VariableBounds::new(instance.get_lower_bound()),
-            max_bound: instance.get_upper_bound(),
-            subs_encoder,
-        })
-    }
-
-    fn encode_bounded(&mut self) -> EncodingResult {
-        let bounds = sharpen_bounds(&self.equation, &self.bounds, &self.equation.variables());
-        log::debug!("Sharpened bounds: {:?}", bounds);
-
-        let mut encoding = EncodingResult::empty();
-
-        let ts = Instant::now();
-        let subs_cnf = self.subs_encoder.encode(&bounds);
-        log::debug!(
-            "Encoded substitution in {} clauses ({} ms)",
-            subs_cnf.clauses(),
-            ts.elapsed().as_millis()
-        );
-        encoding.join(subs_cnf);
-        let sub_encoding = self.subs_encoder.get_encoding().unwrap();
-        encoding.join(self.encoder.encode(&bounds, sub_encoding));
-        encoding
-    }
-
-    // Reset all states
-    fn reset(&mut self) {
-        self.subs_encoder =
-            SubstitutionEncoder::new(self.equation.alphabet(), self.equation.variables());
-        self.encoder.reset();
-    }
-}
-
-impl<T: WordEquationEncoder> Solver for EquationSolver<T> {
-    fn solve(&mut self) -> SolverResult {
-        log::info!("Started solving loop for equation {}", self.equation);
-        let mut cadical: cadical::Solver = cadical::Solver::new();
-        let mut time_encoding = 0;
-        let mut time_solving = 0;
-        let mut fm = Cnf::new();
-
-        loop {
-            log::info!("Current bounds {}", self.bounds);
-            let ts = Instant::now();
-            let encoding = self.encode_bounded();
-            let elapsed = ts.elapsed().as_millis();
-            log::info!("Encoding took {} ms", elapsed);
-            time_encoding += elapsed;
-            match encoding {
-                EncodingResult::Cnf(clauses, assms) => {
-                    let n_clauses = clauses.len();
-                    let ts = Instant::now();
-                    fm.extend(clauses.clone());
-
-                    for clause in clauses.into_iter() {
-                        cadical.add_clause(clause);
-                    }
-
-                    /*fm.shuffle(&mut thread_rng());
-                    cadical = cadical::Solver::new();
-                    fm.iter()
-                        .for_each(|clause| cadical.add_clause(clause.clone()));*/
-
-                    let t_adding = ts.elapsed().as_millis();
-                    log::info!(
-                        "Added {} (total {}) clauses in {} ms",
-                        n_clauses,
-                        cadical.num_clauses(),
-                        t_adding
-                    );
-
-                    time_encoding += t_adding;
-                    let ts = Instant::now();
-                    let res = cadical.solve_with(assms.iter().cloned());
-
-                    let t_solving = ts.elapsed().as_millis();
-                    log::info!(
-                        "Done SAT solving: {} ({}ms)",
-                        res.unwrap_or(false),
-                        t_solving
-                    );
-                    time_solving += t_solving;
-                    if let Some(true) = res {
-                        let mut model = Substitution::with_defaults();
-                        match &self.subs_encoder.get_encoding() {
-                            Some(sub_encoding) => {
-                                for (v, s) in sub_encoding.get_substitutions(&cadical) {
-                                    model.set(&v, ConstVal::String(s.clone()));
-                                }
-                            }
-                            _ => panic!("No substitution encoding found"),
-                        };
-                        log::info!(
-                            "Done. Total time encoding/solving: {}/{} ms",
-                            time_encoding,
-                            time_solving
-                        );
-                        return SolverResult::Sat(model);
-                    } else if !self.encoder.is_incremental() {
-                        // reset states if solver is not incremental
-                        self.reset();
-                        cadical = cadical::Solver::new();
-                        log::debug!("Reset state");
-                    }
-                }
-                EncodingResult::Trivial(false) => return SolverResult::Unsat,
-                EncodingResult::Trivial(true) => {
-                    return SolverResult::Sat(Substitution::with_defaults())
-                }
-            }
-            if !self.bounds.next_square(self.max_bound) {
-                break;
-            }
-        }
-        SolverResult::Unsat
-    }
-}
-
 pub struct EquationSystemSolver<T: WordEquationEncoder> {
     equations: Vec<WordEquation>,
     bounds: VariableBounds,
@@ -297,6 +114,41 @@ impl<T: WordEquationEncoder> EquationSystemSolver<T> {
             max_bound: instance.get_upper_bound(),
             subs_encoder,
         })
+    }
+
+    #[allow(unused)]
+    pub fn write_dimacs(&self, clauses: &Cnf, assms: Vec<PLit>) {
+        let num_clauses = clauses.len() + assms.len();
+        let mut vars = HashSet::new();
+        for clause in clauses {
+            for lit in clause {
+                vars.insert(lit.abs());
+            }
+        }
+        for a in &assms {
+            vars.insert(a.abs());
+        }
+        let num_vars = vars.len();
+
+        let mut f = fs::File::options()
+            .create(true)
+            .write(true)
+            .truncate(true)
+            .open(".local/fm.dimacs")
+            .unwrap();
+
+        f.write_fmt(format_args!("p cnf {} {}\n", num_vars, num_clauses))
+            .unwrap();
+        for clause in clauses {
+            for lit in clause {
+                f.write_fmt(format_args!("{} ", lit)).unwrap();
+            }
+            f.write_fmt(format_args!("0\n")).unwrap();
+        }
+
+        for a in assms {
+            f.write_fmt(format_args!("{} 0\n", a)).unwrap();
+        }
     }
 
     fn encode_bounded(&mut self) -> EncodingResult {
