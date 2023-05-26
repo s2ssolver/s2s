@@ -157,7 +157,7 @@ impl<T: WordEquationEncoder> EquationSystemSolver<T> {
         let mut encoding = EncodingResult::empty();
         let bounds = if self.equations.len() == 1 {
             sharpen_bounds(
-                &self.equations.pop().unwrap(),
+                &self.equations.first().unwrap(),
                 &self.bounds,
                 &self.variables,
             )
