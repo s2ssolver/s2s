@@ -14,11 +14,13 @@ use self::substitution::SubstitutionEncoding;
 mod card;
 /// Encoder for word equations
 mod equation;
+mod mdd;
 /// Encoder for substitutions
 pub mod substitution;
 
 pub use equation::{BindepEncoder, IWoorpjeEncoder, WoorpjeEncoder, WordEquationEncoder};
 use indexmap::IndexSet;
+pub use mdd::LinearEqEncoder;
 
 /// Bound for each variable
 #[derive(Clone, Debug)]

@@ -6,10 +6,12 @@ use indexmap::IndexSet;
 
 use std::time::Instant;
 
-use crate::encode::{BindepEncoder, EncodingResult, VariableBounds};
+use crate::encode::{
+    BindepEncoder, EncodingResult, LinearEqEncoder, PredicateEncoder, VariableBounds,
+};
 use crate::encode::{IWoorpjeEncoder, WoorpjeEncoder, WordEquationEncoder};
 use crate::formula::{Atom, ConstVal, Formula, Predicate, Substitution};
-use crate::model::words::{Symbol};
+use crate::model::words::Symbol;
 use crate::model::{words::WordEquation, Variable};
 
 use crate::encode::substitution::SubstitutionEncoder;
@@ -71,7 +73,7 @@ pub struct EquationSystemSolver<T: WordEquationEncoder> {
     alphabet: IndexSet<char>,
     variables: IndexSet<Variable>,
     max_bound: Option<usize>,
-    encoder: Vec<T>,
+    encoder: Vec<(T, LinearEqEncoder)>,
     subs_encoder: SubstitutionEncoder,
 }
 
@@ -172,9 +174,9 @@ impl<T: WordEquationEncoder> EquationSystemSolver<T> {
         );
         encoding.join(subs_cnf);
         let sub_encoding = self.subs_encoder.get_encoding().unwrap();
-        for enc in self.encoder.as_mut_slice() {
-            let res = enc.encode(&bounds, sub_encoding);
-            encoding.join(res);
+        for (eq_enc, ll_enc) in self.encoder.as_mut_slice() {
+            encoding.join(eq_enc.encode(&bounds, sub_encoding));
+            //encoding.join(ll_enc.encode(&bounds, sub_encoding));
         }
 
         encoding
@@ -183,8 +185,9 @@ impl<T: WordEquationEncoder> EquationSystemSolver<T> {
     // Reset all states
     fn reset(&mut self) {
         self.subs_encoder = SubstitutionEncoder::new(self.alphabet.clone(), self.variables.clone());
-        for encoder in self.encoder.as_mut_slice() {
-            encoder.reset();
+        for (eq_encoder, len_encoder) in self.encoder.as_mut_slice() {
+            eq_encoder.reset();
+            len_encoder.reset();
         }
     }
 }
@@ -200,7 +203,9 @@ impl<T: WordEquationEncoder> Solver for EquationSystemSolver<T> {
             mut_waitlist.insert(eq.clone());
         }
         // Just add one encoder
-        self.encoder.push(T::new(mut_waitlist.pop().unwrap()));
+        let eq = mut_waitlist.pop().unwrap();
+        self.encoder
+            .push((T::new(eq.clone()), LinearEqEncoder::from_word_equation(&eq)));
         let mut cadical: cadical::Solver = cadical::Solver::new();
         let mut time_encoding = 0;
         let mut time_solving = 0;
@@ -280,10 +285,17 @@ impl<T: WordEquationEncoder> Solver for EquationSystemSolver<T> {
                             );
                             for eq in &to_add[0..2] {
                                 mut_waitlist.remove(eq);
-                                self.encoder.push(T::new(eq.clone()));
+                                self.encoder.push((
+                                    T::new(eq.clone()),
+                                    LinearEqEncoder::from_word_equation(&eq),
+                                ));
                             }
                         }
-                    } else if self.encoder.iter().any(|enc| !enc.is_incremental()) {
+                    } else if self
+                        .encoder
+                        .iter()
+                        .any(|enc| !enc.0.is_incremental() | !enc.1.is_incremental())
+                    {
                         // reset states if at least one solver is not incremental
                         self.reset();
                         cadical = cadical::Solver::new();
