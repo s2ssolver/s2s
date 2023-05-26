@@ -9,7 +9,7 @@ use std::time::Instant;
 use crate::encode::{BindepEncoder, EncodingResult, VariableBounds};
 use crate::encode::{IWoorpjeEncoder, WoorpjeEncoder, WordEquationEncoder};
 use crate::formula::{Atom, ConstVal, Formula, Predicate, Substitution};
-use crate::model::words::{Symbol};
+use crate::model::words::Symbol;
 use crate::model::{words::WordEquation, Variable};
 
 use crate::encode::substitution::SubstitutionEncoder;
@@ -155,7 +155,7 @@ impl<T: WordEquationEncoder> EquationSystemSolver<T> {
         let mut encoding = EncodingResult::empty();
         let bounds = if self.equations.len() == 1 {
             sharpen_bounds(
-                &self.equations.pop().unwrap(),
+                &self.equations.first().unwrap(),
                 &self.bounds,
                 &self.variables,
             )
