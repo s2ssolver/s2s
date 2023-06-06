@@ -2,6 +2,7 @@ use std::path::PathBuf;
 
 use indexmap::IndexSet;
 mod smt;
+mod smt2;
 
 use crate::{
     formula::{Atom, Formula},
@@ -106,7 +107,7 @@ impl Parser {
         match std::fs::read_to_string(input) {
             Ok(input) => match self {
                 Parser::WoorpjeParser => parse_woorpje(&input),
-                Parser::Smt2Parser => smt::parse_smt(input.as_bytes()),
+                Parser::Smt2Parser => smt2::parse_smt(input.as_bytes()),
             },
             Err(e) => Err(ParseError::Other(e.to_string(), None)),
         }

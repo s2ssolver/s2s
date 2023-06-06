@@ -174,7 +174,9 @@ impl FilledPattern {
             match symbol {
                 Symbol::Constant(c) => positions.push(FilledPos::Const(*c)),
                 Symbol::Variable(v) => {
-                    let len_var = var_manager.str_length_var(v).unwrap();
+                    let len_var = var_manager
+                        .str_length_var(v)
+                        .expect(format!("Variable {} does not have a length variable", v).as_str());
                     let len = bounds.get_upper(len_var) as usize;
                     for i in 0..len {
                         positions.push(FilledPos::FilledPos(v.clone(), i))

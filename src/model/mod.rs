@@ -14,6 +14,16 @@ pub enum Sort {
     Bool,
 }
 
+impl Display for Sort {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Sort::String => write!(f, "String"),
+            Sort::Int => write!(f, "Int"),
+            Sort::Bool => write!(f, "Bool"),
+        }
+    }
+}
+
 /// Representation of a variable of a certain sort
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Variable {
@@ -157,6 +167,7 @@ impl VarManager {
             var
         );
         let name = format!("{}$len", var.name());
+
         self.by_name(&name)
     }
 

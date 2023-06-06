@@ -149,6 +149,28 @@ fn convert_sort(sort: &concrete::Sort) -> Result<Sort, ParseError> {
     }
 }
 
+fn term_to_sort(term: &Term) -> Option<Sort> {
+    match term {
+        Term::Constant(c) => match c {
+            Constant::Numeral(_) => Some(Sort::Int),
+            Constant::Decimal(_) => None,
+            Constant::Hexadecimal(_) => None,
+            Constant::Binary(_) => None,
+            Constant::String(_) => Some(Sort::String),
+        },
+        Term::QualIdentifier(_) => todo!(),
+        Term::Application {
+            qual_identifier,
+            arguments,
+        } => todo!(),
+        Term::Let { var_bindings, term } => todo!(),
+        Term::Forall { vars, term } => todo!(),
+        Term::Exists { vars, term } => todo!(),
+        Term::Match { term, cases } => todo!(),
+        Term::Attributes { term, attributes } => todo!(),
+    }
+}
+
 fn parse_fun_application(
     qual_identifier: &QualIdentifier,
     arguments: &Vec<Term>,
@@ -159,6 +181,7 @@ fn parse_fun_application(
             smt2parser::visitors::Identifier::Simple { symbol } => match symbol.0.as_str() {
                 "=" => {
                     if arguments.len() == 2 {
+                        // is either word equation of linear constraint
                         let weq = parse_word_equation(&arguments[0], &arguments[1], vars)?;
                         let atom = Atom::Predicate(crate::formula::Predicate::WordEquation(weq));
                         Ok(Formula::Atom(atom))
@@ -198,6 +221,12 @@ fn parse_patter(pat: &Term, vars: &VarManager) -> Result<Pattern, ParseError> {
         Term::Constant(Constant::String(s)) => Ok(Pattern::constant(s)),
         Term::QualIdentifier(QualIdentifier::Simple { identifier }) => {
             if let Some(v) = vars.by_name(&identifier.to_string()) {
+                if v.sort() != Sort::String {
+                    return Err(ParseError::Other(
+                        format!("Expected string variable, found {}", v),
+                        None,
+                    ));
+                }
                 Ok(Pattern::variable(v))
             } else {
                 Err(ParseError::UnknownIdentifier(identifier.to_string()))
