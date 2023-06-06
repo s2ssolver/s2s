@@ -6,7 +6,7 @@ use super::{
 };
 use crate::{
     encode::LAMBDA,
-    model::Variable,
+    model::{Sort, VarManager, Variable},
     sat::{as_lit, neg, pvar, Cnf, PLit, PVar},
 };
 use std::collections::HashMap;
@@ -103,9 +103,9 @@ impl SubstitutionEncoding {
     }
 }
 
-pub struct SubstitutionEncoder {
+pub struct SubstitutionEncoder<'a> {
     encoding: Option<SubstitutionEncoding>,
-    vars: IndexSet<Variable>,
+    var_manager: &'a VarManager,
     last_bounds: Option<VariableBounds>,
     alphabet: IndexSet<char>,
     /// Maps each variable to an Incremental exact-one encoder that is used to encode the variable's length.
@@ -114,12 +114,12 @@ pub struct SubstitutionEncoder {
     singular: bool,
 }
 
-impl SubstitutionEncoder {
-    pub fn new(alphabet: IndexSet<char>, vars: IndexSet<Variable>) -> Self {
+impl<'a> SubstitutionEncoder<'a> {
+    pub fn new(alphabet: IndexSet<char>, var_manager: &'a VarManager) -> Self {
         Self {
             var_len_eo_encoders: IndexMap::new(),
             encoding: None,
-            vars,
+            var_manager,
             alphabet,
             last_bounds: None,
             singular: false,
@@ -147,8 +147,8 @@ impl SubstitutionEncoder {
     /// Encodes the possible lengths of each variable. Any variable might have exactly one length up to its bound.
     fn encode_var_lengths(&mut self, bounds: &VariableBounds) -> EncodingResult {
         let mut res = EncodingResult::empty();
-        let vars: Vec<Variable> = self.vars.iter().cloned().collect();
-        for v in vars {
+        let vars: Vec<Variable> = self.var_manager.of_sort(Sort::String).cloned().collect();
+        for v in self.var_manager.of_sort(Sort::String) {
             let mut len_choices = vec![];
             let last_bound = self.get_last_var_bound(&v).map(|b| b + 1).unwrap_or(0);
 
@@ -201,7 +201,7 @@ impl SubstitutionEncoder {
             ));
         }
         log::debug!("Encoding substitutions");
-        for var in &self.vars {
+        for var in self.var_manager.of_sort(Sort::String) {
             let bound = bounds.get(var);
             let last_bound = self.pre_bounds(var).unwrap_or(0);
             let encoding = self.encoding.as_mut().unwrap();
@@ -253,6 +253,8 @@ impl SubstitutionEncoder {
     }
 }
 
+pub struct IntegerEncoder {}
+
 #[cfg(test)]
 mod tests {
 
@@ -269,8 +271,8 @@ mod tests {
         let mut vm = VarManager::new();
         let var = vm.tmp_var(crate::model::Sort::String);
         let alphabet = IndexSet::from_iter(vec!['a', 'b', 'c']);
-        let vars = IndexSet::from_iter(vec![var.clone()]);
-        let mut encoder = SubstitutionEncoder::new(alphabet, vars);
+
+        let mut encoder = SubstitutionEncoder::new(alphabet, &vm);
         let mb = 10;
         let bounds = VariableBounds::new(mb);
 
@@ -292,8 +294,8 @@ mod tests {
         let mut vm = VarManager::new();
         let var = vm.tmp_var(crate::model::Sort::String);
         let alphabet = IndexSet::from_iter(vec!['a', 'b', 'c']);
-        let vars = IndexSet::from_iter(vec![var.clone()]);
-        let mut encoder = SubstitutionEncoder::new(alphabet, vars);
+
+        let mut encoder = SubstitutionEncoder::new(alphabet, &vm);
 
         let bounds = VariableBounds::new(5);
         encoder.encode(&bounds);
@@ -319,8 +321,8 @@ mod tests {
         let mut vm = VarManager::new();
         let var = vm.tmp_var(crate::model::Sort::String);
         let alphabet = IndexSet::from_iter(vec!['a', 'b', 'c', 'd']);
-        let vars = IndexSet::from_iter(vec![var.clone()]);
-        let mut encoder = SubstitutionEncoder::new(alphabet, vars);
+
+        let mut encoder = SubstitutionEncoder::new(alphabet, &vm);
         encoder.singular = true;
 
         let bounds = VariableBounds::new(len as usize);
@@ -353,8 +355,8 @@ mod tests {
         let mut vm = VarManager::new();
         let var = vm.tmp_var(crate::model::Sort::String);
         let alphabet = IndexSet::from_iter(vec!['a', 'b', 'c', 'd']);
-        let vars = IndexSet::from_iter(vec![var.clone()]);
-        let mut encoder = SubstitutionEncoder::new(alphabet, vars);
+
+        let mut encoder = SubstitutionEncoder::new(alphabet, &vm);
 
         let mut bounds = VariableBounds::new(len as usize);
         let mut solver: cadical::Solver = cadical::Solver::new();

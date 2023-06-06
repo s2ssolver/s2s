@@ -2,6 +2,7 @@ use std::{fmt::Display, sync::atomic::AtomicUsize};
 
 use indexmap::{IndexMap, IndexSet};
 
+pub mod linears;
 pub mod regex;
 pub mod words;
 

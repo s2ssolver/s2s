@@ -609,7 +609,11 @@ mod tests {
         alphabet: &IndexSet<char>,
     ) -> Option<bool> {
         let mut encoding = EncodingResult::empty();
-        let mut subs_encoder = SubstitutionEncoder::new(alphabet.clone(), eq.variables());
+        let mut vm = VarManager::new();
+        eq.variables().iter().for_each(|v| {
+            vm.new_var(v.name(), Sort::String);
+        });
+        let mut subs_encoder = SubstitutionEncoder::new(alphabet.clone(), &vm);
 
         let subs_cnf = subs_encoder.encode(&bounds);
         encoding.join(subs_cnf);
@@ -690,7 +694,11 @@ mod tests {
         let mut bounds = VariableBounds::new(1);
 
         let mut encoder = IWoorpjeEncoder::new(eq.clone());
-        let mut subs_encoder = SubstitutionEncoder::new(alphabet.clone(), eq.variables());
+        let mut vm = VarManager::new();
+        eq.variables().iter().for_each(|v| {
+            vm.new_var(v.name(), Sort::String);
+        });
+        let mut subs_encoder = SubstitutionEncoder::new(alphabet.clone(), &vm);
 
         let mut result = None;
         let mut done = bounds.leq(limit);

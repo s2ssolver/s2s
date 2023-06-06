@@ -11,6 +11,7 @@ use crate::encode::{IWoorpjeEncoder, WoorpjeEncoder, WordEquationEncoder};
 use crate::formula::{Atom, ConstVal, Formula, Predicate, Substitution};
 use crate::model::words::Symbol;
 use crate::model::{words::WordEquation, Variable};
+use crate::model::{Sort, VarManager};
 
 use crate::encode::substitution::SubstitutionEncoder;
 use crate::parse::Instance;
@@ -65,27 +66,28 @@ pub trait Solver {
     fn solve(&mut self) -> SolverResult;
 }
 
-pub struct EquationSystemSolver<T: WordEquationEncoder> {
+pub struct EquationSystemSolver<'a, T: WordEquationEncoder> {
     equations: Vec<WordEquation>,
     bounds: VariableBounds,
     alphabet: IndexSet<char>,
-    variables: IndexSet<Variable>,
+    var_manager: &'a VarManager,
     max_bound: Option<usize>,
     encoder: Vec<T>,
-    subs_encoder: SubstitutionEncoder,
+    subs_encoder: SubstitutionEncoder<'a>,
 }
 
-impl<T: WordEquationEncoder> EquationSystemSolver<T> {
-    pub fn new(instance: &Instance) -> Result<Self, String> {
+// TODO:
+// - The solver should take ownership of the Instance and provide a way to access it from outside. Right now the lifetime of the solver is bound to the lifetime of the instance, which requires a lot of lifetime annotations.
+
+impl<'a, T: WordEquationEncoder> EquationSystemSolver<'a, T> {
+    pub fn new(instance: &'a Instance) -> Result<Self, String> {
         let mut eqs = Vec::new();
         let mut alphabet = IndexSet::new();
-        let mut variables = IndexSet::new();
 
         match instance.get_formula() {
             Formula::Atom(Atom::Predicate(Predicate::WordEquation(eq))) => {
                 eqs.push(eq.clone());
                 alphabet.extend(eq.alphabet().iter().cloned());
-                variables.extend(eq.variables().iter().cloned());
             }
             Formula::And(fs) => {
                 for f in fs {
@@ -93,7 +95,6 @@ impl<T: WordEquationEncoder> EquationSystemSolver<T> {
                         Formula::Atom(Atom::Predicate(Predicate::WordEquation(eq))) => {
                             eqs.push(eq.clone());
                             alphabet.extend(eq.alphabet().iter().cloned());
-                            variables.extend(eq.variables().iter().cloned());
                         }
                         _ => return Err("Instance is not a system of word equations".to_string()),
                     }
@@ -102,14 +103,14 @@ impl<T: WordEquationEncoder> EquationSystemSolver<T> {
             _ => return Err("Instance is not a system of word equations".to_string()),
         }
 
-        let subs_encoder = SubstitutionEncoder::new(alphabet.clone(), variables.clone());
+        let subs_encoder = SubstitutionEncoder::new(alphabet.clone(), &instance.get_var_manager());
         let encoders = Vec::new();
 
         Ok(Self {
             encoder: encoders,
             equations: eqs,
             alphabet,
-            variables,
+            var_manager: instance.get_var_manager(),
             bounds: VariableBounds::new(instance.get_lower_bound()),
             max_bound: instance.get_upper_bound(),
             subs_encoder,
@@ -157,7 +158,7 @@ impl<T: WordEquationEncoder> EquationSystemSolver<T> {
             sharpen_bounds(
                 self.equations.first().unwrap(),
                 &self.bounds,
-                &self.variables,
+                &self.var_manager,
             )
         } else {
             self.bounds.clone()
@@ -182,14 +183,14 @@ impl<T: WordEquationEncoder> EquationSystemSolver<T> {
 
     // Reset all states
     fn reset(&mut self) {
-        self.subs_encoder = SubstitutionEncoder::new(self.alphabet.clone(), self.variables.clone());
+        self.subs_encoder = SubstitutionEncoder::new(self.alphabet.clone(), self.var_manager);
         for encoder in self.encoder.as_mut_slice() {
             encoder.reset();
         }
     }
 }
 
-impl<T: WordEquationEncoder> Solver for EquationSystemSolver<T> {
+impl<'a, T: WordEquationEncoder> Solver for EquationSystemSolver<'a, T> {
     fn solve(&mut self) -> SolverResult {
         log::info!(
             "Started solving loop for system of {} equations",
@@ -303,11 +304,7 @@ impl<T: WordEquationEncoder> Solver for EquationSystemSolver<T> {
     }
 }
 
-fn sharpen_bounds(
-    eq: &WordEquation,
-    bounds: &VariableBounds,
-    vars: &IndexSet<Variable>,
-) -> VariableBounds {
+fn sharpen_bounds(eq: &WordEquation, bounds: &VariableBounds, vars: &VarManager) -> VariableBounds {
     let mut new_bounds = bounds.clone();
     // Todo: Cache this or do linearly
     let mut abs_consts: isize = 0;
@@ -317,14 +314,14 @@ fn sharpen_bounds(
         abs_consts += rhs_c - lhs_c;
     }
 
-    for var_k in vars {
+    for var_k in vars.of_sort(Sort::String) {
         let denominator = eq.lhs().count(&Symbol::Variable(var_k.clone())) as isize
             - eq.rhs().count(&Symbol::Variable(var_k.clone())) as isize;
         if denominator == 0 {
             continue;
         }
         let mut abs_k: isize = 0;
-        for var_j in vars {
+        for var_j in vars.of_sort(Sort::String) {
             if var_j == var_k {
                 continue;
             }
@@ -345,18 +342,18 @@ fn sharpen_bounds(
 /// The Woorpje solver for word equations.
 /// This solver uses a SAT solver to check whether a word equation is satisfiable.
 /// Can only solver instances with a single word equation.
-pub struct Woorpje {
-    solver: EquationSystemSolver<WoorpjeEncoder>,
+pub struct Woorpje<'a> {
+    solver: EquationSystemSolver<'a, WoorpjeEncoder>,
 }
 
-impl Solver for Woorpje {
+impl<'a> Solver for Woorpje<'a> {
     fn solve(&mut self) -> SolverResult {
         self.solver.solve()
     }
 }
 
-impl Woorpje {
-    pub fn new(instance: &Instance) -> Result<Self, String> {
+impl<'a> Woorpje<'a> {
+    pub fn new(instance: &'a Instance) -> Result<Self, String> {
         let solver = EquationSystemSolver::new(instance)?;
         Ok(Self { solver })
     }
@@ -364,35 +361,35 @@ impl Woorpje {
 
 /// The incremental extension of the Woorpje solver for word equations.
 /// Can only solver instances with a single word equation.
-pub struct IWoorpje {
-    solver: EquationSystemSolver<IWoorpjeEncoder>,
+pub struct IWoorpje<'a> {
+    solver: EquationSystemSolver<'a, IWoorpjeEncoder>,
 }
 
-impl Solver for IWoorpje {
+impl<'a> Solver for IWoorpje<'a> {
     fn solve(&mut self) -> SolverResult {
         self.solver.solve()
     }
 }
 
-impl IWoorpje {
-    pub fn new(instance: &Instance) -> Result<Self, String> {
+impl<'a> IWoorpje<'a> {
+    pub fn new(instance: &'a Instance) -> Result<Self, String> {
         let solver = EquationSystemSolver::new(instance)?;
         Ok(Self { solver })
     }
 }
 
-pub struct Bindep {
-    solver: EquationSystemSolver<BindepEncoder>,
+pub struct Bindep<'a> {
+    solver: EquationSystemSolver<'a, BindepEncoder>,
 }
 
-impl Solver for Bindep {
+impl<'a> Solver for Bindep<'a> {
     fn solve(&mut self) -> SolverResult {
         self.solver.solve()
     }
 }
 
-impl Bindep {
-    pub fn new(instance: &Instance) -> Result<Self, String> {
+impl<'a> Bindep<'a> {
+    pub fn new(instance: &'a Instance) -> Result<Self, String> {
         let solver = EquationSystemSolver::new(instance)?;
         Ok(Self { solver })
     }
