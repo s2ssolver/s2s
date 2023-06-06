@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use crate::encode::card::exactly_one;
-use crate::encode::domain::{DomainEncoding};
+use crate::encode::domain::DomainEncoding;
 use crate::encode::{
     EncodingResult, FilledPattern, FilledPos, IntegerDomainBounds, PredicateEncoder, LAMBDA,
 };
@@ -617,8 +617,6 @@ mod tests {
         let mut dom_encoder = DomainEncoder::new(alphabet.clone(), &vm);
 
         let subs_cnf = dom_encoder.encode(&bounds);
-
-        println!("Encoding: {:?}", dom_encoder.encoding().int());
 
         encoding.join(subs_cnf);
         let mut encoder = IWoorpjeEncoder::new(eq.clone());

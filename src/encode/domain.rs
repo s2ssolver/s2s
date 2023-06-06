@@ -181,7 +181,6 @@ pub fn get_substitutions(
         );
     }
     for ((var, pos, chr), v) in domain_encoding.string.encodings.iter() {
-        println!("{}[{}] = {} -> {}", var, pos, chr, v);
         if let Some(true) = solver.value(as_lit(*v)) {
             let sub = subs.get_mut(var).unwrap();
             // This could be more efficient by going over the positions only once, however, this way we can check for invalid substitutions

@@ -13,7 +13,7 @@
 //! - The fixes a bug where some unsat equations were incorrectly reported as sat due the original encoding did not correctly constraint the state variables in some corner cases.
 use std::collections::HashMap;
 
-use crate::encode::domain::{DomainEncoding};
+use crate::encode::domain::DomainEncoding;
 use crate::encode::{
     EncodingResult, FilledPattern, FilledPos, IntegerDomainBounds, PredicateEncoder, LAMBDA,
 };
