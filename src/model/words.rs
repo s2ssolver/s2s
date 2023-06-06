@@ -337,7 +337,7 @@ impl Arbitrary for Symbol {
         let choices = &[
             Symbol::Constant(char::arbitrary(g)),
             Symbol::Constant(char::arbitrary(g)),
-            Symbol::Variable(var_manager.tmp_var(Sort::String)),
+            Symbol::Variable(var_manager.tmp_var(Sort::String).clone()),
         ];
 
         g.choose(choices).unwrap().clone()

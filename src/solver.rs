@@ -6,14 +6,14 @@ use indexmap::IndexSet;
 
 use std::time::Instant;
 
-use crate::encode::{BindepEncoder, EncodingResult, VariableBounds};
+use crate::encode::{BindepEncoder, EncodingResult, IntegerDomainBounds};
 use crate::encode::{IWoorpjeEncoder, WoorpjeEncoder, WordEquationEncoder};
 use crate::formula::{Atom, ConstVal, Formula, Predicate, Substitution};
 use crate::model::words::Symbol;
-use crate::model::{words::WordEquation, Variable};
+use crate::model::words::WordEquation;
 use crate::model::{Sort, VarManager};
 
-use crate::encode::substitution::SubstitutionEncoder;
+use crate::encode::domain::{get_substitutions, DomainEncoder, SubstitutionEncoder};
 use crate::parse::Instance;
 use crate::sat::{Cnf, PLit};
 
@@ -68,12 +68,12 @@ pub trait Solver {
 
 pub struct EquationSystemSolver<'a, T: WordEquationEncoder> {
     equations: Vec<WordEquation>,
-    bounds: VariableBounds,
+    bounds: IntegerDomainBounds,
     alphabet: IndexSet<char>,
     var_manager: &'a VarManager,
     max_bound: Option<usize>,
     encoder: Vec<T>,
-    subs_encoder: SubstitutionEncoder<'a>,
+    dom_encoder: DomainEncoder<'a>,
 }
 
 // TODO:
@@ -103,7 +103,7 @@ impl<'a, T: WordEquationEncoder> EquationSystemSolver<'a, T> {
             _ => return Err("Instance is not a system of word equations".to_string()),
         }
 
-        let subs_encoder = SubstitutionEncoder::new(alphabet.clone(), &instance.get_var_manager());
+        let dom_encoder = DomainEncoder::new(alphabet.clone(), &instance.get_var_manager());
         let encoders = Vec::new();
 
         Ok(Self {
@@ -111,9 +111,9 @@ impl<'a, T: WordEquationEncoder> EquationSystemSolver<'a, T> {
             equations: eqs,
             alphabet,
             var_manager: instance.get_var_manager(),
-            bounds: VariableBounds::new(instance.get_lower_bound()),
+            bounds: IntegerDomainBounds::new((0, instance.get_lower_bound() as isize)),
             max_bound: instance.get_upper_bound(),
-            subs_encoder,
+            dom_encoder,
         })
     }
 
@@ -165,16 +165,16 @@ impl<'a, T: WordEquationEncoder> EquationSystemSolver<'a, T> {
         };
 
         let ts = Instant::now();
-        let subs_cnf = self.subs_encoder.encode(&bounds);
+        let subs_cnf = self.dom_encoder.encode(&bounds);
         log::debug!(
             "Encoded substitution in {} clauses ({} ms)",
             subs_cnf.clauses(),
             ts.elapsed().as_millis()
         );
         encoding.join(subs_cnf);
-        let sub_encoding = self.subs_encoder.get_encoding().unwrap();
+        let dom = self.dom_encoder.encoding();
         for enc in self.encoder.as_mut_slice() {
-            let res = enc.encode(&bounds, sub_encoding);
+            let res = enc.encode(&bounds, dom, &mut self.var_manager);
             encoding.join(res);
         }
 
@@ -183,7 +183,7 @@ impl<'a, T: WordEquationEncoder> EquationSystemSolver<'a, T> {
 
     // Reset all states
     fn reset(&mut self) {
-        self.subs_encoder = SubstitutionEncoder::new(self.alphabet.clone(), self.var_manager);
+        self.dom_encoder = DomainEncoder::new(self.alphabet.clone(), self.var_manager);
         for encoder in self.encoder.as_mut_slice() {
             encoder.reset();
         }
@@ -245,14 +245,13 @@ impl<'a, T: WordEquationEncoder> Solver for EquationSystemSolver<'a, T> {
                     time_solving += t_solving;
                     if let Some(true) = res {
                         let mut model = Substitution::with_defaults();
-                        match &self.subs_encoder.get_encoding() {
-                            Some(sub_encoding) => {
-                                for (v, s) in sub_encoding.get_substitutions(&cadical) {
-                                    model.set(&v, ConstVal::String(s.clone()));
-                                }
-                            }
-                            _ => panic!("No substitution encoding found"),
-                        };
+                        for (v, s) in get_substitutions(
+                            self.dom_encoder.encoding(),
+                            &self.var_manager,
+                            &cadical,
+                        ) {
+                            model.set(&v, ConstVal::String(s.clone()));
+                        }
                         // Check which equations in the waitlist are not satisfied by the model, add them to the encoding
                         let mut to_add = Vec::new();
                         for eq in &mut_waitlist {
@@ -296,7 +295,7 @@ impl<'a, T: WordEquationEncoder> Solver for EquationSystemSolver<'a, T> {
                     return SolverResult::Sat(Substitution::with_defaults())
                 }
             }
-            if !self.bounds.next_square(self.max_bound) {
+            if !self.bounds.next_square(self.max_bound.map(|v| v as isize)) {
                 break;
             }
         }
@@ -304,7 +303,11 @@ impl<'a, T: WordEquationEncoder> Solver for EquationSystemSolver<'a, T> {
     }
 }
 
-fn sharpen_bounds(eq: &WordEquation, bounds: &VariableBounds, vars: &VarManager) -> VariableBounds {
+fn sharpen_bounds(
+    eq: &WordEquation,
+    bounds: &IntegerDomainBounds,
+    vars: &VarManager,
+) -> IntegerDomainBounds {
     let mut new_bounds = bounds.clone();
     // Todo: Cache this or do linearly
     let mut abs_consts: isize = 0;
@@ -314,26 +317,28 @@ fn sharpen_bounds(eq: &WordEquation, bounds: &VariableBounds, vars: &VarManager)
         abs_consts += rhs_c - lhs_c;
     }
 
-    for var_k in vars.of_sort(Sort::String) {
+    for var_k in vars.of_sort(Sort::String, true) {
+        let var_k_len = vars.str_length_var(var_k).unwrap();
         let denominator = eq.lhs().count(&Symbol::Variable(var_k.clone())) as isize
             - eq.rhs().count(&Symbol::Variable(var_k.clone())) as isize;
         if denominator == 0 {
             continue;
         }
         let mut abs_k: isize = 0;
-        for var_j in vars.of_sort(Sort::String) {
+        for var_j in vars.of_sort(Sort::String, true) {
             if var_j == var_k {
                 continue;
             }
+            let var_j_len = vars.str_length_var(var_j).unwrap();
             let abs_j = eq.lhs().count(&Symbol::Variable(var_j.clone())) as isize
                 - eq.rhs().count(&Symbol::Variable(var_j.clone())) as isize;
             if abs_j * denominator < 0 {
-                abs_k += abs_j * bounds.get(var_j) as isize;
+                abs_k += abs_j * bounds.get_upper(var_j_len);
             }
         }
-        let sharpened = std::cmp::max((abs_consts - abs_k) / denominator, 0) as usize;
-        if sharpened < bounds.get(var_k) {
-            new_bounds.set(var_k, sharpened);
+        let sharpened = std::cmp::max((abs_consts - abs_k) / denominator, 0);
+        if sharpened < bounds.get_upper(var_k_len) {
+            new_bounds.set_upper(&var_k.len_var(), sharpened);
         }
     }
     new_bounds

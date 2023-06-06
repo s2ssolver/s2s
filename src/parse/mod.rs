@@ -215,7 +215,7 @@ Equation: aX = ab"#;
 
         let instance = parse_woorpje(input).unwrap();
         let vm = instance.get_var_manager();
-        assert_eq!(vm.of_sort(crate::model::Sort::String).count(), 1);
+        assert_eq!(vm.of_sort(crate::model::Sort::String, true).count(), 1);
         let expected_lhs = Pattern::from(vec![
             Symbol::Constant('a'),
             Symbol::Variable(vm.by_name("X").unwrap().clone()),
