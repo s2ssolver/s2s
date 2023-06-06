@@ -1,7 +1,4 @@
-use std::{
-    collections::{HashMap},
-    path::PathBuf,
-};
+use std::path::PathBuf;
 
 use indexmap::IndexSet;
 mod smt;
@@ -10,7 +7,7 @@ use crate::{
     formula::{Atom, Formula},
     model::{
         words::{Pattern, Symbol, WordEquation},
-        Variable,
+        VarManager,
     },
 };
 
@@ -35,7 +32,7 @@ pub struct Instance {
     /// The formula to solve
     formula: Formula,
     /// The set of all variables
-    vars: IndexSet<Variable>,
+    var_manager: VarManager,
     /// The maximum bound for any variable to check.
     /// If `None`, no bound is set, which will might in an infinite search if the instance is not satisfiable.
     /// If `Some(n)`, the solver will only check for a solution with a bound of `n`.
@@ -48,10 +45,10 @@ pub struct Instance {
 }
 
 impl Instance {
-    pub fn new(formula: Formula, vars: IndexSet<Variable>) -> Self {
+    pub fn new(formula: Formula, var_manager: VarManager) -> Self {
         Instance {
             formula,
-            vars,
+            var_manager,
             ubound: None,
             lbound: 1,
             print_model: false,
@@ -78,8 +75,8 @@ impl Instance {
         &self.formula
     }
 
-    pub fn get_vars(&self) -> &IndexSet<Variable> {
-        &self.vars
+    pub fn get_var_manager(&self) -> &VarManager {
+        &self.var_manager
     }
 
     pub fn get_lower_bound(&self) -> usize {
@@ -117,7 +114,7 @@ impl Parser {
 }
 
 fn parse_woorpje(input: &str) -> Result<Instance, ParseError> {
-    let mut vars = HashMap::new();
+    let mut vm = VarManager::new();
     let mut alphabet = IndexSet::new();
     let mut formula = Formula::True;
 
@@ -147,8 +144,7 @@ fn parse_woorpje(input: &str) -> Result<Instance, ParseError> {
                     if alphabet.contains(&v) {
                         panic!("Alphabet cannot contain variables with same name");
                     }
-                    let var = Variable::new(v.to_string(), crate::model::Sort::String);
-                    vars.insert(v, var.clone());
+                    vm.new_var(v.to_string().as_str(), crate::model::Sort::String);
                 }
             }
             "Terminals" => {
@@ -164,7 +160,7 @@ fn parse_woorpje(input: &str) -> Result<Instance, ParseError> {
                         None,
                     ))?;
                 alph.chars().for_each(|c| {
-                    if vars.contains_key(&c) {
+                    if vm.by_name(c.to_string().as_str()).is_some() {
                         panic!("Alphabet cannot contain variables with same name");
                     }
                     alphabet.insert(c);
@@ -182,7 +178,7 @@ fn parse_woorpje(input: &str) -> Result<Instance, ParseError> {
                 for c in sides[0].chars() {
                     if alphabet.contains(&c) {
                         lhs.append(&Symbol::Constant(c));
-                    } else if let Some(v) = vars.get(&c) {
+                    } else if let Some(v) = vm.by_name(c.to_string().as_str()) {
                         lhs.append(&Symbol::Variable(v.clone()));
                     } else {
                         panic!("Unknown symbol in equation '{}'", c);
@@ -192,7 +188,7 @@ fn parse_woorpje(input: &str) -> Result<Instance, ParseError> {
                 for c in sides[1].chars() {
                     if alphabet.contains(&c) {
                         rhs.append(&Symbol::Constant(c));
-                    } else if let Some(v) = vars.get(&c) {
+                    } else if let Some(v) = vm.by_name(c.to_string().as_str()) {
                         rhs.append(&Symbol::Variable(v.clone()));
                     } else {
                         panic!("Unknown symbol in equation '{}'", c);
@@ -204,7 +200,7 @@ fn parse_woorpje(input: &str) -> Result<Instance, ParseError> {
         }
     }
 
-    Ok(Instance::new(formula, vars.values().cloned().collect()))
+    Ok(Instance::new(formula, vm))
 }
 
 #[cfg(test)]
@@ -218,10 +214,11 @@ Terminals {ab}
 Equation: aX = ab"#;
 
         let instance = parse_woorpje(input).unwrap();
-        assert_eq!(instance.get_vars().len(), 1);
+        let vm = instance.get_var_manager();
+        assert_eq!(vm.of_sort(crate::model::Sort::String).count(), 1);
         let expected_lhs = Pattern::from(vec![
             Symbol::Constant('a'),
-            Symbol::Variable(Variable::new("X".to_string(), crate::model::Sort::String)),
+            Symbol::Variable(vm.by_name("X").unwrap().clone()),
         ]);
         let expected_rhs = Pattern::constant("ab");
         let expected_eq = WordEquation::new(expected_lhs, expected_rhs);

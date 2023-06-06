@@ -701,7 +701,7 @@ mod tests {
     use crate::{
         encode::substitution::SubstitutionEncoder,
         formula::Substitution,
-        model::{words::Pattern, Sort, Variable},
+        model::{words::Pattern, Sort, VarManager, Variable},
     };
 
     fn solve_bindep(
@@ -960,8 +960,9 @@ mod tests {
 
     #[test]
     fn bindep_trivial_sat_const_var() {
+        let mut vm = VarManager::new();
         let eq = WordEquation::new(
-            Pattern::variable(&Variable::tmp_var(Sort::String)),
+            Pattern::variable(&vm.tmp_var(Sort::String)),
             Pattern::constant("bar"),
         );
 
@@ -973,7 +974,8 @@ mod tests {
 
     #[test]
     fn bindep_trivial_sat_vars() {
-        let var = Pattern::variable(&Variable::tmp_var(Sort::String));
+        let mut vm = VarManager::new();
+        let var = Pattern::variable(&vm.tmp_var(Sort::String));
         let eq = WordEquation::new(var.clone(), var);
         let bounds = VariableBounds::new(10);
         let res = solve_bindep(&eq, bounds, &eq.alphabet());
@@ -982,9 +984,10 @@ mod tests {
 
     #[test]
     fn bindep_sat_commute() {
+        let mut vm = VarManager::new();
         // AB = BA
-        let var_a = Variable::tmp_var(Sort::String);
-        let var_b = Variable::tmp_var(Sort::String);
+        let var_a = vm.tmp_var(Sort::String);
+        let var_b = vm.tmp_var(Sort::String);
         let mut lhs = Pattern::empty();
         lhs.append_var(&var_a).append_var(&var_b);
         let mut rhs = Pattern::empty();
@@ -1013,9 +1016,10 @@ mod tests {
 
     #[test]
     fn bindep_trivial_unsat_const_var_too_small() {
+        let mut vm = VarManager::new();
         let eq = WordEquation::new(
             Pattern::constant("foo"),
-            Pattern::variable(&Variable::tmp_var(Sort::String)),
+            Pattern::variable(&vm.tmp_var(Sort::String)),
         );
 
         let bounds = VariableBounds::new(1);

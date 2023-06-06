@@ -329,12 +329,15 @@ impl Display for WordEquation {
 
 use quickcheck;
 
+use super::VarManager;
+
 impl Arbitrary for Symbol {
     fn arbitrary(g: &mut quickcheck::Gen) -> Self {
+        let mut var_manager = VarManager::new();
         let choices = &[
             Symbol::Constant(char::arbitrary(g)),
             Symbol::Constant(char::arbitrary(g)),
-            Symbol::Variable(Variable::tmp_var(Sort::String)),
+            Symbol::Variable(var_manager.tmp_var(Sort::String)),
         ];
 
         g.choose(choices).unwrap().clone()

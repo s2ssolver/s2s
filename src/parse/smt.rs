@@ -1,8 +1,7 @@
 use std::io::BufRead;
 
-use indexmap::IndexMap;
 use smt2parser::{
-    concrete::{self, Constant, QualIdentifier, Sort as SMTSort, Symbol, Term},
+    concrete::{self, Constant, QualIdentifier, Term},
     CommandStream,
 };
 
@@ -10,7 +9,7 @@ use crate::{
     formula::{Atom, Formula},
     model::{
         words::{Pattern, WordEquation},
-        Sort, Variable,
+        Sort, VarManager,
     },
 };
 
@@ -36,7 +35,7 @@ pub fn parse_smt<R: BufRead>(smt: R) -> Result<Instance, ParseError> {
         Some("optional/path/to/file".to_string()),
     );
 
-    let mut variables: IndexMap<String, Variable> = IndexMap::new();
+    let mut var_manager = crate::model::VarManager::new();
     let mut asserts: Vec<Formula> = Vec::new();
     let mut print_model = false;
 
@@ -49,13 +48,13 @@ pub fn parse_smt<R: BufRead>(smt: R) -> Result<Instance, ParseError> {
                     qual_identifier,
                     arguments,
                 } => {
-                    let fm = parse_fun_application(qual_identifier, arguments, &variables)?;
+                    let fm = parse_fun_application(qual_identifier, arguments, &var_manager)?;
                     asserts.push(fm);
                 }
                 Term::QualIdentifier(id) => match id {
                     concrete::QualIdentifier::Simple { identifier } => match identifier {
                         smt2parser::visitors::Identifier::Simple { symbol } => {
-                            if let Some(v) = variables.get(&symbol.0) {
+                            if let Some(v) = var_manager.by_name(&symbol.0) {
                                 if v.sort() != Sort::Bool {
                                     return Err(ParseError::Other(
                                         format!("Can only assert Boolean variables (found {})", v),
@@ -68,38 +67,28 @@ pub fn parse_smt<R: BufRead>(smt: R) -> Result<Instance, ParseError> {
                         }
                         smt2parser::visitors::Identifier::Indexed { .. } => {
                             return Err(ParseError::Other(
-                                format!(
-                                    "Can only assert Boolean variables (found {})",
-                                    identifier
-                                ),
+                                format!("Can only assert Boolean variables (found {})", identifier),
                                 None,
                             ))
                         }
                     },
                     concrete::QualIdentifier::Sorted { identifier, .. } => {
                         return Err(ParseError::Other(
-                            format!(
-                                "Can only assert Boolean variables (found {})",
-                                identifier
-                            ),
+                            format!("Can only assert Boolean variables (found {})", identifier),
                             None,
                         ))
                     }
                 },
                 _ => {
                     // Assertion must be function application or Booleans
-                    return Err(ParseError::Other(
-                        format!("Can not assert {}", term),
-                        None,
-                    ));
+                    return Err(ParseError::Other(format!("Can not assert {}", term), None));
                 }
             },
             concrete::Command::CheckSat => {
                 log::debug!("Unnecessary CheckSat command")
             }
             concrete::Command::DeclareConst { symbol, sort } => {
-                let v = parse_var(symbol, sort)?;
-                variables.insert(v.name().to_string(), v);
+                var_manager.new_var(&symbol.0, convert_sort(sort)?);
             }
             concrete::Command::DeclareFun {
                 symbol,
@@ -108,8 +97,7 @@ pub fn parse_smt<R: BufRead>(smt: R) -> Result<Instance, ParseError> {
             } => {
                 if parameters.is_empty() {
                     // This is a constant function, i.e., a variable
-                    let v = parse_var(symbol, sort)?;
-                    variables.insert(v.name().to_string(), v);
+                    var_manager.new_var(&symbol.0, convert_sort(sort)?);
                 } else {
                     return Err(ParseError::Unsupported(
                         "Non-constant function declaration".to_string(),
@@ -132,18 +120,9 @@ pub fn parse_smt<R: BufRead>(smt: R) -> Result<Instance, ParseError> {
     }
 
     let mut instance = match asserts.len() {
-        0 => Instance::new(
-            Formula::True,
-            variables.into_iter().map(|(_, v)| v).collect(),
-        ),
-        1 => Instance::new(
-            asserts.pop().unwrap(),
-            variables.into_iter().map(|(_, v)| v).collect(),
-        ),
-        _ => Instance::new(
-            Formula::And(asserts),
-            variables.into_iter().map(|(_, v)| v).collect(),
-        ),
+        0 => Instance::new(Formula::True, var_manager),
+        1 => Instance::new(asserts.pop().unwrap(), var_manager),
+        _ => Instance::new(Formula::And(asserts), var_manager),
     };
     instance.set_print_model(print_model);
     Ok(instance)
@@ -170,15 +149,10 @@ fn convert_sort(sort: &concrete::Sort) -> Result<Sort, ParseError> {
     }
 }
 
-fn parse_var(symbol: &Symbol, sort: &SMTSort) -> Result<Variable, ParseError> {
-    let sort = convert_sort(sort)?;
-    Ok(Variable::new(symbol.0.clone(), sort))
-}
-
 fn parse_fun_application(
     qual_identifier: &QualIdentifier,
     arguments: &Vec<Term>,
-    vars: &IndexMap<String, Variable>,
+    vars: &VarManager,
 ) -> Result<Formula, ParseError> {
     match qual_identifier {
         QualIdentifier::Simple { identifier } => match identifier {
@@ -202,25 +176,28 @@ fn parse_fun_application(
                 indices: _,
             } => todo!(), // Needed to regexes
         },
-        QualIdentifier::Sorted { identifier: _, sort: _ } => todo!(),
+        QualIdentifier::Sorted {
+            identifier: _,
+            sort: _,
+        } => todo!(),
     }
 }
 
 fn parse_word_equation(
     lhs: &Term,
     rhs: &Term,
-    vars: &IndexMap<String, Variable>,
+    vars: &VarManager,
 ) -> Result<WordEquation, ParseError> {
     let lsh = parse_patter(lhs, vars)?;
     let rhs = parse_patter(rhs, vars)?;
     Ok(WordEquation::new(lsh, rhs))
 }
 
-fn parse_patter(pat: &Term, vars: &IndexMap<String, Variable>) -> Result<Pattern, ParseError> {
+fn parse_patter(pat: &Term, vars: &VarManager) -> Result<Pattern, ParseError> {
     match pat {
         Term::Constant(Constant::String(s)) => Ok(Pattern::constant(s)),
         Term::QualIdentifier(QualIdentifier::Simple { identifier }) => {
-            if let Some(v) = vars.get(&identifier.to_string()) {
+            if let Some(v) = vars.by_name(&identifier.to_string()) {
                 Ok(Pattern::variable(v))
             } else {
                 Err(ParseError::UnknownIdentifier(identifier.to_string()))

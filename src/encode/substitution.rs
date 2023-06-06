@@ -260,13 +260,14 @@ mod tests {
     use quickcheck::TestResult;
     use quickcheck_macros::quickcheck;
 
-    use crate::{encode::VariableBounds, model::Variable};
+    use crate::{encode::VariableBounds, model::VarManager};
 
     use super::SubstitutionEncoder;
 
     #[test]
     fn all_subst_defined() {
-        let var = Variable::tmp_var(crate::model::Sort::String);
+        let mut vm = VarManager::new();
+        let var = vm.tmp_var(crate::model::Sort::String);
         let alphabet = IndexSet::from_iter(vec!['a', 'b', 'c']);
         let vars = IndexSet::from_iter(vec![var.clone()]);
         let mut encoder = SubstitutionEncoder::new(alphabet, vars);
@@ -288,7 +289,8 @@ mod tests {
 
     #[test]
     fn all_subst_defined_incremental() {
-        let var = Variable::tmp_var(crate::model::Sort::String);
+        let mut vm = VarManager::new();
+        let var = vm.tmp_var(crate::model::Sort::String);
         let alphabet = IndexSet::from_iter(vec!['a', 'b', 'c']);
         let vars = IndexSet::from_iter(vec![var.clone()]);
         let mut encoder = SubstitutionEncoder::new(alphabet, vars);
@@ -314,7 +316,8 @@ mod tests {
         if len == 0 {
             return TestResult::discard();
         }
-        let var = Variable::tmp_var(crate::model::Sort::String);
+        let mut vm = VarManager::new();
+        let var = vm.tmp_var(crate::model::Sort::String);
         let alphabet = IndexSet::from_iter(vec!['a', 'b', 'c', 'd']);
         let vars = IndexSet::from_iter(vec![var.clone()]);
         let mut encoder = SubstitutionEncoder::new(alphabet, vars);
@@ -347,7 +350,8 @@ mod tests {
         if len == 0 {
             return TestResult::discard();
         }
-        let var = Variable::tmp_var(crate::model::Sort::String);
+        let mut vm = VarManager::new();
+        let var = vm.tmp_var(crate::model::Sort::String);
         let alphabet = IndexSet::from_iter(vec!['a', 'b', 'c', 'd']);
         let vars = IndexSet::from_iter(vec![var.clone()]);
         let mut encoder = SubstitutionEncoder::new(alphabet, vars);

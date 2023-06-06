@@ -303,7 +303,7 @@ mod tests {
     use crate::{
         encode::substitution::SubstitutionEncoder,
         formula::{ConstVal, Substitution},
-        model::{words::Pattern, Sort, Variable},
+        model::{words::Pattern, Sort, VarManager, Variable},
     };
 
     #[quickcheck]
@@ -319,8 +319,9 @@ mod tests {
 
     #[quickcheck]
     fn length_single_var_pattern(prefix: String, bound: u8, suffix: String) {
+        let mut vm = VarManager::new();
         let bound = bound as usize;
-        let v = Variable::tmp_var(Sort::String);
+        let v = vm.tmp_var(Sort::String);
         let mut pattern = Pattern::constant(&prefix);
         pattern.append_var(&v).append_word(&suffix);
 
@@ -334,9 +335,10 @@ mod tests {
 
     #[quickcheck]
     fn length_default_bound(prefix: String, default_bound: u8, suffix: String) {
+        let mut vm = VarManager::new();
         let default_bound = default_bound as usize;
-        let v = Variable::tmp_var(Sort::String);
-        let y = Variable::tmp_var(Sort::String);
+        let v = vm.tmp_var(Sort::String);
+        let y = vm.tmp_var(Sort::String);
         let mut pattern = Pattern::constant(&prefix);
         pattern.append_var(&v).append_var(&y).append_word(&suffix);
 
@@ -439,9 +441,10 @@ mod tests {
 
     #[test]
     fn woorpje_trivial_sat_const_var() {
+        let mut vm = VarManager::new();
         let eq = WordEquation::new(
             Pattern::constant("bar"),
-            Pattern::variable(&Variable::tmp_var(Sort::String)),
+            Pattern::variable(&vm.tmp_var(Sort::String)),
         );
 
         let bounds = VariableBounds::new(19);
@@ -452,7 +455,8 @@ mod tests {
 
     #[test]
     fn woorpje_trivial_sat_vars() {
-        let var = Pattern::variable(&Variable::tmp_var(Sort::String));
+        let mut vm = VarManager::new();
+        let var = Pattern::variable(&vm.tmp_var(Sort::String));
         let eq = WordEquation::new(var.clone(), var);
         let bounds = VariableBounds::new(10);
         let res = solve_woorpje(&eq, bounds, &eq.alphabet());
@@ -462,8 +466,9 @@ mod tests {
     #[test]
     fn woorpje_sat_commute() {
         // AB = BA
-        let var_a = Variable::tmp_var(Sort::String);
-        let var_b = Variable::tmp_var(Sort::String);
+        let mut vm = VarManager::new();
+        let var_a = vm.tmp_var(Sort::String);
+        let var_b = vm.tmp_var(Sort::String);
         let mut lhs = Pattern::empty();
         lhs.append_var(&var_a).append_var(&var_b);
         let mut rhs = Pattern::empty();
@@ -476,7 +481,8 @@ mod tests {
 
     #[test]
     fn woorpje_sat_pattern_const() {
-        let var_a = Variable::tmp_var(Sort::String);
+        let mut vm = VarManager::new();
+        let var_a = vm.tmp_var(Sort::String);
 
         let mut lhs = Pattern::empty();
         lhs.append_word("a").append_var(&var_a).append_word("c");
@@ -489,9 +495,10 @@ mod tests {
 
     #[test]
     fn woorpje_trivial_unsat_const_var_too_small() {
+        let mut vm = VarManager::new();
         let eq = WordEquation::new(
             Pattern::constant("foo"),
-            Pattern::variable(&Variable::tmp_var(Sort::String)),
+            Pattern::variable(&vm.tmp_var(Sort::String)),
         );
 
         let bounds = VariableBounds::new(1);
@@ -504,11 +511,12 @@ mod tests {
     fn woorpje_sat_t1i2() {
         // Track1, Instance 2
         //BabbabbadeeadAacbacaHaebHedbAcAcHebabccEcbcHH = AbbHabbAbbaHeFcadEbdeHbAcacdebabccAecbcdH
-        let var_a = Variable::new("A".to_string(), Sort::String);
-        let var_b = Variable::new("B".to_string(), Sort::String);
-        let var_h = Variable::new("H".to_string(), Sort::String);
-        let var_f = Variable::new("F".to_string(), Sort::String);
-        let var_e = Variable::new("E".to_string(), Sort::String);
+        let mut vm = VarManager::new();
+        let var_a = vm.new_var("A", Sort::String);
+        let var_b = vm.new_var("B", Sort::String);
+        let var_h = vm.new_var("H", Sort::String);
+        let var_f = vm.new_var("F", Sort::String);
+        let var_e = vm.new_var("E", Sort::String);
 
         // B abbabbadeead A acbaca H aeb H edb A c A c H ebabcc E cbc HH
         let mut lhs = Pattern::empty();
