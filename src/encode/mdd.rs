@@ -1,6 +1,6 @@
 //! Encodes linear constraints using the MDD encoding.
 
-use std::{cell::RefCell, cmp::max, rc::Rc};
+use std::{borrow::BorrowMut, cell::RefCell, rc::Rc};
 
 use indexmap::IndexMap;
 
@@ -23,17 +23,26 @@ pub struct LinearEqEncoder {
 
     /// The root of the MDD, is None prior to first call to `encode`
     mdd_root: Option<Rc<RefCell<MddNode>>>,
+    mdd_final_t: Rc<RefCell<MddNode>>,
+    mdd_final_f: Rc<RefCell<MddNode>>,
 
     /// The maximum length of each variable
-    max_lengths: IndexMap<Variable, usize>,
 
     /// Assigns an arbitrary index to each variable
     var2index: IndexMap<Variable, usize>,
     /// Invers of `var2index`
     index2var: IndexMap<usize, Variable>,
 
+    row_values: IndexMap<(Variable, isize), Rc<RefCell<MddNode>>>,
+
+    init_node_var: Option<PVar>,
+    t_node_var: PVar,
+    f_node_var: PVar,
+
     /// Maps nodes given as (variable, length) pairs to their corresponding SAT variables
     node_vars: IndexMap<(Variable, isize), PVar>,
+
+    last_lengths: Option<VariableBounds>,
 }
 
 impl LinearEqEncoder {
@@ -56,23 +65,32 @@ impl LinearEqEncoder {
             let coeff = equation.rhs().count(c) as isize - equation.lhs().count(c) as isize;
             target += coeff as isize;
         }
+        let final_t = MddNode::new(NodeType::Terminal(true), -1);
+        let final_f = MddNode::new(NodeType::Terminal(false), -1);
 
         Self {
             coefficients,
             target,
-            max_lengths: IndexMap::new(),
             mdd_root: None,
             var2index,
             index2var,
             node_vars: IndexMap::new(),
+            row_values: IndexMap::new(),
+            last_lengths: None,
+            mdd_final_t: Rc::new(RefCell::new(final_t)),
+            mdd_final_f: Rc::new(RefCell::new(final_f)),
+            init_node_var: None,
+            t_node_var: pvar(),
+            f_node_var: pvar(),
         }
     }
 
     fn build_mdd(&mut self, lenghts: &VariableBounds) {
         // Do BFS and extend the MDD with new nodes
+        let rootvar = self.coefficients.first().unwrap().0.clone();
         let mut queue = Vec::new();
         if self.mdd_root.is_none() {
-            let root = MddNode::new(None, 0);
+            let root = MddNode::new(NodeType::NonTerminal(rootvar), 0);
             self.mdd_root = Some(Rc::new(RefCell::new(root)));
         }
 
@@ -80,25 +98,44 @@ impl LinearEqEncoder {
 
         while let Some(v) = queue.pop() {
             let value = v.borrow().value;
-            let var = v.borrow().variable.clone();
-            let vindex = var.map(|v| self.var2index[&v]).unwrap_or(0);
-            // Check if there is a successor row
-            if let Some(vsucc) = self.index2var.get(&(vindex + 1)).cloned() {
-                // Extend row with all possible values
-                for l in 0..=lenghts.get(&vsucc) {
-                    let new_value = value + self.coefficients[&vsucc] * l as isize;
-                    let new_node = MddNode::new(Some(vsucc.clone()), new_value);
-                    let rc = Rc::new(RefCell::new(new_node));
-                    // Add as child
-                    v.borrow_mut().add_child(rc.clone());
-                    // Push to queue
-                    queue.push(rc);
+            let ntype = v.borrow().ntype.clone();
+            match ntype {
+                NodeType::NonTerminal(var) => {
+                    let vindex = self.var2index[&var];
+                    let lastlen = self
+                        .last_lengths
+                        .as_ref()
+                        .map(|l| l.get(&var) + 1)
+                        .unwrap_or(0);
+                    if let Some(vsucc) = self.index2var.get(&(vindex + 1)).cloned() {
+                        for l in lastlen..=lenghts.get(&var) {
+                            let new_value = value + self.coefficients[&var] * l as isize;
+                            let child =
+                                self.row_values
+                                    .entry((var.clone(), new_value))
+                                    .or_insert(Rc::new(RefCell::new(MddNode::new(
+                                        NodeType::NonTerminal(vsucc.clone()),
+                                        new_value,
+                                    ))));
+                            // Add as child
+                            v.borrow_mut().add_child(l, child.clone());
+                            // Push to queue
+                            queue.push(child.clone());
+                        }
+                    } else {
+                        // Is last row, check if target is reached
+                        for l in lastlen..=lenghts.get(&var) {
+                            let new_value = value + self.coefficients[&var] * l as isize;
+                            let dest = if new_value == self.target {
+                                self.mdd_final_t.clone()
+                            } else {
+                                self.mdd_final_f.clone()
+                            };
+                            v.borrow_mut().add_child(l, dest);
+                        }
+                    }
                 }
-            } else {
-                // Is last row, check if target is reached
-                if value == self.target {
-                    v.borrow_mut().is_final = true;
-                }
+                NodeType::Terminal(_) => todo!(),
             }
         }
     }
@@ -113,68 +150,100 @@ impl LinearEqEncoder {
     fn encode_mdd(&mut self, length_encoding: &SubstitutionEncoding) -> EncodingResult {
         let mut result = EncodingResult::empty();
 
-        let initial = self.mdd_root.clone().unwrap();
-        let initial_var = pvar();
-        result.add_clause(vec![as_lit(initial_var)]);
+        if self.init_node_var.is_none() {
+            self.init_node_var = Some(pvar());
+            result.add_clause(vec![as_lit(self.init_node_var.unwrap())]);
+        }
 
         let mut queue = Vec::new();
-        queue.push((initial, initial_var));
-        while let Some((parent_node, parent_node_var)) = queue.pop() {
-            for child in parent_node.borrow().children.iter() {
-                let child_var = child.borrow().variable.clone().unwrap();
-                let child_node_var = self.get_or_create_node_var(
-                    child.borrow().variable.as_ref().unwrap(),
-                    child.borrow().value,
-                );
-                // If this an child is active, then the length must be accordingly
-                // child.value = parent.value + child.coeff * child.length
-                // <=> child.length = (child.value - parent.value) / child.coeff
-                let coeff = self.coefficients[&child_var];
-                assert!((child.borrow().value - parent_node.borrow().value) % coeff == 0);
-                let len = (child.borrow().value - parent_node.borrow().value) / coeff;
-                assert!(len >= 0);
-                let len_var = length_encoding.get_len(&child_var, len as usize).unwrap();
-                let clause = vec![neg(parent_node_var), neg(child_node_var), as_lit(len_var)];
-                result.add_clause(clause);
-                queue.push((child.clone(), child_node_var));
+        queue.push(self.mdd_root.as_ref().unwrap().clone());
+        while let Some(parent) = queue.pop() {
+            match &parent.borrow().ntype {
+                NodeType::NonTerminal(parent_var) => {
+                    let parent_val = parent.borrow().value;
+                    let parent_node_var = self.get_or_create_node_var(&parent_var, parent_val);
+                    for (l, child) in parent.borrow().children.iter() {
+                        let len_var = length_encoding.get_len(parent_var, *l).unwrap();
+                        match &child.borrow().ntype {
+                            NodeType::NonTerminal(child_var) => {
+                                let child_node_var =
+                                    self.get_or_create_node_var(&child_var, child.borrow().value);
+
+                                result.add_clause(vec![
+                                    as_lit(child_node_var),
+                                    neg(len_var),
+                                    neg(parent_node_var),
+                                ]);
+                                result.add_clause(vec![
+                                    neg(child_node_var),
+                                    neg(len_var),
+                                    as_lit(parent_node_var),
+                                ]);
+                                queue.push(child.clone());
+                            }
+                            NodeType::Terminal(true) => {
+                                result.add_clause(vec![
+                                    as_lit(self.t_node_var),
+                                    neg(len_var),
+                                    neg(parent_node_var),
+                                ]);
+                                result.add_clause(vec![
+                                    neg(self.t_node_var),
+                                    neg(len_var),
+                                    as_lit(parent_node_var),
+                                ]);
+                            }
+                            NodeType::Terminal(false) => {
+                                result.add_clause(vec![
+                                    as_lit(self.f_node_var),
+                                    neg(len_var),
+                                    neg(parent_node_var),
+                                ]);
+                                result.add_clause(vec![
+                                    neg(self.f_node_var),
+                                    neg(len_var),
+                                    as_lit(parent_node_var),
+                                ]);
+                            }
+                        }
+                    }
+                }
+                NodeType::Terminal(_) => {}
             }
         }
+        result.add_clause(vec![neg(self.f_node_var)]);
 
         result
     }
 }
 
 #[derive(Clone, Debug)]
+enum NodeType {
+    NonTerminal(Variable),
+    Terminal(bool),
+}
+
+#[derive(Clone, Debug)]
 struct MddNode {
     /// The variable that this node represents, is None if it is the root node
-    variable: Option<Variable>,
+    ntype: NodeType,
     /// The partial sum of the coefficients of the variables in the path to this node
     value: isize,
     /// The children of this node
-    children: Vec<Rc<RefCell<MddNode>>>,
-    /// The node is final if it is the last node in the MDD and the value is equal to the target
-    is_final: bool,
-
-    can_reach_final: Option<bool>,
+    children: Vec<(usize, Rc<RefCell<MddNode>>)>,
 }
 
 impl MddNode {
-    fn new(variable: Option<Variable>, value: isize) -> Self {
+    fn new(ntype: NodeType, value: isize) -> Self {
         Self {
-            variable,
+            ntype,
             value,
             children: Vec::new(),
-            is_final: false,
-            can_reach_final: None,
         }
     }
 
-    fn add_child(&mut self, child: Rc<RefCell<MddNode>>) {
-        self.children.push(child);
-    }
-
-    fn minimize(&mut self) {
-        //TODO
+    fn add_child(&mut self, v: usize, child: Rc<RefCell<MddNode>>) {
+        self.children.push((v, child));
     }
 }
 
@@ -190,7 +259,9 @@ impl PredicateEncoder for LinearEqEncoder {
         assert!(self.mdd_root.is_some());
 
         // Encode the MDD
-        self.encode_mdd(substitution)
+        let res: EncodingResult = self.encode_mdd(substitution);
+        self.last_lengths = Some(bounds.clone());
+        res
     }
 
     fn is_incremental(&self) -> bool {

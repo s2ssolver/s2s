@@ -176,7 +176,7 @@ impl<T: WordEquationEncoder> EquationSystemSolver<T> {
         let sub_encoding = self.subs_encoder.get_encoding().unwrap();
         for (eq_enc, ll_enc) in self.encoder.as_mut_slice() {
             encoding.join(eq_enc.encode(&bounds, sub_encoding));
-            //encoding.join(ll_enc.encode(&bounds, sub_encoding));
+            encoding.join(ll_enc.encode(&bounds, sub_encoding));
         }
 
         encoding
