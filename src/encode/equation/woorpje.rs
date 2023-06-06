@@ -13,7 +13,7 @@
 //! - The fixes a bug where some unsat equations were incorrectly reported as sat due the original encoding did not correctly constraint the state variables in some corner cases.
 use std::collections::HashMap;
 
-use crate::encode::domain::{DomainEncoding, SubstitutionEncoding};
+use crate::encode::domain::{DomainEncoding};
 use crate::encode::{
     EncodingResult, FilledPattern, FilledPos, IntegerDomainBounds, PredicateEncoder, LAMBDA,
 };
@@ -308,10 +308,9 @@ mod tests {
     use quickcheck_macros::quickcheck;
 
     use crate::{
-        encode::domain::{get_substitutions, DomainEncoder, SubstitutionEncoder},
+        encode::domain::{get_substitutions, DomainEncoder},
         formula::{ConstVal, Substitution},
         model::{words::Pattern, Sort, VarManager, Variable},
-        parse::Instance,
     };
 
     #[quickcheck]
@@ -595,9 +594,9 @@ mod tests {
         let solution: HashMap<Variable, Vec<char>> = HashMap::from([
             (var_a.clone(), "a".chars().collect()),
             (var_b.clone(), "abbd".chars().collect()),
-            (var_h.clone(), "d".chars().collect()),
-            (var_f.clone(), "eadaacba".chars().collect()),
-            (var_e.clone(), "ae".chars().collect()),
+            (var_h, "d".chars().collect()),
+            (var_f, "eadaacba".chars().collect()),
+            (var_e, "ae".chars().collect()),
         ]);
         let _solution = Substitution::from(solution);
         let bounds = IntegerDomainBounds::new((0, 10));

@@ -8,7 +8,7 @@ use crate::{
     sat::{Clause, Cnf, PLit},
 };
 
-use self::domain::{DomainEncoding, SubstitutionEncoding};
+use self::domain::DomainEncoding;
 
 /// Facilities for encoding cardinality constraints
 mod card;
@@ -97,11 +97,12 @@ impl IntegerDomainBounds {
     }
 
     /// Returns true if the upper bounds of all variables are less or equal to the given value.
+    #[allow(dead_code)]
     pub fn all_leq(&self, limit: isize) -> bool {
         if self.default.1 > limit {
             return false;
         }
-        for (var, bound) in self.bounds.iter() {
+        for (_var, bound) in self.bounds.iter() {
             if bound.1 > limit {
                 return false;
             }

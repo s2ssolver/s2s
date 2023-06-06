@@ -13,7 +13,7 @@ use crate::model::words::Symbol;
 use crate::model::words::WordEquation;
 use crate::model::{Sort, VarManager};
 
-use crate::encode::domain::{get_substitutions, DomainEncoder, SubstitutionEncoder};
+use crate::encode::domain::{get_substitutions, DomainEncoder};
 use crate::parse::Instance;
 use crate::sat::{Cnf, PLit};
 
@@ -103,7 +103,7 @@ impl<'a, T: WordEquationEncoder> EquationSystemSolver<'a, T> {
             _ => return Err("Instance is not a system of word equations".to_string()),
         }
 
-        let dom_encoder = DomainEncoder::new(alphabet.clone(), &instance.get_var_manager());
+        let dom_encoder = DomainEncoder::new(alphabet.clone(), instance.get_var_manager());
         let encoders = Vec::new();
 
         Ok(Self {
@@ -158,7 +158,7 @@ impl<'a, T: WordEquationEncoder> EquationSystemSolver<'a, T> {
             sharpen_bounds(
                 self.equations.first().unwrap(),
                 &self.bounds,
-                &self.var_manager,
+                self.var_manager,
             )
         } else {
             self.bounds.clone()
@@ -174,7 +174,7 @@ impl<'a, T: WordEquationEncoder> EquationSystemSolver<'a, T> {
         encoding.join(subs_cnf);
         let dom = self.dom_encoder.encoding();
         for enc in self.encoder.as_mut_slice() {
-            let res = enc.encode(&bounds, dom, &mut self.var_manager);
+            let res = enc.encode(&bounds, dom, self.var_manager);
             encoding.join(res);
         }
 
@@ -247,7 +247,7 @@ impl<'a, T: WordEquationEncoder> Solver for EquationSystemSolver<'a, T> {
                         let mut model = Substitution::with_defaults();
                         for (v, s) in get_substitutions(
                             self.dom_encoder.encoding(),
-                            &self.var_manager,
+                            self.var_manager,
                             &cadical,
                         ) {
                             model.set(&v, ConstVal::String(s.clone()));

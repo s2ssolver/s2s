@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use crate::encode::card::exactly_one;
-use crate::encode::domain::{DomainEncoding, SubstitutionEncoding};
+use crate::encode::domain::{DomainEncoding};
 use crate::encode::{
     EncodingResult, FilledPattern, FilledPos, IntegerDomainBounds, PredicateEncoder, LAMBDA,
 };
@@ -126,7 +126,7 @@ impl IWoorpjeEncoder {
                         let sub_p = as_lit(self.subs_lhs[&(i, c)]);
                         let sub_x = as_lit(
                             subs.get(v, *j, c)
-                                .expect(format!("{:?}[{}] = {} not defined", v, j, c).as_str()),
+                                .unwrap_or_else(|| panic!("{:?}[{}] = {} not defined", v, j, c)),
                         );
                         // selector -> (sub_p <-> sub_x)
                         // <=> selector -> (sub_p -> sub_x) /\ selector -> (sub_x -> sub_p)

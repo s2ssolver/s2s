@@ -242,7 +242,7 @@ impl BindepEncoder {
         bounds: &IntegerDomainBounds,
         side: &EqSide,
         dom: &DomainEncoding,
-        var_manager: &VarManager,
+        _var_manager: &VarManager,
     ) -> EncodingResult {
         let mut res = EncodingResult::empty();
 
@@ -301,13 +301,11 @@ impl BindepEncoder {
                     // Incremental either: Length is longer OR start position is later OR Both
                     for pos in start_pos..self.bound {
                         // TODO: Put all "disabled" start-length-pairs is a list and process on next iteration instead of iterating over all pairs and checking the condition
-                        let last_vbound = self.get_last_var_bound(v).unwrap_or(0) as usize;
+                        let last_vbound = self.get_last_var_bound(v).unwrap_or(0);
                         let vbound = self.get_var_bound(v, bounds);
                         for len in 0..=vbound {
                             // Start position of next segment is i+len
-                            let len_var = dom.int().get(&v.len_var(), len as isize).expect(
-                                format!("No length {} for variable {}", len, v.len_var()).as_str(),
-                            );
+                            let len_var = dom.int().get(&v.len_var(), len as isize).unwrap_or_else(|| panic!("No length {} for variable {}", len, v.len_var()));
                             // S_i^p /\ len_var -> S_{i+1}^(p+len)
                             let svar = self.start_position(i, pos, side);
 
@@ -407,7 +405,7 @@ impl BindepEncoder {
                         for p in segments.earliest_start(i)..self.bound {
                             let start_var = self.start_position(i, p, side);
                             if p < last_bound
-                                && l < self.get_last_var_bound(x).unwrap_or(0) as usize
+                                && l < self.get_last_var_bound(x).unwrap_or(0)
                                 && l + p < last_bound.saturating_sub(segments.suffix_len(i))
                             {
                                 // Already encoded

@@ -7,7 +7,6 @@ use super::{
 use crate::{
     encode::LAMBDA,
     model::{Sort, VarManager, Variable},
-    parse::Instance,
     sat::{as_lit, neg, pvar, Cnf, PLit, PVar},
 };
 use std::collections::HashMap;
@@ -83,14 +82,12 @@ impl IntEncoding {
 #[derive(Clone, Debug)]
 pub struct SubstitutionEncoding {
     encodings: HashMap<(Variable, usize, char), PVar>,
-    singular: bool,
 }
 
 impl SubstitutionEncoding {
-    pub fn new(singular: bool) -> Self {
+    pub fn new() -> Self {
         Self {
             encodings: HashMap::new(),
-            singular,
         }
     }
 
@@ -117,10 +114,6 @@ impl SubstitutionEncoding {
 
         self.encodings.insert((var.clone(), pos, chr), v);
     }
-
-    fn vars(&self) -> IndexSet<&Variable> {
-        self.encodings.keys().map(|(v, _, _)| v).collect()
-    }
 }
 
 /// Propositional encoding of the domains of all variables.
@@ -140,7 +133,7 @@ pub struct DomainEncoding {
 impl DomainEncoding {
     pub fn new(alphabet: IndexSet<char>, bounds: IntegerDomainBounds, singular: bool) -> Self {
         Self {
-            string: SubstitutionEncoding::new(singular),
+            string: SubstitutionEncoding::new(),
             int: IntEncoding::default(),
             alphabet,
             singular,
@@ -154,10 +147,6 @@ impl DomainEncoding {
 
     pub fn int(&self) -> &IntEncoding {
         &self.int
-    }
-
-    pub fn bounds(&self) -> &IntegerDomainBounds {
-        &self.bounds
     }
 
     pub fn alphabet(&self) -> &IndexSet<char> {
@@ -188,7 +177,7 @@ pub fn get_substitutions(
         let len_var = var_manager.str_length_var(var).unwrap();
         subs.insert(
             var.clone(),
-            vec![None; domain_encoding.bounds.get_upper(&len_var) as usize],
+            vec![None; domain_encoding.bounds.get_upper(len_var) as usize],
         );
     }
     for ((var, pos, chr), v) in domain_encoding.string.encodings.iter() {
@@ -240,16 +229,6 @@ impl<'a> SubstitutionEncoder<'a> {
         }
     }
 
-    /// Returns the variables' bound used in the last round.
-    /// Returns None prior to the first round.
-    fn get_last_var_bound(&self, var: &Variable) -> Option<usize> {
-        self.var_manager.str_length_var(var).and_then(|len_var| {
-            self.last_bounds
-                .as_ref()
-                .map(|bounds| bounds.get_upper(&len_var) as usize)
-        })
-    }
-
     pub fn encode(
         &mut self,
         bounds: &IntegerDomainBounds,
@@ -263,7 +242,7 @@ impl<'a> SubstitutionEncoder<'a> {
             let var = self
                 .var_manager
                 .str_length_var(str_var)
-                .expect(format!("No length variable for {}", str_var).as_str());
+                .unwrap_or_else(|| panic!("No length variable for {}", str_var));
             let bound = bounds.get_upper(var) as usize;
             let last_bound = self.pre_bounds(var).unwrap_or(0);
 
@@ -286,9 +265,9 @@ impl<'a> SubstitutionEncoder<'a> {
                     // If previous position is lambda, then so is this one
                     if b > 0 {
                         let clause = vec![
-                            neg(subs.get(str_var, b - 1, LAMBDA).expect(
-                                format!("{:?}[{}] = {} undefined", str_var, b - 1, LAMBDA).as_str(),
-                            )),
+                            neg(subs.get(str_var, b - 1, LAMBDA).unwrap_or_else(|| {
+                                panic!("{:?}[{}] = {} undefined", str_var, b - 1, LAMBDA)
+                            })),
                             as_lit(subvar_lambda),
                         ];
                         cnf.push(clause);
@@ -303,6 +282,9 @@ impl<'a> SubstitutionEncoder<'a> {
         EncodingResult::cnf(cnf)
     }
 
+    /// Returns the variables' bound used in the last round.
+    /// Returns None prior to the first round.
+    /// Must be integer variable.
     fn pre_bounds(&self, var: &Variable) -> Option<usize> {
         self.last_bounds
             .as_ref()
@@ -359,28 +341,28 @@ impl<'a> IntegerEncoder<'a> {
             let str_len_var = self.var_manager.str_length_var(str_var).unwrap();
             let mut len_choices = vec![];
             let last_bound = self
-                .get_last_dom(&str_len_var)
+                .get_last_dom(str_len_var)
                 .map(|b| (b.1) + 1)
                 .unwrap_or(0);
 
-            for len in last_bound..=bounds.get_upper(&str_len_var) {
+            for len in last_bound..=bounds.get_upper(str_len_var) {
                 let choice = pvar();
                 len_choices.push(choice);
 
                 encoding.int.insert(str_len_var.clone(), len, choice);
                 // If the variable has this length, then only lambdas follow, and no lambdas precede
                 if !encoding.singular {
-                    if len < bounds.get_upper(&str_len_var) {
+                    if len < bounds.get_upper(str_len_var) {
                         let lambda_suffix = encoding
                             .string()
-                            .get(&str_var, len as usize, LAMBDA)
+                            .get(str_var, len as usize, LAMBDA)
                             .unwrap();
                         res.add_clause(vec![neg(choice), as_lit(lambda_suffix)]);
                     }
                     if len > 0 {
                         let not_lambda_prefix = encoding
                             .string()
-                            .get(&str_var, len as usize - 1, LAMBDA)
+                            .get(str_var, len as usize - 1, LAMBDA)
                             .unwrap();
                         res.add_clause(vec![neg(choice), neg(not_lambda_prefix)]);
                     }
@@ -481,7 +463,7 @@ mod tests {
         let mut encoder = SubstitutionEncoder::new(alphabet.clone(), &vm);
         encoder.singular = true;
         let bounds = IntegerDomainBounds::new((0, len as isize));
-        let mut encoding = DomainEncoding::new(alphabet.clone(), bounds.clone(), true);
+        let mut encoding = DomainEncoding::new(alphabet, bounds.clone(), true);
         let mut solver: cadical::Solver = cadical::Solver::new();
         match encoder.encode(&bounds, &mut encoding) {
             crate::encode::EncodingResult::Cnf(cnf, _) => {
@@ -514,7 +496,7 @@ mod tests {
 
         let mut encoder = SubstitutionEncoder::new(alphabet.clone(), &vm);
         let bounds = IntegerDomainBounds::new((0, len as isize));
-        let mut encoding = DomainEncoding::new(alphabet.clone(), bounds, false);
+        let mut encoding = DomainEncoding::new(alphabet, bounds, false);
         let mut solver: cadical::Solver = cadical::Solver::new();
         match encoder.encode(&encoding.bounds.clone(), &mut encoding) {
             crate::encode::EncodingResult::Cnf(cnf, _) => {
