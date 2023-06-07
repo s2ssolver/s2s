@@ -614,9 +614,9 @@ mod tests {
         eq.variables().iter().for_each(|v| {
             vm.add_var(v.clone());
         });
-        let mut dom_encoder = DomainEncoder::new(alphabet.clone(), &vm);
+        let mut dom_encoder = DomainEncoder::new(alphabet.clone());
 
-        let subs_cnf = dom_encoder.encode(&bounds);
+        let subs_cnf = dom_encoder.encode(&bounds, &vm);
 
         encoding.join(subs_cnf);
         let mut encoder = IWoorpjeEncoder::new(eq.clone());
@@ -697,7 +697,7 @@ mod tests {
         eq.variables().iter().for_each(|v| {
             vm.new_var(v.name(), Sort::String);
         });
-        let mut dom_encoder = DomainEncoder::new(alphabet.clone(), &vm);
+        let mut dom_encoder = DomainEncoder::new(alphabet.clone());
 
         let mut result = None;
         let mut done = bounds.all_leq(limit as isize);
@@ -705,7 +705,7 @@ mod tests {
         while done {
             let mut encoding = EncodingResult::empty();
 
-            encoding.join(dom_encoder.encode(&bounds));
+            encoding.join(dom_encoder.encode(&bounds, &vm));
             encoding.join(encoder.encode(&bounds, dom_encoder.encoding(), &vm));
             result = match encoding {
                 EncodingResult::Cnf(cnf, assm) => {

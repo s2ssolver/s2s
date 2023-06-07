@@ -305,7 +305,12 @@ impl BindepEncoder {
                         let vbound = self.get_var_bound(v, bounds);
                         for len in 0..=vbound {
                             // Start position of next segment is i+len
-                            let len_var = dom.int().get(&v.len_var(), len as isize).unwrap_or_else(|| panic!("No length {} for variable {}", len, v.len_var()));
+                            let len_var =
+                                dom.int()
+                                    .get(&v.len_var(), len as isize)
+                                    .unwrap_or_else(|| {
+                                        panic!("No length {} for variable {}", len, v.len_var())
+                                    });
                             // S_i^p /\ len_var -> S_{i+1}^(p+len)
                             let svar = self.start_position(i, pos, side);
 
@@ -721,8 +726,8 @@ mod tests {
         let mut encoding = EncodingResult::empty();
         let mut vm = VarManager::new();
         eq.variables().iter().for_each(|v| vm.add_var(v.clone()));
-        let mut dom_encoder = DomainEncoder::new(alphabet.clone(), &vm);
-        let subs_cnf = dom_encoder.encode(&bounds);
+        let mut dom_encoder = DomainEncoder::new(alphabet.clone());
+        let subs_cnf = dom_encoder.encode(&bounds, &vm);
         encoding.join(subs_cnf);
 
         let mut encoder = BindepEncoder::new(eq.clone());
@@ -826,7 +831,7 @@ mod tests {
         let mut encoder = BindepEncoder::new(eq.clone());
         let mut vm = VarManager::new();
         eq.variables().iter().for_each(|v| vm.add_var(v.clone()));
-        let mut dom_encoder = DomainEncoder::new(alphabet.clone(), &vm);
+        let mut dom_encoder = DomainEncoder::new(alphabet.clone());
 
         let mut result = None;
         let mut done = bounds.all_leq(limit as isize);
@@ -834,7 +839,7 @@ mod tests {
         while done {
             let mut encoding = EncodingResult::empty();
 
-            encoding.join(dom_encoder.encode(&bounds));
+            encoding.join(dom_encoder.encode(&bounds, &vm));
 
             println!("Encoding {:#?}", dom_encoder.encoding().string());
 

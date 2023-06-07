@@ -2,7 +2,7 @@ use std::{path::Path, process::exit};
 
 use clap::{Parser as ClapParser, ValueEnum};
 
-use satstr::{preprocess, Bindep, IWoorpje, Parser, Solver, Woorpje};
+use satstr::{preprocess, ConjunctiveSolver, Parser, Solver};
 #[derive(ClapParser, Debug)]
 #[command(author, version, about, long_about = None)] // Read from `Cargo.toml`
 struct Options {
@@ -93,12 +93,7 @@ fn main() {
     instance.set_lbound(cli.min_bound);
     instance.set_formula(preprocess(instance.get_formula()));
 
-    let mut solver = match cli.solver {
-        SolverType::Woorpje => Box::new(Woorpje::new(&instance).unwrap()) as Box<dyn Solver>,
-        SolverType::Iwoorpje => Box::new(IWoorpje::new(&instance).unwrap()) as Box<dyn Solver>,
-        SolverType::Bindep => Box::new(Bindep::new(&instance).unwrap()) as Box<dyn Solver>,
-        SolverType::Full => unimplemented!("Full solver not implemented yet"),
-    };
+    let mut solver = ConjunctiveSolver::new(instance.clone()).unwrap();
 
     let res = solver.solve();
     log::info!("Done ({}ms).", ts.elapsed().as_millis());

@@ -1,5 +1,7 @@
 use std::{collections::HashMap, fmt::Display};
 
+use indexmap::IndexSet;
+
 /// Representation of formulas and predicates
 use crate::model::{
     linears::LinearConstraint,
@@ -8,7 +10,7 @@ use crate::model::{
     Sort, Variable,
 };
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum Predicate {
     WordEquation(WordEquation),
     RegulaConstraint(Pattern, Regex),
@@ -33,6 +35,14 @@ impl Predicate {
             Predicate::WordEquation(eq) => eq.is_solution(substitution),
             Predicate::LinearConstraint(_c) => todo!(),
             Predicate::RegulaConstraint(_p, _r) => todo!(), // Derivate r w.r.t. p.substitute()
+        }
+    }
+
+    pub fn alphabet(&self) -> IndexSet<char> {
+        match self {
+            Predicate::WordEquation(eq) => eq.alphabet(),
+            Predicate::LinearConstraint(_) => IndexSet::new(),
+            Predicate::RegulaConstraint(_, _) => todo!("Regular Constraints not supported yet"),
         }
     }
 }
@@ -116,6 +126,29 @@ impl Formula {
             Formula::Or(_) => false,
             Formula::And(fs) => fs.iter().all(Self::is_conjunctive),
             Formula::Not(f) => f.is_conjunctive(),
+        }
+    }
+
+    pub fn num_atoms(&self) -> usize {
+        match self {
+            Formula::True | Formula::False | Formula::Atom(_) => 1,
+            Formula::Or(fs) | Formula::And(fs) => fs.iter().map(Self::num_atoms).sum(),
+            Formula::Not(f) => f.num_atoms(),
+        }
+    }
+
+    pub fn alphabet(&self) -> IndexSet<char> {
+        match self {
+            Formula::True | Formula::False => IndexSet::new(),
+            Formula::Atom(a) => match a {
+                Atom::Predicate(p) => p.alphabet(),
+                Atom::BoolVar(_) => IndexSet::new(),
+            },
+            Formula::Or(fs) | Formula::And(fs) => fs
+                .iter()
+                .map(Self::alphabet)
+                .fold(IndexSet::new(), |acc, x| acc.union(&x).cloned().collect()),
+            Formula::Not(f) => f.alphabet(),
         }
     }
 }

@@ -1,4 +1,4 @@
-use std::{collections::HashMap, fmt::Display};
+use std::{collections::HashMap, fmt::Display, ops::Index};
 
 use crate::model::words::Symbol;
 
@@ -53,7 +53,7 @@ impl Display for IntArithTerm {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum LinearArithFactor {
     VarCoeff(Variable, isize),
     Const(isize),
@@ -74,7 +74,7 @@ impl Display for LinearArithFactor {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, Hash)]
 pub struct LinearArithTerm {
     terms: Vec<LinearArithFactor>,
 }
@@ -110,6 +110,11 @@ impl LinearArithTerm {
 
     pub fn iter(&self) -> impl Iterator<Item = &LinearArithFactor> {
         self.terms.iter()
+    }
+
+    /// The number of summands in the term
+    pub fn len(&self) -> usize {
+        self.terms.len()
     }
 
     /// Normalize the term by combining all coefficients of the same variable.
@@ -201,7 +206,15 @@ impl LinearArithTerm {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+impl Index<usize> for LinearArithTerm {
+    type Output = LinearArithFactor;
+
+    fn index(&self, index: usize) -> &Self::Output {
+        &self.terms[index]
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum LinearConstraintType {
     Eq,
     Leq,
@@ -211,7 +224,7 @@ pub enum LinearConstraintType {
 }
 
 /// A linear constraint
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct LinearConstraint {
     pub lhs: LinearArithTerm,
     pub rhs: isize,
@@ -256,7 +269,13 @@ impl LinearConstraint {
             Self { lhs, rhs: 0, typ }
         }
     }
+
+    pub fn lhs(&self) -> &LinearArithTerm {
+        &self.lhs
+    }
 }
+
+/* Pretty Printing */
 
 impl Display for LinearArithTerm {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

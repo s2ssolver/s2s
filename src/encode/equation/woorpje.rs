@@ -379,9 +379,9 @@ mod tests {
         eq.variables().iter().for_each(|v| {
             vm.add_var(v.clone());
         });
-        let mut dom_encoder = DomainEncoder::new(alphabet.clone(), &vm);
+        let mut dom_encoder = DomainEncoder::new(alphabet.clone());
 
-        let subs_cnf = dom_encoder.encode(&bounds);
+        let subs_cnf = dom_encoder.encode(&bounds, &vm);
         encoding.join(subs_cnf);
 
         let mut encoder = WoorpjeEncoder::new(eq.clone());
