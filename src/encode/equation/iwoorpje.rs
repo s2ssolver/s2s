@@ -1,11 +1,12 @@
 use std::collections::HashMap;
 
 use crate::encode::card::exactly_one;
-use crate::encode::substitution::SubstitutionEncoding;
+use crate::encode::domain::DomainEncoding;
 use crate::encode::{
-    EncodingResult, FilledPattern, FilledPos, PredicateEncoder, VariableBounds, LAMBDA,
+    EncodingResult, FilledPattern, FilledPos, IntegerDomainBounds, PredicateEncoder, LAMBDA,
 };
 use crate::model::words::WordEquation;
+use crate::model::VarManager;
 use crate::sat::{as_lit, neg, pvar, Cnf, PVar};
 use indexmap::IndexSet;
 
@@ -55,7 +56,7 @@ impl IWoorpjeEncoder {
             .unwrap_or((0, 0))
     }
 
-    fn update_pattern(&mut self, subs: &SubstitutionEncoding) -> EncodingResult {
+    fn update_pattern(&mut self, dom: &DomainEncoding) -> EncodingResult {
         let mut cnf = Cnf::new();
         let (prev_len_lhs, prev_len_rhs) = self.prev_lens();
         let (lhs, rhs) = self.filled_equation.as_ref().unwrap();
@@ -75,7 +76,7 @@ impl IWoorpjeEncoder {
         // Left-hand side
         for i in prev_len_lhs..lhs.length() {
             let mut choices = Vec::new();
-            for c in subs.alphabet_lambda() {
+            for c in dom.alphabet_lambda() {
                 let v = pvar();
                 choices.push(v);
                 self.subs_lhs.insert((i, c), v);
@@ -85,7 +86,7 @@ impl IWoorpjeEncoder {
         // Right-hand side
         for i in prev_len_rhs..rhs.length() {
             let mut choices = Vec::new();
-            for c in subs.alphabet_lambda() {
+            for c in dom.alphabet_lambda() {
                 let v = pvar();
                 choices.push(v);
                 self.subs_rhs.insert((i, c), v);
@@ -94,18 +95,19 @@ impl IWoorpjeEncoder {
         }
         assert_eq!(
             self.subs_lhs.len(),
-            lhs.length() * subs.alphabet_lambda().len()
+            lhs.length() * dom.alphabet_lambda().len()
         );
         assert_eq!(
             self.subs_rhs.len(),
-            rhs.length() * subs.alphabet_lambda().len()
+            rhs.length() * dom.alphabet_lambda().len()
         );
         EncodingResult::cnf(cnf)
     }
 
-    fn align_pattern(&mut self, subs: &SubstitutionEncoding) -> EncodingResult {
+    fn align_pattern(&mut self, dom: &DomainEncoding) -> EncodingResult {
         let mut assms = IndexSet::new();
         let mut cnf = Cnf::new();
+        let subs = dom.string();
         let (lhs, rhs) = self.filled_equation.as_ref().unwrap();
 
         let selector = pvar();
@@ -120,9 +122,12 @@ impl IWoorpjeEncoder {
                     assms.insert(neg(self.subs_lhs[&(i, LAMBDA)]));
                 }
                 FilledPos::FilledPos(v, j) => {
-                    for c in subs.alphabet_lambda() {
+                    for c in dom.alphabet_lambda() {
                         let sub_p = as_lit(self.subs_lhs[&(i, c)]);
-                        let sub_x = as_lit(subs.get(v, *j, c).unwrap());
+                        let sub_x = as_lit(
+                            subs.get(v, *j, c)
+                                .unwrap_or_else(|| panic!("{:?}[{}] = {} not defined", v, j, c)),
+                        );
                         // selector -> (sub_p <-> sub_x)
                         // <=> selector -> (sub_p -> sub_x) /\ selector -> (sub_x -> sub_p)
                         // <=> (-selector \/ -sub_p \/ sub_x) /\ (-selector \/ -sub_x \/ sub_p)
@@ -140,7 +145,7 @@ impl IWoorpjeEncoder {
                     assms.insert(neg(self.subs_rhs[&(i, LAMBDA)]));
                 }
                 FilledPos::FilledPos(v, j) => {
-                    for c in subs.alphabet_lambda() {
+                    for c in dom.alphabet_lambda() {
                         let sub_p = as_lit(self.subs_rhs[&(i, c)]);
                         let sub_x = as_lit(subs.get(v, *j, c).unwrap());
                         // see above
@@ -156,7 +161,7 @@ impl IWoorpjeEncoder {
                 if let FilledPos::FilledPos(v, k) = &lhs[i] {
                     if let FilledPos::FilledPos(w, l) = &rhs[j] {
                         if v == w && l == k {
-                            for c in subs.alphabet_lambda() {
+                            for c in dom.alphabet_lambda() {
                                 let sub_lhs = as_lit(self.subs_lhs[&(i, c)]);
                                 let sub_rhs = as_lit(self.subs_rhs[&(j, c)]);
                                 // selector -> (sub_lhs <-> sub_rhs)
@@ -383,12 +388,7 @@ impl IWoorpjeEncoder {
         EncodingResult::cnf(cnf)
     }
 
-    fn encode_move_forward(
-        &mut self,
-        i: usize,
-        j: usize,
-        subs: &SubstitutionEncoding,
-    ) -> EncodingResult {
+    fn encode_move_forward(&mut self, i: usize, j: usize, dom: &DomainEncoding) -> EncodingResult {
         let mut cnf = Cnf::with_capacity(2);
         let s_00 = self.state_vars[i][j];
         let s_11 = self.state_vars[i + 1][j + 1];
@@ -397,7 +397,7 @@ impl IWoorpjeEncoder {
             && j < self.lens().1
             && (j >= self.prev_lens().1 || i >= self.prev_lens().0)
         {
-            for c in subs.alphabet_lambda() {
+            for c in dom.alphabet_lambda() {
                 let lhs_sub = self.subs_lhs.get(&(i, c)).unwrap();
                 let rhs_sub = self.subs_rhs.get(&(j, c)).unwrap();
 
@@ -425,26 +425,26 @@ impl IWoorpjeEncoder {
         EncodingResult::cnf(cnf)
     }
 
-    fn encode_moves(&mut self, i: usize, j: usize, subs: &SubstitutionEncoding) -> EncodingResult {
+    fn encode_moves(&mut self, i: usize, j: usize, dom: &DomainEncoding) -> EncodingResult {
         let mut res = EncodingResult::empty();
 
         res.join(self.encode_move_right(i, j));
 
         res.join(self.encode_move_down(i, j));
 
-        res.join(self.encode_move_forward(i, j, subs));
+        res.join(self.encode_move_forward(i, j, dom));
 
         res
     }
 
-    fn encode_valid(&mut self, subs: &SubstitutionEncoding, i: usize, j: usize) -> EncodingResult {
+    fn encode_valid(&mut self, dom: &DomainEncoding, i: usize, j: usize) -> EncodingResult {
         let mut res = EncodingResult::empty();
         let (n_last, m_last) = self.prev_lens();
         if i < n_last && j < m_last {
             // Already encoded
             return res;
         }
-        res.join(self.encode_moves(i, j, subs));
+        res.join(self.encode_moves(i, j, dom));
 
         res
     }
@@ -544,8 +544,9 @@ impl WordEquationEncoder for IWoorpjeEncoder {
 impl PredicateEncoder for IWoorpjeEncoder {
     fn encode(
         &mut self,
-        bounds: &VariableBounds,
-        substitution: &SubstitutionEncoding,
+        bounds: &IntegerDomainBounds,
+        dom: &DomainEncoding,
+        var_manager: &VarManager,
     ) -> EncodingResult {
         self.round += 1;
         let mut res = if let Some(old_selector) = self.selector {
@@ -553,22 +554,22 @@ impl PredicateEncoder for IWoorpjeEncoder {
         } else {
             EncodingResult::empty()
         };
-        let lhs = FilledPattern::fill(self.equation.lhs(), bounds);
-        let rhs = FilledPattern::fill(self.equation.rhs(), bounds);
+        let lhs = FilledPattern::fill(self.equation.lhs(), bounds, var_manager);
+        let rhs = FilledPattern::fill(self.equation.rhs(), bounds, var_manager);
         let prev = self.filled_equation.take();
         self.previous_filled_equation = prev;
         self.filled_equation = Some((lhs, rhs));
         // TODO: Check if (lhs.len, rhs.len) == last_len and return assumptions from last call
 
         res.join(self.update_state_vars());
-        res.join(self.update_pattern(substitution));
-        res.join(self.align_pattern(substitution));
+        res.join(self.update_pattern(dom));
+        res.join(self.align_pattern(dom));
 
         let (n, m) = self.lens();
         for i in 0..=n {
             for j in 0..=m {
                 res.join(self.encode_successors(i, j));
-                res.join(self.encode_valid(substitution, i, j));
+                res.join(self.encode_valid(dom, i, j));
             }
         }
 
@@ -598,27 +599,28 @@ mod tests {
     use cadical::Solver;
 
     use crate::{
-        encode::substitution::SubstitutionEncoder,
+        encode::domain::{get_substitutions, DomainEncoder},
         formula::Substitution,
         model::{words::Pattern, Sort, VarManager},
     };
 
     fn solve_iwoorpje(
         eq: &WordEquation,
-        bounds: VariableBounds,
+        bounds: IntegerDomainBounds,
         alphabet: &IndexSet<char>,
     ) -> Option<bool> {
         let mut encoding = EncodingResult::empty();
         let mut vm = VarManager::new();
         eq.variables().iter().for_each(|v| {
-            vm.new_var(v.name(), Sort::String);
+            vm.add_var(v.clone());
         });
-        let mut subs_encoder = SubstitutionEncoder::new(alphabet.clone(), &vm);
+        let mut dom_encoder = DomainEncoder::new(alphabet.clone());
 
-        let subs_cnf = subs_encoder.encode(&bounds);
+        let subs_cnf = dom_encoder.encode(&bounds, &vm);
+
         encoding.join(subs_cnf);
         let mut encoder = IWoorpjeEncoder::new(eq.clone());
-        encoding.join(encoder.encode(&bounds, subs_encoder.get_encoding().unwrap()));
+        encoding.join(encoder.encode(&bounds, dom_encoder.encoding(), &vm));
 
         let mut solver: Solver = Solver::default();
         let mut assumptions = HashSet::new();
@@ -634,10 +636,7 @@ mod tests {
         }
         let res = solver.solve_with(assumptions.into_iter());
         if let Some(true) = res {
-            let solution = subs_encoder
-                .get_encoding()
-                .unwrap()
-                .get_substitutions(&solver);
+            let solution = get_substitutions(dom_encoder.encoding(), &vm, &solver);
             let solution = Substitution::from(solution);
 
             for ((i, c), v) in encoder.subs_lhs {
@@ -691,23 +690,23 @@ mod tests {
         limit: usize,
         alphabet: &IndexSet<char>,
     ) -> Option<bool> {
-        let mut bounds = VariableBounds::new(1);
+        let mut bounds = IntegerDomainBounds::new((0, 1));
 
         let mut encoder = IWoorpjeEncoder::new(eq.clone());
         let mut vm = VarManager::new();
         eq.variables().iter().for_each(|v| {
             vm.new_var(v.name(), Sort::String);
         });
-        let mut subs_encoder = SubstitutionEncoder::new(alphabet.clone(), &vm);
+        let mut dom_encoder = DomainEncoder::new(alphabet.clone());
 
         let mut result = None;
-        let mut done = bounds.leq(limit);
+        let mut done = bounds.all_leq(limit as isize);
         let mut solver: cadical::Solver = cadical::Solver::new();
         while done {
             let mut encoding = EncodingResult::empty();
 
-            encoding.join(subs_encoder.encode(&bounds));
-            encoding.join(encoder.encode(&bounds, subs_encoder.get_encoding().unwrap()));
+            encoding.join(dom_encoder.encode(&bounds, &vm));
+            encoding.join(encoder.encode(&bounds, dom_encoder.encoding(), &vm));
             result = match encoding {
                 EncodingResult::Cnf(cnf, assm) => {
                     for clause in cnf {
@@ -717,14 +716,11 @@ mod tests {
                 }
                 EncodingResult::Trivial(f) => Some(f),
             };
-            done = bounds.next_square(Some(limit));
+            done = bounds.next_square(Some(limit as isize));
         }
         match result {
             Some(true) => {
-                let sol = subs_encoder
-                    .get_encoding()
-                    .unwrap()
-                    .get_substitutions(&solver);
+                let sol = get_substitutions(dom_encoder.encoding(), &vm, &solver);
                 let solution = Substitution::from(sol);
                 let svs = encoder.get_state_vars();
                 for j in 0..svs[0].len() {
@@ -766,7 +762,7 @@ mod tests {
     #[test]
     fn iwoorpje_empty_eq() {
         let eq = WordEquation::new(Pattern::from(vec![]), Pattern::from(vec![]));
-        let bounds = VariableBounds::new(10);
+        let bounds = IntegerDomainBounds::new((0, 10));
         let res = solve_iwoorpje(&eq, bounds, &eq.alphabet());
         assert!(matches!(res, Some(true)));
     }
@@ -774,7 +770,7 @@ mod tests {
     #[test]
     fn iwoorpje_trivial_sat_consts() {
         let eq = WordEquation::constant("bar", "bar");
-        let bounds = VariableBounds::new(10);
+        let bounds = IntegerDomainBounds::new((0, 10));
 
         let res = solve_iwoorpje(&eq, bounds, &eq.alphabet());
         assert!(matches!(res, Some(true)));
@@ -783,7 +779,7 @@ mod tests {
     #[test]
     fn iwoorpje_trivial_unsat_consts() {
         let eq = WordEquation::constant("bar", "barr");
-        let bounds = VariableBounds::new(10);
+        let bounds = IntegerDomainBounds::new((0, 10));
 
         let res = solve_iwoorpje(&eq, bounds, &eq.alphabet());
         assert!(matches!(res, Some(false)));
@@ -791,13 +787,9 @@ mod tests {
 
     #[test]
     fn iwoorpje_trivial_sat_const_var() {
-        let mut vm = VarManager::new();
-        let eq = WordEquation::new(
-            Pattern::variable(&vm.tmp_var(Sort::String)),
-            Pattern::constant("bar"),
-        );
+        let eq = WordEquation::parse_simple("X", "bar");
 
-        let bounds = VariableBounds::new(5);
+        let bounds = IntegerDomainBounds::new((0, 5));
 
         let res = solve_iwoorpje(&eq, bounds, &eq.alphabet());
         assert!(matches!(res, Some(true)));
@@ -808,7 +800,7 @@ mod tests {
         let mut vm = VarManager::new();
         let var = Pattern::variable(&vm.tmp_var(Sort::String));
         let eq = WordEquation::new(var.clone(), var);
-        let bounds = VariableBounds::new(10);
+        let bounds = IntegerDomainBounds::new((0, 10));
         let res = solve_iwoorpje(&eq, bounds, &eq.alphabet());
         assert!(matches!(res, Some(true)));
     }
@@ -824,7 +816,7 @@ mod tests {
         let mut rhs = Pattern::empty();
         rhs.append_var(&var_b).append_var(&var_a);
         let eq = WordEquation::new(lhs, rhs);
-        let bounds = VariableBounds::new(10);
+        let bounds = IntegerDomainBounds::new((0, 10));
         let res = solve_iwoorpje(&eq, bounds, &eq.alphabet());
         assert!(matches!(res, Some(true)));
     }
@@ -832,7 +824,7 @@ mod tests {
     #[test]
     fn iwoorpje_sat_pattern_const() {
         let eq = WordEquation::parse_simple("aXc", "abc");
-        let bounds = VariableBounds::new(1);
+        let bounds = IntegerDomainBounds::new((0, 1));
         let res = solve_iwoorpje(&eq, bounds, &eq.alphabet());
         assert!(matches!(res, Some(true)));
     }
@@ -840,7 +832,7 @@ mod tests {
     #[test]
     fn iwoorpje_test() {
         let eq = WordEquation::parse_simple("aXb", "YXb");
-        let bounds = VariableBounds::new(3);
+        let bounds = IntegerDomainBounds::new((0, 3));
         let res = solve_iwoorpje(&eq, bounds, &eq.alphabet());
         assert!(matches!(res, Some(true)));
     }
@@ -853,7 +845,7 @@ mod tests {
             Pattern::variable(&vm.tmp_var(Sort::String)),
         );
 
-        let bounds = VariableBounds::new(1);
+        let bounds = IntegerDomainBounds::new((0, 1));
 
         let res = solve_iwoorpje(&eq, bounds, &eq.alphabet());
         assert!(matches!(res, Some(false)));

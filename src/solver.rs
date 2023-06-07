@@ -1,21 +1,22 @@
-use std::collections::HashSet;
-use std::fs;
-use std::io::Write;
+use std::collections::HashMap;
 
 use indexmap::IndexSet;
 
 use std::time::Instant;
 
-use crate::encode::{BindepEncoder, EncodingResult, VariableBounds};
-use crate::encode::{IWoorpjeEncoder, WoorpjeEncoder, WordEquationEncoder};
+use crate::encode::{
+    BindepEncoder, EncodingResult, IntegerDomainBounds, MddEncoder, PredicateEncoder,
+    WordEquationEncoder,
+};
+
 use crate::formula::{Atom, ConstVal, Formula, Predicate, Substitution};
 use crate::model::words::Symbol;
-use crate::model::{words::WordEquation, Variable};
+use crate::model::words::WordEquation;
 use crate::model::{Sort, VarManager};
 
-use crate::encode::substitution::SubstitutionEncoder;
+use crate::encode::domain::{get_substitutions, DomainEncoder};
 use crate::parse::Instance;
-use crate::sat::{Cnf, PLit};
+use crate::sat::Cnf;
 
 /// The result of a satisfiability check
 pub enum SolverResult {
@@ -66,115 +67,87 @@ pub trait Solver {
     fn solve(&mut self) -> SolverResult;
 }
 
-pub struct EquationSystemSolver<'a, T: WordEquationEncoder> {
-    equations: Vec<WordEquation>,
-    bounds: VariableBounds,
+pub struct ConjunctiveSolver {
+    instance: Instance,
+    bounds: IntegerDomainBounds,
     alphabet: IndexSet<char>,
-    var_manager: &'a VarManager,
     max_bound: Option<usize>,
-    encoder: Vec<T>,
-    subs_encoder: SubstitutionEncoder<'a>,
+    encoders: HashMap<Predicate, Box<dyn PredicateEncoder>>,
+    domain_encoder: DomainEncoder,
 }
 
-// TODO:
-// - The solver should take ownership of the Instance and provide a way to access it from outside. Right now the lifetime of the solver is bound to the lifetime of the instance, which requires a lot of lifetime annotations.
+impl ConjunctiveSolver {
+    fn inst_encoder(predicate: &Predicate) -> Box<dyn PredicateEncoder> {
+        match predicate {
+            Predicate::WordEquation(eq) => Box::new(BindepEncoder::new(eq.clone())),
+            Predicate::RegulaConstraint(_, _) => todo!(),
+            Predicate::LinearConstraint(lc) => Box::new(MddEncoder::new(lc.clone())),
+        }
+    }
 
-impl<'a, T: WordEquationEncoder> EquationSystemSolver<'a, T> {
-    pub fn new(instance: &'a Instance) -> Result<Self, String> {
-        let mut eqs = Vec::new();
-        let mut alphabet = IndexSet::new();
+    pub fn new(instance: Instance) -> Result<Self, String> {
+        let initial_bounds = IntegerDomainBounds::new((0, instance.get_lower_bound() as isize));
+        let upper_bounds = instance.get_upper_bound();
+        let alphabet = instance.get_formula().alphabet();
+        let mut encoders = HashMap::new();
 
+        let non_conjunctive_error = Err(format!(
+            "Instance is not a conjunctive formula: {}",
+            instance.get_formula()
+        ));
         match instance.get_formula() {
             Formula::Atom(Atom::Predicate(Predicate::WordEquation(eq))) => {
-                eqs.push(eq.clone());
-                alphabet.extend(eq.alphabet().iter().cloned());
+                encoders.insert(
+                    Predicate::WordEquation(eq.clone()),
+                    Self::inst_encoder(&Predicate::WordEquation(eq.clone())),
+                );
             }
             Formula::And(fs) => {
                 for f in fs {
                     match f {
-                        Formula::Atom(Atom::Predicate(Predicate::WordEquation(eq))) => {
-                            eqs.push(eq.clone());
-                            alphabet.extend(eq.alphabet().iter().cloned());
+                        Formula::Atom(Atom::Predicate(p)) => {
+                            encoders.insert(p.clone(), Self::inst_encoder(p));
                         }
-                        _ => return Err("Instance is not a system of word equations".to_string()),
+                        _ => return non_conjunctive_error,
                     }
                 }
             }
-            _ => return Err("Instance is not a system of word equations".to_string()),
+            _ => return non_conjunctive_error,
         }
-
-        let subs_encoder = SubstitutionEncoder::new(alphabet.clone(), &instance.get_var_manager());
-        let encoders = Vec::new();
-
+        let dom_encoder = DomainEncoder::new(alphabet.clone());
         Ok(Self {
-            encoder: encoders,
-            equations: eqs,
+            instance,
+            bounds: initial_bounds,
             alphabet,
-            var_manager: instance.get_var_manager(),
-            bounds: VariableBounds::new(instance.get_lower_bound()),
-            max_bound: instance.get_upper_bound(),
-            subs_encoder,
+            max_bound: upper_bounds,
+            encoders,
+            domain_encoder: dom_encoder,
         })
-    }
-
-    #[allow(unused)]
-    pub fn write_dimacs(&self, clauses: &Cnf, assms: Vec<PLit>) {
-        let num_clauses = clauses.len() + assms.len();
-        let mut vars = HashSet::new();
-        for clause in clauses {
-            for lit in clause {
-                vars.insert(lit.abs());
-            }
-        }
-        for a in &assms {
-            vars.insert(a.abs());
-        }
-        let num_vars = vars.len();
-
-        let mut f = fs::File::options()
-            .create(true)
-            .write(true)
-            .truncate(true)
-            .open(".local/fm.dimacs")
-            .unwrap();
-
-        f.write_fmt(format_args!("p cnf {} {}\n", num_vars, num_clauses))
-            .unwrap();
-        for clause in clauses {
-            for lit in clause {
-                f.write_fmt(format_args!("{} ", lit)).unwrap();
-            }
-            f.write_fmt(format_args!("0\n")).unwrap();
-        }
-
-        for a in assms {
-            f.write_fmt(format_args!("{} 0\n", a)).unwrap();
-        }
     }
 
     fn encode_bounded(&mut self) -> EncodingResult {
         let mut encoding = EncodingResult::empty();
-        let bounds = if self.equations.len() == 1 {
-            sharpen_bounds(
-                self.equations.first().unwrap(),
-                &self.bounds,
-                &self.var_manager,
-            )
+        let bounds = if let Formula::Atom(Atom::Predicate(Predicate::WordEquation(eq))) =
+            self.instance.get_formula()
+        {
+            sharpen_bounds(eq, &self.bounds, self.instance.get_var_manager())
         } else {
             self.bounds.clone()
         };
 
         let ts = Instant::now();
-        let subs_cnf = self.subs_encoder.encode(&bounds);
+        let subs_cnf = self
+            .domain_encoder
+            .encode(&bounds, self.instance.get_var_manager());
         log::debug!(
             "Encoded substitution in {} clauses ({} ms)",
             subs_cnf.clauses(),
             ts.elapsed().as_millis()
         );
         encoding.join(subs_cnf);
-        let sub_encoding = self.subs_encoder.get_encoding().unwrap();
-        for enc in self.encoder.as_mut_slice() {
-            let res = enc.encode(&bounds, sub_encoding);
+        let dom = self.domain_encoder.encoding();
+        for (_, enc) in self.encoders.iter_mut() {
+            let res = enc.encode(&bounds, dom, self.instance.get_var_manager());
             encoding.join(res);
         }
 
@@ -183,25 +156,21 @@ impl<'a, T: WordEquationEncoder> EquationSystemSolver<'a, T> {
 
     // Reset all states
     fn reset(&mut self) {
-        self.subs_encoder = SubstitutionEncoder::new(self.alphabet.clone(), self.var_manager);
-        for encoder in self.encoder.as_mut_slice() {
+        self.domain_encoder = DomainEncoder::new(self.alphabet.clone());
+        for (_, encoder) in self.encoders.iter_mut() {
             encoder.reset();
         }
     }
 }
 
-impl<'a, T: WordEquationEncoder> Solver for EquationSystemSolver<'a, T> {
+impl Solver for ConjunctiveSolver {
     fn solve(&mut self) -> SolverResult {
         log::info!(
             "Started solving loop for system of {} equations",
-            self.equations.len()
+            self.instance.get_formula().num_atoms()
         );
-        let mut mut_waitlist = IndexSet::new();
-        for eq in self.equations.iter() {
-            mut_waitlist.insert(eq.clone());
-        }
-        // Just add one encoder
-        self.encoder.push(T::new(mut_waitlist.pop().unwrap()));
+        log::debug!("{}", self.instance.get_formula());
+
         let mut cadical: cadical::Solver = cadical::Solver::new();
         let mut time_encoding = 0;
         let mut time_solving = 0;
@@ -245,46 +214,20 @@ impl<'a, T: WordEquationEncoder> Solver for EquationSystemSolver<'a, T> {
                     time_solving += t_solving;
                     if let Some(true) = res {
                         let mut model = Substitution::with_defaults();
-                        match &self.subs_encoder.get_encoding() {
-                            Some(sub_encoding) => {
-                                for (v, s) in sub_encoding.get_substitutions(&cadical) {
-                                    model.set(&v, ConstVal::String(s.clone()));
-                                }
-                            }
-                            _ => panic!("No substitution encoding found"),
-                        };
-                        // Check which equations in the waitlist are not satisfied by the model, add them to the encoding
-                        let mut to_add = Vec::new();
-                        for eq in &mut_waitlist {
-                            match eq.is_solution(&model) {
-                                None | Some(false) => {
-                                    to_add.push(eq.clone());
-                                }
-                                _ => {}
-                            }
+                        for (v, s) in get_substitutions(
+                            self.domain_encoder.encoding(),
+                            self.instance.get_var_manager(),
+                            &cadical,
+                        ) {
+                            model.set(&v, ConstVal::String(s.clone()));
                         }
-
-                        if to_add.is_empty() {
-                            log::info!(
-                                "Done. Total time encoding/solving: {}/{} ms",
-                                time_encoding,
-                                time_solving
-                            );
-                            return SolverResult::Sat(model);
-                        } else {
-                            // Add some of the equations that were not satisfied to the found model
-                            log::info!(
-                                "{} out of {} ignored equations were not satisfied, adding {} equations to the model",
-                                to_add.len(),
-                                mut_waitlist.len(),
-                                to_add.len().min(3)
-                            );
-                            for eq in &to_add[0..2] {
-                                mut_waitlist.remove(eq);
-                                self.encoder.push(T::new(eq.clone()));
-                            }
-                        }
-                    } else if self.encoder.iter().any(|enc| !enc.is_incremental()) {
+                        log::info!(
+                            "Done. Total time encoding/solving: {}/{} ms",
+                            time_encoding,
+                            time_solving
+                        );
+                        return SolverResult::Sat(model);
+                    } else if self.encoders.values().any(|enc| !enc.is_incremental()) {
                         // reset states if at least one solver is not incremental
                         self.reset();
                         cadical = cadical::Solver::new();
@@ -296,7 +239,7 @@ impl<'a, T: WordEquationEncoder> Solver for EquationSystemSolver<'a, T> {
                     return SolverResult::Sat(Substitution::with_defaults())
                 }
             }
-            if !self.bounds.next_square(self.max_bound) {
+            if !self.bounds.next_square(self.max_bound.map(|v| v as isize)) {
                 break;
             }
         }
@@ -304,7 +247,11 @@ impl<'a, T: WordEquationEncoder> Solver for EquationSystemSolver<'a, T> {
     }
 }
 
-fn sharpen_bounds(eq: &WordEquation, bounds: &VariableBounds, vars: &VarManager) -> VariableBounds {
+fn sharpen_bounds(
+    eq: &WordEquation,
+    bounds: &IntegerDomainBounds,
+    vars: &VarManager,
+) -> IntegerDomainBounds {
     let mut new_bounds = bounds.clone();
     // Todo: Cache this or do linearly
     let mut abs_consts: isize = 0;
@@ -314,83 +261,29 @@ fn sharpen_bounds(eq: &WordEquation, bounds: &VariableBounds, vars: &VarManager)
         abs_consts += rhs_c - lhs_c;
     }
 
-    for var_k in vars.of_sort(Sort::String) {
+    for var_k in vars.of_sort(Sort::String, true) {
+        let var_k_len = vars.str_length_var(var_k).unwrap();
         let denominator = eq.lhs().count(&Symbol::Variable(var_k.clone())) as isize
             - eq.rhs().count(&Symbol::Variable(var_k.clone())) as isize;
         if denominator == 0 {
             continue;
         }
         let mut abs_k: isize = 0;
-        for var_j in vars.of_sort(Sort::String) {
+        for var_j in vars.of_sort(Sort::String, true) {
             if var_j == var_k {
                 continue;
             }
+            let var_j_len = vars.str_length_var(var_j).unwrap();
             let abs_j = eq.lhs().count(&Symbol::Variable(var_j.clone())) as isize
                 - eq.rhs().count(&Symbol::Variable(var_j.clone())) as isize;
             if abs_j * denominator < 0 {
-                abs_k += abs_j * bounds.get(var_j) as isize;
+                abs_k += abs_j * bounds.get_upper(var_j_len);
             }
         }
-        let sharpened = std::cmp::max((abs_consts - abs_k) / denominator, 0) as usize;
-        if sharpened < bounds.get(var_k) {
-            new_bounds.set(var_k, sharpened);
+        let sharpened = std::cmp::max((abs_consts - abs_k) / denominator, 0);
+        if sharpened < bounds.get_upper(var_k_len) {
+            new_bounds.set_upper(&var_k.len_var(), sharpened);
         }
     }
     new_bounds
-}
-
-/// The Woorpje solver for word equations.
-/// This solver uses a SAT solver to check whether a word equation is satisfiable.
-/// Can only solver instances with a single word equation.
-pub struct Woorpje<'a> {
-    solver: EquationSystemSolver<'a, WoorpjeEncoder>,
-}
-
-impl<'a> Solver for Woorpje<'a> {
-    fn solve(&mut self) -> SolverResult {
-        self.solver.solve()
-    }
-}
-
-impl<'a> Woorpje<'a> {
-    pub fn new(instance: &'a Instance) -> Result<Self, String> {
-        let solver = EquationSystemSolver::new(instance)?;
-        Ok(Self { solver })
-    }
-}
-
-/// The incremental extension of the Woorpje solver for word equations.
-/// Can only solver instances with a single word equation.
-pub struct IWoorpje<'a> {
-    solver: EquationSystemSolver<'a, IWoorpjeEncoder>,
-}
-
-impl<'a> Solver for IWoorpje<'a> {
-    fn solve(&mut self) -> SolverResult {
-        self.solver.solve()
-    }
-}
-
-impl<'a> IWoorpje<'a> {
-    pub fn new(instance: &'a Instance) -> Result<Self, String> {
-        let solver = EquationSystemSolver::new(instance)?;
-        Ok(Self { solver })
-    }
-}
-
-pub struct Bindep<'a> {
-    solver: EquationSystemSolver<'a, BindepEncoder>,
-}
-
-impl<'a> Solver for Bindep<'a> {
-    fn solve(&mut self) -> SolverResult {
-        self.solver.solve()
-    }
-}
-
-impl<'a> Bindep<'a> {
-    pub fn new(instance: &'a Instance) -> Result<Self, String> {
-        let solver = EquationSystemSolver::new(instance)?;
-        Ok(Self { solver })
-    }
 }

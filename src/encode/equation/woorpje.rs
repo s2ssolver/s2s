@@ -13,11 +13,12 @@
 //! - The fixes a bug where some unsat equations were incorrectly reported as sat due the original encoding did not correctly constraint the state variables in some corner cases.
 use std::collections::HashMap;
 
-use crate::encode::substitution::SubstitutionEncoding;
+use crate::encode::domain::DomainEncoding;
 use crate::encode::{
-    EncodingResult, FilledPattern, FilledPos, PredicateEncoder, VariableBounds, LAMBDA,
+    EncodingResult, FilledPattern, FilledPos, IntegerDomainBounds, PredicateEncoder, LAMBDA,
 };
 use crate::model::words::WordEquation;
+use crate::model::VarManager;
 use crate::sat::{as_lit, neg, pvar, Clause, Cnf, PVar};
 
 use super::WordEquationEncoder;
@@ -32,7 +33,7 @@ impl WoorpjeEncoder {
         &self,
         lhs: &FilledPattern,
         rhs: &FilledPattern,
-        subs: &SubstitutionEncoding,
+        domain_enc: &DomainEncoding,
     ) -> (HashMap<(usize, usize), PVar>, Vec<Clause>) {
         let mut wm = HashMap::new();
         let mut cnf = Cnf::new();
@@ -51,14 +52,14 @@ impl WoorpjeEncoder {
                         }
                     }
                     (FilledPos::Const(a), FilledPos::FilledPos(v, vj)) => {
-                        let sub_u = subs.get(v, *vj, *a).unwrap();
+                        let sub_u = domain_enc.string().get(v, *vj, *a).unwrap();
                         let wm_var = pvar();
                         wm.insert((i, j), wm_var);
                         cnf.push(vec![neg(wm_var), as_lit(sub_u)]);
                         cnf.push(vec![as_lit(wm_var), neg(sub_u)]);
                     }
                     (FilledPos::FilledPos(u, ui), FilledPos::Const(b)) => {
-                        let sub_u = subs.get(u, *ui, *b).unwrap();
+                        let sub_u = domain_enc.string().get(u, *ui, *b).unwrap();
                         let wm_var = pvar();
                         wm.insert((i, j), wm_var);
                         cnf.push(vec![neg(wm_var), as_lit(sub_u)]);
@@ -69,9 +70,9 @@ impl WoorpjeEncoder {
                         wm.insert((i, j), wm_var);
                         // Clause for /\... -> wm_var
                         // let mut clause = vec![as_lit(wm_var)];
-                        for chr in subs.alphabet_lambda() {
-                            let sub_u = subs.get(u, *ui, chr).unwrap();
-                            let sub_v = subs.get(v, *vj, chr).unwrap();
+                        for chr in domain_enc.alphabet_lambda() {
+                            let sub_u = domain_enc.string().get(u, *ui, chr).unwrap();
+                            let sub_v = domain_enc.string().get(v, *vj, chr).unwrap();
 
                             // wm_var => sub_u /\ sub_v
                             cnf.push(vec![neg(wm_var), neg(sub_u), as_lit(sub_v)]);
@@ -106,10 +107,16 @@ impl PredicateEncoder for WoorpjeEncoder {
     fn reset(&mut self) { // do nothing}
     }
 
-    fn encode(&mut self, bounds: &VariableBounds, subs: &SubstitutionEncoding) -> EncodingResult {
+    fn encode(
+        &mut self,
+        bounds: &IntegerDomainBounds,
+        dom_enc: &DomainEncoding,
+        var_manager: &VarManager,
+    ) -> EncodingResult {
         let mut cnf = Cnf::new();
-        let lhs = FilledPattern::fill(self.equation.lhs(), bounds);
-        let rhs = FilledPattern::fill(self.equation.rhs(), bounds);
+        let subs = dom_enc.string();
+        let lhs = FilledPattern::fill(self.equation.lhs(), bounds, var_manager);
+        let rhs = FilledPattern::fill(self.equation.rhs(), bounds, var_manager);
         log::debug!(
             "Encoding {} ({} x {})",
             self.equation,
@@ -117,7 +124,7 @@ impl PredicateEncoder for WoorpjeEncoder {
             rhs.length()
         );
 
-        let (wm, wm_cnf) = self.match_vars(&lhs, &rhs, subs);
+        let (wm, wm_cnf) = self.match_vars(&lhs, &rhs, dom_enc);
         cnf.extend(wm_cnf);
         let n = lhs.length();
         let m = rhs.length();
@@ -301,18 +308,22 @@ mod tests {
     use quickcheck_macros::quickcheck;
 
     use crate::{
-        encode::substitution::SubstitutionEncoder,
+        encode::domain::{get_substitutions, DomainEncoder},
         formula::{ConstVal, Substitution},
         model::{words::Pattern, Sort, VarManager, Variable},
     };
 
     #[quickcheck]
     fn length_literal_word(word: String, bound: u8) {
-        let bound = bound as usize;
+        let bound = bound as isize;
         let pattern = Pattern::constant(&word);
-        let bounds = VariableBounds::new(bound);
+        let bounds = IntegerDomainBounds::new((0, bound));
+        let mut var_manager = VarManager::new();
+        for var in pattern.vars() {
+            var_manager.new_var(var.name(), Sort::String);
+        }
         assert_eq!(
-            FilledPattern::fill(&pattern, &bounds).length(),
+            FilledPattern::fill(&pattern, &bounds, &var_manager).length(),
             word.chars().count()
         );
     }
@@ -320,53 +331,61 @@ mod tests {
     #[quickcheck]
     fn length_single_var_pattern(prefix: String, bound: u8, suffix: String) {
         let mut vm = VarManager::new();
-        let bound = bound as usize;
+        let bound = bound as isize;
         let v = vm.tmp_var(Sort::String);
         let mut pattern = Pattern::constant(&prefix);
         pattern.append_var(&v).append_word(&suffix);
 
-        let mut bounds = VariableBounds::new(1);
-        bounds.set(&v, bound);
+        let mut bounds = IntegerDomainBounds::new((0, 1));
+        bounds.set(&v.len_var(), (0, bound));
+        let mut var_manager = VarManager::new();
+        for var in pattern.vars() {
+            var_manager.new_var(var.name(), Sort::String);
+        }
         assert_eq!(
-            FilledPattern::fill(&pattern, &bounds).length(),
-            bound + prefix.chars().count() + suffix.chars().count()
+            FilledPattern::fill(&pattern, &bounds, &var_manager).length(),
+            bound as usize + prefix.chars().count() + suffix.chars().count()
         );
     }
 
     #[quickcheck]
     fn length_default_bound(prefix: String, default_bound: u8, suffix: String) {
         let mut vm = VarManager::new();
-        let default_bound = default_bound as usize;
+        let default_bound = (0, default_bound as isize);
         let v = vm.tmp_var(Sort::String);
         let y = vm.tmp_var(Sort::String);
         let mut pattern = Pattern::constant(&prefix);
         pattern.append_var(&v).append_var(&y).append_word(&suffix);
 
-        let mut bounds = VariableBounds::new(default_bound);
-        bounds.set(&v, 1);
+        let mut bounds = IntegerDomainBounds::new(default_bound);
+        bounds.set(&v.len_var(), (0, 1));
+        let mut var_manager = VarManager::new();
+        for var in pattern.vars() {
+            var_manager.new_var(var.name(), Sort::String);
+        }
         assert_eq!(
-            FilledPattern::fill(&pattern, &bounds).length(),
-            1 + prefix.chars().count() + suffix.chars().count() + default_bound
+            FilledPattern::fill(&pattern, &bounds, &var_manager).length(),
+            1 + prefix.chars().count() + suffix.chars().count() + default_bound.1 as usize
         );
     }
 
     fn solve_woorpje(
         eq: &WordEquation,
-        bounds: VariableBounds,
+        bounds: IntegerDomainBounds,
         alphabet: &IndexSet<char>,
     ) -> Option<bool> {
         let mut encoding = EncodingResult::empty();
         let mut vm = VarManager::new();
         eq.variables().iter().for_each(|v| {
-            vm.new_var(v.name(), Sort::String);
+            vm.add_var(v.clone());
         });
-        let mut subs_encoder = SubstitutionEncoder::new(alphabet.clone(), &vm);
+        let mut dom_encoder = DomainEncoder::new(alphabet.clone());
 
-        let subs_cnf = subs_encoder.encode(&bounds);
+        let subs_cnf = dom_encoder.encode(&bounds, &vm);
         encoding.join(subs_cnf);
 
         let mut encoder = WoorpjeEncoder::new(eq.clone());
-        encoding.join(encoder.encode(&bounds, subs_encoder.get_encoding().unwrap()));
+        encoding.join(encoder.encode(&bounds, dom_encoder.encoding(), &vm));
 
         let mut solver: Solver = Solver::default();
         match encoding {
@@ -381,10 +400,7 @@ mod tests {
 
         let res = solver.solve();
         if let Some(true) = res {
-            let subs = subs_encoder
-                .get_encoding()
-                .unwrap()
-                .get_substitutions(&solver);
+            let subs = get_substitutions(dom_encoder.encoding(), &vm, &solver);
             let mut solution = Substitution::with_defaults();
             for (v, val) in subs {
                 solution.set(&v, ConstVal::String(val));
@@ -420,7 +436,7 @@ mod tests {
     #[test]
     fn woorpje_empty_eq() {
         let eq = WordEquation::new(Pattern::from(vec![]), Pattern::from(vec![]));
-        let bounds = VariableBounds::new(10);
+        let bounds = IntegerDomainBounds::new((0, 10));
         let res = solve_woorpje(&eq, bounds, &eq.alphabet());
         assert!(matches!(res, Some(true)));
     }
@@ -428,7 +444,7 @@ mod tests {
     #[test]
     fn woorpje_trivial_sat_consts() {
         let eq = WordEquation::constant("bar", "bar");
-        let bounds = VariableBounds::new(10);
+        let bounds = IntegerDomainBounds::new((0, 10));
 
         let res = solve_woorpje(&eq, bounds, &eq.alphabet());
         assert!(matches!(res, Some(true)));
@@ -437,7 +453,7 @@ mod tests {
     #[test]
     fn woorpje_trivial_unsat_consts() {
         let eq = WordEquation::constant("bar", "barr");
-        let bounds = VariableBounds::new(10);
+        let bounds = IntegerDomainBounds::new((0, 10));
 
         let res = solve_woorpje(&eq, bounds, &eq.alphabet());
         assert!(matches!(res, Some(false)));
@@ -451,7 +467,7 @@ mod tests {
             Pattern::variable(&vm.tmp_var(Sort::String)),
         );
 
-        let bounds = VariableBounds::new(19);
+        let bounds = IntegerDomainBounds::new((0, 19));
 
         let res = solve_woorpje(&eq, bounds, &eq.alphabet());
         assert!(matches!(res, Some(true)));
@@ -462,7 +478,7 @@ mod tests {
         let mut vm = VarManager::new();
         let var = Pattern::variable(&vm.tmp_var(Sort::String));
         let eq = WordEquation::new(var.clone(), var);
-        let bounds = VariableBounds::new(10);
+        let bounds = IntegerDomainBounds::new((0, 10));
         let res = solve_woorpje(&eq, bounds, &eq.alphabet());
         assert!(matches!(res, Some(true)));
     }
@@ -478,7 +494,7 @@ mod tests {
         let mut rhs = Pattern::empty();
         rhs.append_var(&var_b).append_var(&var_a);
         let eq = WordEquation::new(lhs, rhs);
-        let bounds = VariableBounds::new(10);
+        let bounds = IntegerDomainBounds::new((0, 10));
         let res = solve_woorpje(&eq, bounds, &eq.alphabet());
         assert!(matches!(res, Some(true)));
     }
@@ -492,7 +508,7 @@ mod tests {
         lhs.append_word("a").append_var(&var_a).append_word("c");
         let rhs = Pattern::constant("abc");
         let eq = WordEquation::new(lhs, rhs);
-        let bounds = VariableBounds::new(3);
+        let bounds = IntegerDomainBounds::new((0, 3));
         let res = solve_woorpje(&eq, bounds, &eq.alphabet());
         assert!(matches!(res, Some(true)));
     }
@@ -505,7 +521,7 @@ mod tests {
             Pattern::variable(&vm.tmp_var(Sort::String)),
         );
 
-        let bounds = VariableBounds::new(1);
+        let bounds = IntegerDomainBounds::new((0, 1));
 
         let res = solve_woorpje(&eq, bounds, &eq.alphabet());
         assert!(matches!(res, Some(false)));
@@ -576,14 +592,14 @@ mod tests {
 
         let eq = WordEquation::new(lhs.clone(), rhs.clone());
         let solution: HashMap<Variable, Vec<char>> = HashMap::from([
-            (var_a, "a".chars().collect()),
-            (var_b, "abbd".chars().collect()),
+            (var_a.clone(), "a".chars().collect()),
+            (var_b.clone(), "abbd".chars().collect()),
             (var_h, "d".chars().collect()),
             (var_f, "eadaacba".chars().collect()),
             (var_e, "ae".chars().collect()),
         ]);
         let _solution = Substitution::from(solution);
-        let bounds = VariableBounds::new(10);
+        let bounds = IntegerDomainBounds::new((0, 10));
         let res = solve_woorpje(&eq, bounds, &eq.alphabet());
 
         assert!(matches!(res, Some(true)));

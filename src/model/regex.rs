@@ -3,7 +3,7 @@ use crate::model::words::Pattern;
 /// Represents a regular expression, which can match strings of characters.
 ///
 /// This enum can be used to construct and manipulate regular expressions.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Regex {
     /// An empty regular expression that matches the empty string.
     None,

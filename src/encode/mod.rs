@@ -3,69 +3,85 @@ use std::{cmp::min, collections::HashMap, ops::Index, slice::Iter};
 use crate::{
     model::{
         words::{Pattern, Symbol},
-        Variable,
+        Sort, VarManager, Variable,
     },
     sat::{Clause, Cnf, PLit},
 };
 
-use self::substitution::SubstitutionEncoding;
+use self::domain::DomainEncoding;
 
 /// Facilities for encoding cardinality constraints
 mod card;
+/// Encoder for substitutions
+pub mod domain;
 /// Encoder for word equations
 mod equation;
-/// Encoder for substitutions
-pub mod substitution;
+
+/// Encoder for linear constraints
+mod linear;
 
 pub use equation::{BindepEncoder, IWoorpjeEncoder, WoorpjeEncoder, WordEquationEncoder};
 use indexmap::IndexSet;
+pub use linear::MddEncoder;
 
-/// Bound for each variable
+/// Maps each variable of sort `Int` to its domain given by a lower and upper bound.
 #[derive(Clone, Debug)]
-pub struct VariableBounds {
-    bounds: HashMap<Variable, usize>,
-    default: usize,
+pub struct IntegerDomainBounds {
+    bounds: HashMap<Variable, (isize, isize)>,
+    default: (isize, isize),
 }
 
-impl VariableBounds {
-    pub fn new(default: usize) -> Self {
+impl IntegerDomainBounds {
+    pub fn new(default: (isize, isize)) -> Self {
         Self {
             bounds: HashMap::new(),
             default,
         }
     }
 
-    pub fn get(&self, var: &Variable) -> usize {
+    pub fn get(&self, var: &Variable) -> (isize, isize) {
+        assert!(var.sort() == Sort::Int);
         self.bounds.get(var).cloned().unwrap_or(self.default)
     }
 
+    pub fn get_upper(&self, var: &Variable) -> isize {
+        self.get(var).1
+    }
+
     #[allow(dead_code)]
-    pub fn set(&mut self, var: &Variable, bound: usize) {
+    pub fn set(&mut self, var: &Variable, bound: (isize, isize)) {
+        assert!(var.sort() == Sort::Int);
         self.bounds.insert(var.clone(), bound);
     }
 
+    pub fn set_upper(&mut self, var: &Variable, bound: isize) {
+        assert!(var.sort() == Sort::Int);
+        let lower = self.get(var).0;
+        self.bounds.insert(var.clone(), (lower, bound));
+    }
+
     #[allow(dead_code)]
-    pub fn set_default(&mut self, bound: usize) {
+    pub fn set_default(&mut self, bound: (isize, isize)) {
         self.default = bound;
     }
 
-    /// Updates the bounds of the variables by calling the given function on each bound, including the default bound.
+    /// Updates the upper bounds of the variables by calling the given function on each bound, including the default bound.
     /// Additionally, an optional clamp can be provided to limit the maximum value of the bounds.
-    /// If no clamp is provided, the bounds are limited by `usize::MAX`.
+    /// If no clamp is provided, the bounds are limited by `isize::MAX`.
     /// Returns true if any bound was changed and false otherwise.
-    pub fn update(&mut self, updater: impl Fn(usize) -> usize, clamp: Option<usize>) -> bool {
-        let clamp = clamp.unwrap_or(usize::MAX);
+    pub fn update_upper(&mut self, updater: impl Fn(isize) -> isize, clamp: Option<isize>) -> bool {
+        let clamp = clamp.unwrap_or(isize::MAX);
         let mut any_changed = false;
-        for (_, bound) in self.bounds.iter_mut() {
+        for (_, bound) in self.bounds.iter_mut().map(|b| b.1) {
             let new_bound = min(updater(*bound), clamp);
             if new_bound != *bound {
                 *bound = new_bound;
                 any_changed = true;
             }
         }
-        let new_default = min(updater(self.default), clamp);
-        if new_default != self.default {
-            self.default = new_default;
+        let new_default = min(updater(self.default.1), clamp);
+        if new_default != self.default.1 {
+            self.default = (self.default.0, new_default);
             any_changed = true;
         }
         any_changed
@@ -75,42 +91,43 @@ impl VariableBounds {
     /// The optional clamp can be used to limit the maximum value of the bounds.
     /// Returns true if any bound was changed and false otherwise.
     #[allow(dead_code)]
-    pub fn double(&mut self, clamp: Option<usize>) -> bool {
-        self.update(|b| b * 2, clamp)
-    }
-
-    /// Returns true if the bounds are less than or equal the given value.
-    #[allow(unused)]
-    pub fn leq(&self, value: usize) -> bool {
-        if self.default > value {
-            return false;
-        }
-        for (_, bound) in self.bounds.iter() {
-            if *bound > value {
-                return false;
-            }
-        }
-        true
+    pub fn double(&mut self, clamp: Option<isize>) -> bool {
+        self.update_upper(|b| b * 2, clamp)
     }
 
     /// Updates the bounds of all variables such that they are the next square number greater than the current value.
-    pub fn next_square(&mut self, clamp: Option<usize>) -> bool {
-        self.update(|b| ((b as f64).sqrt() + 1f64).powi(2) as usize, clamp)
+    pub fn next_square(&mut self, clamp: Option<isize>) -> bool {
+        self.update_upper(|b| ((b as f64).sqrt() + 1f64).powi(2) as isize, clamp)
+    }
+
+    /// Returns true if the upper bounds of all variables are less or equal to the given value.
+    #[allow(dead_code)]
+    pub fn all_leq(&self, limit: isize) -> bool {
+        if self.default.1 > limit {
+            return false;
+        }
+        for (_var, bound) in self.bounds.iter() {
+            if bound.1 > limit {
+                return false;
+            }
+        }
+
+        true
     }
 }
 
-impl std::fmt::Display for VariableBounds {
+impl std::fmt::Display for IntegerDomainBounds {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{{")?;
         for (var, bound) in self.bounds.iter() {
-            write!(f, ", {}: {}", var, bound)?;
+            write!(f, ", {}: {:?}", var, bound)?;
         }
-        write!(f, ", default: {}}}", self.default)?;
+        write!(f, ", default: {:?}}}", self.default)?;
         Ok(())
     }
 }
 
-impl std::cmp::PartialEq for VariableBounds {
+impl std::cmp::PartialEq for IntegerDomainBounds {
     fn eq(&self, other: &Self) -> bool {
         if self.default != other.default {
             return false;
@@ -145,19 +162,26 @@ struct FilledPattern {
 }
 
 impl FilledPattern {
-    fn fill(pattern: &Pattern, bounds: &VariableBounds) -> Self {
+    fn fill(pattern: &Pattern, bounds: &IntegerDomainBounds, var_manager: &VarManager) -> Self {
         Self {
-            positions: Self::convert(pattern, bounds),
+            positions: Self::convert(pattern, bounds, var_manager),
         }
     }
 
-    fn convert(pattern: &Pattern, bounds: &VariableBounds) -> Vec<FilledPos> {
+    fn convert(
+        pattern: &Pattern,
+        bounds: &IntegerDomainBounds,
+        var_manager: &VarManager,
+    ) -> Vec<FilledPos> {
         let mut positions = vec![];
         for symbol in pattern.symbols() {
             match symbol {
                 Symbol::Constant(c) => positions.push(FilledPos::Const(*c)),
                 Symbol::Variable(v) => {
-                    let len = bounds.get(v);
+                    let len_var = var_manager.str_length_var(v).unwrap_or_else(|| {
+                        panic!("Variable {} does not have a length variable", v)
+                    });
+                    let len = bounds.get_upper(len_var) as usize;
                     for i in 0..len {
                         positions.push(FilledPos::FilledPos(v.clone(), i))
                     }
@@ -275,7 +299,8 @@ pub trait PredicateEncoder {
 
     fn encode(
         &mut self,
-        bounds: &VariableBounds,
-        substitution: &SubstitutionEncoding,
+        bounds: &IntegerDomainBounds,
+        substitution: &DomainEncoding,
+        var_manager: &VarManager,
     ) -> EncodingResult;
 }

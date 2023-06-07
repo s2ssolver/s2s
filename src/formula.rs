@@ -1,16 +1,20 @@
 use std::{collections::HashMap, fmt::Display};
 
+use indexmap::IndexSet;
+
 /// Representation of formulas and predicates
 use crate::model::{
+    linears::LinearConstraint,
     regex::Regex,
     words::{Pattern, WordEquation},
     Sort, Variable,
 };
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum Predicate {
     WordEquation(WordEquation),
     RegulaConstraint(Pattern, Regex),
+    LinearConstraint(LinearConstraint),
 }
 
 impl Predicate {
@@ -29,7 +33,16 @@ impl Predicate {
     pub fn evaluate(&self, substitution: &Substitution) -> Option<bool> {
         match self {
             Predicate::WordEquation(eq) => eq.is_solution(substitution),
+            Predicate::LinearConstraint(l) => l.is_solution(substitution),
             Predicate::RegulaConstraint(_p, _r) => todo!(), // Derivate r w.r.t. p.substitute()
+        }
+    }
+
+    pub fn alphabet(&self) -> IndexSet<char> {
+        match self {
+            Predicate::WordEquation(eq) => eq.alphabet(),
+            Predicate::LinearConstraint(_) => IndexSet::new(),
+            Predicate::RegulaConstraint(_, _) => todo!("Regular Constraints not supported yet"),
         }
     }
 }
@@ -76,6 +89,24 @@ pub enum Formula {
 }
 
 impl Formula {
+    pub fn and(fs: Vec<Formula>) -> Self {
+        let mut conjs = Vec::new();
+        for f in fs {
+            match f {
+                Formula::And(fs) => conjs.extend(fs),
+                Formula::True => (),
+                f => conjs.push(f),
+            }
+        }
+        if conjs.is_empty() {
+            Self::True
+        } else if conjs.len() == 1 {
+            conjs.into_iter().next().unwrap()
+        } else {
+            Self::And(conjs)
+        }
+    }
+
     /// Evaluate the formula under the given substitution
     /// Returns None if the substitution is partial and the value of the formula depends on the missing assignments.
     pub fn evaluate(&self, substitution: &Substitution) -> Option<bool> {
@@ -113,6 +144,29 @@ impl Formula {
             Formula::Or(_) => false,
             Formula::And(fs) => fs.iter().all(Self::is_conjunctive),
             Formula::Not(f) => f.is_conjunctive(),
+        }
+    }
+
+    pub fn num_atoms(&self) -> usize {
+        match self {
+            Formula::True | Formula::False | Formula::Atom(_) => 1,
+            Formula::Or(fs) | Formula::And(fs) => fs.iter().map(Self::num_atoms).sum(),
+            Formula::Not(f) => f.num_atoms(),
+        }
+    }
+
+    pub fn alphabet(&self) -> IndexSet<char> {
+        match self {
+            Formula::True | Formula::False => IndexSet::new(),
+            Formula::Atom(a) => match a {
+                Atom::Predicate(p) => p.alphabet(),
+                Atom::BoolVar(_) => IndexSet::new(),
+            },
+            Formula::Or(fs) | Formula::And(fs) => fs
+                .iter()
+                .map(Self::alphabet)
+                .fold(IndexSet::new(), |acc, x| acc.union(&x).cloned().collect()),
+            Formula::Not(f) => f.alphabet(),
         }
     }
 }
@@ -155,16 +209,6 @@ impl ConstVal {
             Sort::String => Self::String(Vec::default()),
             Sort::Bool => Self::Bool(bool::default()),
             Sort::Int => Self::Int(isize::default()),
-        }
-    }
-}
-
-impl Display for ConstVal {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::String(s) => write!(f, "\"{}\"", s.iter().collect::<String>()),
-            Self::Bool(b) => write!(f, "{}", b),
-            Self::Int(i) => write!(f, "{}", i),
         }
     }
 }
@@ -229,6 +273,72 @@ impl From<HashMap<Variable, Vec<char>>> for Substitution {
             sub.set(&var, ConstVal::String(val));
         }
         sub
+    }
+}
+
+/* Pretty Printing */
+
+impl Display for ConstVal {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::String(s) => write!(f, "\"{}\"", s.iter().collect::<String>()),
+            Self::Bool(b) => write!(f, "{}", b),
+            Self::Int(i) => write!(f, "{}", i),
+        }
+    }
+}
+
+impl Display for Predicate {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Predicate::WordEquation(weq) => write!(f, "{}", weq),
+            Predicate::RegulaConstraint(_, _) => todo!(),
+            Predicate::LinearConstraint(c) => write!(f, "{}", c),
+        }
+    }
+}
+
+impl Display for Atom {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Atom::Predicate(p) => write!(f, "{}", p),
+            Atom::BoolVar(v) => write!(f, "{}", v),
+        }
+    }
+}
+
+impl Display for Formula {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Formula::True => write!(f, "true"),
+            Formula::False => write!(f, "false"),
+            Formula::Atom(a) => write!(f, "{}", a),
+            Formula::Or(fs) => {
+                write!(f, "(")?;
+                let mut first = true;
+                for fm in fs {
+                    if !first {
+                        write!(f, r" \/ ")?;
+                    }
+                    write!(f, "{}", fm)?;
+                    first = false;
+                }
+                write!(f, ")")
+            }
+            Formula::And(fs) => {
+                write!(f, "(")?;
+                let mut first = true;
+                for fm in fs {
+                    if !first {
+                        write!(f, r" /\ ")?;
+                    }
+                    write!(f, "{}", fm)?;
+                    first = false;
+                }
+                write!(f, ")")
+            }
+            Formula::Not(fm) => write!(f, "¬{}", fm),
+        }
     }
 }
 

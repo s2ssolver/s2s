@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use indexmap::IndexSet;
-mod smt;
+mod smt2;
 
 use crate::{
     formula::{Atom, Formula},
@@ -106,7 +106,7 @@ impl Parser {
         match std::fs::read_to_string(input) {
             Ok(input) => match self {
                 Parser::WoorpjeParser => parse_woorpje(&input),
-                Parser::Smt2Parser => smt::parse_smt(input.as_bytes()),
+                Parser::Smt2Parser => smt2::parse_smt(input.as_bytes()),
             },
             Err(e) => Err(ParseError::Other(e.to_string(), None)),
         }
@@ -215,7 +215,7 @@ Equation: aX = ab"#;
 
         let instance = parse_woorpje(input).unwrap();
         let vm = instance.get_var_manager();
-        assert_eq!(vm.of_sort(crate::model::Sort::String).count(), 1);
+        assert_eq!(vm.of_sort(crate::model::Sort::String, true).count(), 1);
         let expected_lhs = Pattern::from(vec![
             Symbol::Constant('a'),
             Symbol::Variable(vm.by_name("X").unwrap().clone()),
