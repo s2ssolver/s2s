@@ -151,14 +151,17 @@ pub struct BindepEncoder {
     var_matches: IndexMap<(Variable, usize, usize), PVar>,
 
     var_cand_match_cache: IndexMap<(Variable, usize, usize), PVar>,
-
-    /// The alphabet
-    alphabet: IndexSet<char>,
 }
 
 impl BindepEncoder {
     /// Returns the Boolean variable that is true if the character is at the position in the candidate solution word.
     fn candidate_at(&self, pos: usize, c: char) -> PVar {
+        debug_assert!(
+            self.cand_positions.contains_key(&(pos, c)),
+            "No candidate at position {} with character {}",
+            pos,
+            c
+        );
         self.cand_positions[&(pos, c)]
     }
 
@@ -207,15 +210,15 @@ impl BindepEncoder {
     }
 
     /// Encodes the possible candidates for the solution word up to bound `self.bound`.
-    fn encode_candidates(&mut self) -> EncodingResult {
+    fn encode_candidates(&mut self, dom: &DomainEncoding) -> EncodingResult {
         let mut res = EncodingResult::empty();
         let last_bound = self.last_bound.unwrap_or(0);
         for pos in last_bound..self.bound {
             let mut p_choices = vec![];
-            for c in self.alphabet.clone() {
+            for c in dom.alphabet() {
                 let v = pvar();
                 p_choices.push(v);
-                self.set_candidate_at(pos, c, v);
+                self.set_candidate_at(pos, *c, v);
             }
             let v_lambda = pvar();
             p_choices.push(v_lambda);
@@ -582,7 +585,7 @@ impl WordEquationEncoder for BindepEncoder {
     fn new(equation: WordEquation) -> Self {
         let lhs_segs = SegmentedPattern::new(equation.lhs());
         let rhs_segs = SegmentedPattern::new(equation.rhs());
-        let alph = equation.alphabet();
+
         Self {
             equation,
             bound_selector: None,
@@ -590,7 +593,6 @@ impl WordEquationEncoder for BindepEncoder {
             bound: 0,
             last_bound: None,
             last_var_bounds: None,
-            alphabet: alph,
             starts_lhs: IndexMap::new(),
             starts_rhs: IndexMap::new(),
             segs_starts_amo: IndexMap::new(),
@@ -632,7 +634,7 @@ impl PredicateEncoder for BindepEncoder {
         self.bound_selector = Some(pvar());
 
         // Encode the candidates
-        let cand_enc = self.encode_candidates();
+        let cand_enc = self.encode_candidates(substitution);
         log::debug!("Clauses for candidates: {}", cand_enc.clauses());
         res.join(cand_enc);
 
