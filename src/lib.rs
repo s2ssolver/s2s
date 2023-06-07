@@ -1,9 +1,9 @@
+mod bounds;
 mod encode;
 mod formula;
 mod model;
 mod parse;
 mod preprocess;
-
 mod sat;
 mod solver;
 

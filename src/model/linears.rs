@@ -299,6 +299,10 @@ impl LinearConstraint {
         &self.lhs
     }
 
+    pub fn rhs(&self) -> isize {
+        self.rhs
+    }
+
     pub fn is_solution(&self, subs: &Substitution) -> Option<bool> {
         let lhs = self.lhs.evaluate(subs)?;
         match self.typ {

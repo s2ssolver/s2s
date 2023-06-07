@@ -4,6 +4,7 @@ use indexmap::IndexSet;
 
 use std::time::Instant;
 
+use crate::bounds::Bounds;
 use crate::encode::{
     BindepEncoder, EncodingResult, IntegerDomainBounds, MddEncoder, PredicateEncoder,
     WordEquationEncoder,
@@ -165,6 +166,11 @@ impl ConjunctiveSolver {
 
 impl Solver for ConjunctiveSolver {
     fn solve(&mut self) -> SolverResult {
+        let limit_upper_bounds =
+            Bounds::infer(self.instance.get_formula(), self.instance.get_var_manager());
+
+        log::info!("Limit bounds: {}", limit_upper_bounds);
+
         log::info!(
             "Started solving loop for system of {} equations",
             self.instance.get_formula().num_atoms()

@@ -59,6 +59,14 @@ impl Variable {
         self.sort
     }
 
+    pub fn is_int(&self) -> bool {
+        self.sort == Sort::Int
+    }
+
+    pub fn is_string(&self) -> bool {
+        self.sort == Sort::String
+    }
+
     pub fn name(&self) -> &str {
         &self.name
     }
