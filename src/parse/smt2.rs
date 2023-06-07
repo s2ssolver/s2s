@@ -218,13 +218,9 @@ impl<'a> Visitor<ALL> for FormulaBuilder<'a> {
                                 Err(e) => return ControlFlow::Break(Err(e)),
                             };
                             let equation = WordEquation::new(pat_lhs, pat_rhs);
-                            let linear = LinearConstraint::from_word_equation(&equation);
-                            let lin_atom =
-                                Formula::Atom(Atom::Predicate(Predicate::LinearConstraint(linear)));
                             let eq_atom =
                                 Formula::Atom(Atom::Predicate(Predicate::WordEquation(equation)));
-                            let res = Formula::and(vec![lin_atom, eq_atom]);
-                            ControlFlow::Break(Ok(res))
+                            ControlFlow::Break(Ok(eq_atom))
                         }
                         (Sort::Int, Sort::Int) => {
                             let term_lhs = match self.build_lin_arith_term(lhs) {
