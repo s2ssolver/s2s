@@ -137,7 +137,9 @@ impl LinearArithTerm {
         for (x, c) in factors {
             self.terms.push(LinearArithFactor::VarCoeff(x, c));
         }
-        self.terms.push(LinearArithFactor::Const(residual));
+        if residual != 0 {
+            self.terms.push(LinearArithFactor::Const(residual));
+        }
     }
 
     /// Convert an integer arithmetic term to a linear arithmetic term.
