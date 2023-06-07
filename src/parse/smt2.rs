@@ -1,4 +1,4 @@
-use std::{io::BufRead};
+use std::io::BufRead;
 
 use aws_smt_ir::{
     logic::{all, ArithOp, StringOp, ALL},
@@ -87,7 +87,7 @@ pub fn parse_smt<R: BufRead>(smt: R) -> Result<Instance, ParseError> {
     let fm = match asserts.len() {
         0 => Formula::True,
         1 => asserts.pop().unwrap(),
-        _ => Formula::And(asserts),
+        _ => Formula::and(asserts),
     };
     Ok(Instance::new(fm, var_manager))
 }
@@ -188,7 +188,7 @@ impl<'a> Visitor<ALL> for FormulaBuilder<'a> {
                             ControlFlow::Break(Err(e)) => return ControlFlow::Break(Err(e)),
                         }
                     }
-                    ControlFlow::Break(Ok(Formula::And(fms)))
+                    ControlFlow::Break(Ok(Formula::Or(fms)))
                 }
                 aws_smt_ir::CoreOp::Xor(_) => todo!(),
                 aws_smt_ir::CoreOp::Imp(_) => todo!(),
@@ -218,9 +218,13 @@ impl<'a> Visitor<ALL> for FormulaBuilder<'a> {
                                 Err(e) => return ControlFlow::Break(Err(e)),
                             };
                             let equation = WordEquation::new(pat_lhs, pat_rhs);
-                            ControlFlow::Break(Ok(Formula::Atom(Atom::Predicate(
-                                Predicate::WordEquation(equation),
-                            ))))
+                            let linear = LinearConstraint::from_word_equation(&equation);
+                            let lin_atom =
+                                Formula::Atom(Atom::Predicate(Predicate::LinearConstraint(linear)));
+                            let eq_atom =
+                                Formula::Atom(Atom::Predicate(Predicate::WordEquation(equation)));
+                            let res = Formula::and(vec![lin_atom, eq_atom]);
+                            ControlFlow::Break(Ok(res))
                         }
                         (Sort::Int, Sort::Int) => {
                             let term_lhs = match self.build_lin_arith_term(lhs) {
@@ -242,12 +246,10 @@ impl<'a> Visitor<ALL> for FormulaBuilder<'a> {
                             ))))
                         }
                         (Sort::Bool, Sort::Bool) => todo!("Parse boolean equivalence"),
-                        (_, _) => {
-                            ControlFlow::Break(Err(ParseError::SyntaxError(
-                                format!("Sorts for '=' mismatch: {} and {}", sort_lhs, sort_rhs),
-                                None,
-                            )))
-                        }
+                        (_, _) => ControlFlow::Break(Err(ParseError::SyntaxError(
+                            format!("Sorts for '=' mismatch: {} and {}", sort_lhs, sort_rhs),
+                            None,
+                        ))),
                     }
                 }
                 aws_smt_ir::CoreOp::Distinct(_) => todo!(),
@@ -310,15 +312,13 @@ impl<'a> Visitor<ALL> for FormulaBuilder<'a> {
                                     Predicate::LinearConstraint(constr),
                                 ))))
                             }
-                            (_, _) => {
-                                ControlFlow::Break(Err(ParseError::SyntaxError(
-                                    format!(
-                                        "Invalid arguments for '>=': {} and {}",
-                                        sort_lhs, sort_rhs
-                                    ),
-                                    None,
-                                )))
-                            }
+                            (_, _) => ControlFlow::Break(Err(ParseError::SyntaxError(
+                                format!(
+                                    "Invalid arguments for '>=': {} and {}",
+                                    sort_lhs, sort_rhs
+                                ),
+                                None,
+                            ))),
                         }
                     }
 

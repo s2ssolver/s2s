@@ -89,6 +89,24 @@ pub enum Formula {
 }
 
 impl Formula {
+    pub fn and(fs: Vec<Formula>) -> Self {
+        let mut conjs = Vec::new();
+        for f in fs {
+            match f {
+                Formula::And(fs) => conjs.extend(fs),
+                Formula::True => (),
+                f => conjs.push(f),
+            }
+        }
+        if conjs.is_empty() {
+            Self::True
+        } else if conjs.len() == 1 {
+            conjs.into_iter().next().unwrap()
+        } else {
+            Self::And(conjs)
+        }
+    }
+
     /// Evaluate the formula under the given substitution
     /// Returns None if the substitution is partial and the value of the formula depends on the missing assignments.
     pub fn evaluate(&self, substitution: &Substitution) -> Option<bool> {

@@ -169,6 +169,7 @@ impl Solver for ConjunctiveSolver {
             "Started solving loop for system of {} equations",
             self.instance.get_formula().num_atoms()
         );
+        log::debug!("{}", self.instance.get_formula());
 
         let mut cadical: cadical::Solver = cadical::Solver::new();
         let mut time_encoding = 0;
