@@ -166,7 +166,6 @@ impl DomainEncoding {
 
 /// Reads the substitutions from the model.
 /// Panics if the solver is not in a SAT state.
-#[allow(dead_code)]
 pub fn get_substitutions(
     domain_encoding: &DomainEncoding,
     var_manager: &VarManager,

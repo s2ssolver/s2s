@@ -1,6 +1,9 @@
 use std::{collections::HashMap, fmt::Display, ops::Index};
 
-use crate::model::words::Symbol;
+use crate::{
+    formula::{ConstVal, Substitution},
+    model::words::Symbol,
+};
 
 use super::{words::WordEquation, Variable};
 
@@ -206,6 +209,26 @@ impl LinearArithTerm {
         }
         Some(c)
     }
+
+    pub fn evaluate(&self, sub: &Substitution) -> Option<isize> {
+        let mut res = 0;
+        for f in self.iter() {
+            match f {
+                LinearArithFactor::VarCoeff(x, c) => {
+                    let val = if let ConstVal::Int(i) = sub.get(x)? {
+                        i
+                    } else {
+                        return None;
+                    };
+                    res += val * c;
+                }
+                LinearArithFactor::Const(c) => {
+                    res += c;
+                }
+            }
+        }
+        Some(res)
+    }
 }
 
 impl Index<usize> for LinearArithTerm {
@@ -274,6 +297,17 @@ impl LinearConstraint {
 
     pub fn lhs(&self) -> &LinearArithTerm {
         &self.lhs
+    }
+
+    pub fn is_solution(&self, subs: &Substitution) -> Option<bool> {
+        let lhs = self.lhs.evaluate(subs)?;
+        match self.typ {
+            LinearConstraintType::Eq => Some(lhs == self.rhs),
+            LinearConstraintType::Leq => Some(lhs <= self.rhs),
+            LinearConstraintType::Less => Some(lhs < self.rhs),
+            LinearConstraintType::Geq => Some(lhs >= self.rhs),
+            LinearConstraintType::Greater => Some(lhs > self.rhs),
+        }
     }
 }
 
