@@ -1,6 +1,6 @@
 use std::collections::VecDeque;
 
-use indexmap::{IndexMap, IndexSet};
+use indexmap::{IndexMap};
 
 use crate::{
     model::{linears::LinearConstraint, Sort, Variable},
@@ -66,7 +66,7 @@ impl PredicateEncoder for MddEncoder {
         &mut self,
         bounds: &super::IntegerDomainBounds,
         dom: &super::domain::DomainEncoding,
-        var_manager: &crate::model::VarManager,
+        _var_manager: &crate::model::VarManager,
     ) -> super::EncodingResult {
         let mut res = EncodingResult::empty();
 
@@ -84,7 +84,7 @@ impl PredicateEncoder for MddEncoder {
 
                     let current_bound = bounds.get_upper(v);
                     for l in last_bound..=current_bound {
-                        let len_assign_var = dom.int().get(&v, l).unwrap();
+                        let len_assign_var = dom.int().get(v, l).unwrap();
                         let new_value = value + l * coeff;
                         if level + 1 < self.linear.lhs.len() {
                             let child_pvar = *self
@@ -92,7 +92,7 @@ impl PredicateEncoder for MddEncoder {
                                 .entry(level + 1)
                                 .or_default()
                                 .entry(new_value)
-                                .or_insert_with(|| pvar());
+                                .or_insert_with(pvar);
                             res.add_clause(vec![
                                 neg(node_var),
                                 neg(len_assign_var),

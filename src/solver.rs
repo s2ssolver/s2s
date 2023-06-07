@@ -130,7 +130,7 @@ impl ConjunctiveSolver {
         let bounds = if let Formula::Atom(Atom::Predicate(Predicate::WordEquation(eq))) =
             self.instance.get_formula()
         {
-            sharpen_bounds(&eq, &self.bounds, self.instance.get_var_manager())
+            sharpen_bounds(eq, &self.bounds, self.instance.get_var_manager())
         } else {
             self.bounds.clone()
         };
@@ -221,6 +221,11 @@ impl Solver for ConjunctiveSolver {
                         ) {
                             model.set(&v, ConstVal::String(s.clone()));
                         }
+                        log::info!(
+                            "Done. Total time encoding/solving: {}/{} ms",
+                            time_encoding,
+                            time_solving
+                        );
                         return SolverResult::Sat(model);
                     } else if self.encoders.values().any(|enc| !enc.is_incremental()) {
                         // reset states if at least one solver is not incremental

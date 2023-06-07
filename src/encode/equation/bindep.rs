@@ -9,7 +9,7 @@ use crate::encode::{EncodingResult, FilledPattern, IntegerDomainBounds, Predicat
 use crate::model::words::{Pattern, Symbol, WordEquation};
 use crate::model::{VarManager, Variable};
 use crate::sat::{as_lit, neg, pvar, Cnf, PVar};
-use indexmap::{IndexMap, IndexSet};
+use indexmap::IndexMap;
 
 use super::WordEquationEncoder;
 
@@ -713,6 +713,7 @@ mod tests {
 
     use super::*;
     use cadical::Solver;
+    use indexmap::IndexSet;
 
     use crate::{
         encode::domain::{get_substitutions, DomainEncoder},
