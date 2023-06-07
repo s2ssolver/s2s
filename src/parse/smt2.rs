@@ -1,4 +1,4 @@
-use std::{fmt::format, io::BufRead};
+use std::{io::BufRead};
 
 use aws_smt_ir::{
     logic::{all, ArithOp, StringOp, ALL},
@@ -35,7 +35,7 @@ pub fn parse_smt<R: BufRead>(smt: R) -> Result<Instance, ParseError> {
                 }
             }
             smt2parser::concrete::Command::DeclareConst { symbol, sort } => {
-                let v = var_manager.new_var(&symbol.0, isort2sort(&sort)?);
+                let _v = var_manager.new_var(&symbol.0, isort2sort(&sort)?);
             }
             smt2parser::concrete::Command::DeclareFun {
                 symbol,
@@ -243,7 +243,7 @@ impl<'a> Visitor<ALL> for FormulaBuilder<'a> {
                         }
                         (Sort::Bool, Sort::Bool) => todo!("Parse boolean equivalence"),
                         (_, _) => {
-                            return ControlFlow::Break(Err(ParseError::SyntaxError(
+                            ControlFlow::Break(Err(ParseError::SyntaxError(
                                 format!("Sorts for '=' mismatch: {} and {}", sort_lhs, sort_rhs),
                                 None,
                             )))
@@ -311,7 +311,7 @@ impl<'a> Visitor<ALL> for FormulaBuilder<'a> {
                                 ))))
                             }
                             (_, _) => {
-                                return ControlFlow::Break(Err(ParseError::SyntaxError(
+                                ControlFlow::Break(Err(ParseError::SyntaxError(
                                     format!(
                                         "Invalid arguments for '>=': {} and {}",
                                         sort_lhs, sort_rhs
@@ -555,7 +555,7 @@ impl<'a> Visitor<ALL> for IntArithTermBuilder<'a> {
                     ArithOp::Neg(t) => match t.visit_with(self) {
                         ControlFlow::Continue(_) => unreachable!(),
                         ControlFlow::Break(Ok(p)) => ControlFlow::Break(Ok(IntArithTerm::neg(&p))),
-                        ControlFlow::Break(Err(e)) => return ControlFlow::Break(Err(e)),
+                        ControlFlow::Break(Err(e)) => ControlFlow::Break(Err(e)),
                     },
                     ArithOp::Minus(ts) => {
                         if ts.len() < 2 {
@@ -625,7 +625,7 @@ impl<'a> Visitor<ALL> for IntArithTermBuilder<'a> {
                     match ts.visit_with(&mut builder) {
                         ControlFlow::Continue(_) => unreachable!(),
                         ControlFlow::Break(Ok(p)) => ControlFlow::Break(Ok(p)),
-                        ControlFlow::Break(Err(e)) => return ControlFlow::Break(Err(e)),
+                        ControlFlow::Break(Err(e)) => ControlFlow::Break(Err(e)),
                     }
                 }
                 all::Op::String(_) | all::Op::Array(_) | all::Op::BitVec(_) | all::Op::Set(_) => {

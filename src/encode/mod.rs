@@ -176,7 +176,7 @@ impl FilledPattern {
                 Symbol::Variable(v) => {
                     let len_var = var_manager
                         .str_length_var(v)
-                        .expect(format!("Variable {} does not have a length variable", v).as_str());
+                        .unwrap_or_else(|| panic!("Variable {} does not have a length variable", v));
                     let len = bounds.get_upper(len_var) as usize;
                     for i in 0..len {
                         positions.push(FilledPos::FilledPos(v.clone(), i))

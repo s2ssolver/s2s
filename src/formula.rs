@@ -31,7 +31,7 @@ impl Predicate {
     pub fn evaluate(&self, substitution: &Substitution) -> Option<bool> {
         match self {
             Predicate::WordEquation(eq) => eq.is_solution(substitution),
-            Predicate::LinearConstraint(c) => todo!(),
+            Predicate::LinearConstraint(_c) => todo!(),
             Predicate::RegulaConstraint(_p, _r) => todo!(), // Derivate r w.r.t. p.substitute()
         }
     }

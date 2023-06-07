@@ -74,7 +74,7 @@ impl Display for LinearArithFactor {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct LinearArithTerm {
     terms: Vec<LinearArithFactor>,
 }
@@ -231,12 +231,12 @@ impl LinearConstraint {
         for c in eq.alphabet() {
             let c = &Symbol::Constant(c);
             let diff = eq.rhs().count(c) as isize - eq.lhs().count(c) as isize;
-            rhs += diff as isize;
+            rhs += diff;
         }
 
         Self {
             lhs,
-            rhs: rhs,
+            rhs,
             typ: LinearConstraintType::Eq,
         }
     }
@@ -251,7 +251,7 @@ impl LinearConstraint {
             lhs.normalize();
             Self { lhs, rhs: c, typ }
         } else {
-            let mut lhs = lhs.subtract(&rhs);
+            let mut lhs = lhs.subtract(rhs);
             lhs.normalize();
             Self { lhs, rhs: 0, typ }
         }

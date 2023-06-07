@@ -1,7 +1,6 @@
 use std::path::PathBuf;
 
 use indexmap::IndexSet;
-mod smt;
 mod smt2;
 
 use crate::{
