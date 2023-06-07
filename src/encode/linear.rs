@@ -1,6 +1,6 @@
 use std::collections::VecDeque;
 
-use indexmap::{IndexMap};
+use indexmap::IndexMap;
 
 use crate::{
     model::{linears::LinearConstraint, Sort, Variable},
@@ -19,6 +19,10 @@ pub struct MddEncoder {
     mdd_false: PVar,
     mdd_true: PVar,
 
+    /// The current round of encoding (starting at 1). Used to avoid encoding the same constraint multiple times.
+    /// Is 0 when the encoder is reset.
+    round: usize,
+
     last_bounds: Option<IntegerDomainBounds>,
 }
 
@@ -36,6 +40,7 @@ impl MddEncoder {
             mdd_false: pvar(),
             mdd_true: pvar(),
             mdd_root: root_pvar,
+            round: 0,
             last_bounds: None,
         }
     }
@@ -68,6 +73,7 @@ impl PredicateEncoder for MddEncoder {
         dom: &super::domain::DomainEncoding,
         _var_manager: &crate::model::VarManager,
     ) -> super::EncodingResult {
+        self.round += 1;
         let mut res = EncodingResult::empty();
 
         let mut queue = VecDeque::new();
@@ -147,8 +153,10 @@ impl PredicateEncoder for MddEncoder {
                 }
             }
         }
-        res.add_clause(vec![as_lit(self.mdd_root)]);
-        res.add_clause(vec![neg(self.mdd_false)]);
+        if self.round == 1 {
+            res.add_clause(vec![as_lit(self.mdd_root)]);
+            res.add_clause(vec![neg(self.mdd_false)]);
+        }
         res
     }
 }
