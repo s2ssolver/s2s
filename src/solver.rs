@@ -5,7 +5,8 @@ use indexmap::IndexSet;
 use std::time::Instant;
 
 use crate::encode::{
-    BindepEncoder, EncodingResult, IntegerDomainBounds, PredicateEncoder, WordEquationEncoder,
+    BindepEncoder, EncodingResult, IntegerDomainBounds, MddEncoder, PredicateEncoder,
+    WordEquationEncoder,
 };
 
 use crate::formula::{Atom, ConstVal, Formula, Predicate, Substitution};
@@ -77,12 +78,11 @@ pub struct ConjunctiveSolver {
 
 impl ConjunctiveSolver {
     fn inst_encoder(predicate: &Predicate) -> Box<dyn PredicateEncoder> {
-        let encoder = match predicate {
-            Predicate::WordEquation(eq) => BindepEncoder::new(eq.clone()),
+        match predicate {
+            Predicate::WordEquation(eq) => Box::new(BindepEncoder::new(eq.clone())),
             Predicate::RegulaConstraint(_, _) => todo!(),
-            Predicate::LinearConstraint(_) => todo!(),
-        };
-        Box::new(encoder)
+            Predicate::LinearConstraint(lc) => Box::new(MddEncoder::new(lc.clone())),
+        }
     }
 
     pub fn new(instance: Instance) -> Result<Self, String> {

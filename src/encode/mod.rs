@@ -22,6 +22,7 @@ mod linear;
 
 pub use equation::{BindepEncoder, IWoorpjeEncoder, WoorpjeEncoder, WordEquationEncoder};
 use indexmap::IndexSet;
+pub use linear::MddEncoder;
 
 /// Maps each variable of sort `Int` to its domain given by a lower and upper bound.
 #[derive(Clone, Debug)]

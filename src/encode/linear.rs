@@ -10,7 +10,7 @@ use crate::{
 use super::{EncodingResult, IntegerDomainBounds, PredicateEncoder};
 
 /// Encodes linear constraints by using multi-valued decision diagrams.
-struct MddEncoder {
+pub struct MddEncoder {
     linear: LinearConstraint,
 
     nodes: IndexMap<usize, IndexMap<isize, PVar>>,
@@ -55,7 +55,7 @@ impl MddEncoder {
 
 impl PredicateEncoder for MddEncoder {
     fn is_incremental(&self) -> bool {
-        todo!()
+        true
     }
 
     fn reset(&mut self) {
@@ -84,28 +84,71 @@ impl PredicateEncoder for MddEncoder {
 
                     let current_bound = bounds.get_upper(v);
                     for l in last_bound..=current_bound {
-                        let len_assign_var = dom.int().get(&v.len_var(), l).unwrap();
+                        let len_assign_var = dom.int().get(&v, l).unwrap();
                         let new_value = value + l * coeff;
-                        let child_pvar = *self
-                            .nodes
-                            .entry(level + 1)
-                            .or_default()
-                            .entry(new_value)
-                            .or_insert_with(|| pvar());
+                        if level + 1 < self.linear.lhs.len() {
+                            let child_pvar = *self
+                                .nodes
+                                .entry(level + 1)
+                                .or_default()
+                                .entry(new_value)
+                                .or_insert_with(|| pvar());
+                            res.add_clause(vec![
+                                neg(node_var),
+                                neg(len_assign_var),
+                                as_lit(child_pvar),
+                            ]);
 
-                        res.add_clause(vec![
-                            neg(node_var),
-                            neg(len_assign_var),
-                            as_lit(child_pvar),
-                        ]);
-
-                        queue.push_back((level + 1, new_value, child_pvar));
+                            queue.push_back((level + 1, new_value, child_pvar));
+                        } else {
+                            let node = match self.linear.typ {
+                                crate::model::linears::LinearConstraintType::Eq => {
+                                    if new_value == self.linear.rhs {
+                                        self.mdd_true
+                                    } else {
+                                        self.mdd_false
+                                    }
+                                }
+                                crate::model::linears::LinearConstraintType::Leq => {
+                                    if new_value <= self.linear.rhs {
+                                        self.mdd_true
+                                    } else {
+                                        self.mdd_false
+                                    }
+                                }
+                                crate::model::linears::LinearConstraintType::Less => {
+                                    if new_value < self.linear.rhs {
+                                        self.mdd_true
+                                    } else {
+                                        self.mdd_false
+                                    }
+                                }
+                                crate::model::linears::LinearConstraintType::Geq => {
+                                    if new_value >= self.linear.rhs {
+                                        self.mdd_true
+                                    } else {
+                                        self.mdd_false
+                                    }
+                                }
+                                crate::model::linears::LinearConstraintType::Greater => {
+                                    if new_value > self.linear.rhs {
+                                        self.mdd_true
+                                    } else {
+                                        self.mdd_false
+                                    }
+                                }
+                            };
+                            res.add_clause(vec![neg(node_var), neg(len_assign_var), as_lit(node)]);
+                        }
                     }
                 }
-                crate::model::linears::LinearArithFactor::Const(_) => todo!(),
+                crate::model::linears::LinearArithFactor::Const(_) => {
+                    todo!("Consts not supported: {}", self.linear)
+                }
             }
         }
-
+        res.add_clause(vec![as_lit(self.mdd_root)]);
+        res.add_clause(vec![neg(self.mdd_false)]);
         res
     }
 }
