@@ -2,6 +2,7 @@ use std::{collections::HashMap, fmt::Display};
 
 /// Representation of formulas and predicates
 use crate::model::{
+    linears::LinearConstraint,
     regex::Regex,
     words::{Pattern, WordEquation},
     Sort, Variable,
@@ -11,6 +12,7 @@ use crate::model::{
 pub enum Predicate {
     WordEquation(WordEquation),
     RegulaConstraint(Pattern, Regex),
+    LinearConstraint(LinearConstraint),
 }
 
 impl Predicate {
@@ -29,6 +31,7 @@ impl Predicate {
     pub fn evaluate(&self, substitution: &Substitution) -> Option<bool> {
         match self {
             Predicate::WordEquation(eq) => eq.is_solution(substitution),
+            Predicate::LinearConstraint(c) => todo!(),
             Predicate::RegulaConstraint(_p, _r) => todo!(), // Derivate r w.r.t. p.substitute()
         }
     }
@@ -159,16 +162,6 @@ impl ConstVal {
     }
 }
 
-impl Display for ConstVal {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::String(s) => write!(f, "\"{}\"", s.iter().collect::<String>()),
-            Self::Bool(b) => write!(f, "{}", b),
-            Self::Int(i) => write!(f, "{}", i),
-        }
-    }
-}
-
 /// A substitution of variables
 pub struct Substitution {
     assignments: HashMap<Variable, ConstVal>,
@@ -229,6 +222,72 @@ impl From<HashMap<Variable, Vec<char>>> for Substitution {
             sub.set(&var, ConstVal::String(val));
         }
         sub
+    }
+}
+
+/* Pretty Printing */
+
+impl Display for ConstVal {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::String(s) => write!(f, "\"{}\"", s.iter().collect::<String>()),
+            Self::Bool(b) => write!(f, "{}", b),
+            Self::Int(i) => write!(f, "{}", i),
+        }
+    }
+}
+
+impl Display for Predicate {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Predicate::WordEquation(weq) => write!(f, "{}", weq),
+            Predicate::RegulaConstraint(_, _) => todo!(),
+            Predicate::LinearConstraint(c) => write!(f, "{}", c),
+        }
+    }
+}
+
+impl Display for Atom {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Atom::Predicate(p) => write!(f, "{}", p),
+            Atom::BoolVar(v) => write!(f, "{}", v),
+        }
+    }
+}
+
+impl Display for Formula {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Formula::True => write!(f, "true"),
+            Formula::False => write!(f, "false"),
+            Formula::Atom(a) => write!(f, "{}", a),
+            Formula::Or(fs) => {
+                write!(f, "(")?;
+                let mut first = true;
+                for fm in fs {
+                    if !first {
+                        write!(f, r" \/ ")?;
+                    }
+                    write!(f, "{}", fm)?;
+                    first = false;
+                }
+                write!(f, ")")
+            }
+            Formula::And(fs) => {
+                write!(f, "(")?;
+                let mut first = true;
+                for fm in fs {
+                    if !first {
+                        write!(f, r" /\ ")?;
+                    }
+                    write!(f, "{}", fm)?;
+                    first = false;
+                }
+                write!(f, ")")
+            }
+            Formula::Not(fm) => write!(f, "¬{}", fm),
+        }
     }
 }
 

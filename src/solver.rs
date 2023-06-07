@@ -96,7 +96,12 @@ impl<'a, T: WordEquationEncoder> EquationSystemSolver<'a, T> {
                             eqs.push(eq.clone());
                             alphabet.extend(eq.alphabet().iter().cloned());
                         }
-                        _ => return Err("Instance is not a system of word equations".to_string()),
+                        _ => {
+                            return Err(format!(
+                                "Instance is not a system of word equations: {}",
+                                instance.get_formula()
+                            ))
+                        }
                     }
                 }
             }

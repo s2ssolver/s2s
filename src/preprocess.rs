@@ -47,6 +47,7 @@ fn preprocess_predicate(pred: &Predicate) -> Predicate {
             Predicate::WordEquation(preprocessed)
         }
         Predicate::RegulaConstraint(_, _) => pred.clone(),
+        Predicate::LinearConstraint(_) => pred.clone(),
     }
 }
 
