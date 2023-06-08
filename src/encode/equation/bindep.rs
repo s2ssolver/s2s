@@ -71,21 +71,23 @@ impl SegmentedPattern {
     }
 
     /// Returns the earliest position at which the segment at position i can start.
-    fn earliest_start(&self, i: usize) -> usize {
+    fn earliest_start(&self, i: usize, bounds: &Bounds) -> usize {
         let mut pos = 0;
         for j in 0..i {
-            if let PatternSegment::Word(w) = self.get(j) {
-                pos += w.len();
+            match self.get(j) {
+                PatternSegment::Variable(v) => pos += bounds.get_lower(v).unwrap_or(0) as usize,
+                PatternSegment::Word(w) => pos += w.len(),
             }
         }
         pos
     }
 
-    fn suffix_len(&self, i: usize) -> usize {
+    fn suffix_len(&self, i: usize, bounds: &Bounds) -> usize {
         let mut f = 0;
         for j in i + 1..self.length() {
-            if let PatternSegment::Word(w) = self.get(j) {
-                f += w.len();
+            match self.get(j) {
+                PatternSegment::Variable(v) => f += bounds.get_lower(v).unwrap_or(0) as usize,
+                PatternSegment::Word(w) => f += w.len(),
             }
         }
         f
@@ -296,14 +298,14 @@ impl BindepEncoder {
             }
 
             // Disable all starts that are too early
-            for p in last_bound..segments.earliest_start(i) {
+            for p in last_bound..segments.earliest_start(i, bounds) {
                 let var = self.start_position(i, p, side);
                 res.add_clause(vec![neg(var)]);
             }
 
             match s {
                 PatternSegment::Variable(v) => {
-                    let start_pos = segments.earliest_start(i);
+                    let start_pos = segments.earliest_start(i, bounds);
                     // Incremental either: Length is longer OR start position is later OR Both
                     for pos in start_pos..self.bound {
                         // TODO: Put all "disabled" start-length-pairs is a list and process on next iteration instead of iterating over all pairs and checking the condition
@@ -324,10 +326,12 @@ impl BindepEncoder {
                             // Check if any of the previously invalid position/length pairs became valid
                             if pos < last_bound && len <= last_vbound {
                                 if pos + len
-                                    >= last_bound - (segments.suffix_len(i).saturating_sub(1))
+                                    >= last_bound
+                                        - (segments.suffix_len(i, bounds).saturating_sub(1))
                                 {
                                     if pos + len
-                                        < self.bound - (segments.suffix_len(i).saturating_sub(1))
+                                        < self.bound
+                                            - (segments.suffix_len(i, bounds).saturating_sub(1))
                                     {
                                         // These length/position combinations is now possible
 
@@ -348,7 +352,9 @@ impl BindepEncoder {
                             }
 
                             // Encode alignment for new position/length pairs
-                            if pos + len < self.bound - (segments.suffix_len(i).saturating_sub(1)) {
+                            if pos + len
+                                < self.bound - (segments.suffix_len(i, bounds).saturating_sub(1))
+                            {
                                 let succ = self.start_position(i + 1, pos + len, side);
 
                                 res.add_clause(vec![neg(svar), neg(len_var), as_lit(succ)]);
@@ -362,15 +368,15 @@ impl BindepEncoder {
                 }
                 PatternSegment::Word(w) => {
                     // Only consider the new possible starting positions
-                    for pos in segments.earliest_start(i)..self.bound {
+                    for pos in segments.earliest_start(i, bounds)..self.bound {
                         let len = w.len();
                         let svar = self.start_position(i, pos, side);
                         // Already considered last round
                         if pos < last_bound {
                             // Extends over the last bound, but not over the current bound
-                            if pos + len >= last_bound - segments.suffix_len(i) {
+                            if pos + len >= last_bound - segments.suffix_len(i, bounds) {
                                 // This position was disabled for last bound, but now became viable
-                                if pos + len < self.bound - segments.suffix_len(i) {
+                                if pos + len < self.bound - segments.suffix_len(i, bounds) {
                                     let succ = self.start_position(i + 1, pos + len, side);
                                     res.add_clause(vec![neg(svar), as_lit(succ)]);
                                 } else {
@@ -381,7 +387,7 @@ impl BindepEncoder {
                             // Does not extend over the last bound, so we already encoded it and can continue
                             continue;
                         }
-                        if pos + len < self.bound - segments.suffix_len(i) {
+                        if pos + len < self.bound - segments.suffix_len(i, bounds) {
                             // S_i^p /\ len_var -> S_{i+1}^(p+len)
                             let succ = self.start_position(i + 1, pos + len, side);
                             res.add_clause(vec![neg(svar), as_lit(succ)]);
@@ -413,16 +419,16 @@ impl BindepEncoder {
                 PatternSegment::Variable(x) => {
                     for l in 0..=bounds.get_upper(&x.len_var()).unwrap() as usize {
                         let len_var = dom.int().get(&x.len_var(), l as isize).unwrap();
-                        for p in segments.earliest_start(i)..self.bound {
+                        for p in segments.earliest_start(i, bounds)..self.bound {
                             let start_var = self.start_position(i, p, side);
                             if p < last_bound
                                 && l < self.get_last_var_bound(x).unwrap_or(0)
-                                && l + p < last_bound.saturating_sub(segments.suffix_len(i))
+                                && l + p < last_bound.saturating_sub(segments.suffix_len(i, bounds))
                             {
                                 // Already encoded
                                 continue;
                             }
-                            if l + p <= self.bound - segments.suffix_len(i) {
+                            if l + p <= self.bound - segments.suffix_len(i, bounds) {
                                 // If segment starts here, then the next |w| positions must match substitution of x
                                 match l {
                                     1 => {
@@ -509,10 +515,11 @@ impl BindepEncoder {
                     }
                 }
                 PatternSegment::Word(w) => {
-                    for p in segments.earliest_start(i)
-                        ..self.bound - (w.len() - 1) - segments.suffix_len(i)
+                    for p in segments.earliest_start(i, bounds)
+                        ..self.bound - (w.len() - 1) - segments.suffix_len(i, bounds)
                     {
-                        if p < last_bound && p < last_bound - (w.len() - 1) - segments.suffix_len(i)
+                        if p < last_bound
+                            && p < last_bound - (w.len() - 1) - segments.suffix_len(i, bounds)
                         {
                             // Already encoded
                             continue;
