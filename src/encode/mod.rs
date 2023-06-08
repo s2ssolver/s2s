@@ -1,6 +1,7 @@
 use std::{cmp::min, collections::HashMap, ops::Index, slice::Iter};
 
 use crate::{
+    bounds::Bounds,
     model::{
         words::{Pattern, Symbol},
         Sort, VarManager, Variable,
@@ -65,41 +66,6 @@ impl IntegerDomainBounds {
         self.default = bound;
     }
 
-    /// Updates the upper bounds of the variables by calling the given function on each bound, including the default bound.
-    /// Additionally, an optional clamp can be provided to limit the maximum value of the bounds.
-    /// If no clamp is provided, the bounds are limited by `isize::MAX`.
-    /// Returns true if any bound was changed and false otherwise.
-    pub fn update_upper(&mut self, updater: impl Fn(isize) -> isize, clamp: Option<isize>) -> bool {
-        let clamp = clamp.unwrap_or(isize::MAX);
-        let mut any_changed = false;
-        for (_, bound) in self.bounds.iter_mut().map(|b| b.1) {
-            let new_bound = min(updater(*bound), clamp);
-            if new_bound != *bound {
-                *bound = new_bound;
-                any_changed = true;
-            }
-        }
-        let new_default = min(updater(self.default.1), clamp);
-        if new_default != self.default.1 {
-            self.default = (self.default.0, new_default);
-            any_changed = true;
-        }
-        any_changed
-    }
-
-    /// Doubles the bounds of all variables, including the default bound.
-    /// The optional clamp can be used to limit the maximum value of the bounds.
-    /// Returns true if any bound was changed and false otherwise.
-    #[allow(dead_code)]
-    pub fn double(&mut self, clamp: Option<isize>) -> bool {
-        self.update_upper(|b| b * 2, clamp)
-    }
-
-    /// Updates the bounds of all variables such that they are the next square number greater than the current value.
-    pub fn next_square(&mut self, clamp: Option<isize>) -> bool {
-        self.update_upper(|b| ((b as f64).sqrt() + 1f64).powi(2) as isize, clamp)
-    }
-
     /// Returns true if the upper bounds of all variables are less or equal to the given value.
     #[allow(dead_code)]
     pub fn all_leq(&self, limit: isize) -> bool {
@@ -162,17 +128,13 @@ struct FilledPattern {
 }
 
 impl FilledPattern {
-    fn fill(pattern: &Pattern, bounds: &IntegerDomainBounds, var_manager: &VarManager) -> Self {
+    fn fill(pattern: &Pattern, bounds: &Bounds, var_manager: &VarManager) -> Self {
         Self {
             positions: Self::convert(pattern, bounds, var_manager),
         }
     }
 
-    fn convert(
-        pattern: &Pattern,
-        bounds: &IntegerDomainBounds,
-        var_manager: &VarManager,
-    ) -> Vec<FilledPos> {
+    fn convert(pattern: &Pattern, bounds: &Bounds, var_manager: &VarManager) -> Vec<FilledPos> {
         let mut positions = vec![];
         for symbol in pattern.symbols() {
             match symbol {
@@ -181,7 +143,7 @@ impl FilledPattern {
                     let len_var = var_manager.str_length_var(v).unwrap_or_else(|| {
                         panic!("Variable {} does not have a length variable", v)
                     });
-                    let len = bounds.get_upper(len_var) as usize;
+                    let len = bounds.get_upper(len_var).unwrap() as usize;
                     for i in 0..len {
                         positions.push(FilledPos::FilledPos(v.clone(), i))
                     }
@@ -299,7 +261,7 @@ pub trait PredicateEncoder {
 
     fn encode(
         &mut self,
-        bounds: &IntegerDomainBounds,
+        bounds: &Bounds,
         substitution: &DomainEncoding,
         var_manager: &VarManager,
     ) -> EncodingResult;

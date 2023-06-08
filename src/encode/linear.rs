@@ -3,6 +3,7 @@ use std::collections::VecDeque;
 use indexmap::IndexMap;
 
 use crate::{
+    bounds::Bounds,
     model::{linears::LinearConstraint, Sort, Variable},
     sat::{as_lit, neg, pvar, PVar},
 };
@@ -69,7 +70,7 @@ impl PredicateEncoder for MddEncoder {
 
     fn encode(
         &mut self,
-        bounds: &super::IntegerDomainBounds,
+        bounds: &Bounds,
         dom: &super::domain::DomainEncoding,
         _var_manager: &crate::model::VarManager,
     ) -> super::EncodingResult {
@@ -88,7 +89,7 @@ impl PredicateEncoder for MddEncoder {
                         b => b + 1,
                     };
 
-                    let current_bound = bounds.get_upper(v);
+                    let current_bound = bounds.get_upper(v).expect("Unbounded variable");
                     for l in last_bound..=current_bound {
                         let len_assign_var = dom.int().get(v, l).unwrap();
                         let new_value = value + l * coeff;

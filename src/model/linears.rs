@@ -79,45 +79,54 @@ impl Display for LinearArithFactor {
 
 #[derive(Debug, Clone, PartialEq, Eq, Default, Hash)]
 pub struct LinearArithTerm {
-    terms: Vec<LinearArithFactor>,
+    factors: Vec<LinearArithFactor>,
 }
 
 impl LinearArithTerm {
     pub fn new() -> Self {
-        Self { terms: vec![] }
+        Self { factors: vec![] }
     }
 
     pub fn from_var(x: &Variable) -> Self {
         Self {
-            terms: vec![LinearArithFactor::VarCoeff(x.clone(), 1)],
+            factors: vec![LinearArithFactor::VarCoeff(x.clone(), 1)],
+        }
+    }
+
+    pub fn remove_factor(&mut self, f: &LinearArithFactor) -> bool {
+        if let Some(index) = self.factors.iter().position(|x| *x == *f) {
+            self.factors.remove(index);
+            true
+        } else {
+            false
         }
     }
 
     pub fn from_const(c: isize) -> Self {
         Self {
-            terms: vec![LinearArithFactor::Const(c)],
+            factors: vec![LinearArithFactor::Const(c)],
         }
     }
 
     pub fn add_factor(&mut self, f: LinearArithFactor) {
-        self.terms.push(f);
+        self.factors.push(f);
     }
 
     pub fn add_var_coeff(&mut self, x: &Variable, c: isize) {
-        self.terms.push(LinearArithFactor::VarCoeff(x.clone(), c));
+        self.factors.push(LinearArithFactor::VarCoeff(x.clone(), c));
     }
 
     pub fn extend(&mut self, other: Self) {
-        self.terms.extend(other.terms);
+        self.factors.extend(other.factors);
     }
 
     pub fn iter(&self) -> impl Iterator<Item = &LinearArithFactor> {
-        self.terms.iter()
+        self.factors.iter()
     }
 
     /// The number of summands in the term
     pub fn len(&self) -> usize {
-        self.terms.len()
+        self.factors.len()
     }
 
     /// Normalize the term by combining all coefficients of the same variable.
@@ -125,7 +134,7 @@ impl LinearArithTerm {
     pub fn normalize(&mut self) {
         let mut factors = HashMap::new();
         let mut residual = 0;
-        for f in self.terms.iter() {
+        for f in self.factors.iter() {
             match f {
                 LinearArithFactor::VarCoeff(x, c) => {
                     let entry = factors.entry(x.clone()).or_insert(0);
@@ -136,12 +145,12 @@ impl LinearArithTerm {
                 }
             }
         }
-        self.terms.clear();
+        self.factors.clear();
         for (x, c) in factors {
-            self.terms.push(LinearArithFactor::VarCoeff(x, c));
+            self.factors.push(LinearArithFactor::VarCoeff(x, c));
         }
         if residual != 0 {
-            self.terms.push(LinearArithFactor::Const(residual));
+            self.factors.push(LinearArithFactor::Const(residual));
         }
     }
 
@@ -210,23 +219,25 @@ impl LinearArithTerm {
         Some(c)
     }
 
-    pub fn evaluate(&self, sub: &Substitution) -> Option<isize> {
-        let mut res = 0;
+    pub fn evaluate(&self, sub: &Substitution) -> Option<LinearArithTerm> {
+        let mut const_term = 0;
+        let mut res = LinearArithTerm::new();
         for f in self.iter() {
             match f {
-                LinearArithFactor::VarCoeff(x, c) => {
-                    let val = if let ConstVal::Int(i) = sub.get(x)? {
-                        i
-                    } else {
-                        return None;
-                    };
-                    res += val * c;
-                }
+                LinearArithFactor::VarCoeff(x, c) => match sub.get(x) {
+                    Some(ConstVal::Int(i)) => const_term += i * c,
+                    Some(_) => {
+                        panic!("Cannot evaluate non-integer substitution")
+                    }
+                    None => res.add_factor(f.clone()),
+                },
                 LinearArithFactor::Const(c) => {
-                    res += c;
+                    const_term += c;
                 }
             }
         }
+
+        res.add_factor(LinearArithFactor::Const(const_term));
         Some(res)
     }
 }
@@ -235,7 +246,7 @@ impl Index<usize> for LinearArithTerm {
     type Output = LinearArithFactor;
 
     fn index(&self, index: usize) -> &Self::Output {
-        &self.terms[index]
+        &self.factors[index]
     }
 }
 
@@ -284,13 +295,40 @@ impl LinearConstraint {
         rhs: &LinearArithTerm,
         typ: LinearConstraintType,
     ) -> Self {
-        if let Some(c) = rhs.is_constant() {
+        if let Some(mut c) = rhs.is_constant() {
             let mut lhs = lhs.clone();
             lhs.normalize();
+            let mut consts = vec![];
+            for fac in lhs.iter() {
+                match fac {
+                    LinearArithFactor::VarCoeff(_, _) => {}
+                    LinearArithFactor::Const(c2) => {
+                        consts.push(fac.clone());
+                        c += c2;
+                    }
+                }
+            }
+            for fac in consts {
+                lhs.remove_factor(&fac);
+            }
             Self { lhs, rhs: c, typ }
         } else {
             let mut lhs = lhs.subtract(rhs);
             lhs.normalize();
+            let mut consts = vec![];
+            let mut c = 0;
+            for fac in lhs.iter() {
+                match fac {
+                    LinearArithFactor::VarCoeff(_, _) => {}
+                    LinearArithFactor::Const(c2) => {
+                        consts.push(fac.clone());
+                        c += c2;
+                    }
+                }
+            }
+            for fac in consts {
+                lhs.remove_factor(&fac);
+            }
             Self { lhs, rhs: 0, typ }
         }
     }
@@ -304,7 +342,7 @@ impl LinearConstraint {
     }
 
     pub fn is_solution(&self, subs: &Substitution) -> Option<bool> {
-        let lhs = self.lhs.evaluate(subs)?;
+        let lhs = self.lhs.evaluate(subs)?.is_constant()?;
         match self.typ {
             LinearConstraintType::Eq => Some(lhs == self.rhs),
             LinearConstraintType::Leq => Some(lhs <= self.rhs),
@@ -320,7 +358,7 @@ impl LinearConstraint {
 impl Display for LinearArithTerm {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let mut first = true;
-        for t in self.terms.iter() {
+        for t in self.factors.iter() {
             if !first {
                 write!(f, " + ")?;
             }

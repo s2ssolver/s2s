@@ -5,6 +5,7 @@ use super::{
     EncodingResult,
 };
 use crate::{
+    bounds::{Bounds, IntDomain},
     encode::LAMBDA,
     model::{Sort, VarManager, Variable},
     sat::{as_lit, neg, pvar, Cnf, PLit, PVar},
@@ -32,11 +33,7 @@ impl DomainEncoder {
         }
     }
 
-    pub fn encode(
-        &mut self,
-        bounds: &IntegerDomainBounds,
-        var_manager: &VarManager,
-    ) -> EncodingResult {
+    pub fn encode(&mut self, bounds: &Bounds, var_manager: &VarManager) -> EncodingResult {
         let mut encoding = self.encoding.take().unwrap_or(DomainEncoding::new(
             self.strings.alphabet.clone(),
             bounds.clone(),
@@ -131,11 +128,11 @@ pub struct DomainEncoding {
     /// If true, then no lambda substitutions are allowed
     singular: bool,
     /// The bounds of the integer variables
-    bounds: IntegerDomainBounds,
+    bounds: Bounds,
 }
 
 impl DomainEncoding {
-    pub fn new(alphabet: IndexSet<char>, bounds: IntegerDomainBounds, singular: bool) -> Self {
+    pub fn new(alphabet: IndexSet<char>, bounds: Bounds, singular: bool) -> Self {
         Self {
             string: SubstitutionEncoding::new(),
             int: IntEncoding::default(),
@@ -180,7 +177,13 @@ pub fn get_substitutions(
         let len_var = var_manager.str_length_var(var).unwrap();
         subs.insert(
             var.clone(),
-            vec![None; domain_encoding.bounds.get_upper(len_var) as usize],
+            vec![
+                None;
+                domain_encoding
+                    .bounds
+                    .get_upper(len_var)
+                    .expect("Unbounded string variable") as usize
+            ],
         );
     }
     for ((var, pos, chr), v) in domain_encoding.string.encodings.iter() {
@@ -213,7 +216,7 @@ pub fn get_substitutions(
 }
 
 pub struct SubstitutionEncoder {
-    last_bounds: Option<IntegerDomainBounds>,
+    last_bounds: Option<Bounds>,
     alphabet: IndexSet<char>,
 
     // If true, then no lambda substitutions are allowed
@@ -231,7 +234,7 @@ impl SubstitutionEncoder {
 
     pub fn encode(
         &mut self,
-        bounds: &IntegerDomainBounds,
+        bounds: &Bounds,
         encoding: &mut DomainEncoding,
         var_manager: &VarManager,
     ) -> EncodingResult {
@@ -243,7 +246,7 @@ impl SubstitutionEncoder {
             let var = var_manager
                 .str_length_var(str_var)
                 .unwrap_or_else(|| panic!("No length variable for {}", str_var));
-            let bound = bounds.get_upper(var) as usize;
+            let bound = bounds.get_upper(var).expect("Unbounded string variable") as usize;
             let last_bound = self.pre_bounds(var).unwrap_or(0);
 
             // Todo: this is bad because it clones the alphabet
@@ -288,12 +291,12 @@ impl SubstitutionEncoder {
     fn pre_bounds(&self, var: &Variable) -> Option<usize> {
         self.last_bounds
             .as_ref()
-            .map(|bs| bs.get_upper(var) as usize)
+            .map(|bs| bs.get_upper(var).expect("Unbounded string variable") as usize)
     }
 }
 
 pub struct IntegerEncoder {
-    last_domains: Option<IntegerDomainBounds>,
+    last_domains: Option<Bounds>,
     /// Maps each variable to an Incremental exact-one encoder that is used to encode the variable's length.
     var_len_eo_encoders: IndexMap<Variable, IncrementalEO>,
 }
@@ -308,7 +311,7 @@ impl IntegerEncoder {
 
     pub fn encode(
         &mut self,
-        domains: &IntegerDomainBounds,
+        domains: &Bounds,
         encoding: &mut DomainEncoding,
         var_manager: &VarManager,
     ) -> EncodingResult {
@@ -325,13 +328,13 @@ impl IntegerEncoder {
         res
     }
 
-    fn get_last_dom(&self, var: &Variable) -> Option<(isize, isize)> {
+    fn get_last_dom(&self, var: &Variable) -> Option<IntDomain> {
         self.last_domains.as_ref().map(|doms| doms.get(var))
     }
 
     pub fn encode_str_lengths(
         &mut self,
-        bounds: &IntegerDomainBounds,
+        bounds: &Bounds,
         encoding: &mut DomainEncoding,
         var_manager: &VarManager,
     ) -> EncodingResult {
@@ -342,17 +345,21 @@ impl IntegerEncoder {
             let mut len_choices = vec![];
             let last_bound = self
                 .get_last_dom(str_len_var)
-                .map(|b| (b.1) + 1)
+                .map(|b| (b.upper().unwrap()) + 1)
                 .unwrap_or(0);
 
-            for len in last_bound..=bounds.get_upper(str_len_var) {
+            let lower = bounds.get_lower(str_len_var).unwrap_or(0);
+            for len in last_bound..=bounds.get_upper(str_len_var).unwrap() {
                 let choice = pvar();
                 len_choices.push(choice);
-
+                // Deactive this lenght if it is less than the lower bound
+                if len < lower {
+                    res.add_clause(vec![neg(choice)]);
+                }
                 encoding.int.insert(str_len_var.clone(), len, choice);
                 // If the variable has this length, then only lambdas follow, and no lambdas precede
                 if !encoding.singular {
-                    if len < bounds.get_upper(str_len_var) {
+                    if len < bounds.get_upper(str_len_var).unwrap() {
                         let lambda_suffix = encoding
                             .string()
                             .get(str_var, len as usize, LAMBDA)
@@ -391,6 +398,7 @@ mod tests {
     use quickcheck_macros::quickcheck;
 
     use crate::{
+        bounds::{Bounds, IntDomain},
         encode::{
             domain::{get_substitutions, DomainEncoding},
             IntegerDomainBounds, LAMBDA,
@@ -410,7 +418,7 @@ mod tests {
 
         let mut encoder = SubstitutionEncoder::new(alphabet.clone());
         let mb = 10;
-        let bounds = IntegerDomainBounds::new((0, mb));
+        let bounds = Bounds::with_defaults(IntDomain::Bounded(0, mb));
 
         let mut encoding = DomainEncoding::new(alphabet, bounds.clone(), false);
         encoder.encode(&bounds, &mut encoding, &vm);
@@ -438,10 +446,10 @@ mod tests {
         alphabet_lambda.insert(LAMBDA);
 
         let mut encoder = SubstitutionEncoder::new(alphabet.clone());
-        let bounds = IntegerDomainBounds::new((0, 5));
+        let bounds = Bounds::with_defaults(IntDomain::Bounded(0, 5));
         let mut encoding = DomainEncoding::new(alphabet, bounds.clone(), false);
         encoder.encode(&bounds, &mut encoding, &vm);
-        let bounds = IntegerDomainBounds::new((0, 10));
+        let bounds = Bounds::with_defaults(IntDomain::Bounded(0, 10));
         encoder.encode(&bounds, &mut encoding, &vm);
 
         for b in 0..10 {
@@ -462,7 +470,7 @@ mod tests {
 
         let mut encoder = SubstitutionEncoder::new(alphabet.clone());
         encoder.singular = true;
-        let bounds = IntegerDomainBounds::new((0, len as isize));
+        let bounds = Bounds::with_defaults(IntDomain::Bounded(0, len as isize));
         let mut encoding = DomainEncoding::new(alphabet, bounds.clone(), true);
         let mut solver: cadical::Solver = cadical::Solver::new();
         match encoder.encode(&bounds, &mut encoding, &vm) {
@@ -495,7 +503,7 @@ mod tests {
         let alphabet = IndexSet::from_iter(vec!['a', 'b', 'c', 'd']);
 
         let mut encoder = SubstitutionEncoder::new(alphabet.clone());
-        let bounds = IntegerDomainBounds::new((0, len as isize));
+        let bounds = Bounds::with_defaults(IntDomain::Bounded(0, len as isize));
         let mut encoding = DomainEncoding::new(alphabet, bounds, false);
         let mut solver: cadical::Solver = cadical::Solver::new();
         match encoder.encode(&encoding.bounds.clone(), &mut encoding, &vm) {
@@ -505,7 +513,7 @@ mod tests {
             }
             crate::encode::EncodingResult::Trivial(_) => unreachable!(),
         }
-        encoding.bounds.double(None);
+        encoding.bounds.double_uppers();
         match encoder.encode(&encoding.bounds.clone(), &mut encoding, &vm) {
             crate::encode::EncodingResult::Cnf(cnf, _) => {
                 cnf.into_iter().for_each(|cl| solver.add_clause(cl));

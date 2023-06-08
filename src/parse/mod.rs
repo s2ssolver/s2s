@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::{cmp::max, path::PathBuf};
 
 use indexmap::IndexSet;
 mod smt2;
@@ -39,7 +39,8 @@ pub struct Instance {
     /// If no solution is found with every variable bound to `n`, the solver will return `Unsat`.
     ubound: Option<usize>,
 
-    lbound: usize,
+    /// The upper bound for each string variable to start the search with   
+    start_bound: usize,
 
     print_model: bool,
 }
@@ -50,7 +51,7 @@ impl Instance {
             formula,
             var_manager,
             ubound: None,
-            lbound: 1,
+            start_bound: 1,
             print_model: false,
         }
     }
@@ -60,7 +61,7 @@ impl Instance {
     }
 
     pub fn set_lbound(&mut self, bound: usize) {
-        self.lbound = bound;
+        self.start_bound = bound;
     }
 
     pub fn set_formula(&mut self, formula: Formula) {
@@ -79,8 +80,8 @@ impl Instance {
         &self.var_manager
     }
 
-    pub fn get_lower_bound(&self) -> usize {
-        self.lbound
+    pub fn get_start_bound(&self) -> usize {
+        max(self.start_bound, 1)
     }
 
     pub fn get_upper_bound(&self) -> Option<usize> {

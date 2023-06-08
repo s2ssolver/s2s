@@ -4,7 +4,7 @@ use indexmap::IndexSet;
 
 use std::time::Instant;
 
-use crate::bounds::Bounds;
+use crate::bounds::{Bounds, IntDomain};
 use crate::encode::{
     BindepEncoder, EncodingResult, IntegerDomainBounds, MddEncoder, PredicateEncoder,
     WordEquationEncoder,
@@ -70,9 +70,7 @@ pub trait Solver {
 
 pub struct ConjunctiveSolver {
     instance: Instance,
-    bounds: IntegerDomainBounds,
     alphabet: IndexSet<char>,
-    max_bound: Option<usize>,
     encoders: HashMap<Predicate, Box<dyn PredicateEncoder>>,
     domain_encoder: DomainEncoder,
 }
@@ -87,8 +85,6 @@ impl ConjunctiveSolver {
     }
 
     pub fn new(instance: Instance) -> Result<Self, String> {
-        let initial_bounds = IntegerDomainBounds::new((0, instance.get_lower_bound() as isize));
-        let upper_bounds = instance.get_upper_bound();
         let alphabet = instance.get_formula().alphabet();
         let mut encoders = HashMap::new();
 
@@ -118,22 +114,20 @@ impl ConjunctiveSolver {
         let dom_encoder = DomainEncoder::new(alphabet.clone());
         Ok(Self {
             instance,
-            bounds: initial_bounds,
             alphabet,
-            max_bound: upper_bounds,
             encoders,
             domain_encoder: dom_encoder,
         })
     }
 
-    fn encode_bounded(&mut self) -> EncodingResult {
+    fn encode_bounded(&mut self, bounds: &Bounds) -> EncodingResult {
         let mut encoding = EncodingResult::empty();
         let bounds = if let Formula::Atom(Atom::Predicate(Predicate::WordEquation(eq))) =
             self.instance.get_formula()
         {
-            sharpen_bounds(eq, &self.bounds, self.instance.get_var_manager())
+            sharpen_bounds(eq, &bounds, self.instance.get_var_manager())
         } else {
-            self.bounds.clone()
+            bounds.clone()
         };
 
         let ts = Instant::now();
@@ -168,8 +162,21 @@ impl Solver for ConjunctiveSolver {
     fn solve(&mut self) -> SolverResult {
         let limit_upper_bounds =
             Bounds::infer(self.instance.get_formula(), self.instance.get_var_manager());
+        log::info!("Found limit bounds: {}", limit_upper_bounds);
+        if limit_upper_bounds.any_empty() {
+            log::info!("Empty upper bounds, unsat");
+            return SolverResult::Unsat;
+        }
 
-        log::info!("Limit bounds: {}", limit_upper_bounds);
+        let mut current_bounds = Bounds::new();
+        for v in self.instance.get_var_manager().of_sort(Sort::String, true) {
+            let len_var = self.instance.get_var_manager().str_length_var(v).unwrap();
+            current_bounds.set(
+                len_var,
+                IntDomain::Bounded(0, self.instance.get_start_bound() as isize),
+            );
+        }
+        let mut effective_bounds = current_bounds.intersect(&limit_upper_bounds);
 
         log::info!(
             "Started solving loop for system of {} equations",
@@ -183,81 +190,92 @@ impl Solver for ConjunctiveSolver {
         let mut fm = Cnf::new();
 
         loop {
-            log::info!("Current bounds {}", self.bounds);
-            let ts = Instant::now();
-            let encoding = self.encode_bounded();
-            let elapsed = ts.elapsed().as_millis();
-            log::info!("Encoding took {} ms", elapsed);
-            time_encoding += elapsed;
-            match encoding {
-                EncodingResult::Cnf(clauses, assms) => {
-                    let n_clauses = clauses.len();
-                    let ts = Instant::now();
-                    fm.extend(clauses.clone());
+            log::info!("Current bounds {}", effective_bounds);
 
-                    for clause in clauses.into_iter() {
-                        cadical.add_clause(clause);
-                    }
+            if !effective_bounds.any_empty() {
+                let ts = Instant::now();
+                let encoding = self.encode_bounded(&effective_bounds);
+                let elapsed = ts.elapsed().as_millis();
+                log::info!("Encoding took {} ms", elapsed);
+                time_encoding += elapsed;
+                match encoding {
+                    EncodingResult::Cnf(clauses, assms) => {
+                        let n_clauses = clauses.len();
+                        let ts = Instant::now();
+                        fm.extend(clauses.clone());
 
-                    let t_adding = ts.elapsed().as_millis();
-                    log::info!(
-                        "Added {} (total {}) clauses in {} ms",
-                        n_clauses,
-                        cadical.num_clauses(),
-                        t_adding
-                    );
-
-                    time_encoding += t_adding;
-                    let ts = Instant::now();
-                    let res = cadical.solve_with(assms.iter().cloned());
-
-                    let t_solving = ts.elapsed().as_millis();
-                    log::info!(
-                        "Done SAT solving: {} ({}ms)",
-                        res.unwrap_or(false),
-                        t_solving
-                    );
-                    time_solving += t_solving;
-                    if let Some(true) = res {
-                        let mut model = Substitution::with_defaults();
-                        for (v, s) in get_substitutions(
-                            self.domain_encoder.encoding(),
-                            self.instance.get_var_manager(),
-                            &cadical,
-                        ) {
-                            model.set(&v, ConstVal::String(s.clone()));
+                        for clause in clauses.into_iter() {
+                            cadical.add_clause(clause);
                         }
+
+                        let t_adding = ts.elapsed().as_millis();
                         log::info!(
-                            "Done. Total time encoding/solving: {}/{} ms",
-                            time_encoding,
-                            time_solving
+                            "Added {} (total {}) clauses in {} ms",
+                            n_clauses,
+                            cadical.num_clauses(),
+                            t_adding
                         );
-                        return SolverResult::Sat(model);
-                    } else if self.encoders.values().any(|enc| !enc.is_incremental()) {
-                        // reset states if at least one solver is not incremental
-                        self.reset();
-                        cadical = cadical::Solver::new();
-                        log::debug!("Reset state");
+
+                        time_encoding += t_adding;
+                        let ts = Instant::now();
+                        let res = cadical.solve_with(assms.iter().cloned());
+
+                        let t_solving = ts.elapsed().as_millis();
+                        log::info!(
+                            "Done SAT solving: {} ({}ms)",
+                            res.unwrap_or(false),
+                            t_solving
+                        );
+                        time_solving += t_solving;
+                        if let Some(true) = res {
+                            let mut model = Substitution::with_defaults();
+                            for (v, s) in get_substitutions(
+                                self.domain_encoder.encoding(),
+                                self.instance.get_var_manager(),
+                                &cadical,
+                            ) {
+                                model.set(&v, ConstVal::String(s.clone()));
+                            }
+                            log::info!(
+                                "Done. Total time encoding/solving: {}/{} ms",
+                                time_encoding,
+                                time_solving
+                            );
+                            return SolverResult::Sat(model);
+                        } else if self.encoders.values().any(|enc| !enc.is_incremental()) {
+                            // reset states if at least one solver is not incremental
+                            self.reset();
+                            cadical = cadical::Solver::new();
+                            log::debug!("Reset state");
+                        }
+                    }
+                    EncodingResult::Trivial(false) => return SolverResult::Unsat,
+                    EncodingResult::Trivial(true) => {
+                        return SolverResult::Sat(Substitution::with_defaults())
                     }
                 }
-                EncodingResult::Trivial(false) => return SolverResult::Unsat,
-                EncodingResult::Trivial(true) => {
-                    return SolverResult::Sat(Substitution::with_defaults())
+            } else {
+                log::info!("Empty bounds, skipping");
+            }
+            if let Some(upper) = self.instance.get_upper_bound() {
+                if current_bounds.uppers_geq(upper as isize) {
+                    // We reached the user-imposed upper bound and did not find a solution
+                    // Return unknown
+                    log::info!("Reached set upper bound");
+                    return SolverResult::Unknown;
                 }
             }
-            if !self.bounds.next_square(self.max_bound.map(|v| v as isize)) {
-                break;
+
+            current_bounds.next_square_uppers();
+            if let Some(upper) = self.instance.get_upper_bound() {
+                current_bounds.clamp_uppers(upper as isize);
             }
+            effective_bounds = current_bounds.intersect(&limit_upper_bounds);
         }
-        SolverResult::Unsat
     }
 }
 
-fn sharpen_bounds(
-    eq: &WordEquation,
-    bounds: &IntegerDomainBounds,
-    vars: &VarManager,
-) -> IntegerDomainBounds {
+fn sharpen_bounds(eq: &WordEquation, bounds: &Bounds, vars: &VarManager) -> Bounds {
     let mut new_bounds = bounds.clone();
     // Todo: Cache this or do linearly
     let mut abs_consts: isize = 0;
@@ -283,11 +301,11 @@ fn sharpen_bounds(
             let abs_j = eq.lhs().count(&Symbol::Variable(var_j.clone())) as isize
                 - eq.rhs().count(&Symbol::Variable(var_j.clone())) as isize;
             if abs_j * denominator < 0 {
-                abs_k += abs_j * bounds.get_upper(var_j_len);
+                abs_k += abs_j * bounds.get_upper(var_j_len).unwrap();
             }
         }
         let sharpened = std::cmp::max((abs_consts - abs_k) / denominator, 0);
-        if sharpened < bounds.get_upper(var_k_len) {
+        if sharpened < bounds.get_upper(var_k_len).unwrap_or(isize::MAX) {
             new_bounds.set_upper(&var_k.len_var(), sharpened);
         }
     }
