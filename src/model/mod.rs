@@ -179,6 +179,19 @@ impl VarManager {
         self.by_name(&name)
     }
 
+    pub fn length_str_var(&self, var: &Variable) -> Option<&Variable> {
+        assert!(
+            var.sort == Sort::Int,
+            "Cannot get length of non-string variable {}",
+            var
+        );
+        let split = var.name().split("$").collect::<Vec<_>>();
+        assert_eq!(split.len(), 2);
+        assert_eq!(split[1], "len");
+        let name = split[0];
+        self.by_name(&name)
+    }
+
     /// Returns true iff the given variable represents the length of a string variable
     pub fn is_lenght_var(&self, var: &Variable) -> bool {
         self.vars

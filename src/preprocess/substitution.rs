@@ -3,15 +3,16 @@ use indexmap::IndexMap;
 use crate::{
     formula::{Atom, Formula, Predicate},
     model::{
+        linears::{LinearArithFactor, LinearArithTerm, LinearConstraint},
         words::{Pattern, Symbol, WordEquation},
-        Variable,
+        VarManager, Variable,
     },
     PreprocessingResult,
 };
 
 #[derive(Debug, Clone, Default)]
 pub struct Substitutions {
-    subs: IndexMap<Variable, Option<Pattern>>,
+    subs: IndexMap<Variable, Pattern>,
 }
 
 impl Substitutions {
@@ -27,15 +28,15 @@ impl Substitutions {
 
     pub fn add(&mut self, var: &Variable, pat: &Pattern) {
         let rhs = match self.subs.get(var) {
-            Some(Some(p)) => {
+            Some(p) => {
                 if p.len() < pat.len() {
-                    Some(pat.clone())
+                    pat.clone()
                 } else {
-                    Some(p.clone())
+                    p.clone()
                 }
             }
-            Some(None) => None,
-            None => Some(pat.clone()),
+
+            None => pat.clone(),
         };
         self.subs.insert(var.clone(), rhs.clone());
     }
@@ -47,19 +48,14 @@ impl Substitutions {
     }
 
     pub fn iter(&self) -> impl Iterator<Item = (&Variable, &Pattern)> {
-        self.subs
-            .iter()
-            .filter_map(|(v, p)| p.as_ref().map(|p| (v, p)))
-    }
-
-    pub fn conflicting(&self) -> bool {
-        self.subs.iter().any(|(_, p)| p.is_none())
+        self.subs.iter()
     }
 }
 
 fn apply_substitutions_predicate(
     pred: &Predicate,
     substitutions: &Substitutions,
+    var_manager: &VarManager,
 ) -> PreprocessingResult<Predicate> {
     match pred {
         Predicate::WordEquation(eq) => {
@@ -83,31 +79,74 @@ fn apply_substitutions_predicate(
             }
         }
         Predicate::RegularConstraint(_, _) => todo!(),
-        Predicate::LinearConstraint(_) => PreprocessingResult::Unchanged,
+        Predicate::LinearConstraint(lincon) => {
+            let mut lhs = LinearArithTerm::new();
+            for fac in lincon.lhs().iter() {
+                match fac {
+                    LinearArithFactor::VarCoeff(v, c) => {
+                        let str_var = var_manager.length_str_var(v).unwrap();
+                        match substitutions.subs.get(str_var) {
+                            Some(sub) => {
+                                if sub.is_constant() {
+                                    lhs.add_factor(LinearArithFactor::Const(
+                                        c * sub.len() as isize,
+                                    ));
+                                } else {
+                                    // Contains the variable, add another factor
+                                    lhs.add_factor(LinearArithFactor::VarCoeff(v.clone(), *c));
+                                    debug_assert!(
+                                        sub.count(&Symbol::Variable(str_var.clone())) == 1
+                                    );
+                                    lhs.add_factor(LinearArithFactor::Const(
+                                        *c * (sub.len() as isize - 1),
+                                    ));
+                                }
+                            }
+                            None => lhs.add_factor(LinearArithFactor::VarCoeff(v.clone(), *c)),
+                        }
+                    }
+                    LinearArithFactor::Const(c) => lhs.add_factor(LinearArithFactor::Const(*c)),
+                }
+            }
+            let mut new_rhs = LinearArithTerm::new();
+            new_rhs.add_factor(LinearArithFactor::Const(lincon.rhs()));
+            let new_lincon =
+                LinearConstraint::from_linear_arith_term(&lhs, &new_rhs, lincon.typ.clone());
+            log::info!(
+                "Applied substitutions {} to {}: {}",
+                substitutions,
+                lincon,
+                new_lincon
+            );
+            PreprocessingResult::Changed(Predicate::LinearConstraint(new_lincon))
+        }
     }
 }
 
 pub fn apply_substitutions(
     formula: &Formula,
     substitutions: &Substitutions,
+    var_manager: &VarManager,
 ) -> PreprocessingResult<Formula> {
     match formula {
         Formula::Atom(a) => match a {
-            Atom::Predicate(p) => match apply_substitutions_predicate(p, substitutions) {
-                PreprocessingResult::Unchanged => PreprocessingResult::Unchanged,
-                PreprocessingResult::Changed(c) => {
-                    PreprocessingResult::Changed(Formula::predicate(c))
+            Atom::Predicate(p) => {
+                match apply_substitutions_predicate(p, substitutions, var_manager) {
+                    PreprocessingResult::Unchanged => PreprocessingResult::Unchanged,
+                    PreprocessingResult::Changed(c) => {
+                        PreprocessingResult::Changed(Formula::predicate(c))
+                    }
+                    PreprocessingResult::False => PreprocessingResult::False,
+                    PreprocessingResult::True => PreprocessingResult::True,
                 }
-                PreprocessingResult::False => PreprocessingResult::False,
-                PreprocessingResult::True => PreprocessingResult::True,
-            },
+            }
             _ => PreprocessingResult::Unchanged,
         },
         Formula::Or(fs) => {
             let mut changed = false;
             let mut new_fs = Vec::new();
             for f in fs {
-                match apply_substitutions(f, substitutions) {
+                match apply_substitutions(f, substitutions, var_manager) {
                     PreprocessingResult::Unchanged => new_fs.push(f.clone()),
                     PreprocessingResult::Changed(c) => {
                         changed = true;
@@ -127,7 +166,7 @@ pub fn apply_substitutions(
             let mut changed = false;
             let mut new_fs = Vec::new();
             for f in fs {
-                match apply_substitutions(f, substitutions) {
+                match apply_substitutions(f, substitutions, var_manager) {
                     PreprocessingResult::Unchanged => new_fs.push(f.clone()),
                     PreprocessingResult::Changed(c) => {
                         changed = true;
@@ -143,7 +182,7 @@ pub fn apply_substitutions(
                 PreprocessingResult::Unchanged
             }
         }
-        Formula::Not(f) => match apply_substitutions(f, substitutions) {
+        Formula::Not(f) => match apply_substitutions(f, substitutions, var_manager) {
             PreprocessingResult::Unchanged => PreprocessingResult::Unchanged,
             PreprocessingResult::Changed(c) => PreprocessingResult::Changed(Formula::not(c)),
             PreprocessingResult::False => PreprocessingResult::True,

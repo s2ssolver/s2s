@@ -153,9 +153,6 @@ impl Bounds {
     /// Returns `None` if the variable is unbounded.
     pub fn get_upper(&self, var: &Variable) -> Option<isize> {
         let u = self.get(var).upper();
-        if let Some(0) = u {
-            panic!("Upper bound of {} is 0: {}", var, self);
-        }
         u
     }
 

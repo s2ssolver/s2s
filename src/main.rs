@@ -94,7 +94,7 @@ fn main() {
 
     // Preprocess the formula
     let ts = Instant::now();
-    match preprocess(instance.get_formula()) {
+    match preprocess(instance.get_formula(), instance.get_var_manager()) {
         PreprocessingResult::Unchanged => {
             log::debug!("No preprocessing applied.");
         }

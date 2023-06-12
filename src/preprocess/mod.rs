@@ -3,7 +3,10 @@ mod substitution;
 
 use std::fmt::Display;
 
-use crate::formula::{Atom, Formula, Predicate};
+use crate::{
+    formula::{Atom, Formula, Predicate},
+    model::VarManager,
+};
 
 use self::{
     equation::preprocess_word_equation,
@@ -161,7 +164,7 @@ pub fn preprocess_formula(formula: &Formula) -> PreprocessingResult<Formula> {
     }
 }
 
-pub fn preprocess(formula: &Formula) -> PreprocessingResult<Formula> {
+pub fn preprocess(formula: &Formula, var_manager: &VarManager) -> PreprocessingResult<Formula> {
     let mut changed = false;
 
     let mut preprocessed_fm = match preprocess_formula(formula) {
@@ -183,7 +186,7 @@ pub fn preprocess(formula: &Formula) -> PreprocessingResult<Formula> {
         }
     }
     log::debug!("Deduced substitutions: {}", substitutions);
-    preprocessed_fm = match apply_substitutions(&preprocessed_fm, &substitutions) {
+    preprocessed_fm = match apply_substitutions(&preprocessed_fm, &substitutions, var_manager) {
         PreprocessingResult::Unchanged => preprocessed_fm,
         PreprocessingResult::Changed(c) => {
             log::trace!("After applying substitutions: {}", c);
