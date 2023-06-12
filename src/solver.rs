@@ -165,11 +165,11 @@ impl Solver for ConjunctiveSolver {
             Bounds::infer(self.instance.get_formula(), self.instance.get_var_manager());
         log::info!("Found limit bounds: {}", limit_upper_bounds);
         // Make sure upper bounds for string variables are at least one, otherwise the encoding is not correct
-        for v in self.instance.get_var_manager().of_sort(Sort::String, true) {
-            if v.is_string() {
-                if let Some(0) = limit_upper_bounds.get(&v.len_var()).upper() {
+        for v in self.instance.get_var_manager().of_sort(Sort::Int, true) {
+            if self.instance.get_var_manager().is_lenght_var(v) {
+                if let Some(0) = limit_upper_bounds.get(v).upper() {
                     log::info!("Setting upper bound for {} to 1", v);
-                    limit_upper_bounds.set_upper(&v.len_var(), 1);
+                    limit_upper_bounds.set_upper(v, 1);
                 }
             }
         }
