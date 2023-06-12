@@ -295,6 +295,7 @@ impl LinearConstraint {
         rhs: &LinearArithTerm,
         typ: LinearConstraintType,
     ) -> Self {
+        log::info!("Creating constraint {} {} {}", lhs, typ, rhs);
         if let Some(mut c) = rhs.is_constant() {
             let mut lhs = lhs.clone();
             lhs.normalize();
@@ -304,14 +305,16 @@ impl LinearConstraint {
                     LinearArithFactor::VarCoeff(_, _) => {}
                     LinearArithFactor::Const(c2) => {
                         consts.push(fac.clone());
-                        c += c2;
+                        c -= c2;
                     }
                 }
             }
             for fac in consts {
                 lhs.remove_factor(&fac);
             }
-            Self { lhs, rhs: c, typ }
+            let res = Self { lhs, rhs: c, typ };
+            log::info!("Created constraint {}", res);
+            res
         } else {
             let mut lhs = lhs.subtract(rhs);
             lhs.normalize();
@@ -322,14 +325,16 @@ impl LinearConstraint {
                     LinearArithFactor::VarCoeff(_, _) => {}
                     LinearArithFactor::Const(c2) => {
                         consts.push(fac.clone());
-                        c += c2;
+                        c -= c2;
                     }
                 }
             }
             for fac in consts {
                 lhs.remove_factor(&fac);
             }
-            Self { lhs, rhs: 0, typ }
+            let res = Self { lhs, rhs: 0, typ };
+            log::info!("Created constraint {}", res);
+            res
         }
     }
 
