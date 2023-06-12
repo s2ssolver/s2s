@@ -8,7 +8,7 @@ use indexmap::IndexSet;
 use quickcheck::Arbitrary;
 
 use crate::{
-    formula::{ConstVal, Substitution},
+    formula::{Assignment, ConstVal},
     model::{Sort, Variable},
 };
 
@@ -182,7 +182,7 @@ impl Pattern {
 
     /// Applies a substitution to the pattern.
     /// Returns `None` if the substitution is not defined for all variables in the pattern.
-    pub fn substitute(&self, substitution: &Substitution) -> Option<String> {
+    pub fn substitute(&self, substitution: &Assignment) -> Option<String> {
         let mut res = String::new();
         for symbol in &self.symbols {
             match symbol {
@@ -294,7 +294,7 @@ impl WordEquation {
     /// Returns Some(true) if the substitution is a solution for the given equation.
     /// Return Some(false) if the substitution is not a solution for the given equation.
     /// Returns None if the substitution is not defined for all variables in the equation.
-    pub fn is_solution(&self, substitution: &Substitution) -> Option<bool> {
+    pub fn is_solution(&self, substitution: &Assignment) -> Option<bool> {
         match (
             self.lhs.substitute(substitution),
             self.rhs.substitute(substitution),
@@ -312,7 +312,7 @@ impl WordEquation {
             .collect()
     }
 
-    pub fn apply(&self, substitution: &Substitution) -> Option<Self> {
+    pub fn apply(&self, substitution: &Assignment) -> Option<Self> {
         let lhs = self.lhs.substitute(substitution)?;
         let rhs = self.rhs.substitute(substitution)?;
         Some(Self::constant(&lhs, &rhs))

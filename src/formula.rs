@@ -30,7 +30,7 @@ impl Predicate {
 
     /// Evaluate the truth value of this atom under the given substitution
     /// Returns None if the substitution is partial and the truth value depends on the missing assignments.
-    pub fn evaluate(&self, substitution: &Substitution) -> Option<bool> {
+    pub fn evaluate(&self, substitution: &Assignment) -> Option<bool> {
         match self {
             Predicate::WordEquation(eq) => eq.is_solution(substitution),
             Predicate::LinearConstraint(l) => l.is_solution(substitution),
@@ -49,8 +49,14 @@ impl Predicate {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Atom {
+    /// A predicate
     Predicate(Predicate),
+    /// A boolean variable
     BoolVar(Variable),
+    /// The constant true
+    True,
+    /// The constant false
+    False,
 }
 
 impl Atom {
@@ -61,23 +67,21 @@ impl Atom {
 
     /// Evaluate the truth value of this atom under the given substitution
     /// Returns None if the substitution is partial and the truth value depends on the missing assignments.
-    pub fn evaluate(&self, substitution: &Substitution) -> Option<bool> {
+    pub fn evaluate(&self, substitution: &Assignment) -> Option<bool> {
         match self {
             Atom::Predicate(p) => p.evaluate(substitution),
             Atom::BoolVar(v) => substitution.get(v).map(|f| match f {
                 ConstVal::Bool(b) => b,
                 _ => panic!("Variable {} is not a boolean", v),
             }),
+            Atom::True => Some(true),
+            Atom::False => Some(false),
         }
     }
 }
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Formula {
-    /// The constant true
-    True,
-    /// The constant false
-    False,
     /// An atom
     Atom(Atom),
     /// A disjunction
@@ -94,12 +98,11 @@ impl Formula {
         for f in fs {
             match f {
                 Formula::And(fs) => conjs.extend(fs),
-                Formula::True => (),
                 f => conjs.push(f),
             }
         }
         if conjs.is_empty() {
-            Self::True
+            Self::ftrue()
         } else if conjs.len() == 1 {
             conjs.into_iter().next().unwrap()
         } else {
@@ -107,12 +110,18 @@ impl Formula {
         }
     }
 
+    pub fn ftrue() -> Self {
+        Self::Atom(Atom::True)
+    }
+
+    pub fn ffalse() -> Self {
+        Self::Atom(Atom::True)
+    }
+
     /// Evaluate the formula under the given substitution
     /// Returns None if the substitution is partial and the value of the formula depends on the missing assignments.
-    pub fn evaluate(&self, substitution: &Substitution) -> Option<bool> {
+    pub fn evaluate(&self, substitution: &Assignment) -> Option<bool> {
         match self {
-            Formula::True => Some(true),
-            Formula::False => Some(false),
             Formula::Atom(a) => a.evaluate(substitution),
             Formula::Or(fs) => {
                 fs.iter()
@@ -140,7 +149,7 @@ impl Formula {
 
     pub fn is_conjunctive(&self) -> bool {
         match self {
-            Formula::True | Formula::False | Formula::Atom(_) => true,
+            Formula::Atom(_) => true,
             Formula::Or(_) => false,
             Formula::And(fs) => fs.iter().all(Self::is_conjunctive),
             Formula::Not(f) => f.is_conjunctive(),
@@ -149,7 +158,7 @@ impl Formula {
 
     pub fn num_atoms(&self) -> usize {
         match self {
-            Formula::True | Formula::False | Formula::Atom(_) => 1,
+            Formula::Atom(_) => 1,
             Formula::Or(fs) | Formula::And(fs) => fs.iter().map(Self::num_atoms).sum(),
             Formula::Not(f) => f.num_atoms(),
         }
@@ -157,7 +166,6 @@ impl Formula {
 
     pub fn asserted_atoms(&self) -> Vec<&Atom> {
         match self {
-            Formula::True | Formula::False => Vec::new(),
             Formula::Atom(a) => vec![a],
             Formula::Or(fs) => {
                 vec![]
@@ -172,10 +180,11 @@ impl Formula {
 
     pub fn alphabet(&self) -> IndexSet<char> {
         match self {
-            Formula::True | Formula::False => IndexSet::new(),
             Formula::Atom(a) => match a {
                 Atom::Predicate(p) => p.alphabet(),
                 Atom::BoolVar(_) => IndexSet::new(),
+                Atom::True => IndexSet::new(),
+                Atom::False => IndexSet::new(),
             },
             Formula::Or(fs) | Formula::And(fs) => fs
                 .iter()
@@ -228,13 +237,13 @@ impl ConstVal {
     }
 }
 
-/// A substitution of variables
-pub struct Substitution {
+/// An assignment of constant values to variables
+pub struct Assignment {
     assignments: HashMap<Variable, ConstVal>,
     defaults: bool,
 }
 
-impl Substitution {
+impl Assignment {
     /// Create a new substitution that maps all variables to their default value
     pub fn with_defaults() -> Self {
         Self {
@@ -281,7 +290,7 @@ impl Substitution {
     }
 }
 
-impl From<HashMap<Variable, Vec<char>>> for Substitution {
+impl From<HashMap<Variable, Vec<char>>> for Assignment {
     fn from(value: HashMap<Variable, Vec<char>>) -> Self {
         let mut sub = Self::with_defaults();
         for (var, val) in value {
@@ -318,6 +327,8 @@ impl Display for Atom {
         match self {
             Atom::Predicate(p) => write!(f, "{}", p),
             Atom::BoolVar(v) => write!(f, "{}", v),
+            Atom::True => write!(f, "true"),
+            Atom::False => write!(f, "false"),
         }
     }
 }
@@ -325,8 +336,6 @@ impl Display for Atom {
 impl Display for Formula {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Formula::True => write!(f, "true"),
-            Formula::False => write!(f, "false"),
             Formula::Atom(a) => write!(f, "{}", a),
             Formula::Or(fs) => {
                 write!(f, "(")?;
@@ -357,7 +366,7 @@ impl Display for Formula {
     }
 }
 
-impl Display for Substitution {
+impl Display for Assignment {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "[")?;
         for (var, val) in self.assignments.iter() {

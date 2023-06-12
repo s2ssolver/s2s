@@ -10,7 +10,7 @@ use crate::encode::{
     WordEquationEncoder,
 };
 
-use crate::formula::{Atom, ConstVal, Formula, Predicate, Substitution};
+use crate::formula::{Assignment, Atom, ConstVal, Formula, Predicate};
 use crate::model::words::Symbol;
 use crate::model::words::WordEquation;
 use crate::model::{Sort, VarManager};
@@ -22,7 +22,7 @@ use crate::sat::Cnf;
 /// The result of a satisfiability check
 pub enum SolverResult {
     /// The instance is satisfiable with the given model
-    Sat(Substitution),
+    Sat(Assignment),
     /// The instance is unsatisfiable
     Unsat,
     /// The solver could not determine the satisfiability of the instance
@@ -36,7 +36,7 @@ impl SolverResult {
     }
 
     /// Returns the model if the instance is satisfiable
-    pub fn get_model(&self) -> Option<&Substitution> {
+    pub fn get_model(&self) -> Option<&Assignment> {
         match self {
             SolverResult::Sat(model) => Some(model),
             _ => None,
@@ -228,7 +228,7 @@ impl Solver for ConjunctiveSolver {
                         );
                         time_solving += t_solving;
                         if let Some(true) = res {
-                            let mut model = Substitution::with_defaults();
+                            let mut model = Assignment::with_defaults();
                             for (v, s) in get_substitutions(
                                 self.domain_encoder.encoding(),
                                 self.instance.get_var_manager(),
@@ -251,7 +251,7 @@ impl Solver for ConjunctiveSolver {
                     }
                     EncodingResult::Trivial(false) => return SolverResult::Unsat,
                     EncodingResult::Trivial(true) => {
-                        return SolverResult::Sat(Substitution::with_defaults())
+                        return SolverResult::Sat(Assignment::with_defaults())
                     }
                 }
             } else {

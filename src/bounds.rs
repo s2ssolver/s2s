@@ -6,7 +6,7 @@ use std::{
 use indexmap::IndexMap;
 
 use crate::{
-    formula::{Atom, ConstVal, Formula, Predicate, Substitution},
+    formula::{Assignment, Atom, ConstVal, Formula, Predicate},
     model::{
         linears::{LinearArithFactor, LinearConstraint, LinearConstraintType},
         VarManager, Variable,
@@ -184,7 +184,7 @@ impl Bounds {
                         let newbounds = lincon_upper_bound(&lincon, &bounds);
                         bounds = bounds.intersect(&newbounds);
                     }
-                    Atom::BoolVar(_) | Atom::Predicate(_) => {}
+                    Atom::False | Atom::True | Atom::BoolVar(_) | Atom::Predicate(_) => {}
                 }
             }
             if bounds == bound_prev {
@@ -304,7 +304,7 @@ fn lincon_upper_bound(lincon: &LinearConstraint, bounds: &Bounds) -> Bounds {
                                     }
                                     if *other_coeff >= 0 {
                                         if let Some(lb) = bounds.get_lower(other_v) {
-                                            rhs_min.as_mut().map(|r| *r -= (lb * other_coeff));
+                                            rhs_min.as_mut().map(|r| *r -= lb * other_coeff);
                                         } else {
                                             rhs_min = None;
                                         }

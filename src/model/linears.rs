@@ -1,7 +1,7 @@
 use std::{collections::HashMap, fmt::Display, ops::Index};
 
 use crate::{
-    formula::{ConstVal, Substitution},
+    formula::{Assignment, ConstVal},
     model::words::Symbol,
 };
 
@@ -219,7 +219,7 @@ impl LinearArithTerm {
         Some(c)
     }
 
-    pub fn evaluate(&self, sub: &Substitution) -> Option<LinearArithTerm> {
+    pub fn evaluate(&self, sub: &Assignment) -> Option<LinearArithTerm> {
         let mut const_term = 0;
         let mut res = LinearArithTerm::new();
         for f in self.iter() {
@@ -341,7 +341,7 @@ impl LinearConstraint {
         self.rhs
     }
 
-    pub fn is_solution(&self, subs: &Substitution) -> Option<bool> {
+    pub fn is_solution(&self, subs: &Assignment) -> Option<bool> {
         let lhs = self.lhs.evaluate(subs)?.is_constant()?;
         match self.typ {
             LinearConstraintType::Eq => Some(lhs == self.rhs),

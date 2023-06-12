@@ -602,7 +602,7 @@ mod tests {
     use crate::{
         bounds::IntDomain,
         encode::domain::{get_substitutions, DomainEncoder},
-        formula::Substitution,
+        formula::Assignment,
         model::{words::Pattern, Sort, VarManager},
     };
 
@@ -639,7 +639,7 @@ mod tests {
         let res = solver.solve_with(assumptions.into_iter());
         if let Some(true) = res {
             let solution = get_substitutions(dom_encoder.encoding(), &vm, &solver);
-            let solution = Substitution::from(solution);
+            let solution = Assignment::from(solution);
 
             for ((i, c), v) in encoder.subs_lhs {
                 println!(
@@ -727,7 +727,7 @@ mod tests {
         match result {
             Some(true) => {
                 let sol = get_substitutions(dom_encoder.encoding(), &vm, &solver);
-                let solution = Substitution::from(sol);
+                let solution = Assignment::from(sol);
                 let svs = encoder.get_state_vars();
                 for j in 0..svs[0].len() {
                     print!("\t{}", j)
