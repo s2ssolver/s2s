@@ -1,3 +1,4 @@
+use std::cmp::max;
 use std::collections::HashMap;
 
 use indexmap::IndexSet;
@@ -160,9 +161,19 @@ impl ConjunctiveSolver {
 
 impl Solver for ConjunctiveSolver {
     fn solve(&mut self) -> SolverResult {
-        let limit_upper_bounds =
+        let mut limit_upper_bounds =
             Bounds::infer(self.instance.get_formula(), self.instance.get_var_manager());
         log::info!("Found limit bounds: {}", limit_upper_bounds);
+        // Make sure upper bounds for string variables are at least one, otherwise the encoding is not correct
+        for v in self.instance.get_var_manager().of_sort(Sort::String, true) {
+            if v.is_string() {
+                if let Some(0) = limit_upper_bounds.get(&v.len_var()).upper() {
+                    log::info!("Setting upper bound for {} to 1", v);
+                    limit_upper_bounds.set_upper(&v.len_var(), 1);
+                }
+            }
+        }
+        log::debug!("Adjusted limit bounds: {}", limit_upper_bounds);
         if limit_upper_bounds.any_empty() {
             log::info!("Empty upper bounds, unsat");
             return SolverResult::Unsat;
@@ -191,9 +202,9 @@ impl Solver for ConjunctiveSolver {
 
         loop {
             log::info!("Current bounds {}", effective_bounds);
-
             if !effective_bounds.any_empty() {
                 let ts = Instant::now();
+
                 let encoding = self.encode_bounded(&effective_bounds);
                 let elapsed = ts.elapsed().as_millis();
                 log::info!("Encoding took {} ms", elapsed);
@@ -306,7 +317,7 @@ fn sharpen_bounds(eq: &WordEquation, bounds: &Bounds, vars: &VarManager) -> Boun
         }
         let sharpened = std::cmp::max((abs_consts - abs_k) / denominator, 0);
         if sharpened < bounds.get_upper(var_k_len).unwrap_or(isize::MAX) {
-            new_bounds.set_upper(&var_k.len_var(), sharpened);
+            new_bounds.set_upper(&var_k.len_var(), max(sharpened, 1));
         }
     }
     new_bounds
