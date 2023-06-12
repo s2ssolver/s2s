@@ -150,7 +150,12 @@ fn strip_suffix(weq: &WordEquation) -> PreprocessingResult<WordEquation> {
 fn strip(weq: &WordEquation) -> PreprocessingResult<WordEquation> {
     match strip_prefix(weq) {
         PreprocessingResult::Unchanged => strip_suffix(&weq),
-        PreprocessingResult::Changed(w) => strip_suffix(&w),
+        PreprocessingResult::Changed(w) => match strip_suffix(&w) {
+            PreprocessingResult::Unchanged => PreprocessingResult::Changed(w),
+            PreprocessingResult::Changed(c) => PreprocessingResult::Changed(c),
+            PreprocessingResult::False => PreprocessingResult::False,
+            PreprocessingResult::True => PreprocessingResult::True,
+        },
         PreprocessingResult::False => PreprocessingResult::False,
         PreprocessingResult::True => PreprocessingResult::True,
     }
