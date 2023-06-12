@@ -94,7 +94,9 @@ fn main() {
 
     // Preprocess the formula
     match preprocess(instance.get_formula()) {
-        PreprocessingResult::Unchanged => {}
+        PreprocessingResult::Unchanged => {
+            log::debug!("No preprocessing applied.");
+        }
         PreprocessingResult::Changed(c) => instance.set_formula(c),
         PreprocessingResult::False => {
             println!("unsat");

@@ -28,6 +28,16 @@ impl Symbol {
             Symbol::Variable(v) => v.sort() == Sort::String,
         }
     }
+
+    /// Returns true iff the symbol is a constant word.
+    pub fn is_constant(&self) -> bool {
+        matches!(self, Symbol::Constant(_))
+    }
+
+    /// Returns true iff the symbol is a variable.
+    pub fn is_variable(&self) -> bool {
+        matches!(self, Symbol::Variable(_))
+    }
 }
 
 /// A pattern is a sequence of symbols, which can be either constant words or variables (of sort String).
@@ -304,6 +314,14 @@ impl WordEquation {
 
     pub fn variables(&self) -> IndexSet<Variable> {
         self.lhs.vars().union(&self.rhs.vars()).cloned().collect()
+    }
+
+    /// Returns the set of symbols that occur in the equation.
+    pub fn symbols(&self) -> IndexSet<Symbol> {
+        let mut res = IndexSet::new();
+        res.extend(self.lhs.symbols().cloned());
+        res.extend(self.rhs.symbols().cloned());
+        res
     }
 
     /// Returns Some(true) if the substitution is a solution for the given equation.

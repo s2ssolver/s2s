@@ -6,21 +6,26 @@ use super::PreprocessingResult;
 
 /// Preprocesses the given word equation by stripping the longest common prefix and suffix from both sides.
 pub fn preprocess_word_equation(weq: &WordEquation) -> PreprocessingResult<WordEquation> {
+    log::trace!("Preprocessing word equation {}", weq);
     // Strip longest common constant prefix / suffix
     let mut preprocessed = strip(weq);
+    log::trace!("After stripping constants {}", preprocessed);
 
     // Check constant prefix/suffix matching
     preprocessed = preprocessed.and_then(|eq| match_const_prefix_suffix(&eq));
+    log::trace!("After matching constants {}", preprocessed);
 
-    // Check Parikh matrix
+    // Check Parikh matrix for suffixes
+    preprocessed = preprocessed.and_then(|eq| check_parikh(&eq));
+    log::trace!("After checking parikh {}", preprocessed);
 
     //Check factorization
 
     // Reduce trivial cases
     preprocessed = preprocessed.and_then(|eq| reduce_trivial(&eq));
 
-    if let PreprocessingResult::Changed(sripped) = &preprocessed {
-        log::debug!("Stripped {} to {}", weq, sripped);
+    if let PreprocessingResult::Changed(prepr) = &preprocessed {
+        log::debug!("Preprocessed {} to {}", weq, prepr);
     }
     preprocessed
 }
@@ -98,10 +103,36 @@ fn strip_suffix(weq: &WordEquation) -> PreprocessingResult<WordEquation> {
 fn strip(weq: &WordEquation) -> PreprocessingResult<WordEquation> {
     match strip_prefix(weq) {
         PreprocessingResult::Unchanged => PreprocessingResult::Unchanged,
-        PreprocessingResult::Changed(w) => strip_suffix(&weq),
+        PreprocessingResult::Changed(w) => strip_suffix(&w),
         PreprocessingResult::False => PreprocessingResult::False,
         PreprocessingResult::True => PreprocessingResult::True,
     }
+}
+
+/// Checks whether we can obtain suffixes by removing the prefix of the same length from both sides for which Parikk vectors of constants are equal, but the Parikh vectors of variables are not. In that case the equation has no solution.
+fn check_parikh(weq: &WordEquation) -> PreprocessingResult<WordEquation> {
+    let max = min(weq.lhs().length(), weq.rhs().length());
+    let symbols = weq.symbols();
+    for i in 0..max {
+        let mut vars_align = true;
+        let mut const_align = true;
+        let lhs = weq.lhs().factor(i, weq.lhs().length()).unwrap();
+        let rhs = weq.rhs().factor(i, weq.rhs().length()).unwrap();
+        for s in &symbols {
+            if lhs.count(s) != rhs.count(s) {
+                if s.is_constant() {
+                    const_align = false;
+                } else {
+                    vars_align = false;
+                }
+            }
+        }
+        if vars_align && !const_align {
+            return PreprocessingResult::False;
+        }
+    }
+
+    PreprocessingResult::Unchanged
 }
 
 #[cfg(test)]
