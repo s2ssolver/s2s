@@ -8,5 +8,5 @@ mod sat;
 mod solver;
 
 pub use parse::Parser;
-pub use preprocess::preprocess;
+pub use preprocess::{preprocess, PreprocessingResult};
 pub use solver::{ConjunctiveSolver, Solver, SolverResult};

@@ -85,7 +85,7 @@ pub fn parse_smt<R: BufRead>(smt: R) -> Result<Instance, ParseError> {
     }
 
     let fm = match asserts.len() {
-        0 => Formula::ftrue(),
+        0 => Formula::ttrue(),
         1 => asserts.pop().unwrap(),
         _ => Formula::and(asserts),
     };
@@ -162,7 +162,7 @@ impl<'a> Visitor<ALL> for FormulaBuilder<'a> {
             Term::Constant(_) => todo!(),
             Term::Variable(_) => todo!(),
             Term::CoreOp(op) => match op.as_ref() {
-                aws_smt_ir::CoreOp::True => ControlFlow::Break(Ok(Formula::ftrue())),
+                aws_smt_ir::CoreOp::True => ControlFlow::Break(Ok(Formula::ttrue())),
                 aws_smt_ir::CoreOp::False => ControlFlow::Break(Ok(Formula::ffalse())),
                 aws_smt_ir::CoreOp::Not(f) => f.visit_with(self).map_break(|t| match t {
                     Ok(t) => Ok(Formula::Not(Box::new(t))),

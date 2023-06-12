@@ -2,7 +2,7 @@ use std::{path::Path, process::exit};
 
 use clap::{Parser as ClapParser, ValueEnum};
 
-use satstr::{preprocess, ConjunctiveSolver, Parser, Solver};
+use satstr::{preprocess, ConjunctiveSolver, Parser, PreprocessingResult, Solver};
 #[derive(ClapParser, Debug)]
 #[command(author, version, about, long_about = None)] // Read from `Cargo.toml`
 struct Options {
@@ -91,7 +91,20 @@ fn main() {
         instance.set_print_model(true);
     }
     instance.set_lbound(cli.min_bound);
-    instance.set_formula(preprocess(instance.get_formula()));
+
+    // Preprocess the formula
+    match preprocess(instance.get_formula()) {
+        PreprocessingResult::Unchanged => {}
+        PreprocessingResult::Changed(c) => instance.set_formula(c),
+        PreprocessingResult::False => {
+            println!("unsat");
+            return;
+        }
+        PreprocessingResult::True => {
+            println!("sat");
+            return;
+        }
+    }
 
     let mut solver = ConjunctiveSolver::new(instance.clone()).unwrap();
 

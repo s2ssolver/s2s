@@ -13,7 +13,7 @@ use crate::model::{
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum Predicate {
     WordEquation(WordEquation),
-    RegulaConstraint(Pattern, Regex),
+    RegularConstraint(Pattern, Regex),
     LinearConstraint(LinearConstraint),
 }
 
@@ -25,7 +25,7 @@ impl Predicate {
 
     /// Create a new predicate from a regular constraint
     pub fn regular_constraint(p: Pattern, r: Regex) -> Self {
-        Self::RegulaConstraint(p, r)
+        Self::RegularConstraint(p, r)
     }
 
     /// Evaluate the truth value of this atom under the given substitution
@@ -34,7 +34,7 @@ impl Predicate {
         match self {
             Predicate::WordEquation(eq) => eq.is_solution(substitution),
             Predicate::LinearConstraint(l) => l.is_solution(substitution),
-            Predicate::RegulaConstraint(_p, _r) => todo!(), // Derivate r w.r.t. p.substitute()
+            Predicate::RegularConstraint(_p, _r) => todo!(), // Derivate r w.r.t. p.substitute()
         }
     }
 
@@ -42,7 +42,7 @@ impl Predicate {
         match self {
             Predicate::WordEquation(eq) => eq.alphabet(),
             Predicate::LinearConstraint(_) => IndexSet::new(),
-            Predicate::RegulaConstraint(_, _) => todo!("Regular Constraints not supported yet"),
+            Predicate::RegularConstraint(_, _) => todo!("Regular Constraints not supported yet"),
         }
     }
 }
@@ -93,6 +93,22 @@ pub enum Formula {
 }
 
 impl Formula {
+    pub fn ttrue() -> Self {
+        Self::Atom(Atom::True)
+    }
+
+    pub fn ffalse() -> Self {
+        Self::Atom(Atom::True)
+    }
+
+    pub fn bool(var: Variable) -> Self {
+        Self::Atom(Atom::BoolVar(var))
+    }
+
+    pub fn predicate(pred: Predicate) -> Self {
+        Self::Atom(Atom::Predicate(pred))
+    }
+
     pub fn and(fs: Vec<Formula>) -> Self {
         let mut conjs = Vec::new();
         for f in fs {
@@ -102,7 +118,7 @@ impl Formula {
             }
         }
         if conjs.is_empty() {
-            Self::ftrue()
+            Self::ttrue()
         } else if conjs.len() == 1 {
             conjs.into_iter().next().unwrap()
         } else {
@@ -110,12 +126,28 @@ impl Formula {
         }
     }
 
-    pub fn ftrue() -> Self {
-        Self::Atom(Atom::True)
+    pub fn or(fs: Vec<Formula>) -> Self {
+        let mut disj = Vec::new();
+        for f in fs {
+            match f {
+                Formula::Or(fs) => disj.extend(fs),
+                f => disj.push(f),
+            }
+        }
+        if disj.is_empty() {
+            Self::ffalse()
+        } else if disj.len() == 1 {
+            disj.into_iter().next().unwrap()
+        } else {
+            Self::Or(disj)
+        }
     }
 
-    pub fn ffalse() -> Self {
-        Self::Atom(Atom::True)
+    pub fn not(f: Formula) -> Self {
+        match f {
+            Formula::Not(f) => *f,
+            f => Self::Not(Box::new(f)),
+        }
     }
 
     /// Evaluate the formula under the given substitution
@@ -316,7 +348,7 @@ impl Display for Predicate {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Predicate::WordEquation(weq) => write!(f, "{}", weq),
-            Predicate::RegulaConstraint(_, _) => todo!(),
+            Predicate::RegularConstraint(_, _) => todo!(),
             Predicate::LinearConstraint(c) => write!(f, "{}", c),
         }
     }

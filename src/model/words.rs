@@ -73,6 +73,16 @@ impl Pattern {
         alphabet
     }
 
+    /// Returns the first symbol of the pattern, if it exists.
+    pub fn first(&self) -> Option<&Symbol> {
+        self.symbols.first()
+    }
+
+    /// Returns the last symbol of the pattern, if it exists.
+    pub fn last(&self) -> Option<&Symbol> {
+        self.symbols.last()
+    }
+
     pub fn count(&self, symbol: &Symbol) -> usize {
         self.symbols.iter().filter(|x| x == &symbol).count()
     }
@@ -194,6 +204,11 @@ impl Pattern {
             }
         }
         Some(res)
+    }
+
+    /// Returns true iff the pattern is empty.
+    pub fn is_empty(&self) -> bool {
+        self.symbols.is_empty()
     }
 }
 

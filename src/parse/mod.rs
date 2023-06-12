@@ -117,7 +117,7 @@ impl Parser {
 fn parse_woorpje(input: &str) -> Result<Instance, ParseError> {
     let mut vm = VarManager::new();
     let mut alphabet = IndexSet::new();
-    let mut formula = Formula::ftrue();
+    let mut formula = Formula::ttrue();
 
     for line in input.lines() {
         let mut tokens = line.split_ascii_whitespace();

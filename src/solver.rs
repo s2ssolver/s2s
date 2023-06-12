@@ -79,7 +79,7 @@ impl ConjunctiveSolver {
     fn inst_encoder(predicate: &Predicate) -> Box<dyn PredicateEncoder> {
         match predicate {
             Predicate::WordEquation(eq) => Box::new(BindepEncoder::new(eq.clone())),
-            Predicate::RegulaConstraint(_, _) => todo!(),
+            Predicate::RegularConstraint(_, _) => todo!(),
             Predicate::LinearConstraint(lc) => Box::new(MddEncoder::new(lc.clone())),
         }
     }
