@@ -1,4 +1,4 @@
-use std::{path::Path, process::exit};
+use std::{path::Path, process::exit, time::Instant};
 
 use clap::{Parser as ClapParser, ValueEnum};
 
@@ -93,6 +93,7 @@ fn main() {
     instance.set_lbound(cli.min_bound);
 
     // Preprocess the formula
+    let ts = Instant::now();
     match preprocess(instance.get_formula()) {
         PreprocessingResult::Unchanged => {
             log::debug!("No preprocessing applied.");
@@ -107,6 +108,7 @@ fn main() {
             return;
         }
     }
+    log::info!("Preprocessing done ({}ms).", ts.elapsed().as_millis());
 
     let mut solver = ConjunctiveSolver::new(instance.clone()).unwrap();
 

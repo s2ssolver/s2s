@@ -1,10 +1,14 @@
 mod equation;
+mod substitution;
 
 use std::fmt::Display;
 
 use crate::formula::{Atom, Formula, Predicate};
 
-use self::equation::preprocess_word_equation;
+use self::{
+    equation::preprocess_word_equation,
+    substitution::{apply_substitutions, infer_subsitutions, Substitutions},
+};
 
 #[derive(Debug, Clone)]
 pub enum PreprocessingResult<T> {
@@ -36,9 +40,13 @@ impl<T> PreprocessingResult<T> {
 
     /// Returns [self] if the option is [PreprocessingResult::Unchanged], [PreprocessingResult::False], or [PreprocessingResult::True], otherwise calls f with the wrapped value and returns the result.
     /// If f returns [PreprocessingResult::Unchanged], returns [self].
-    pub fn and_then<F: FnOnce(&T) -> PreprocessingResult<T>>(self, f: F) -> PreprocessingResult<T> {
+    pub fn and_then_or<F: FnOnce(&T) -> PreprocessingResult<T>>(
+        self,
+        f: F,
+        default: &T,
+    ) -> PreprocessingResult<T> {
         match self {
-            PreprocessingResult::Unchanged => PreprocessingResult::Unchanged,
+            PreprocessingResult::Unchanged => f(default),
             PreprocessingResult::Changed(c) => {
                 let next = f(&c);
                 match next {
@@ -65,7 +73,6 @@ impl<T> PreprocessingResult<T> {
 }
 
 fn preprocess_predicate(pred: &Predicate) -> PreprocessingResult<Predicate> {
-    log::trace!("Preprocessing Predicate {}", pred);
     match pred {
         Predicate::WordEquation(weq) => match preprocess_word_equation(weq) {
             PreprocessingResult::Unchanged => PreprocessingResult::Unchanged,
@@ -89,7 +96,6 @@ fn preprocess_predicate(pred: &Predicate) -> PreprocessingResult<Predicate> {
  */
 /// Preprocesses the given formula
 pub fn preprocess_formula(formula: &Formula) -> PreprocessingResult<Formula> {
-    log::trace!("Preprocessing Formula {}", formula);
     match formula {
         Formula::Atom(a) => match a {
             Atom::Predicate(p) => match preprocess_predicate(p) {
@@ -156,12 +162,55 @@ pub fn preprocess_formula(formula: &Formula) -> PreprocessingResult<Formula> {
 }
 
 pub fn preprocess(formula: &Formula) -> PreprocessingResult<Formula> {
-    // Apply preprocessing steps
-    let mut preprocessed = preprocess_formula(formula);
+    let mut changed = false;
+
+    let mut preprocessed_fm = match preprocess_formula(formula) {
+        PreprocessingResult::Unchanged => formula.clone(),
+        PreprocessingResult::Changed(c) => {
+            changed = true;
+            c
+        }
+        // Stop early
+        PreprocessingResult::False => return PreprocessingResult::False,
+        PreprocessingResult::True => return PreprocessingResult::True,
+    };
 
     // Deduce substitutions
+    let mut substitutions: Substitutions = Substitutions::new();
+    for a in preprocessed_fm.asserted_atoms() {
+        if let Atom::Predicate(p) = a {
+            substitutions.extend(&infer_subsitutions(p));
+        }
+    }
+    log::debug!("Deduced substitutions: {}", substitutions);
+    preprocessed_fm = match apply_substitutions(&preprocessed_fm, &substitutions) {
+        PreprocessingResult::Unchanged => preprocessed_fm,
+        PreprocessingResult::Changed(c) => {
+            log::trace!("After applying substitutions: {}", c);
+            changed = true;
+            c
+        }
+        // Stop early
+        PreprocessingResult::False => return PreprocessingResult::False,
+        PreprocessingResult::True => return PreprocessingResult::True,
+    };
+    // Apply another round of preprocessing steps
+    let preprocessed_fm = match preprocess_formula(&preprocessed_fm) {
+        PreprocessingResult::Unchanged => preprocessed_fm,
+        PreprocessingResult::Changed(c) => {
+            changed = true;
+            c
+        }
+        // Stop early
+        PreprocessingResult::False => return PreprocessingResult::False,
+        PreprocessingResult::True => return PreprocessingResult::True,
+    };
 
-    preprocessed
+    if changed {
+        PreprocessingResult::Changed(preprocessed_fm)
+    } else {
+        PreprocessingResult::Unchanged
+    }
 }
 
 impl<T: Display> Display for PreprocessingResult<T> {
@@ -172,5 +221,15 @@ impl<T: Display> Display for PreprocessingResult<T> {
             PreprocessingResult::False => write!(f, "False"),
             PreprocessingResult::True => write!(f, "True"),
         }
+    }
+}
+
+impl Display for Substitutions {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{{")?;
+        for (a, b) in self.iter() {
+            write!(f, "{} -> {}, ", a, b)?;
+        }
+        write!(f, "}}")
     }
 }

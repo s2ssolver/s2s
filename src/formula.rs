@@ -284,6 +284,14 @@ impl Assignment {
         }
     }
 
+    /// Create a new substitution that maps no variables
+    pub fn empty() -> Self {
+        Self {
+            assignments: HashMap::new(),
+            defaults: false,
+        }
+    }
+
     /// Set the value of a variable.
     /// Panics if the variable is already assigned or if the sort of the value does not match the sort of the variable.
     pub fn set(&mut self, var: &Variable, val: ConstVal) {

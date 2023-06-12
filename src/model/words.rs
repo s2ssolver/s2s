@@ -68,7 +68,7 @@ impl Pattern {
         Self::new(vec![Symbol::Variable(var.clone())])
     }
 
-    pub fn length(&self) -> usize {
+    pub fn len(&self) -> usize {
         self.symbols.len()
     }
 
@@ -126,6 +126,19 @@ impl Pattern {
         self
     }
 
+    /// Replaces all occurrences of the given symbol in the pattern with the given replacement and returns the result.
+    pub fn replace(&self, symbol: &Symbol, replacement: &Pattern) -> Self {
+        let mut res = vec![];
+        for s in &self.symbols {
+            if s == symbol {
+                res.extend(replacement.symbols.iter().cloned());
+            } else {
+                res.push(s.clone());
+            }
+        }
+        Self::new(res)
+    }
+
     pub fn append_word(&mut self, word: &str) -> &mut Self {
         for c in word.chars() {
             self.append(&Symbol::Constant(c));
@@ -181,7 +194,7 @@ impl Pattern {
     }
 
     pub fn starts_with(&self, other: &Self) -> bool {
-        if other.length() > self.length() {
+        if other.len() > self.len() {
             return false;
         }
         for (i, symbol) in other.symbols.iter().enumerate() {
@@ -355,6 +368,15 @@ impl WordEquation {
 impl Display for WordEquation {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "{} = {}", self.lhs, self.rhs)
+    }
+}
+
+impl Display for Symbol {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Symbol::Constant(c) => write!(f, "{}", c),
+            Symbol::Variable(v) => write!(f, "{}", v),
+        }
     }
 }
 

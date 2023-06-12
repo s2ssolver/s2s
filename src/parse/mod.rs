@@ -76,6 +76,10 @@ impl Instance {
         &self.formula
     }
 
+    pub fn get_formula_mut(&mut self) -> &mut Formula {
+        &mut self.formula
+    }
+
     pub fn get_var_manager(&self) -> &VarManager {
         &self.var_manager
     }

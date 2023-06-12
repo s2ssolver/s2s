@@ -6,50 +6,87 @@ use super::PreprocessingResult;
 
 /// Preprocesses the given word equation by stripping the longest common prefix and suffix from both sides.
 pub fn preprocess_word_equation(weq: &WordEquation) -> PreprocessingResult<WordEquation> {
-    log::trace!("Preprocessing word equation {}", weq);
     // Strip longest common constant prefix / suffix
-    let mut preprocessed = strip(weq);
-    log::trace!("After stripping constants {}", preprocessed);
+    let mut changed = false;
+    let mut preprocessed = weq.clone();
+    preprocessed = match strip(weq) {
+        PreprocessingResult::Unchanged => preprocessed,
+        PreprocessingResult::Changed(c) => {
+            log::trace!("Stripping constants {} -> {}", preprocessed, c);
+            changed = true;
+            c
+        }
+        PreprocessingResult::False => return PreprocessingResult::False,
+        PreprocessingResult::True => return PreprocessingResult::True,
+    };
 
     // Check constant prefix/suffix matching
-    preprocessed = preprocessed.and_then(|eq| match_const_prefix_suffix(&eq));
-    log::trace!("After matching constants {}", preprocessed);
+    preprocessed = match match_const_prefix_suffix(&preprocessed) {
+        PreprocessingResult::Unchanged => preprocessed,
+        PreprocessingResult::Changed(c) => {
+            changed = true;
+            c
+        }
+        PreprocessingResult::False => {
+            log::trace!("Found mismatching constants: {}", preprocessed);
+            return PreprocessingResult::False;
+        }
+        PreprocessingResult::True => return PreprocessingResult::True,
+    };
 
     // Check Parikh matrix for suffixes
-    preprocessed = preprocessed.and_then(|eq| check_parikh(&eq));
-    log::trace!("After checking parikh {}", preprocessed);
+    //preprocessed = preprocessed.and_then(|eq| check_parikh(&eq));
+    //log::trace!("After checking parikh {}", preprocessed);
 
     //Check factorization
 
     // Reduce trivial cases
-    preprocessed = preprocessed.and_then(|eq| reduce_trivial(&eq));
+    preprocessed = match reduce_trivial(&preprocessed) {
+        PreprocessingResult::Unchanged => preprocessed.clone(),
+        PreprocessingResult::Changed(c) => {
+            changed = true;
+            c
+        }
+        PreprocessingResult::False => {
+            log::trace!("Reduced to false: {}", preprocessed);
+            return PreprocessingResult::False;
+        }
+        PreprocessingResult::True => {
+            log::trace!("Reduced to true: {}", preprocessed);
+            return PreprocessingResult::True;
+        }
+    };
 
-    if let PreprocessingResult::Changed(prepr) = &preprocessed {
-        log::debug!("Preprocessed {} to {}", weq, prepr);
+    if changed {
+        PreprocessingResult::Changed(preprocessed.clone())
+    } else {
+        PreprocessingResult::Unchanged
     }
-    preprocessed
 }
 
 /// Strips the longest common prefix from both sides of the given word equation and returns the result.
 fn strip_prefix(weq: &WordEquation) -> PreprocessingResult<WordEquation> {
     let mut i = 0;
-    let n = weq.lhs().length();
-    let m = weq.rhs().length();
+    let n = weq.lhs().len();
+    let m = weq.rhs().len();
     while i < min(n, m) {
         if weq.lhs()[i] != weq.rhs()[i] {
             break;
         }
+
         i += 1;
     }
-
-    let lhs_new = weq.lhs().factor(i, n).unwrap();
-    let rhs_new = weq.rhs().factor(i, m).unwrap();
 
     if i == 0 {
         PreprocessingResult::Unchanged
     } else {
+        let lhs_new = weq.lhs().factor(i, n).unwrap();
+        let rhs_new = weq.rhs().factor(i, m).unwrap();
+
         let processed = WordEquation::new(lhs_new, rhs_new);
-        PreprocessingResult::Changed(processed)
+        let res = PreprocessingResult::Changed(processed);
+
+        res
     }
 }
 
@@ -82,8 +119,18 @@ fn match_const_prefix_suffix(weq: &WordEquation) -> PreprocessingResult<WordEqua
 fn reduce_trivial(weq: &WordEquation) -> PreprocessingResult<WordEquation> {
     if weq.lhs().is_empty() && weq.rhs().is_empty() {
         return PreprocessingResult::True;
-    } else if weq.lhs().is_empty() ^ weq.rhs().is_empty() {
-        return PreprocessingResult::False;
+    } else if weq.lhs().is_empty() {
+        if weq.rhs().contains_constant() {
+            return PreprocessingResult::False;
+        } else {
+            return PreprocessingResult::True;
+        }
+    } else if weq.rhs().is_empty() {
+        if weq.lhs().contains_constant() {
+            return PreprocessingResult::False;
+        } else {
+            return PreprocessingResult::True;
+        }
     }
 
     PreprocessingResult::Unchanged
@@ -102,7 +149,7 @@ fn strip_suffix(weq: &WordEquation) -> PreprocessingResult<WordEquation> {
 /// Strips the longest common prefix and suffix from both sides of the given word equation and returns the result.
 fn strip(weq: &WordEquation) -> PreprocessingResult<WordEquation> {
     match strip_prefix(weq) {
-        PreprocessingResult::Unchanged => PreprocessingResult::Unchanged,
+        PreprocessingResult::Unchanged => strip_suffix(&weq),
         PreprocessingResult::Changed(w) => strip_suffix(&w),
         PreprocessingResult::False => PreprocessingResult::False,
         PreprocessingResult::True => PreprocessingResult::True,
@@ -111,13 +158,13 @@ fn strip(weq: &WordEquation) -> PreprocessingResult<WordEquation> {
 
 /// Checks whether we can obtain suffixes by removing the prefix of the same length from both sides for which Parikk vectors of constants are equal, but the Parikh vectors of variables are not. In that case the equation has no solution.
 fn check_parikh(weq: &WordEquation) -> PreprocessingResult<WordEquation> {
-    let max = min(weq.lhs().length(), weq.rhs().length());
+    let max = min(weq.lhs().len(), weq.rhs().len());
     let symbols = weq.symbols();
     for i in 0..max {
         let mut vars_align = true;
         let mut const_align = true;
-        let lhs = weq.lhs().factor(i, weq.lhs().length()).unwrap();
-        let rhs = weq.rhs().factor(i, weq.rhs().length()).unwrap();
+        let lhs = weq.lhs().factor(i, weq.lhs().len()).unwrap();
+        let rhs = weq.rhs().factor(i, weq.rhs().len()).unwrap();
         for s in &symbols {
             if lhs.count(s) != rhs.count(s) {
                 if s.is_constant() {
