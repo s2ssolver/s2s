@@ -1,8 +1,11 @@
-use std::{fmt::Display, sync::atomic::AtomicUsize};
+use std::{collections::HashMap, fmt::Display, sync::atomic::AtomicUsize};
 
 use indexmap::IndexMap;
 
-pub mod linears;
+use self::{integer::IntArithTerm, words::Pattern};
+
+pub mod formula;
+pub mod integer;
 pub mod regex;
 pub mod words;
 
@@ -12,16 +15,6 @@ pub enum Sort {
     String,
     Int,
     Bool,
-}
-
-impl Display for Sort {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Sort::String => write!(f, "String"),
-            Sort::Int => write!(f, "Int"),
-            Sort::Bool => write!(f, "Bool"),
-        }
-    }
 }
 
 /// Representation of a variable of a certain sort
@@ -79,12 +72,6 @@ impl Variable {
         );
         let name = format!("{}$len", self.name());
         Variable::new_transient(name, Sort::Int)
-    }
-}
-
-impl Display for Variable {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.name)
     }
 }
 
@@ -198,5 +185,164 @@ impl VarManager {
             .get(&var.name)
             .map(|v| v.name.ends_with("$len"))
             .unwrap_or(false)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct VarSubstitutions {
+    str: IndexMap<Variable, Pattern>,
+    int: IndexMap<Variable, IntArithTerm>,
+    bool: IndexMap<Variable, bool>,
+
+    use_defaults: bool,
+}
+
+/// A substitution of [variables](Variable) by terms.
+/// A variable of sort [string](Sort::String) can be substituted by [Pattern], a variable of sort [int](Sort::Int) can be substituted by an [IntArithTerm].
+
+impl VarSubstitutions {
+    pub fn new() -> Self {
+        Self {
+            str: IndexMap::new(),
+            int: IndexMap::new(),
+            bool: IndexMap::new(),
+            use_defaults: false,
+        }
+    }
+
+    pub fn use_defaults(&mut self) {
+        self.use_defaults = true;
+    }
+
+    /// Returns true if the substitution is an assignemt.
+    /// We call a substitution an assignment if it substitutes variables with constants.
+    pub fn is_assignment(&self) -> bool {
+        for (_, val) in &self.str {
+            if !val.is_constant() {
+                return false;
+            }
+        }
+        for (_, val) in &self.int {
+            if val.is_constant().is_none() {
+                return false;
+            }
+        }
+        true
+    }
+
+    pub fn get_str(&self, var: &Variable) -> Option<Pattern> {
+        match var.sort {
+            Sort::String => {
+                let res = self.str.get(var);
+                if res.is_none() && self.use_defaults {
+                    Some(Pattern::empty())
+                } else {
+                    res.cloned()
+                }
+            }
+            _ => panic!("Variable {} is not of sort string", var),
+        }
+    }
+
+    pub fn set_str(&mut self, var: &Variable, val: Pattern) {
+        match var.sort {
+            Sort::String => self.str.insert(var.clone(), val),
+            _ => panic!("Variable {} is not of sort string", var),
+        };
+    }
+
+    pub fn get_int(&self, var: &Variable) -> Option<IntArithTerm> {
+        match var.sort {
+            Sort::Int => {
+                let res = self.int.get(var);
+                if res.is_none() && self.use_defaults {
+                    Some(IntArithTerm::constant(0))
+                } else {
+                    res.cloned()
+                }
+            }
+            _ => panic!("Variable {} is not of sort int", var),
+        }
+    }
+
+    pub fn get_bool(&self, var: &Variable) -> Option<&bool> {
+        match var.sort {
+            Sort::Bool => {
+                let res = self.bool.get(var);
+                if res.is_none() && self.use_defaults {
+                    Some(&false)
+                } else {
+                    res
+                }
+            }
+            _ => panic!("Variable {} is not of sort bool", var),
+        }
+    }
+}
+
+impl From<HashMap<Variable, Vec<char>>> for VarSubstitutions {
+    fn from(value: HashMap<Variable, Vec<char>>) -> Self {
+        let mut sub = Self::new();
+        for (var, val) in value {
+            let str = String::from_iter(val);
+            sub.set_str(&var, Pattern::constant(&str));
+        }
+        sub
+    }
+}
+
+pub trait Substitutable {
+    /// Substitute all variables according to the given substitutions
+    fn substitute(&self, subst: &VarSubstitutions) -> Self;
+}
+
+/// A proposition is an object that can be evaluated to true or false.
+pub trait Proposition {
+    /// Returns the truth value of the proposition, if it can be determined.
+    fn truth_value(&self) -> Option<bool>;
+}
+
+/* Pretty Printing */
+
+impl Display for Sort {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Sort::String => write!(f, "String"),
+            Sort::Int => write!(f, "Int"),
+            Sort::Bool => write!(f, "Bool"),
+        }
+    }
+}
+impl Display for Variable {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.name)
+    }
+}
+
+impl Display for VarSubstitutions {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut first = true;
+        for (var, val) in &self.str {
+            if !first {
+                write!(f, ", ")?;
+            }
+            first = false;
+            write!(f, "{} -> {}", var, val)?;
+        }
+        for (var, val) in &self.int {
+            if !first {
+                write!(f, ", ")?;
+            }
+            first = false;
+            write!(f, "{} -> {}", var, val)?;
+        }
+        for (var, val) in &self.bool {
+            if !first {
+                write!(f, ", ")?;
+            }
+            first = false;
+            write!(f, "{} -> {}", var, val)?;
+        }
+        Ok(())
     }
 }

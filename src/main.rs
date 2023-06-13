@@ -110,7 +110,7 @@ fn main() {
     match res {
         satstr::SolverResult::Sat(m) => {
             if !cli.skip_verify {
-                match instance.get_formula().evaluate(&m) {
+                match instance.get_formula().is_solution(&m) {
                     Some(true) => println!("sat\n{}", m),
                     Some(false) => panic!("Model is incorrect"),
                     None => panic!("Model is incomplete"),

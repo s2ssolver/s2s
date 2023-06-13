@@ -7,10 +7,7 @@ use std::{
 use indexmap::IndexSet;
 use quickcheck::Arbitrary;
 
-use crate::{
-    formula::{Assignment, ConstVal},
-    model::{Sort, Variable},
-};
+use crate::model::{Sort, Variable};
 
 /// Represents a pattern symbol, which can be either a constant word or a variable.
 #[derive(Clone, Debug, PartialEq, Hash, Eq)]
@@ -213,37 +210,9 @@ impl Pattern {
         self.reverse().starts_with(&other.reverse())
     }
 
-    /// Applies a substitution to the pattern.
-    /// Returns `None` if the substitution is not defined for all variables in the pattern.
-    pub fn substitute(&self, substitution: &Assignment) -> Option<String> {
-        let mut res = String::new();
-        for symbol in &self.symbols {
-            match symbol {
-                Symbol::Constant(c) => res.push(*c),
-                Symbol::Variable(var) => match substitution.get(var) {
-                    Some(ConstVal::String(s)) => s.iter().for_each(|c| res.push(*c)),
-                    _ => return None,
-                },
-            }
-        }
-        Some(res)
-    }
-
     /// Returns true iff the pattern is empty.
     pub fn is_empty(&self) -> bool {
         self.symbols.is_empty()
-    }
-}
-
-impl Display for Pattern {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        for symbol in &self.symbols {
-            match symbol {
-                Symbol::Constant(word) => write!(f, "{}", word)?,
-                Symbol::Variable(var) => write!(f, "{}", var)?,
-            }
-        }
-        Ok(())
     }
 }
 
@@ -337,19 +306,6 @@ impl WordEquation {
         res
     }
 
-    /// Returns Some(true) if the substitution is a solution for the given equation.
-    /// Return Some(false) if the substitution is not a solution for the given equation.
-    /// Returns None if the substitution is not defined for all variables in the equation.
-    pub fn is_solution(&self, substitution: &Assignment) -> Option<bool> {
-        match (
-            self.lhs.substitute(substitution),
-            self.rhs.substitute(substitution),
-        ) {
-            (Some(lhs), Some(rhs)) => Some(lhs == rhs),
-            _ => None,
-        }
-    }
-
     pub fn alphabet(&self) -> IndexSet<char> {
         self.lhs
             .alphabet()
@@ -357,11 +313,53 @@ impl WordEquation {
             .cloned()
             .collect()
     }
+}
 
-    pub fn apply(&self, substitution: &Assignment) -> Option<Self> {
-        let lhs = self.lhs.substitute(substitution)?;
-        let rhs = self.rhs.substitute(substitution)?;
-        Some(Self::constant(&lhs, &rhs))
+/* Substitution */
+
+impl Substitutable for Pattern {
+    fn substitute(&self, subs: &super::VarSubstitutions) -> Self {
+        let mut res = Pattern::empty();
+        for symbol in &self.symbols {
+            match symbol {
+                Symbol::Constant(_) => res.append(symbol),
+                Symbol::Variable(var) => match subs.get_str(var) {
+                    Some(p) => res.extend(p.clone()),
+                    _ => res.append(symbol),
+                },
+            }
+        }
+        res
+    }
+}
+
+impl Substitutable for WordEquation {
+    fn substitute(&self, subs: &super::VarSubstitutions) -> Self {
+        Self::new(self.lhs.substitute(subs), self.rhs.substitute(subs))
+    }
+}
+
+impl Proposition for WordEquation {
+    fn truth_value(&self) -> Option<bool> {
+        if self.lhs.is_constant() && self.rhs.is_constant() {
+            Some(self.lhs == self.rhs)
+        } else {
+            None
+        }
+    }
+}
+
+/* Pretty Printing */
+
+impl Display for Pattern {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        for symbol in &self.symbols {
+            match symbol {
+                Symbol::Constant(word) => write!(f, "{}", word)?,
+                Symbol::Variable(var) => write!(f, "{}", var)?,
+            }
+        }
+        Ok(())
     }
 }
 
@@ -384,7 +382,7 @@ impl Display for Symbol {
 
 use quickcheck;
 
-use super::VarManager;
+use super::{Proposition, Substitutable, VarManager};
 
 impl Arbitrary for Symbol {
     fn arbitrary(g: &mut quickcheck::Gen) -> Self {

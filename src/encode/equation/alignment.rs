@@ -746,8 +746,7 @@ mod tests {
     use crate::{
         bounds::IntDomain,
         encode::domain::{get_substitutions, DomainEncoder},
-        formula::Assignment,
-        model::{words::Pattern, Sort, VarManager},
+        model::{words::Pattern, Proposition, Sort, Substitutable, VarManager, VarSubstitutions},
     };
 
     #[test]
@@ -832,9 +831,9 @@ mod tests {
         let res = solver.solve_with(assumptions.into_iter());
         if let Some(true) = res {
             let solution = get_substitutions(dom_encoder.encoding(), &vm, &solver);
-            let solution = Assignment::from(solution);
+            let solution = VarSubstitutions::from(solution);
             assert!(
-                eq.is_solution(&solution).unwrap(),
+                eq.substitute(&solution).truth_value().unwrap(),
                 "{} is not a solution for {}: {:?} != {:?}",
                 solution,
                 eq,
@@ -883,9 +882,9 @@ mod tests {
         }
         if let Some(true) = result {
             let solution = get_substitutions(dom_encoder.encoding(), &vm, &solver);
-            let solution = Assignment::from(solution);
+            let solution = VarSubstitutions::from(solution);
             assert!(
-                eq.is_solution(&solution).unwrap(),
+                eq.substitute(&solution).truth_value().unwrap(),
                 "{} is not a solution for {}: {:?} != {:?}",
                 solution,
                 eq,

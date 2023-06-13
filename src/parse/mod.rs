@@ -4,7 +4,7 @@ use indexmap::IndexSet;
 mod smt2;
 
 use crate::{
-    formula::{Atom, Formula},
+    model::formula::{Atom, Formula},
     model::{
         words::{Pattern, Symbol, WordEquation},
         VarManager,

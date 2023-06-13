@@ -1,15 +1,17 @@
 //! Representation of quantifier free first-order formulas and predicates
 
-use std::{collections::HashMap, fmt::Display};
+use std::fmt::Display;
 
 use indexmap::IndexSet;
 
 use crate::model::{
-    linears::LinearConstraint,
+    integer::LinearConstraint,
     regex::Regex,
     words::{Pattern, WordEquation},
-    Sort, Variable,
+    Variable,
 };
+
+use super::{Proposition, Substitutable, VarSubstitutions};
 
 /// A predicate, which is either a word equation, a regular constraint, or a linear constraint.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -31,16 +33,6 @@ impl Predicate {
     /// Create a new predicate from a given regular constraint
     pub fn regular_constraint(p: Pattern, r: Regex) -> Self {
         Self::RegularConstraint(p, r)
-    }
-
-    /// Evaluate the truth value of this atom under the given substitution
-    /// Returns None if the substitution is partial and the truth value depends on the missing assignments.
-    pub fn evaluate(&self, substitution: &Assignment) -> Option<bool> {
-        match self {
-            Predicate::WordEquation(eq) => eq.is_solution(substitution),
-            Predicate::LinearConstraint(l) => l.is_solution(substitution),
-            Predicate::RegularConstraint(_p, _r) => todo!(), // Derivate r w.r.t. p.substitute()
-        }
     }
 
     /// Returns the alphabet of constants used in this predicate.
@@ -73,20 +65,6 @@ impl Atom {
     /// Create a new atom from a word equation
     pub fn word_equation(eq: WordEquation) -> Self {
         Self::Predicate(Predicate::WordEquation(eq))
-    }
-
-    /// Evaluate the truth value of this atom under the given substitution
-    /// Returns None if the substitution is partial and the truth value depends on the missing assignments.
-    pub fn evaluate(&self, substitution: &Assignment) -> Option<bool> {
-        match self {
-            Atom::Predicate(p) => p.evaluate(substitution),
-            Atom::BoolVar(v) => substitution.get(v).map(|f| match f {
-                ConstVal::Bool(b) => b,
-                _ => panic!("Variable {} is not a boolean", v),
-            }),
-            Atom::True => Some(true),
-            Atom::False => Some(false),
-        }
     }
 }
 
@@ -183,35 +161,6 @@ impl Formula {
         }
     }
 
-    /// Evaluate the formula under the given substitution
-    /// Returns None if the substitution is partial and the value of the formula depends on the missing assignments.
-    pub fn evaluate(&self, substitution: &Assignment) -> Option<bool> {
-        match self {
-            Formula::Atom(a) => a.evaluate(substitution),
-            Formula::Or(fs) => {
-                fs.iter()
-                    .map(|f| f.evaluate(substitution))
-                    .fold(Some(false), |acc, x| match (acc, x) {
-                        (Some(true), _) => Some(true),
-                        (_, Some(true)) => Some(true),
-                        (Some(false), Some(false)) => Some(false),
-                        _ => None,
-                    })
-            }
-            Formula::And(fs) => {
-                fs.iter()
-                    .map(|f| f.evaluate(substitution))
-                    .fold(Some(true), |acc, x| match (acc, x) {
-                        (Some(false), _) => Some(false),
-                        (_, Some(false)) => Some(true),
-                        (Some(true), Some(true)) => Some(true),
-                        _ => None,
-                    })
-            }
-            Formula::Not(f) => f.evaluate(substitution).map(|x| !x),
-        }
-    }
-
     /// Returns `true` if this formula is conjunctive, i.e., if it is a single atom or a conjunction of atoms.
     /// Returns `false` otherwise.
     pub fn is_conjunctive(&self) -> bool {
@@ -268,132 +217,109 @@ impl Formula {
             Formula::Not(f) => f.alphabet(),
         }
     }
+
+    /// Returns `Some(true)` if the given substitution is a solution to this formula.
+    /// Returns `Some(false)` if the given substitution is not a solution to this formula.
+    /// Returns `None` if it is not possible to determine whether the given substitution is a solution to this formula.
+    pub fn is_solution(&self, subs: &VarSubstitutions) -> Option<bool> {
+        self.substitute(subs).truth_value()
+    }
 }
 
-/// A constant value
-#[derive(Clone, Debug, PartialEq)]
-pub enum ConstVal {
-    String(Vec<char>),
-    Bool(bool),
-    Int(isize),
-}
+/* Substitutions */
 
-impl ConstVal {
-    /// Create a new constant value from a string
-    pub fn string(s: &str) -> Self {
-        Self::String(s.chars().collect())
-    }
-
-    /// Create a new constant value from a boolean
-    pub fn bool(b: bool) -> Self {
-        Self::Bool(b)
-    }
-
-    /// Create a new constant value from an integer
-    pub fn int(i: isize) -> Self {
-        Self::Int(i)
-    }
-
-    /// Get the sort of this constant value
-    fn sort(&self) -> Sort {
+impl Substitutable for Predicate {
+    fn substitute(&self, subst: &VarSubstitutions) -> Self {
         match self {
-            Self::String(_) => Sort::String,
-            Self::Bool(_) => Sort::Bool,
-            Self::Int(_) => Sort::Int,
-        }
-    }
-
-    fn default(sort: Sort) -> Self {
-        match sort {
-            Sort::String => Self::String(Vec::default()),
-            Sort::Bool => Self::Bool(bool::default()),
-            Sort::Int => Self::Int(isize::default()),
-        }
-    }
-}
-
-/// An assignment of constant values to variables
-pub struct Assignment {
-    assignments: HashMap<Variable, ConstVal>,
-    defaults: bool,
-}
-
-impl Assignment {
-    /// Create a new substitution that maps all variables to their default value
-    pub fn with_defaults() -> Self {
-        Self {
-            assignments: HashMap::new(),
-            defaults: true,
-        }
-    }
-
-    /// Create a new substitution that maps no variables
-    pub fn empty() -> Self {
-        Self {
-            assignments: HashMap::new(),
-            defaults: false,
-        }
-    }
-
-    /// Set the value of a variable.
-    /// Panics if the variable is already assigned or if the sort of the value does not match the sort of the variable.
-    pub fn set(&mut self, var: &Variable, val: ConstVal) {
-        if var.sort() != val.sort() {
-            panic!(
-                "Cannot assign value {} of sort {:?} to variable {} of sort {:?}",
-                val,
-                val.sort(),
-                var,
-                var.sort()
-            );
-        }
-        let res = self.assignments.insert(var.clone(), val);
-        if res.is_some() {
-            panic!("Variable {} already assigned", var);
-        }
-    }
-
-    /// Set the value of a variable to its default value
-    pub fn set_default(&mut self, var: &Variable) {
-        self.set(var, ConstVal::default(var.sort()));
-    }
-
-    /// Get the value of a variable
-    pub fn get(&self, var: &Variable) -> Option<ConstVal> {
-        match self.assignments.get(var) {
-            Some(x) => Some(x.clone()),
-            None => {
-                if self.defaults {
-                    Some(ConstVal::default(var.sort()))
-                } else {
-                    None
-                }
+            Predicate::WordEquation(eq) => Predicate::WordEquation(eq.substitute(subst)),
+            Predicate::RegularConstraint(_, _) => {
+                todo!("Regular Constraints not supported yet")
             }
+            Predicate::LinearConstraint(l) => Predicate::LinearConstraint(l.substitute(subst)),
         }
     }
 }
 
-impl From<HashMap<Variable, Vec<char>>> for Assignment {
-    fn from(value: HashMap<Variable, Vec<char>>) -> Self {
-        let mut sub = Self::with_defaults();
-        for (var, val) in value {
-            sub.set(&var, ConstVal::String(val));
+impl Substitutable for Atom {
+    fn substitute(&self, subst: &VarSubstitutions) -> Self {
+        match self {
+            Atom::Predicate(p) => Atom::Predicate(p.substitute(subst)),
+            Atom::BoolVar(x) => match subst.get_bool(x) {
+                Some(true) => Atom::True,
+                Some(false) => Atom::False,
+                None => Atom::BoolVar(x.clone()),
+            },
+            _ => self.clone(),
         }
-        sub
+    }
+}
+
+impl Substitutable for Formula {
+    fn substitute(&self, subst: &VarSubstitutions) -> Self {
+        match self {
+            Formula::Atom(a) => Formula::Atom(a.substitute(subst)),
+            Formula::Or(fs) => Formula::Or(fs.iter().map(|f| f.substitute(subst)).collect()),
+            Formula::And(fs) => Formula::And(fs.iter().map(|f| f.substitute(subst)).collect()),
+            Formula::Not(f) => Formula::Not(Box::new(f.substitute(subst))),
+        }
+    }
+}
+
+impl Proposition for Predicate {
+    fn truth_value(&self) -> Option<bool> {
+        match self {
+            Predicate::WordEquation(eq) => eq.truth_value(),
+            Predicate::RegularConstraint(_, _) => todo!("Regular Constraints not supported yet"),
+            Predicate::LinearConstraint(l) => l.truth_value(),
+        }
+    }
+}
+
+impl Proposition for Atom {
+    fn truth_value(&self) -> Option<bool> {
+        match self {
+            Atom::Predicate(p) => p.truth_value(),
+            Atom::BoolVar(_) => None,
+            Atom::True => Some(true),
+            Atom::False => Some(false),
+        }
+    }
+}
+
+impl Proposition for Formula {
+    fn truth_value(&self) -> Option<bool> {
+        match self {
+            Formula::Atom(a) => a.truth_value(),
+            Formula::Or(fs) => fs
+                .iter()
+                .fold(Some(false), |acc, f| match (acc, f.truth_value()) {
+                    (Some(true), _) => Some(true),
+                    (_, Some(true)) => Some(true),
+                    (Some(false), None) => None,
+                    (None, Some(false)) => None,
+                    (None, None) => None,
+                    (Some(false), Some(false)) => Some(false),
+                }),
+            Formula::And(fs) => fs
+                .iter()
+                .fold(Some(true), |acc, f| match (acc, f.truth_value()) {
+                    (Some(false), _) => Some(false),
+                    (_, Some(false)) => Some(false),
+                    (Some(true), None) => None,
+                    (None, Some(true)) => None,
+                    (None, None) => None,
+                    (Some(true), Some(true)) => Some(true),
+                }),
+            Formula::Not(f) => match f.truth_value() {
+                Some(true) => Some(false),
+                Some(false) => Some(true),
+                None => None,
+            },
+        }
     }
 }
 
 /* Pretty Printing */
-
-impl Display for ConstVal {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::String(s) => write!(f, "\"{}\"", s.iter().collect::<String>()),
-            Self::Bool(b) => write!(f, "{}", b),
-            Self::Int(i) => write!(f, "{}", i),
-        }
-    }
-}
 
 impl Display for Predicate {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -449,43 +375,47 @@ impl Display for Formula {
     }
 }
 
-impl Display for Assignment {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "[")?;
-        for (var, val) in self.assignments.iter() {
-            write!(f, "{}: {}, ", var, val)?;
-        }
-        write!(f, "]")
-    }
-}
-
 #[cfg(test)]
 mod test {
 
+    #[test]
+    #[ignore = "Test not implemented yet"]
     fn formula_and_normalize() {
         todo!()
     }
 
+    #[test]
+    #[ignore = "Test not implemented yet"]
     fn formula_or_normalize() {
         todo!()
     }
 
+    #[test]
+    #[ignore = "Test not implemented yet"]
     fn formula_not_normalize() {
         todo!()
     }
 
+    #[test]
+    #[ignore = "Test not implemented yet"]
     fn formula_conjunctive() {
         todo!()
     }
 
+    #[test]
+    #[ignore = "Test not implemented yet"]
     fn asserted_atoms_conjunctive() {
         todo!()
     }
 
+    #[test]
+    #[ignore = "Test not implemented yet"]
     fn asserted_atoms_disjunction() {
         todo!()
     }
 
+    #[test]
+    #[ignore = "Test not implemented yet"]
     fn asserted_atoms_mixed() {
         todo!()
     }

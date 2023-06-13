@@ -309,8 +309,10 @@ mod tests {
     use crate::{
         bounds::IntDomain,
         encode::domain::{get_substitutions, DomainEncoder},
-        formula::{Assignment, ConstVal},
-        model::{words::Pattern, Sort, VarManager, Variable},
+        model::{
+            words::Pattern, Proposition, Sort, Substitutable, VarManager, VarSubstitutions,
+            Variable,
+        },
     };
 
     #[quickcheck]
@@ -396,13 +398,11 @@ mod tests {
 
         let res = solver.solve();
         if let Some(true) = res {
-            let subs = get_substitutions(dom_encoder.encoding(), &vm, &solver);
-            let mut solution = Assignment::with_defaults();
-            for (v, val) in subs {
-                solution.set(&v, ConstVal::String(val));
-            }
+            let solution =
+                VarSubstitutions::from(get_substitutions(dom_encoder.encoding(), &vm, &solver));
+
             assert!(
-                eq.is_solution(&solution).unwrap(),
+                eq.substitute(&solution).truth_value().unwrap(),
                 "{} is not a solution: {:?} != {:?}",
                 solution,
                 eq.lhs().substitute(&solution),
@@ -594,7 +594,7 @@ mod tests {
             (var_f, "eadaacba".chars().collect()),
             (var_e, "ae".chars().collect()),
         ]);
-        let _solution = Assignment::from(solution);
+        let _solution = VarSubstitutions::from(solution);
         let bounds = Bounds::with_defaults(IntDomain::Bounded(0, 10));
         let res = solve_woorpje(&eq, bounds, &eq.alphabet());
 

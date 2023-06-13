@@ -1,9 +1,9 @@
 use indexmap::IndexMap;
 
 use crate::{
-    formula::{Atom, Formula, Predicate},
+    model::formula::{Atom, Formula, Predicate},
     model::{
-        linears::{LinearArithFactor, LinearArithTerm, LinearConstraint},
+        integer::{LinearArithFactor, LinearArithTerm, LinearConstraint},
         words::{Pattern, Symbol, WordEquation},
         VarManager, Variable,
     },
@@ -110,8 +110,7 @@ fn apply_substitutions_predicate(
             }
             let mut new_rhs = LinearArithTerm::new();
             new_rhs.add_factor(LinearArithFactor::Const(lincon.rhs()));
-            let new_lincon =
-                LinearConstraint::from_linear_arith_term(&lhs, &new_rhs, lincon.typ.clone());
+            let new_lincon = LinearConstraint::from_linear_arith_term(&lhs, &new_rhs, lincon.typ);
             log::info!(
                 "Applied substitutions {} to {}: {}",
                 substitutions,

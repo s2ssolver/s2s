@@ -10,9 +10,10 @@ use crate::encode::{
     AlignmentEncoder, EncodingResult, MddEncoder, PredicateEncoder, WordEquationEncoder,
 };
 
-use crate::formula::{Assignment, Atom, ConstVal, Formula, Predicate};
+use crate::model::formula::{Atom, Formula, Predicate};
 use crate::model::words::Symbol;
 use crate::model::words::WordEquation;
+use crate::model::VarSubstitutions;
 use crate::model::{Sort, VarManager};
 
 use crate::encode::domain::{get_substitutions, DomainEncoder};
@@ -22,7 +23,7 @@ use crate::sat::Cnf;
 /// The result of a satisfiability check
 pub enum SolverResult {
     /// The instance is satisfiable with the given model
-    Sat(Assignment),
+    Sat(VarSubstitutions),
     /// The instance is unsatisfiable
     Unsat,
     /// The solver could not determine the satisfiability of the instance
@@ -36,7 +37,7 @@ impl SolverResult {
     }
 
     /// Returns the model if the instance is satisfiable
-    pub fn get_model(&self) -> Option<&Assignment> {
+    pub fn get_model(&self) -> Option<&VarSubstitutions> {
         match self {
             SolverResult::Sat(model) => Some(model),
             _ => None,
@@ -238,14 +239,14 @@ impl Solver for ConjunctiveSolver {
                         );
                         time_solving += t_solving;
                         if let Some(true) = res {
-                            let mut model = Assignment::with_defaults();
-                            for (v, s) in get_substitutions(
+                            let mut model = VarSubstitutions::from(get_substitutions(
                                 self.domain_encoder.encoding(),
                                 self.instance.get_var_manager(),
                                 &cadical,
-                            ) {
-                                model.set(&v, ConstVal::String(s.clone()));
-                            }
+                            ));
+                            // Map variables that were removed in preprocessing to their default value
+                            model.use_defaults();
+
                             log::info!(
                                 "Done. Total time encoding/solving: {}/{} ms",
                                 time_encoding,
@@ -261,7 +262,7 @@ impl Solver for ConjunctiveSolver {
                     }
                     EncodingResult::Trivial(false) => return SolverResult::Unsat,
                     EncodingResult::Trivial(true) => {
-                        return SolverResult::Sat(Assignment::with_defaults())
+                        return SolverResult::Sat(VarSubstitutions::new())
                     }
                 }
             } else {

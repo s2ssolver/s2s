@@ -8,12 +8,10 @@ use std::{
 use indexmap::IndexMap;
 use quickcheck::Arbitrary;
 
-use crate::{
+use crate::model::{
     formula::{Atom, Formula, Predicate},
-    model::{
-        linears::{LinearArithFactor, LinearConstraint, LinearConstraintType},
-        VarManager, Variable,
-    },
+    integer::{LinearArithFactor, LinearConstraint, LinearConstraintType},
+    VarManager, Variable,
 };
 
 /// The domain of an integer variable.

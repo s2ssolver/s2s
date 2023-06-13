@@ -9,7 +9,6 @@
 
 mod bounds;
 mod encode;
-mod formula;
 mod model;
 mod parse;
 mod preprocess;

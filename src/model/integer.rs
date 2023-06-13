@@ -1,9 +1,6 @@
+use super::{Proposition, Substitutable};
+use crate::model::words::Symbol;
 use std::{collections::HashMap, fmt::Display, ops::Index};
-
-use crate::{
-    formula::{Assignment, ConstVal},
-    model::words::Symbol,
-};
 
 use super::{words::WordEquation, Variable};
 
@@ -22,6 +19,22 @@ impl IntArithTerm {
 
     pub fn constant(c: isize) -> Self {
         Self::Const(c)
+    }
+
+    /// Returns `Some(c)` if the term is equal to constant value `c`, `None` otherwise.
+    pub fn is_constant(&self) -> Option<isize> {
+        match self {
+            IntArithTerm::Var(_) => None,
+            IntArithTerm::Const(c) => Some(*c),
+            IntArithTerm::Plus(a, b) => match (a.is_constant(), b.is_constant()) {
+                (Some(c1), Some(c2)) => Some(c1 + c2),
+                _ => None,
+            },
+            IntArithTerm::Times(a, b) => match (a.is_constant(), b.is_constant()) {
+                (Some(c1), Some(c2)) => Some(c1 * c2),
+                _ => None,
+            },
+        }
     }
 
     pub fn plus(x: &Self, y: &Self) -> Self {
@@ -102,6 +115,7 @@ impl LinearArithTerm {
         }
     }
 
+    /// Create a linear arithmetic term from a constant
     pub fn from_const(c: isize) -> Self {
         Self {
             factors: vec![LinearArithFactor::Const(c)],
@@ -218,28 +232,6 @@ impl LinearArithTerm {
         }
         Some(c)
     }
-
-    pub fn evaluate(&self, sub: &Assignment) -> Option<LinearArithTerm> {
-        let mut const_term = 0;
-        let mut res = LinearArithTerm::new();
-        for f in self.iter() {
-            match f {
-                LinearArithFactor::VarCoeff(x, c) => match sub.get(x) {
-                    Some(ConstVal::Int(i)) => const_term += i * c,
-                    Some(_) => {
-                        panic!("Cannot evaluate non-integer substitution")
-                    }
-                    None => res.add_factor(f.clone()),
-                },
-                LinearArithFactor::Const(c) => {
-                    const_term += c;
-                }
-            }
-        }
-
-        res.add_factor(LinearArithFactor::Const(const_term));
-        Some(res)
-    }
 }
 
 impl Index<usize> for LinearArithTerm {
@@ -250,7 +242,7 @@ impl Index<usize> for LinearArithTerm {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum LinearConstraintType {
     Eq,
     Leq,
@@ -345,9 +337,47 @@ impl LinearConstraint {
     pub fn rhs(&self) -> isize {
         self.rhs
     }
+}
 
-    pub fn is_solution(&self, subs: &Assignment) -> Option<bool> {
-        let lhs = self.lhs.evaluate(subs)?.is_constant()?;
+/* Substitution */
+
+impl Substitutable for LinearConstraint {
+    fn substitute(&self, subst: &super::VarSubstitutions) -> Self {
+        let mut new_lhs = IntArithTerm::constant(0);
+        for fac in &self.lhs().factors {
+            let term = match fac {
+                LinearArithFactor::VarCoeff(x, c) => {
+                    if let Some(s) = subst.get_int(x) {
+                        IntArithTerm::times(&s, &IntArithTerm::Const(*c))
+                    } else {
+                        IntArithTerm::times(&IntArithTerm::Var(x.clone()), &IntArithTerm::Const(*c))
+                    }
+                }
+                LinearArithFactor::Const(c) => IntArithTerm::Const(*c),
+            };
+
+            new_lhs = IntArithTerm::plus(&new_lhs, &term);
+        }
+        let linterm = LinearArithTerm::from_int_arith_term(&new_lhs)
+            .expect("Non-linear arithmetic term in linear constraint");
+        Self::from_linear_arith_term(&linterm, &LinearArithTerm::from_const(self.rhs), self.typ)
+    }
+}
+
+impl Proposition for LinearConstraint {
+    fn truth_value(&self) -> Option<bool> {
+        let mut lhs = 0;
+        for fac in self.lhs.iter() {
+            match fac {
+                LinearArithFactor::VarCoeff(_, _) => {
+                    return None;
+                }
+                LinearArithFactor::Const(c) => {
+                    lhs += c;
+                }
+            }
+        }
+
         match self.typ {
             LinearConstraintType::Eq => Some(lhs == self.rhs),
             LinearConstraintType::Leq => Some(lhs <= self.rhs),

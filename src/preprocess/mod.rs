@@ -4,8 +4,7 @@ mod substitution;
 use std::fmt::Display;
 
 use crate::{
-    formula::{Atom, Formula, Predicate},
-    model::VarManager,
+    model::formula::{Atom, Formula, Predicate},
     parse::Instance,
 };
 

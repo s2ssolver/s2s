@@ -601,8 +601,7 @@ mod tests {
     use crate::{
         bounds::IntDomain,
         encode::domain::{get_substitutions, DomainEncoder},
-        formula::Assignment,
-        model::{words::Pattern, Sort, VarManager},
+        model::{words::Pattern, Proposition, Sort, Substitutable, VarManager, VarSubstitutions},
     };
 
     fn solve_iwoorpje(
@@ -638,45 +637,9 @@ mod tests {
         let res = solver.solve_with(assumptions.into_iter());
         if let Some(true) = res {
             let solution = get_substitutions(dom_encoder.encoding(), &vm, &solver);
-            let solution = Assignment::from(solution);
-
-            for ((i, c), v) in encoder.subs_lhs {
-                println!(
-                    "LHS {} = {} <--> {} ({})",
-                    i,
-                    c,
-                    v,
-                    solver.value(v as i32).unwrap()
-                );
-            }
-            for ((i, c), v) in encoder.subs_rhs {
-                println!(
-                    "RHS {} = {} <--> {} ({})",
-                    i,
-                    c,
-                    v,
-                    solver.value(v as i32).unwrap()
-                );
-            }
-            let svs = encoder.state_vars.clone();
-            print!("  ");
-            for j in 0..svs[0].len() {
-                print!(" {} ", j)
-            }
-            println!();
-            for i in 0..svs.len() {
-                print!("{} ", i);
-                for j in &svs[i] {
-                    if solver.value(*j as i32).unwrap() {
-                        print!(" 1 ");
-                    } else {
-                        print!(" 0 ");
-                    }
-                }
-                println!();
-            }
+            let solution = VarSubstitutions::from(solution);
             assert!(
-                eq.is_solution(&solution).unwrap(),
+                eq.substitute(&solution).truth_value().unwrap(),
                 "{} is not a solution: {:?} != {:?}",
                 solution,
                 eq.lhs().substitute(&solution),
@@ -726,26 +689,10 @@ mod tests {
         match result {
             Some(true) => {
                 let sol = get_substitutions(dom_encoder.encoding(), &vm, &solver);
-                let solution = Assignment::from(sol);
-                let svs = encoder.get_state_vars();
-                for j in 0..svs[0].len() {
-                    print!("\t{}", j)
-                }
-                println!();
-                for (i, s) in svs.iter().enumerate() {
-                    print!("{}\t", i);
-                    for j in s {
-                        if solver.value(as_lit(*j)) == Some(true) {
-                            print!("1\t")
-                        } else {
-                            print!("0\t")
-                        }
-                    }
-                    println!();
-                }
+                let solution = VarSubstitutions::from(sol);
 
                 assert!(
-                    eq.is_solution(&solution).unwrap(),
+                    eq.substitute(&solution).truth_value().unwrap(),
                     "Not a solution: {} ({})",
                     solution,
                     eq

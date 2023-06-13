@@ -7,9 +7,9 @@ use aws_smt_ir::{
 };
 
 use crate::{
-    formula::{Atom, Formula, Predicate},
+    model::formula::{Atom, Formula, Predicate},
     model::{
-        linears::{IntArithTerm, LinearArithTerm, LinearConstraint, LinearConstraintType},
+        integer::{IntArithTerm, LinearArithTerm, LinearConstraint, LinearConstraintType},
         words::{Pattern, WordEquation},
         Sort, VarManager,
     },
