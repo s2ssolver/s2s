@@ -3,9 +3,7 @@ use std::collections::HashMap;
 use crate::bounds::Bounds;
 use crate::encode::card::exactly_one;
 use crate::encode::domain::DomainEncoding;
-use crate::encode::{
-    EncodingResult, FilledPattern, FilledPos, PredicateEncoder, LAMBDA,
-};
+use crate::encode::{EncodingResult, FilledPattern, FilledPos, PredicateEncoder, LAMBDA};
 use crate::model::words::WordEquation;
 use crate::model::VarManager;
 use crate::sat::{as_lit, neg, pvar, Cnf, PVar};
@@ -13,6 +11,7 @@ use indexmap::IndexSet;
 
 use super::WordEquationEncoder;
 
+/// The incremental version of the Woorpje encoding.
 pub struct IWoorpjeEncoder {
     /// The original word equation
     equation: WordEquation,

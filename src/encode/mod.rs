@@ -21,7 +21,7 @@ mod equation;
 /// Encoder for linear constraints
 mod linear;
 
-pub use equation::{BindepEncoder, IWoorpjeEncoder, WoorpjeEncoder, WordEquationEncoder};
+pub use equation::{AlignmentEncoder, IWoorpjeEncoder, WoorpjeEncoder, WordEquationEncoder};
 use indexmap::IndexSet;
 pub use linear::MddEncoder;
 

@@ -3,12 +3,11 @@ use std::{path::Path, process::exit, time::Instant};
 use clap::{Parser as ClapParser, ValueEnum};
 
 use satstr::{preprocess, ConjunctiveSolver, Parser, PreprocessingResult, Solver};
+
+/// The command line interface for the solver
 #[derive(ClapParser, Debug)]
 #[command(author, version, about, long_about = None)] // Read from `Cargo.toml`
 struct Options {
-    /// What mode to run the program in
-    #[arg(long, short, value_enum, default_value = "woorpje")]
-    solver: SolverType,
     /// The format of the input file
     #[arg(short, long, value_enum, default_value = "auto")]
     format: Format,
@@ -33,14 +32,6 @@ struct Options {
 }
 
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum, Debug)]
-enum SolverType {
-    Woorpje,
-    Iwoorpje,
-    Bindep,
-    Full,
-}
-
-#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum, Debug)]
 enum Format {
     Woorpje,
     Smt,
@@ -48,6 +39,7 @@ enum Format {
     Auto,
 }
 
+/// The main function of the solver. Parses the command line arguments and runs the solver.
 fn main() {
     env_logger::init();
     let _ts = std::time::Instant::now();
@@ -94,7 +86,7 @@ fn main() {
 
     // Preprocess the formula
     let ts = Instant::now();
-    match preprocess(instance.get_formula(), instance.get_var_manager()) {
+    match preprocess(&instance) {
         PreprocessingResult::Unchanged => {
             log::debug!("No preprocessing applied.");
         }

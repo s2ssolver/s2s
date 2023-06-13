@@ -7,8 +7,7 @@ use std::time::Instant;
 
 use crate::bounds::{Bounds, IntDomain};
 use crate::encode::{
-    BindepEncoder, EncodingResult, MddEncoder, PredicateEncoder,
-    WordEquationEncoder,
+    AlignmentEncoder, EncodingResult, MddEncoder, PredicateEncoder, WordEquationEncoder,
 };
 
 use crate::formula::{Assignment, Atom, ConstVal, Formula, Predicate};
@@ -79,7 +78,7 @@ pub struct ConjunctiveSolver {
 impl ConjunctiveSolver {
     fn inst_encoder(predicate: &Predicate) -> Box<dyn PredicateEncoder> {
         match predicate {
-            Predicate::WordEquation(eq) => Box::new(BindepEncoder::new(eq.clone())),
+            Predicate::WordEquation(eq) => Box::new(AlignmentEncoder::new(eq.clone())),
             Predicate::RegularConstraint(_, _) => todo!(),
             Predicate::LinearConstraint(lc) => Box::new(MddEncoder::new(lc.clone())),
         }
@@ -167,7 +166,7 @@ impl Solver for ConjunctiveSolver {
         // Make sure upper bounds for string variables are at least one, otherwise the encoding is not correct
         for v in self.instance.get_var_manager().of_sort(Sort::Int, true) {
             if self.instance.get_var_manager().is_lenght_var(v) {
-                if let Some(0) = limit_upper_bounds.get(v).upper() {
+                if let Some(0) = limit_upper_bounds.get(v).get_upper() {
                     log::info!("Setting upper bound for {} to 1", v);
                     limit_upper_bounds.set_upper(v, 1);
                 }

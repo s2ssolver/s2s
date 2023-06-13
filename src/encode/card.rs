@@ -1,3 +1,5 @@
+//! Contains facilities for encoding cardinality constraints into SAT.
+
 use std::fmt::Display;
 
 use indexmap::IndexSet;
@@ -6,6 +8,9 @@ use crate::sat::{as_lit, neg, pvar, Cnf, PLit, PVar};
 
 use super::EncodingResult;
 
+/// At least one encoding of the given variables.
+///
+/// Returns a CNF encoding of the constraint that at least one and at most one of the given variables is true.
 pub fn exactly_one(vars: &[PVar]) -> Cnf {
     eo_naive(vars)
 }
@@ -32,6 +37,7 @@ fn eo_naive(vars: &[PVar]) -> Cnf {
     cnf
 }
 
+/// Binomial (i.e. naive pairwise) encoding of at most one constraints.
 fn amo_binomial(vars: &[PVar]) -> Cnf {
     let mut cnf = Cnf::new();
     let as_lits: Vec<PLit> = vars.iter().copied().map(as_lit).collect();
@@ -43,7 +49,9 @@ fn amo_binomial(vars: &[PVar]) -> Cnf {
     cnf
 }
 
-/// Incremental encoding of at most one constraints.
+/// Incremental encoder of at most one constraints.
+///
+/// This encoding is incremental in the sense that it can be extended with new variables.
 #[derive(Default)]
 pub struct IncrementalAMO {
     vars: Vec<PVar>,
@@ -74,6 +82,9 @@ impl IncrementalAMO {
     }
 }
 
+/// Incremental encoder of at most one constraints.
+///
+/// This encoding is incremental in the sense that it can be extended with new variables.
 #[derive(Default)]
 pub struct IncrementalALO {
     vars: Vec<PVar>,
@@ -107,6 +118,9 @@ impl IncrementalALO {
     }
 }
 
+/// Incremental encoder of exactly one constraints.
+///
+/// This encoding is incremental in the sense that it can be extended with new variables.
 #[derive(Default)]
 pub struct IncrementalEO {
     amo: IncrementalAMO,

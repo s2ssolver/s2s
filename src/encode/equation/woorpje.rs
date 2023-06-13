@@ -5,7 +5,6 @@
 //! > Lecture Notes in Computer Science(), vol 11674. Springer, Cham. https://doi.org/10.1007/978-3-030-30806-3_8
 //!
 //! This is a non-complete re-implementation of the original version, which can be found in the [Woorpje repository](https://git.zs.informatik.uni-kiel.de/dbp/wordsolve).
-//! Encoding of linear arithmetic over the length abstraction is not included in this implementation.
 //!
 //! The following changes have been made:
 //! - Constraint (9) is no used, as it seems to be redundant. The original implementation does not use it either.
@@ -15,15 +14,14 @@ use std::collections::HashMap;
 
 use crate::bounds::Bounds;
 use crate::encode::domain::DomainEncoding;
-use crate::encode::{
-    EncodingResult, FilledPattern, FilledPos, PredicateEncoder, LAMBDA,
-};
+use crate::encode::{EncodingResult, FilledPattern, FilledPos, PredicateEncoder, LAMBDA};
 use crate::model::words::WordEquation;
 use crate::model::VarManager;
 use crate::sat::{as_lit, neg, pvar, Clause, Cnf, PVar};
 
 use super::WordEquationEncoder;
 
+/// Encoder that uses the original Woorpje encoding for word equations.
 pub struct WoorpjeEncoder {
     equation: WordEquation,
     state_vars: Option<Vec<Vec<PVar>>>,

@@ -1,8 +1,9 @@
+//! Representation of quantifier free first-order formulas and predicates
+
 use std::{collections::HashMap, fmt::Display};
 
 use indexmap::IndexSet;
 
-/// Representation of formulas and predicates
 use crate::model::{
     linears::LinearConstraint,
     regex::Regex,
@@ -10,20 +11,24 @@ use crate::model::{
     Sort, Variable,
 };
 
+/// A predicate, which is either a word equation, a regular constraint, or a linear constraint.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum Predicate {
+    /// A word equation
     WordEquation(WordEquation),
+    /// A regular constraint
     RegularConstraint(Pattern, Regex),
+    /// A linear constraint
     LinearConstraint(LinearConstraint),
 }
 
 impl Predicate {
-    /// Create a new predicate from a word equation
+    /// Create a new predicate from a given word equation
     pub fn word_equation(eq: WordEquation) -> Self {
         Self::WordEquation(eq)
     }
 
-    /// Create a new predicate from a regular constraint
+    /// Create a new predicate from a given regular constraint
     pub fn regular_constraint(p: Pattern, r: Regex) -> Self {
         Self::RegularConstraint(p, r)
     }
@@ -38,6 +43,9 @@ impl Predicate {
         }
     }
 
+    /// Returns the alphabet of constants used in this predicate.
+    /// For word equations and regular constraints, this is the union of the constant occurring.
+    /// For linear constraints, the alphabet is empty.
     pub fn alphabet(&self) -> IndexSet<char> {
         match self {
             Predicate::WordEquation(eq) => eq.alphabet(),
@@ -47,6 +55,8 @@ impl Predicate {
     }
 }
 
+/// An atomic formula.
+/// An atomic formula is either a predicate, a boolean variable, or the constant true or false.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Atom {
     /// A predicate
@@ -80,6 +90,13 @@ impl Atom {
     }
 }
 
+/// A first-order formula with quantifiers.
+/// A formula is inductive defined as follows:
+/// - An [Atom] is a formula
+/// - If `f` is a formula, then `¬f` ([Formula::Not]) is a formula
+/// - If `f` and `g` are formulas, then `f ∧ g` ([Formula::And]) and `f ∨ g` ([Formula::Or]) are formulas
+///
+/// The variants [Formula::Not], [Formula::And], and [Formula::Or] should not be used directly but instead the corresponding constructors [Formula::not], [Formula::and], and [Formula::or], respectively, should be used.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Formula {
     /// An atom
@@ -93,22 +110,31 @@ pub enum Formula {
 }
 
 impl Formula {
+    /// Returns the formula `true`
     pub fn ttrue() -> Self {
         Self::Atom(Atom::True)
     }
 
+    /// Returns the formula `false`
     pub fn ffalse() -> Self {
         Self::Atom(Atom::True)
     }
 
+    /// Creates a new formula only consisting of a single Boolean variable
     pub fn bool(var: Variable) -> Self {
         Self::Atom(Atom::BoolVar(var))
     }
 
+    /// Creates a new formula only consisting of a single predicate
     pub fn predicate(pred: Predicate) -> Self {
         Self::Atom(Atom::Predicate(pred))
     }
 
+    /// Creates the conjunction of the given formulas.
+    /// Performs some normalization:
+    /// - If one of the formulas is `false`, returns `false`
+    /// - If one of the formulas is `true`, removes it
+    /// - If one of the formulas is a conjunction, adds its conjuncts (i.e. flattens the formula)
     pub fn and(fs: Vec<Formula>) -> Self {
         let mut conjs = Vec::new();
         for f in fs {
@@ -126,6 +152,11 @@ impl Formula {
         }
     }
 
+    /// Creates the disjunction of the given formulas.
+    /// Performs some normalization:
+    /// - If one of the formulas is `true`, returns `true`
+    /// - If one of the formulas is `false`, removes it
+    /// - If one of the formulas is a disjunction, adds its disjuncts (i.e. flattens the formula)
     pub fn or(fs: Vec<Formula>) -> Self {
         let mut disj = Vec::new();
         for f in fs {
@@ -143,6 +174,8 @@ impl Formula {
         }
     }
 
+    /// Creates the negation of the given formula.
+    /// Flattens double negations.
     pub fn not(f: Formula) -> Self {
         match f {
             Formula::Not(f) => *f,
@@ -179,6 +212,8 @@ impl Formula {
         }
     }
 
+    /// Returns `true` if this formula is conjunctive, i.e., if it is a single atom or a conjunction of atoms.
+    /// Returns `false` otherwise.
     pub fn is_conjunctive(&self) -> bool {
         match self {
             Formula::Atom(_) => true,
@@ -188,6 +223,7 @@ impl Formula {
         }
     }
 
+    /// Counts the number of atoms in this formula.
     pub fn num_atoms(&self) -> usize {
         match self {
             Formula::Atom(_) => 1,
@@ -196,6 +232,10 @@ impl Formula {
         }
     }
 
+    /// Returns the atoms of this formula that need to be satisfied in every model.
+    /// In other words, the conjunction of the returned atoms is entailed by this formula.
+    ///
+    /// TODO: This should return the asserted literals, not the asserted atoms. That is, it should return a list of atoms and their polarity in which they are asserted.
     pub fn asserted_atoms(&self) -> Vec<&Atom> {
         match self {
             Formula::Atom(a) => vec![a],
@@ -210,6 +250,9 @@ impl Formula {
         }
     }
 
+    /// Returns the alphabet of constants used in this formula.
+    /// Collects the alphabet of all predicates occurring in this formula and returns the union of them.
+    /// See [Predicate] for more information.
     pub fn alphabet(&self) -> IndexSet<char> {
         match self {
             Formula::Atom(a) => match a {
@@ -413,5 +456,37 @@ impl Display for Assignment {
             write!(f, "{}: {}, ", var, val)?;
         }
         write!(f, "]")
+    }
+}
+
+#[cfg(test)]
+mod test {
+
+    fn formula_and_normalize() {
+        todo!()
+    }
+
+    fn formula_or_normalize() {
+        todo!()
+    }
+
+    fn formula_not_normalize() {
+        todo!()
+    }
+
+    fn formula_conjunctive() {
+        todo!()
+    }
+
+    fn asserted_atoms_conjunctive() {
+        todo!()
+    }
+
+    fn asserted_atoms_disjunction() {
+        todo!()
+    }
+
+    fn asserted_atoms_mixed() {
+        todo!()
     }
 }

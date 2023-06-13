@@ -14,6 +14,10 @@ use indexmap::IndexMap;
 
 use super::WordEquationEncoder;
 
+/// A segment of a pattern, i.e., a string constant or a variable.
+/// A factor of a pattern is called a *segment* iff
+/// - it is a variable, or
+/// - it is a string constant that cannot be extended to the left or right (i.e., it is not a prefix or suffix of another constant factor).
 #[derive(Clone, Debug, PartialEq, Eq)]
 enum PatternSegment {
     /// A string variable
@@ -22,21 +26,14 @@ enum PatternSegment {
     Word(Vec<char>),
 }
 
-impl Display for PatternSegment {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            PatternSegment::Variable(v) => write!(f, "{}", v),
-            PatternSegment::Word(w) => write!(f, "\"{}\"", w.iter().collect::<String>()),
-        }
-    }
-}
-
+/// A pattern that is split into [segments](PatternSegment).
 #[derive(Clone, Debug)]
 struct SegmentedPattern {
     segments: Vec<PatternSegment>,
 }
 
 impl SegmentedPattern {
+    /// Creates a new segmented pattern from the given pattern.
     fn new(pattern: &Pattern) -> Self {
         let mut segments = Vec::new();
         let mut w = vec![];
@@ -70,8 +67,9 @@ impl SegmentedPattern {
         &self.segments[i]
     }
 
-    /// Returns the earliest position at which the segment at position i can start.
-    fn earliest_start(&self, i: usize, bounds: &Bounds) -> usize {
+    /// Returns the minimal length of the suffix of the pattern starting at segment before position i (not including segment i).
+    /// The minimal prefix length is the sum of the lower bounds of all variables and length of all constants in the prefix.
+    fn prefix_min_len(&self, i: usize, bounds: &Bounds) -> usize {
         let mut pos = 0;
         for j in 0..i {
             match self.get(j) {
@@ -82,7 +80,9 @@ impl SegmentedPattern {
         pos
     }
 
-    fn suffix_len(&self, i: usize, bounds: &Bounds) -> usize {
+    /// Returns the minimal length of the suffix of the pattern starting at segment after position i (not including segment i).
+    /// The minimal suffix length is the sum of the lower bounds of all variables and length of all constants in the suffix.
+    fn suffix_min_len(&self, i: usize, bounds: &Bounds) -> usize {
         let mut f = 0;
         for j in i + 1..self.length() {
             match self.get(j) {
@@ -98,22 +98,16 @@ impl SegmentedPattern {
     }
 }
 
+/// A side of the equation, i.e., the LHS or RHS.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 enum EqSide {
     Lhs,
     Rhs,
 }
 
-impl Display for EqSide {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            EqSide::Lhs => write!(f, "LHS"),
-            EqSide::Rhs => write!(f, "RHS"),
-        }
-    }
-}
-
-pub struct BindepEncoder {
+/// The alignment-based encoder for word equations.
+/// This encoder is based on the following idea that segments of the LHS and RHS need to be aligned with a solution word.
+pub struct AlignmentEncoder {
     /// The original word equation
     equation: WordEquation,
 
@@ -156,7 +150,7 @@ pub struct BindepEncoder {
     var_cand_match_cache: IndexMap<(Variable, usize, usize), PVar>,
 }
 
-impl BindepEncoder {
+impl AlignmentEncoder {
     /// Returns the Boolean variable that is true if the character is at the position in the candidate solution word.
     fn candidate_at(&self, pos: usize, c: char) -> PVar {
         debug_assert!(
@@ -298,14 +292,14 @@ impl BindepEncoder {
             }
 
             // Disable all starts that are too early
-            for p in last_bound..segments.earliest_start(i, bounds) {
+            for p in last_bound..segments.prefix_min_len(i, bounds) {
                 let var = self.start_position(i, p, side);
                 res.add_clause(vec![neg(var)]);
             }
 
             match s {
                 PatternSegment::Variable(v) => {
-                    let start_pos = segments.earliest_start(i, bounds);
+                    let start_pos = segments.prefix_min_len(i, bounds);
                     // Incremental either: Length is longer OR start position is later OR Both
                     for pos in start_pos..self.bound {
                         // TODO: Put all "disabled" start-length-pairs is a list and process on next iteration instead of iterating over all pairs and checking the condition
@@ -327,11 +321,11 @@ impl BindepEncoder {
                             if pos < last_bound && len <= last_vbound {
                                 if pos + len
                                     >= last_bound
-                                        - (segments.suffix_len(i, bounds).saturating_sub(1))
+                                        - (segments.suffix_min_len(i, bounds).saturating_sub(1))
                                 {
                                     if pos + len
                                         < self.bound
-                                            - (segments.suffix_len(i, bounds).saturating_sub(1))
+                                            - (segments.suffix_min_len(i, bounds).saturating_sub(1))
                                     {
                                         // These length/position combinations is now possible
 
@@ -353,7 +347,8 @@ impl BindepEncoder {
 
                             // Encode alignment for new position/length pairs
                             if pos + len
-                                < self.bound - (segments.suffix_len(i, bounds).saturating_sub(1))
+                                < self.bound
+                                    - (segments.suffix_min_len(i, bounds).saturating_sub(1))
                             {
                                 let succ = self.start_position(i + 1, pos + len, side);
 
@@ -368,15 +363,15 @@ impl BindepEncoder {
                 }
                 PatternSegment::Word(w) => {
                     // Only consider the new possible starting positions
-                    for pos in segments.earliest_start(i, bounds)..self.bound {
+                    for pos in segments.prefix_min_len(i, bounds)..self.bound {
                         let len = w.len();
                         let svar = self.start_position(i, pos, side);
                         // Already considered last round
                         if pos < last_bound {
                             // Extends over the last bound, but not over the current bound
-                            if pos + len >= last_bound - segments.suffix_len(i, bounds) {
+                            if pos + len >= last_bound - segments.suffix_min_len(i, bounds) {
                                 // This position was disabled for last bound, but now became viable
-                                if pos + len < self.bound - segments.suffix_len(i, bounds) {
+                                if pos + len < self.bound - segments.suffix_min_len(i, bounds) {
                                     let succ = self.start_position(i + 1, pos + len, side);
                                     res.add_clause(vec![neg(svar), as_lit(succ)]);
                                 } else {
@@ -387,7 +382,7 @@ impl BindepEncoder {
                             // Does not extend over the last bound, so we already encoded it and can continue
                             continue;
                         }
-                        if pos + len < self.bound - segments.suffix_len(i, bounds) {
+                        if pos + len < self.bound - segments.suffix_min_len(i, bounds) {
                             // S_i^p /\ len_var -> S_{i+1}^(p+len)
                             let succ = self.start_position(i + 1, pos + len, side);
                             res.add_clause(vec![neg(svar), as_lit(succ)]);
@@ -403,6 +398,7 @@ impl BindepEncoder {
         res
     }
 
+    /// Encodes the matching of each segment of the pattern with the factor of candidate solution word as the respective position.
     fn match_candidate(
         &mut self,
         dom: &DomainEncoding,
@@ -419,16 +415,17 @@ impl BindepEncoder {
                 PatternSegment::Variable(x) => {
                     for l in 0..=bounds.get_upper(&x.len_var()).unwrap() as usize {
                         let len_var = dom.int().get(&x.len_var(), l as isize).unwrap();
-                        for p in segments.earliest_start(i, bounds)..self.bound {
+                        for p in segments.prefix_min_len(i, bounds)..self.bound {
                             let start_var = self.start_position(i, p, side);
                             if p < last_bound
                                 && l < self.get_last_var_bound(x).unwrap_or(0)
-                                && l + p < last_bound.saturating_sub(segments.suffix_len(i, bounds))
+                                && l + p
+                                    < last_bound.saturating_sub(segments.suffix_min_len(i, bounds))
                             {
                                 // Already encoded
                                 continue;
                             }
-                            if l + p <= self.bound - segments.suffix_len(i, bounds) {
+                            if l + p <= self.bound - segments.suffix_min_len(i, bounds) {
                                 // If segment starts here, then the next |w| positions must match substitution of x
                                 match l {
                                     1 => {
@@ -515,11 +512,11 @@ impl BindepEncoder {
                     }
                 }
                 PatternSegment::Word(w) => {
-                    for p in segments.earliest_start(i, bounds)
-                        ..self.bound - (w.len() - 1) - segments.suffix_len(i, bounds)
+                    for p in segments.prefix_min_len(i, bounds)
+                        ..self.bound - (w.len() - 1) - segments.suffix_min_len(i, bounds)
                     {
                         if p < last_bound
-                            && p < last_bound - (w.len() - 1) - segments.suffix_len(i, bounds)
+                            && p < last_bound - (w.len() - 1) - segments.suffix_min_len(i, bounds)
                         {
                             // Already encoded
                             continue;
@@ -540,6 +537,7 @@ impl BindepEncoder {
         EncodingResult::cnf(clauses)
     }
 
+    /// Encodes that the last segment of a pattern must no extend over the bound of the bound of the solution word.
     fn lambda_suffix(
         &self,
         bounds: &Bounds,
@@ -591,7 +589,7 @@ impl BindepEncoder {
     }
 }
 
-impl WordEquationEncoder for BindepEncoder {
+impl WordEquationEncoder for AlignmentEncoder {
     fn new(equation: WordEquation) -> Self {
         let lhs_segs = SegmentedPattern::new(equation.lhs());
         let rhs_segs = SegmentedPattern::new(equation.rhs());
@@ -615,7 +613,7 @@ impl WordEquationEncoder for BindepEncoder {
     }
 }
 
-impl PredicateEncoder for BindepEncoder {
+impl PredicateEncoder for AlignmentEncoder {
     fn encode(
         &mut self,
         bounds: &Bounds,
@@ -717,6 +715,26 @@ impl PredicateEncoder for BindepEncoder {
     }
 }
 
+/* Pretty Printing */
+
+impl Display for PatternSegment {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            PatternSegment::Variable(v) => write!(f, "{}", v),
+            PatternSegment::Word(w) => write!(f, "\"{}\"", w.iter().collect::<String>()),
+        }
+    }
+}
+
+impl Display for EqSide {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            EqSide::Lhs => write!(f, "LHS"),
+            EqSide::Rhs => write!(f, "RHS"),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::collections::HashSet;
@@ -732,6 +750,62 @@ mod tests {
         model::{words::Pattern, Sort, VarManager},
     };
 
+    #[test]
+    fn segment_single_var() {
+        let mut vm = VarManager::new();
+        let var = vm.tmp_var(Sort::String);
+        let p = Pattern::variable(&var);
+        let segs = SegmentedPattern::new(&p);
+        assert_eq!(segs.length(), 1);
+        assert_eq!(segs.segments[0], PatternSegment::Variable(var));
+    }
+
+    #[test]
+    fn segment_single_const() {
+        let constant = "foo";
+        let p = Pattern::constant(constant);
+        let segs = SegmentedPattern::new(&p);
+        assert_eq!(segs.length(), 1);
+        assert_eq!(
+            segs.segments[0],
+            PatternSegment::Word(constant.chars().collect())
+        );
+    }
+
+    #[test]
+    fn segment_empty() {
+        let p = Pattern::empty();
+        let segs = SegmentedPattern::new(&p);
+        assert_eq!(segs.length(), 0);
+    }
+
+    #[test]
+    fn segment_vars_consts() {
+        let mut vm = VarManager::new();
+        let var1 = vm.tmp_var(Sort::String);
+        let var2 = vm.tmp_var(Sort::String);
+        let mut p = Pattern::empty();
+        p.append_var(&var1)
+            .append_word("foo")
+            .append_var(&var1)
+            .append_var(&var2)
+            .append_word("foo")
+            .append_word("bar");
+        let segs = SegmentedPattern::new(&p);
+        assert_eq!(segs.length(), 5);
+        assert_eq!(segs.segments[0], PatternSegment::Variable(var1.clone()));
+        assert_eq!(
+            segs.segments[1],
+            PatternSegment::Word("foo".chars().collect())
+        );
+        assert_eq!(segs.segments[2], PatternSegment::Variable(var1.clone()));
+        assert_eq!(segs.segments[3], PatternSegment::Variable(var2.clone()));
+        assert_eq!(
+            segs.segments[4],
+            PatternSegment::Word("foobar".chars().collect())
+        );
+    }
+
     fn solve_bindep(eq: &WordEquation, bounds: Bounds, alphabet: &IndexSet<char>) -> Option<bool> {
         let mut encoding = EncodingResult::empty();
         let mut vm = VarManager::new();
@@ -740,7 +814,7 @@ mod tests {
         let subs_cnf = dom_encoder.encode(&bounds, &vm);
         encoding.join(subs_cnf);
 
-        let mut encoder = BindepEncoder::new(eq.clone());
+        let mut encoder = AlignmentEncoder::new(eq.clone());
         encoding.join(encoder.encode(&bounds, dom_encoder.encoding(), &vm));
 
         let mut solver: Solver = Solver::default();
@@ -759,66 +833,6 @@ mod tests {
         if let Some(true) = res {
             let solution = get_substitutions(dom_encoder.encoding(), &vm, &solver);
             let solution = Assignment::from(solution);
-            println!("\n\n===============================================================");
-
-            let mut w = vec![];
-            for i in 0..encoder.bound {
-                for c in alphabet {
-                    let cvar = encoder.cand_positions[&(i, *c)];
-                    if let Some(true) = solver.value(as_lit(cvar)) {
-                        w.push(*c);
-                    }
-                }
-                let cvar = encoder.cand_positions[&(i, LAMBDA)];
-                if let Some(true) = solver.value(as_lit(cvar)) {
-                    w.push(LAMBDA);
-                }
-            }
-            println!("Solution word: {:?}", w);
-            println!("LSH start positions:");
-            for (i, s) in encoder.segments_lsh.segments.iter().enumerate() {
-                print!("\t{}", s);
-                let mut spos = None;
-                for pos in 0..encoder.bound {
-                    let vr = encoder.starts_lhs[&(i, pos)];
-                    if let Some(true) = solver.value(as_lit(vr)) {
-                        assert!(spos.is_none());
-                        spos = Some(pos);
-                    }
-                }
-                assert!(spos.is_some());
-                println!(": {:?}", spos.unwrap());
-            }
-
-            println!("RSH start positions:");
-            for (i, s) in encoder.segments_rhs.segments.iter().enumerate() {
-                print!("\t{}", s);
-                let mut spos = None;
-                for pos in 0..encoder.bound {
-                    let vr = encoder.starts_rhs[&(i, pos)];
-                    if let Some(true) = solver.value(as_lit(vr)) {
-                        assert!(spos.is_none());
-                        spos = Some(pos);
-                    }
-                }
-                assert!(spos.is_some());
-                println!(": {:?}", spos.unwrap());
-            }
-            println!("Variable lengths:");
-            for x in eq.variables() {
-                let mut len = None;
-                for l in 0..=bounds.get_upper(vm.str_length_var(&x).unwrap()).unwrap() {
-                    let vr = dom_encoder.encoding().int().get(&x.len_var(), l).unwrap();
-                    if let Some(true) = solver.value(as_lit(vr)) {
-                        assert!(len.is_none());
-                        len = Some(l);
-                    }
-                }
-                assert!(len.is_some());
-                println!("\t{}: {:?}", x, len.unwrap());
-            }
-            println!("===============================================================\n\n");
-
             assert!(
                 eq.is_solution(&solution).unwrap(),
                 "{} is not a solution for {}: {:?} != {:?}",
@@ -838,23 +852,19 @@ mod tests {
     ) -> Option<bool> {
         let mut bounds = Bounds::with_defaults(IntDomain::Bounded(0, 1));
 
-        let mut encoder = BindepEncoder::new(eq.clone());
+        let mut encoder = AlignmentEncoder::new(eq.clone());
         let mut vm = VarManager::new();
         eq.variables().iter().for_each(|v| vm.add_var(v.clone()));
         let mut dom_encoder = DomainEncoder::new(alphabet.clone());
 
         let mut result = None;
         let mut done = bounds.uppers_geq(limit as isize);
-        let mut solver: cadical::Solver = cadical::Solver::new();
-        println!("Done: {}", done);
+        let mut solver: Solver = Solver::new();
+
         while !done {
-            println!("{}", bounds);
             let mut encoding = EncodingResult::empty();
 
             encoding.join(dom_encoder.encode(&bounds, &vm));
-
-            println!("Encoding {:#?}", dom_encoder.encoding().string());
-
             encoding.join(encoder.encode(&bounds, dom_encoder.encoding(), &vm));
             result = match encoding {
                 EncodingResult::Cnf(cnf, assm) => {
@@ -871,84 +881,17 @@ mod tests {
             bounds.next_square_uppers();
             bounds.clamp_uppers(limit as isize);
         }
-        match result {
-            Some(true) => {
-                let sol = get_substitutions(dom_encoder.encoding(), &vm, &solver);
-                let solution = Assignment::from(sol);
-                println!("\n\n===============================================================");
-
-                let mut w = vec![];
-                for i in 0..encoder.bound {
-                    for c in alphabet {
-                        let cvar = encoder.cand_positions[&(i, *c)];
-                        if let Some(true) = solver.value(as_lit(cvar)) {
-                            w.push(*c);
-                        }
-                    }
-                    let cvar = encoder.cand_positions[&(i, LAMBDA)];
-                    if let Some(true) = solver.value(as_lit(cvar)) {
-                        w.push(LAMBDA);
-                    }
-                }
-                println!("Solution word: {:?}", w);
-                println!("LSH start positions:");
-                for (i, s) in encoder.segments_lsh.segments.iter().enumerate() {
-                    print!("\t{}", s);
-                    let mut spos = None;
-                    for pos in 0..encoder.bound {
-                        let vr = encoder.starts_lhs[&(i, pos)];
-                        if let Some(true) = solver.value(as_lit(vr)) {
-                            assert!(spos.is_none());
-                            spos = Some(pos);
-                        }
-                    }
-                    //assert!(spos.is_some());
-                    println!(": {:?}", spos);
-                }
-
-                println!("RSH start positions:");
-                for (i, s) in encoder.segments_rhs.segments.iter().enumerate() {
-                    print!("\t{}", s);
-                    let mut spos = None;
-                    for pos in 0..encoder.bound {
-                        let vr = encoder.starts_rhs[&(i, pos)];
-                        if let Some(true) = solver.value(as_lit(vr)) {
-                            assert!(spos.is_none());
-                            spos = Some(pos);
-                        }
-                    }
-                    //assert!(spos.is_some());
-                    println!(": {:?}", spos);
-                }
-                println!("Variable lengths:");
-                for x in eq.variables() {
-                    let mut len: Option<(usize, u32)> = None;
-                    for l in 0..=bounds.get_upper(&x.len_var()).unwrap() {
-                        let vr = dom_encoder.encoding().int().get(&x.len_var(), l).unwrap();
-                        if let Some(true) = solver.value(as_lit(vr)) {
-                            assert!(
-                                len.is_none(),
-                                "Variable {} has multiple lengths: {} and {}",
-                                x,
-                                len.unwrap().0,
-                                l
-                            );
-                            len = Some((l as usize, vr));
-                        }
-                    }
-                    assert!(len.is_some());
-                    println!("\t{}: {} (Var {})", x, len.unwrap().0, len.unwrap().1);
-                }
-                println!("===============================================================\n\n");
-                assert!(
-                    eq.is_solution(&solution).unwrap(),
-                    "Not a solution: {} ({})",
-                    solution,
-                    eq
-                );
-            }
-
-            _ => {}
+        if let Some(true) = result {
+            let solution = get_substitutions(dom_encoder.encoding(), &vm, &solver);
+            let solution = Assignment::from(solution);
+            assert!(
+                eq.is_solution(&solution).unwrap(),
+                "{} is not a solution for {}: {:?} != {:?}",
+                solution,
+                eq,
+                eq.lhs().substitute(&solution),
+                eq.rhs().substitute(&solution)
+            );
         }
         result
     }

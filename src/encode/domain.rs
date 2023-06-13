@@ -1,3 +1,5 @@
+//! Encoding of the domains of all variables.
+
 use indexmap::{IndexMap, IndexSet};
 
 use super::{
@@ -12,9 +14,7 @@ use crate::{
 };
 use std::collections::HashMap;
 
-
-
-/// Encodes the domains of all variables.
+/// Encoder for the domains of all variables.
 pub struct DomainEncoder {
     /// The encoder for string variables
     strings: SubstitutionEncoder,
@@ -345,7 +345,7 @@ impl IntegerEncoder {
             let mut len_choices = vec![];
             let last_bound = self
                 .get_last_dom(str_len_var)
-                .map(|b| (b.upper().unwrap()) + 1)
+                .map(|b| (b.get_upper().unwrap()) + 1)
                 .unwrap_or(0);
 
             let lower = bounds.get_lower(str_len_var).unwrap_or(0);
@@ -400,7 +400,8 @@ mod tests {
     use crate::{
         bounds::{Bounds, IntDomain},
         encode::{
-            domain::{get_substitutions, DomainEncoding}, LAMBDA,
+            domain::{get_substitutions, DomainEncoding},
+            LAMBDA,
         },
         model::VarManager,
     };

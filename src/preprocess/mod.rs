@@ -6,6 +6,7 @@ use std::fmt::Display;
 use crate::{
     formula::{Atom, Formula, Predicate},
     model::VarManager,
+    parse::Instance,
 };
 
 use self::{
@@ -164,11 +165,11 @@ pub fn preprocess_formula(formula: &Formula) -> PreprocessingResult<Formula> {
     }
 }
 
-pub fn preprocess(formula: &Formula, var_manager: &VarManager) -> PreprocessingResult<Formula> {
+pub fn preprocess(instance: &Instance) -> PreprocessingResult<Formula> {
     let mut changed = false;
 
-    let mut preprocessed_fm = match preprocess_formula(formula) {
-        PreprocessingResult::Unchanged => formula.clone(),
+    let mut preprocessed_fm = match preprocess_formula(instance.get_formula()) {
+        PreprocessingResult::Unchanged => instance.get_formula().clone(),
         PreprocessingResult::Changed(c) => {
             changed = true;
             c
@@ -186,17 +187,18 @@ pub fn preprocess(formula: &Formula, var_manager: &VarManager) -> PreprocessingR
         }
     }
     log::debug!("Deduced substitutions: {}", substitutions);
-    preprocessed_fm = match apply_substitutions(&preprocessed_fm, &substitutions, var_manager) {
-        PreprocessingResult::Unchanged => preprocessed_fm,
-        PreprocessingResult::Changed(c) => {
-            log::trace!("After applying substitutions: {}", c);
-            changed = true;
-            c
-        }
-        // Stop early
-        PreprocessingResult::False => return PreprocessingResult::False,
-        PreprocessingResult::True => return PreprocessingResult::True,
-    };
+    preprocessed_fm =
+        match apply_substitutions(&preprocessed_fm, &substitutions, instance.get_var_manager()) {
+            PreprocessingResult::Unchanged => preprocessed_fm,
+            PreprocessingResult::Changed(c) => {
+                log::trace!("After applying substitutions: {}", c);
+                changed = true;
+                c
+            }
+            // Stop early
+            PreprocessingResult::False => return PreprocessingResult::False,
+            PreprocessingResult::True => return PreprocessingResult::True,
+        };
     // Apply another round of preprocessing steps
     let preprocessed_fm = match preprocess_formula(&preprocessed_fm) {
         PreprocessingResult::Unchanged => preprocessed_fm,
