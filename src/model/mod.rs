@@ -185,11 +185,11 @@ impl VarManager {
             "Cannot get length of non-string variable {}",
             var
         );
-        let split = var.name().split("$").collect::<Vec<_>>();
+        let split = var.name().split('$').collect::<Vec<_>>();
         assert_eq!(split.len(), 2);
         assert_eq!(split[1], "len");
         let name = split[0];
-        self.by_name(&name)
+        self.by_name(name)
     }
 
     /// Returns true iff the given variable represents the length of a string variable

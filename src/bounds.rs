@@ -6,7 +6,7 @@ use std::{
 use indexmap::IndexMap;
 
 use crate::{
-    formula::{Assignment, Atom, ConstVal, Formula, Predicate},
+    formula::{Atom, Formula, Predicate},
     model::{
         linears::{LinearArithFactor, LinearConstraint, LinearConstraintType},
         VarManager, Variable,
@@ -34,10 +34,6 @@ impl IntDomain {
         } else {
             IntDomain::Bounded(lower, upper)
         }
-    }
-
-    fn fixed(value: isize) -> Self {
-        IntDomain::Bounded(value, value)
     }
 
     pub fn upper(&self) -> Option<isize> {
@@ -127,6 +123,7 @@ impl Bounds {
         }
     }
 
+    #[allow(dead_code)]
     pub fn with_defaults(default: IntDomain) -> Self {
         Self {
             domains: IndexMap::new(),
@@ -152,8 +149,7 @@ impl Bounds {
     /// Returns the upper bound of a variable.
     /// Returns `None` if the variable is unbounded.
     pub fn get_upper(&self, var: &Variable) -> Option<isize> {
-        let u = self.get(var).upper();
-        u
+        self.get(var).upper()
     }
 
     pub fn get_lower(&self, var: &Variable) -> Option<isize> {
@@ -177,12 +173,12 @@ impl Bounds {
             for atom in formla.asserted_atoms() {
                 match atom {
                     Atom::Predicate(Predicate::WordEquation(eq)) => {
-                        let lincon = LinearConstraint::from_word_equation(&eq);
+                        let lincon = LinearConstraint::from_word_equation(eq);
                         let newbounds = lincon_upper_bound(&lincon, &bounds);
                         bounds = bounds.intersect(&newbounds);
                     }
                     Atom::Predicate(Predicate::LinearConstraint(lincon)) => {
-                        let newbounds = lincon_upper_bound(&lincon, &bounds);
+                        let newbounds = lincon_upper_bound(lincon, &bounds);
                         bounds = bounds.intersect(&newbounds);
                     }
                     Atom::False | Atom::True | Atom::BoolVar(_) | Atom::Predicate(_) => {}
@@ -211,19 +207,12 @@ impl Bounds {
     }
 
     /// Returns true if all upper bounds are less than or equal to the given value and false otherwise.
+    #[allow(dead_code)]
     pub fn uppers_leq(&self, val: isize) -> bool {
         self.domains
             .values()
             .all(|d| d.upper().map_or(false, |u| u <= val))
             && self.default.upper().map_or(false, |u| u <= val)
-    }
-
-    /// Returns true if all upper bounds are strictly less than the given value and false otherwise.
-    pub fn uppers_le(&self, val: isize) -> bool {
-        self.domains
-            .values()
-            .all(|d| d.upper().map_or(false, |u| u < val))
-            && self.default.upper().map_or(false, |u| u < val)
     }
 
     /// Returns true if all upper bounds are greater than or  equal to the given value and false otherwise.
@@ -305,31 +294,43 @@ fn lincon_upper_bound(lincon: &LinearConstraint, bounds: &Bounds) -> Bounds {
                                     }
                                     if *other_coeff >= 0 {
                                         if let Some(lb) = bounds.get_lower(other_v) {
-                                            rhs_min.as_mut().map(|r| *r -= lb * other_coeff);
+                                            if let Some(r) = rhs_min.as_mut() {
+                                                *r -= lb * other_coeff
+                                            }
                                         } else {
                                             rhs_min = None;
                                         }
                                         if let Some(ub) = bounds.get_upper(other_v) {
-                                            rhs_max.as_mut().map(|r| *r -= ub * other_coeff);
+                                            if let Some(r) = rhs_max.as_mut() {
+                                                *r -= ub * other_coeff
+                                            }
                                         } else {
                                             rhs_max = None;
                                         }
                                     } else {
                                         if let Some(ub) = bounds.get_upper(other_v) {
-                                            rhs_min.as_mut().map(|r| *r -= ub * other_coeff);
+                                            if let Some(r) = rhs_min.as_mut() {
+                                                *r -= ub * other_coeff
+                                            }
                                         } else {
                                             rhs_min = None;
                                         }
                                         if let Some(lb) = bounds.get_lower(other_v) {
-                                            rhs_max.as_mut().map(|r| *r -= lb * other_coeff);
+                                            if let Some(r) = rhs_max.as_mut() {
+                                                *r -= lb * other_coeff
+                                            }
                                         } else {
                                             rhs_max = None;
                                         }
                                     }
                                 }
                                 LinearArithFactor::Const(c) => {
-                                    rhs_min.as_mut().map(|r| *r -= c);
-                                    rhs_max.as_mut().map(|r| *r -= c);
+                                    if let Some(r) = rhs_max.as_mut() {
+                                        *r -= c;
+                                    }
+                                    if let Some(r) = rhs_min.as_mut() {
+                                        *r -= c;
+                                    }
                                 }
                             }
                         }
@@ -378,20 +379,24 @@ fn lincon_upper_bound(lincon: &LinearConstraint, bounds: &Bounds) -> Bounds {
                                     }
                                     if *other_coeff >= 0 {
                                         if let Some(lb) = bounds.get_lower(other_v) {
-                                            rhs_min.as_mut().map(|r| *r -= lb * other_coeff);
+                                            if let Some(r) = rhs_min.as_mut() {
+                                                *r -= lb * other_coeff
+                                            }
                                         } else {
                                             rhs_min = None;
+                                        }
+                                    } else if let Some(ub) = bounds.get_upper(other_v) {
+                                        if let Some(r) = rhs_min.as_mut() {
+                                            *r -= ub * other_coeff;
                                         }
                                     } else {
-                                        if let Some(ub) = bounds.get_upper(other_v) {
-                                            rhs_min.as_mut().map(|r| *r -= ub * other_coeff);
-                                        } else {
-                                            rhs_min = None;
-                                        }
+                                        rhs_min = None;
                                     }
                                 }
                                 LinearArithFactor::Const(c) => {
-                                    rhs_min.as_mut().map(|r| *r -= c);
+                                    if let Some(r) = rhs_min.as_mut() {
+                                        *r -= c;
+                                    }
                                 }
                             }
                         }
@@ -440,20 +445,24 @@ fn lincon_upper_bound(lincon: &LinearConstraint, bounds: &Bounds) -> Bounds {
                                     }
                                     if *other_coeff >= 0 {
                                         if let Some(ub) = bounds.get_upper(other_v) {
-                                            rhs_max.as_mut().map(|r| *r -= ub * other_coeff);
+                                            if let Some(r) = rhs_max.as_mut() {
+                                                *r -= ub * other_coeff
+                                            }
                                         } else {
                                             rhs_max = None;
+                                        }
+                                    } else if let Some(lb) = bounds.get_lower(other_v) {
+                                        if let Some(r) = rhs_max.as_mut() {
+                                            *r -= lb * other_coeff
                                         }
                                     } else {
-                                        if let Some(lb) = bounds.get_lower(other_v) {
-                                            rhs_max.as_mut().map(|r| *r -= lb * other_coeff);
-                                        } else {
-                                            rhs_max = None;
-                                        }
+                                        rhs_max = None;
                                     }
                                 }
                                 LinearArithFactor::Const(c) => {
-                                    rhs_max.as_mut().map(|r| *r -= c);
+                                    if let Some(r) = rhs_max.as_mut() {
+                                        *r -= c;
+                                    }
                                 }
                             }
                         }
@@ -492,15 +501,11 @@ fn lincon_upper_bound(lincon: &LinearConstraint, bounds: &Bounds) -> Bounds {
 impl Display for IntDomain {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            IntDomain::Bounded(l, u) => {
-                if l == u {
-                    write!(f, "{}", l)
-                } else if l < u {
-                    write!(f, "[{}, {}]", l, u)
-                } else {
-                    write!(f, "∅")
-                }
-            }
+            IntDomain::Bounded(l, u) => match l.cmp(u) {
+                std::cmp::Ordering::Less => write!(f, "[{}, {}]", l, u),
+                std::cmp::Ordering::Equal => write!(f, "{}", l),
+                std::cmp::Ordering::Greater => write!(f, "∅"),
+            },
             IntDomain::LowerBounded(l) => write!(f, "[{}, ∞)", l),
             IntDomain::UpperBounded(u) => write!(f, "(-∞, {}]", u),
             IntDomain::Unbounded => write!(f, "(-∞, ∞)"),

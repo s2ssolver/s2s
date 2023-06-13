@@ -12,7 +12,7 @@ use crate::{
 };
 use std::collections::HashMap;
 
-use super::IntegerDomainBounds;
+
 
 /// Encodes the domains of all variables.
 pub struct DomainEncoder {
@@ -400,8 +400,7 @@ mod tests {
     use crate::{
         bounds::{Bounds, IntDomain},
         encode::{
-            domain::{get_substitutions, DomainEncoding},
-            IntegerDomainBounds, LAMBDA,
+            domain::{get_substitutions, DomainEncoding}, LAMBDA,
         },
         model::VarManager,
     };

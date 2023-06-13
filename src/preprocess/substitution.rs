@@ -38,7 +38,7 @@ impl Substitutions {
 
             None => pat.clone(),
         };
-        self.subs.insert(var.clone(), rhs.clone());
+        self.subs.insert(var.clone(), rhs);
     }
 
     pub fn extend(&mut self, other: &Substitutions) {

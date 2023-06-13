@@ -50,7 +50,7 @@ enum Format {
 
 fn main() {
     env_logger::init();
-    let ts = std::time::Instant::now();
+    let _ts = std::time::Instant::now();
     let cli = Options::parse();
     let parser = match cli.format {
         Format::Woorpje => Parser::WoorpjeParser,

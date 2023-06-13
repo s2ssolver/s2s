@@ -7,7 +7,7 @@ use std::time::Instant;
 
 use crate::bounds::{Bounds, IntDomain};
 use crate::encode::{
-    BindepEncoder, EncodingResult, IntegerDomainBounds, MddEncoder, PredicateEncoder,
+    BindepEncoder, EncodingResult, MddEncoder, PredicateEncoder,
     WordEquationEncoder,
 };
 
@@ -126,7 +126,7 @@ impl ConjunctiveSolver {
         let bounds = if let Formula::Atom(Atom::Predicate(Predicate::WordEquation(eq))) =
             self.instance.get_formula()
         {
-            sharpen_bounds(eq, &bounds, self.instance.get_var_manager())
+            sharpen_bounds(eq, bounds, self.instance.get_var_manager())
         } else {
             bounds.clone()
         };

@@ -4,7 +4,7 @@ use crate::bounds::Bounds;
 use crate::encode::card::exactly_one;
 use crate::encode::domain::DomainEncoding;
 use crate::encode::{
-    EncodingResult, FilledPattern, FilledPos, IntegerDomainBounds, PredicateEncoder, LAMBDA,
+    EncodingResult, FilledPattern, FilledPos, PredicateEncoder, LAMBDA,
 };
 use crate::model::words::WordEquation;
 use crate::model::VarManager;
@@ -768,7 +768,7 @@ mod tests {
     #[test]
     fn iwoorpje_empty_eq() {
         let eq = WordEquation::new(Pattern::from(vec![]), Pattern::from(vec![]));
-        let mut bounds = Bounds::with_defaults(IntDomain::Bounded(0, 10));
+        let bounds = Bounds::with_defaults(IntDomain::Bounded(0, 10));
         let res = solve_iwoorpje(&eq, bounds, &eq.alphabet());
         assert!(matches!(res, Some(true)));
     }
@@ -776,7 +776,7 @@ mod tests {
     #[test]
     fn iwoorpje_trivial_sat_consts() {
         let eq = WordEquation::constant("bar", "bar");
-        let mut bounds = Bounds::with_defaults(IntDomain::Bounded(0, 10));
+        let bounds = Bounds::with_defaults(IntDomain::Bounded(0, 10));
 
         let res = solve_iwoorpje(&eq, bounds, &eq.alphabet());
         assert!(matches!(res, Some(true)));
@@ -785,7 +785,7 @@ mod tests {
     #[test]
     fn iwoorpje_trivial_unsat_consts() {
         let eq = WordEquation::constant("bar", "barr");
-        let mut bounds = Bounds::with_defaults(IntDomain::Bounded(0, 10));
+        let bounds = Bounds::with_defaults(IntDomain::Bounded(0, 10));
 
         let res = solve_iwoorpje(&eq, bounds, &eq.alphabet());
         assert!(matches!(res, Some(false)));
@@ -795,7 +795,7 @@ mod tests {
     fn iwoorpje_trivial_sat_const_var() {
         let eq = WordEquation::parse_simple("X", "bar");
 
-        let mut bounds = Bounds::with_defaults(IntDomain::Bounded(0, 5));
+        let bounds = Bounds::with_defaults(IntDomain::Bounded(0, 5));
 
         let res = solve_iwoorpje(&eq, bounds, &eq.alphabet());
         assert!(matches!(res, Some(true)));
@@ -806,7 +806,7 @@ mod tests {
         let mut vm = VarManager::new();
         let var = Pattern::variable(&vm.tmp_var(Sort::String));
         let eq = WordEquation::new(var.clone(), var);
-        let mut bounds = Bounds::with_defaults(IntDomain::Bounded(0, 10));
+        let bounds = Bounds::with_defaults(IntDomain::Bounded(0, 10));
         let res = solve_iwoorpje(&eq, bounds, &eq.alphabet());
         assert!(matches!(res, Some(true)));
     }
@@ -822,7 +822,7 @@ mod tests {
         let mut rhs = Pattern::empty();
         rhs.append_var(&var_b).append_var(&var_a);
         let eq = WordEquation::new(lhs, rhs);
-        let mut bounds = Bounds::with_defaults(IntDomain::Bounded(0, 10));
+        let bounds = Bounds::with_defaults(IntDomain::Bounded(0, 10));
         let res = solve_iwoorpje(&eq, bounds, &eq.alphabet());
         assert!(matches!(res, Some(true)));
     }
@@ -830,7 +830,7 @@ mod tests {
     #[test]
     fn iwoorpje_sat_pattern_const() {
         let eq = WordEquation::parse_simple("aXc", "abc");
-        let mut bounds = Bounds::with_defaults(IntDomain::Bounded(0, 1));
+        let bounds = Bounds::with_defaults(IntDomain::Bounded(0, 1));
         let res = solve_iwoorpje(&eq, bounds, &eq.alphabet());
         assert!(matches!(res, Some(true)));
     }
@@ -838,7 +838,7 @@ mod tests {
     #[test]
     fn iwoorpje_test() {
         let eq = WordEquation::parse_simple("aXb", "YXb");
-        let mut bounds = Bounds::with_defaults(IntDomain::Bounded(0, 3));
+        let bounds = Bounds::with_defaults(IntDomain::Bounded(0, 3));
         let res = solve_iwoorpje(&eq, bounds, &eq.alphabet());
         assert!(matches!(res, Some(true)));
     }
@@ -851,7 +851,7 @@ mod tests {
             Pattern::variable(&vm.tmp_var(Sort::String)),
         );
 
-        let mut bounds = Bounds::with_defaults(IntDomain::Bounded(0, 1));
+        let bounds = Bounds::with_defaults(IntDomain::Bounded(0, 1));
 
         let res = solve_iwoorpje(&eq, bounds, &eq.alphabet());
         assert!(matches!(res, Some(false)));

@@ -16,7 +16,7 @@ use std::collections::HashMap;
 use crate::bounds::Bounds;
 use crate::encode::domain::DomainEncoding;
 use crate::encode::{
-    EncodingResult, FilledPattern, FilledPos, IntegerDomainBounds, PredicateEncoder, LAMBDA,
+    EncodingResult, FilledPattern, FilledPos, PredicateEncoder, LAMBDA,
 };
 use crate::model::words::WordEquation;
 use crate::model::VarManager;
@@ -319,7 +319,7 @@ mod tests {
     fn length_literal_word(word: String, bound: u8) {
         let bound = bound as isize;
         let pattern = Pattern::constant(&word);
-        let mut bounds = Bounds::with_defaults(IntDomain::Bounded(0, bound));
+        let bounds = Bounds::with_defaults(IntDomain::Bounded(0, bound));
         let mut var_manager = VarManager::new();
         for var in pattern.vars() {
             var_manager.new_var(var.name(), Sort::String);
@@ -434,7 +434,7 @@ mod tests {
     #[test]
     fn woorpje_empty_eq() {
         let eq = WordEquation::new(Pattern::from(vec![]), Pattern::from(vec![]));
-        let mut bounds = Bounds::with_defaults(IntDomain::Bounded(0, 10));
+        let bounds = Bounds::with_defaults(IntDomain::Bounded(0, 10));
         let res = solve_woorpje(&eq, bounds, &eq.alphabet());
         assert!(matches!(res, Some(true)));
     }
@@ -442,7 +442,7 @@ mod tests {
     #[test]
     fn woorpje_trivial_sat_consts() {
         let eq = WordEquation::constant("bar", "bar");
-        let mut bounds = Bounds::with_defaults(IntDomain::Bounded(0, 10));
+        let bounds = Bounds::with_defaults(IntDomain::Bounded(0, 10));
 
         let res = solve_woorpje(&eq, bounds, &eq.alphabet());
         assert!(matches!(res, Some(true)));
@@ -451,7 +451,7 @@ mod tests {
     #[test]
     fn woorpje_trivial_unsat_consts() {
         let eq = WordEquation::constant("bar", "barr");
-        let mut bounds = Bounds::with_defaults(IntDomain::Bounded(0, 10));
+        let bounds = Bounds::with_defaults(IntDomain::Bounded(0, 10));
 
         let res = solve_woorpje(&eq, bounds, &eq.alphabet());
         assert!(matches!(res, Some(false)));
@@ -465,7 +465,7 @@ mod tests {
             Pattern::variable(&vm.tmp_var(Sort::String)),
         );
 
-        let mut bounds = Bounds::with_defaults(IntDomain::Bounded(0, 19));
+        let bounds = Bounds::with_defaults(IntDomain::Bounded(0, 19));
 
         let res = solve_woorpje(&eq, bounds, &eq.alphabet());
         assert!(matches!(res, Some(true)));
@@ -476,7 +476,7 @@ mod tests {
         let mut vm = VarManager::new();
         let var = Pattern::variable(&vm.tmp_var(Sort::String));
         let eq = WordEquation::new(var.clone(), var);
-        let mut bounds = Bounds::with_defaults(IntDomain::Bounded(0, 10));
+        let bounds = Bounds::with_defaults(IntDomain::Bounded(0, 10));
         let res = solve_woorpje(&eq, bounds, &eq.alphabet());
         assert!(matches!(res, Some(true)));
     }
@@ -492,7 +492,7 @@ mod tests {
         let mut rhs = Pattern::empty();
         rhs.append_var(&var_b).append_var(&var_a);
         let eq = WordEquation::new(lhs, rhs);
-        let mut bounds = Bounds::with_defaults(IntDomain::Bounded(0, 10));
+        let bounds = Bounds::with_defaults(IntDomain::Bounded(0, 10));
         let res = solve_woorpje(&eq, bounds, &eq.alphabet());
         assert!(matches!(res, Some(true)));
     }
@@ -506,7 +506,7 @@ mod tests {
         lhs.append_word("a").append_var(&var_a).append_word("c");
         let rhs = Pattern::constant("abc");
         let eq = WordEquation::new(lhs, rhs);
-        let mut bounds = Bounds::with_defaults(IntDomain::Bounded(0, 3));
+        let bounds = Bounds::with_defaults(IntDomain::Bounded(0, 3));
         let res = solve_woorpje(&eq, bounds, &eq.alphabet());
         assert!(matches!(res, Some(true)));
     }
@@ -519,7 +519,7 @@ mod tests {
             Pattern::variable(&vm.tmp_var(Sort::String)),
         );
 
-        let mut bounds = Bounds::with_defaults(IntDomain::Bounded(0, 1));
+        let bounds = Bounds::with_defaults(IntDomain::Bounded(0, 1));
 
         let res = solve_woorpje(&eq, bounds, &eq.alphabet());
         assert!(matches!(res, Some(false)));
@@ -597,7 +597,7 @@ mod tests {
             (var_e, "ae".chars().collect()),
         ]);
         let _solution = Assignment::from(solution);
-        let mut bounds = Bounds::with_defaults(IntDomain::Bounded(0, 10));
+        let bounds = Bounds::with_defaults(IntDomain::Bounded(0, 10));
         let res = solve_woorpje(&eq, bounds, &eq.alphabet());
 
         assert!(matches!(res, Some(true)));

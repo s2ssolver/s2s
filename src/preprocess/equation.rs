@@ -58,7 +58,7 @@ pub fn preprocess_word_equation(weq: &WordEquation) -> PreprocessingResult<WordE
     };
 
     if changed {
-        PreprocessingResult::Changed(preprocessed.clone())
+        PreprocessingResult::Changed(preprocessed)
     } else {
         PreprocessingResult::Unchanged
     }
@@ -84,9 +84,8 @@ fn strip_prefix(weq: &WordEquation) -> PreprocessingResult<WordEquation> {
         let rhs_new = weq.rhs().factor(i, m).unwrap();
 
         let processed = WordEquation::new(lhs_new, rhs_new);
-        let res = PreprocessingResult::Changed(processed);
 
-        res
+        PreprocessingResult::Changed(processed)
     }
 }
 
@@ -149,7 +148,7 @@ fn strip_suffix(weq: &WordEquation) -> PreprocessingResult<WordEquation> {
 /// Strips the longest common prefix and suffix from both sides of the given word equation and returns the result.
 fn strip(weq: &WordEquation) -> PreprocessingResult<WordEquation> {
     match strip_prefix(weq) {
-        PreprocessingResult::Unchanged => strip_suffix(&weq),
+        PreprocessingResult::Unchanged => strip_suffix(weq),
         PreprocessingResult::Changed(w) => match strip_suffix(&w) {
             PreprocessingResult::Unchanged => PreprocessingResult::Changed(w),
             PreprocessingResult::Changed(c) => PreprocessingResult::Changed(c),
@@ -162,6 +161,7 @@ fn strip(weq: &WordEquation) -> PreprocessingResult<WordEquation> {
 }
 
 /// Checks whether we can obtain suffixes by removing the prefix of the same length from both sides for which Parikk vectors of constants are equal, but the Parikh vectors of variables are not. In that case the equation has no solution.
+#[allow(dead_code)]
 fn check_parikh(weq: &WordEquation) -> PreprocessingResult<WordEquation> {
     let max = min(weq.lhs().len(), weq.rhs().len());
     let symbols = weq.symbols();

@@ -199,14 +199,14 @@ impl Formula {
     pub fn asserted_atoms(&self) -> Vec<&Atom> {
         match self {
             Formula::Atom(a) => vec![a],
-            Formula::Or(fs) => {
+            Formula::Or(_fs) => {
                 vec![]
             }
             Formula::And(fs) => fs
                 .iter()
                 .map(Self::asserted_atoms)
                 .fold(Vec::new(), |acc, x| acc.into_iter().chain(x).collect()),
-            Formula::Not(f) => vec![],
+            Formula::Not(_f) => vec![],
         }
     }
 

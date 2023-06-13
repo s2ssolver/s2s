@@ -8,7 +8,7 @@ use crate::{
     sat::{as_lit, neg, pvar, PVar},
 };
 
-use super::{EncodingResult, IntegerDomainBounds, PredicateEncoder};
+use super::{EncodingResult, PredicateEncoder};
 
 /// Encodes linear constraints by using multi-valued decision diagrams.
 pub struct MddEncoder {
@@ -24,7 +24,7 @@ pub struct MddEncoder {
     /// Is 0 when the encoder is reset.
     round: usize,
 
-    last_bounds: Option<IntegerDomainBounds>,
+    last_bounds: Option<Bounds>,
 }
 
 impl MddEncoder {
@@ -54,7 +54,7 @@ impl MddEncoder {
         };
         self.last_bounds
             .as_ref()
-            .map(|b| b.get_upper(&v))
+            .map(|b| b.get_upper(&v).unwrap_or(0))
             .unwrap_or(0)
     }
 }

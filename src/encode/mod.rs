@@ -1,10 +1,10 @@
-use std::{cmp::min, collections::HashMap, ops::Index, slice::Iter};
+use std::{ops::Index, slice::Iter};
 
 use crate::{
     bounds::Bounds,
     model::{
         words::{Pattern, Symbol},
-        Sort, VarManager, Variable,
+        VarManager, Variable,
     },
     sat::{Clause, Cnf, PLit},
 };
@@ -24,92 +24,6 @@ mod linear;
 pub use equation::{BindepEncoder, IWoorpjeEncoder, WoorpjeEncoder, WordEquationEncoder};
 use indexmap::IndexSet;
 pub use linear::MddEncoder;
-
-/// Maps each variable of sort `Int` to its domain given by a lower and upper bound.
-#[derive(Clone, Debug)]
-pub struct IntegerDomainBounds {
-    bounds: HashMap<Variable, (isize, isize)>,
-    default: (isize, isize),
-}
-
-impl IntegerDomainBounds {
-    pub fn new(default: (isize, isize)) -> Self {
-        Self {
-            bounds: HashMap::new(),
-            default,
-        }
-    }
-
-    pub fn get(&self, var: &Variable) -> (isize, isize) {
-        assert!(var.sort() == Sort::Int);
-        self.bounds.get(var).cloned().unwrap_or(self.default)
-    }
-
-    pub fn get_upper(&self, var: &Variable) -> isize {
-        self.get(var).1
-    }
-
-    #[allow(dead_code)]
-    pub fn set(&mut self, var: &Variable, bound: (isize, isize)) {
-        assert!(var.sort() == Sort::Int);
-        self.bounds.insert(var.clone(), bound);
-    }
-
-    pub fn set_upper(&mut self, var: &Variable, bound: isize) {
-        assert!(var.sort() == Sort::Int);
-        let lower = self.get(var).0;
-        self.bounds.insert(var.clone(), (lower, bound));
-    }
-
-    #[allow(dead_code)]
-    pub fn set_default(&mut self, bound: (isize, isize)) {
-        self.default = bound;
-    }
-
-    /// Returns true if the upper bounds of all variables are less or equal to the given value.
-    #[allow(dead_code)]
-    pub fn all_leq(&self, limit: isize) -> bool {
-        if self.default.1 > limit {
-            return false;
-        }
-        for (_var, bound) in self.bounds.iter() {
-            if bound.1 > limit {
-                return false;
-            }
-        }
-
-        true
-    }
-}
-
-impl std::fmt::Display for IntegerDomainBounds {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{{")?;
-        for (var, bound) in self.bounds.iter() {
-            write!(f, ", {}: {:?}", var, bound)?;
-        }
-        write!(f, ", default: {:?}}}", self.default)?;
-        Ok(())
-    }
-}
-
-impl std::cmp::PartialEq for IntegerDomainBounds {
-    fn eq(&self, other: &Self) -> bool {
-        if self.default != other.default {
-            return false;
-        }
-        // Check if all vars known by any of the bounds have the same bound
-        let mut all_vars = IndexSet::new();
-        all_vars.extend(self.bounds.keys());
-        all_vars.extend(other.bounds.keys());
-        for var in all_vars {
-            if self.get(var) != other.get(var) {
-                return false;
-            }
-        }
-        true
-    }
-}
 
 /// The character used to represent unused positions
 const LAMBDA: char = char::REPLACEMENT_CHARACTER;
