@@ -4,9 +4,9 @@ use indexmap::IndexMap;
 
 use self::{
     formula::{Predicate, Term},
-    integer::{LinearArithTerm, LinearConstraint, LinearConstraintType},
+    integer::{IntTerm, LinearArithTerm, LinearConstraint, LinearConstraintType},
     regex::Regex,
-    words::WordEquation,
+    words::{StringTerm, WordEquation},
 };
 
 pub mod formula;
@@ -284,7 +284,23 @@ impl Substitution {
     }
 
     pub fn set(&mut self, var: &Variable, term: Term) {
-        self.subs.insert(var.clone(), term);
+        self.subs.insert(var.clone(), term.clone());
+        if var.is_string() {
+            if let Term::String(t) = term {
+                self.subs
+                    .insert(var.len_var(), Self::strterm_to_lem(&t).into());
+            }
+        }
+    }
+
+    fn strterm_to_lem(t: &StringTerm) -> IntTerm {
+        match t {
+            StringTerm::Variable(v) => IntTerm::Var(v.len_var()),
+            StringTerm::Constant(w) => IntTerm::Const(w.len() as isize),
+            StringTerm::Concat(l, r) => {
+                IntTerm::plus(&Self::strterm_to_lem(l), &Self::strterm_to_lem(r))
+            }
+        }
     }
 
     pub fn to_smt2(&self, _var_manager: &VarManager) -> String {
