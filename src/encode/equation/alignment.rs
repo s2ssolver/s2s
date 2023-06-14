@@ -8,7 +8,7 @@ use crate::encode::card::{exactly_one, IncrementalAMO};
 use crate::encode::domain::DomainEncoding;
 use crate::encode::{ConstraintEncoder, EncodingResult, FilledPattern, LAMBDA};
 use crate::model::words::{Pattern, Symbol, WordEquation};
-use crate::model::{Evaluable, Substitutable, VarManager, Variable};
+use crate::model::{VarManager, Variable};
 use crate::sat::{as_lit, neg, pvar, Cnf, PVar};
 use indexmap::IndexMap;
 
@@ -621,6 +621,7 @@ impl ConstraintEncoder for AlignmentEncoder {
         var_manager: &VarManager,
     ) -> EncodingResult {
         self.round += 1;
+        log::debug!("Encoding {}", self.equation);
         let mut res = EncodingResult::empty();
 
         let bound = max(
@@ -631,7 +632,13 @@ impl ConstraintEncoder for AlignmentEncoder {
 
         // Todo: If the bound stays the same, the previous rounds' encoding is still correct.
         // In this case, we need to return the same set of assumptions.
-
+        if bound == self.bound {
+            if let Some(v) = self.bound_selector {
+                res.add_assumption(as_lit(v));
+            }
+            log::debug!("Bound did not change, returning assumption from previous round");
+            return res;
+        }
         if let Some(v) = self.bound_selector {
             // Deactivate all clauses that were only valid for the previous bound
             res.join(EncodingResult::cnf(vec![vec![neg(v)]]));
@@ -737,6 +744,7 @@ impl Display for EqSide {
 
 #[cfg(test)]
 mod tests {
+    use crate::model::{Evaluable, Substitutable};
     use std::collections::HashSet;
 
     use super::*;
@@ -798,7 +806,7 @@ mod tests {
             PatternSegment::Word("foo".chars().collect())
         );
         assert_eq!(segs.segments[2], PatternSegment::Variable(var1.clone()));
-        assert_eq!(segs.segments[3], PatternSegment::Variable(var2.clone()));
+        assert_eq!(segs.segments[3], PatternSegment::Variable(var2));
         assert_eq!(
             segs.segments[4],
             PatternSegment::Word("foobar".chars().collect())
