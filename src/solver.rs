@@ -239,26 +239,39 @@ impl Solver for ConjunctiveSolver {
                             t_solving
                         );
                         time_solving += t_solving;
-                        if let Some(true) = res {
-                            let mut model = Substitution::from(get_substitutions(
-                                self.domain_encoder.encoding(),
-                                self.instance.get_var_manager(),
-                                &cadical,
-                            ));
-                            // Map variables that were removed in preprocessing to their default value
-                            model.use_defaults();
+                        match res {
+                            Some(true) => {
+                                let mut model = Substitution::from(get_substitutions(
+                                    self.domain_encoder.encoding(),
+                                    self.instance.get_var_manager(),
+                                    &cadical,
+                                ));
+                                // Map variables that were removed in preprocessing to their default value
+                                model.use_defaults();
 
-                            log::info!(
-                                "Done. Total time encoding/solving: {}/{} ms",
-                                time_encoding,
-                                time_solving
-                            );
-                            return SolverResult::Sat(model);
-                        } else if self.encoders.values().any(|enc| !enc.is_incremental()) {
-                            // reset states if at least one solver is not incremental
-                            self.reset();
-                            cadical = cadical::Solver::new();
-                            log::debug!("Reset state");
+                                log::info!(
+                                    "Done. Total time encoding/solving: {}/{} ms",
+                                    time_encoding,
+                                    time_solving
+                                );
+                                return SolverResult::Sat(model);
+                            }
+                            Some(false) => {
+                                if effective_bounds == limit_upper_bounds {
+                                    // We reached the limit bounds, but did not find a solution.
+                                    // This means no solution exists.
+                                    // Return unsat
+                                    log::info!("Reached limit bounds");
+                                    return SolverResult::Unsat;
+                                }
+                                if self.encoders.values().any(|enc| !enc.is_incremental()) {
+                                    // reset states if at least one solver is not incremental
+                                    self.reset();
+                                    cadical = cadical::Solver::new();
+                                    log::debug!("Reset state");
+                                }
+                            }
+                            None => panic!("SAT Solver returned unknown"),
                         }
                     }
                     EncodingResult::Trivial(false) => return SolverResult::Unsat,
