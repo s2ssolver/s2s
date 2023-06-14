@@ -474,7 +474,7 @@ impl Evaluable for WordEquation {
     fn eval(&self, sub: &Substitution) -> Option<bool> {
         let substituted = self.apply_substitution(sub);
         if substituted.lhs.is_constant() && substituted.rhs.is_constant() {
-            return Some(substituted.lhs == substituted.rhs);
+            Some(substituted.lhs == substituted.rhs)
         } else {
             None
         }

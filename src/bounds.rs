@@ -9,9 +9,9 @@ use indexmap::IndexMap;
 use quickcheck::Arbitrary;
 
 use crate::model::{
-    formula::{Atom, Constraint, Formula},
+    formula::{Atom, Formula},
     integer::{LinearArithFactor, LinearConstraint, LinearConstraintType},
-    VarManager, Variable,
+    Constraint, VarManager, Variable,
 };
 
 /// The domain of an integer variable.

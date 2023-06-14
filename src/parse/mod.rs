@@ -4,12 +4,8 @@ use indexmap::IndexSet;
 mod smt2;
 
 use crate::{
-    model::formula::{Atom, Formula},
-    model::{
-        formula::Predicate,
-        words::{Pattern, StringTerm, Symbol, WordEquation},
-        VarManager,
-    },
+    model::formula::Formula,
+    model::{formula::Predicate, words::StringTerm, VarManager},
 };
 
 #[derive(Clone, Debug, PartialEq)]
@@ -223,10 +219,7 @@ Equation: aX = ab"#;
         let instance = parse_woorpje(input).unwrap();
         let vm = instance.get_var_manager();
         assert_eq!(vm.of_sort(crate::model::Sort::String, true).count(), 1);
-        let expected_lhs = Pattern::from(vec![
-            Symbol::Constant('a'),
-            Symbol::Variable(vm.by_name("X").unwrap().clone()),
-        ]);
+
         let expected_lhs =
             StringTerm::concat_var(StringTerm::constant("a"), vm.by_name("X").unwrap());
         let expected_rhs = StringTerm::constant("ab");

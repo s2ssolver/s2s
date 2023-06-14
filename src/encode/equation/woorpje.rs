@@ -140,7 +140,7 @@ impl ConstraintEncoder for WoorpjeEncoder {
         state_vars
             .iter_mut()
             .for_each(|v| v.iter_mut().for_each(|x| *x = pvar()));
-        log::debug!("Created {} state variables", n * m);
+
         for i in 0..=n {
             for j in 0..=m {
                 let s_00 = as_lit(state_vars[i][j]);

@@ -84,61 +84,6 @@ pub enum Literal {
     Neg(Atom),
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub enum Constraint {
-    WordEquation(WordEquation),
-    LinearConstraint(LinearConstraint),
-    RegularConstraint(Regex),
-}
-
-impl From<Predicate> for Constraint {
-    fn from(value: Predicate) -> Self {
-        match value {
-            Predicate::Equality(Term::String(lhs), Term::String(rhs)) => {
-                Constraint::WordEquation(WordEquation::new(lhs.into(), rhs.into()))
-            }
-            Predicate::Equality(Term::Int(lhs), Term::Int(rhs)) => {
-                let lin_lhs = LinearArithTerm::from(lhs);
-                let lin_rhs = LinearArithTerm::from(rhs);
-                let con = LinearConstraint::from((lin_lhs, lin_rhs, LinearConstraintType::Eq));
-                Constraint::LinearConstraint(con)
-            }
-            Predicate::Equality(l, s) => panic!("Cannot create constraint from {} = {}", l, s),
-            Predicate::Leq(Term::Int(lhs), Term::Int(rhs)) => {
-                let lin_lhs = LinearArithTerm::from(lhs);
-                let lin_rhs = LinearArithTerm::from(rhs);
-                let con = LinearConstraint::from((lin_lhs, lin_rhs, LinearConstraintType::Leq));
-                Constraint::LinearConstraint(con)
-            }
-            Predicate::Leq(lhs, rhs) => panic!("Cannot create constraint from {} <= {}", lhs, rhs),
-            Predicate::Less(Term::Int(lhs), Term::Int(rhs)) => {
-                let lin_lhs = LinearArithTerm::from(lhs);
-                let lin_rhs = LinearArithTerm::from(rhs);
-                let con = LinearConstraint::from((lin_lhs, lin_rhs, LinearConstraintType::Less));
-                Constraint::LinearConstraint(con)
-            }
-            Predicate::Less(lhs, rhs) => panic!("Cannot create constraint from {} <= {}", lhs, rhs),
-            Predicate::Geq(Term::Int(lhs), Term::Int(rhs)) => {
-                let lin_lhs = LinearArithTerm::from(lhs);
-                let lin_rhs = LinearArithTerm::from(rhs);
-                let con = LinearConstraint::from((lin_lhs, lin_rhs, LinearConstraintType::Geq));
-                Constraint::LinearConstraint(con)
-            }
-            Predicate::Geq(lhs, rhs) => panic!("Cannot create constraint from {} <= {}", lhs, rhs),
-            Predicate::Greater(Term::Int(lhs), Term::Int(rhs)) => {
-                let lin_lhs = LinearArithTerm::from(lhs);
-                let lin_rhs = LinearArithTerm::from(rhs);
-                let con = LinearConstraint::from((lin_lhs, lin_rhs, LinearConstraintType::Greater));
-                Constraint::LinearConstraint(con)
-            }
-            Predicate::Greater(lhs, rhs) => {
-                panic!("Cannot create constraint from {} <= {}", lhs, rhs)
-            }
-            Predicate::In(_, _) => todo!(),
-        }
-    }
-}
-
 // Todo: Implement TryFrom instead of panicing
 
 /// A first-order formula with quantifiers.
@@ -229,6 +174,7 @@ impl Formula {
 
     /// Creates the negation of the given formula.
     /// Flattens double negations.
+    #[allow(clippy::should_implement_trait)]
     pub fn not(f: Formula) -> Self {
         match f {
             Formula::Not(f) => *f,
@@ -384,7 +330,7 @@ impl Substitutable for Term {
         match self {
             Term::String(s) => Term::String(s.apply_substitution(subs)),
             Term::Int(i) => Term::Int(i.apply_substitution(subs)),
-            Term::Regular(r) => todo!("Regular terms not implemented yet"),
+            Term::Regular(_r) => todo!("Regular terms not implemented yet"),
             Term::Bool(f) => Term::Bool(Box::new(f.apply_substitution(subs))),
         }
     }
@@ -525,7 +471,7 @@ impl Display for Term {
             Term::String(t) => write!(f, "{}", t),
             Term::Int(t) => write!(f, "{}", t),
             Term::Bool(t) => write!(f, "{}", t),
-            Term::Regular(r) => todo!(),
+            Term::Regular(_r) => todo!(),
         }
     }
 }

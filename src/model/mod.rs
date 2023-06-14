@@ -2,7 +2,12 @@ use std::{collections::HashMap, fmt::Display, sync::atomic::AtomicUsize};
 
 use indexmap::IndexMap;
 
-use self::formula::Term;
+use self::{
+    formula::{Predicate, Term},
+    integer::{LinearArithTerm, LinearConstraint, LinearConstraintType},
+    regex::Regex,
+    words::WordEquation,
+};
 
 pub mod formula;
 pub mod integer;
@@ -188,6 +193,61 @@ impl VarManager {
     }
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub enum Constraint {
+    WordEquation(WordEquation),
+    LinearConstraint(LinearConstraint),
+    RegularConstraint(Regex),
+}
+
+impl From<Predicate> for Constraint {
+    fn from(value: Predicate) -> Self {
+        match value {
+            Predicate::Equality(Term::String(lhs), Term::String(rhs)) => {
+                Constraint::WordEquation(WordEquation::new(lhs.into(), rhs.into()))
+            }
+            Predicate::Equality(Term::Int(lhs), Term::Int(rhs)) => {
+                let lin_lhs = LinearArithTerm::from(lhs);
+                let lin_rhs = LinearArithTerm::from(rhs);
+                let con = LinearConstraint::from((lin_lhs, lin_rhs, LinearConstraintType::Eq));
+                Constraint::LinearConstraint(con)
+            }
+            Predicate::Equality(l, s) => panic!("Cannot create constraint from {} = {}", l, s),
+            Predicate::Leq(Term::Int(lhs), Term::Int(rhs)) => {
+                let lin_lhs = LinearArithTerm::from(lhs);
+                let lin_rhs = LinearArithTerm::from(rhs);
+                let con = LinearConstraint::from((lin_lhs, lin_rhs, LinearConstraintType::Leq));
+                Constraint::LinearConstraint(con)
+            }
+            Predicate::Leq(lhs, rhs) => panic!("Cannot create constraint from {} <= {}", lhs, rhs),
+            Predicate::Less(Term::Int(lhs), Term::Int(rhs)) => {
+                let lin_lhs = LinearArithTerm::from(lhs);
+                let lin_rhs = LinearArithTerm::from(rhs);
+                let con = LinearConstraint::from((lin_lhs, lin_rhs, LinearConstraintType::Less));
+                Constraint::LinearConstraint(con)
+            }
+            Predicate::Less(lhs, rhs) => panic!("Cannot create constraint from {} <= {}", lhs, rhs),
+            Predicate::Geq(Term::Int(lhs), Term::Int(rhs)) => {
+                let lin_lhs = LinearArithTerm::from(lhs);
+                let lin_rhs = LinearArithTerm::from(rhs);
+                let con = LinearConstraint::from((lin_lhs, lin_rhs, LinearConstraintType::Geq));
+                Constraint::LinearConstraint(con)
+            }
+            Predicate::Geq(lhs, rhs) => panic!("Cannot create constraint from {} <= {}", lhs, rhs),
+            Predicate::Greater(Term::Int(lhs), Term::Int(rhs)) => {
+                let lin_lhs = LinearArithTerm::from(lhs);
+                let lin_rhs = LinearArithTerm::from(rhs);
+                let con = LinearConstraint::from((lin_lhs, lin_rhs, LinearConstraintType::Greater));
+                Constraint::LinearConstraint(con)
+            }
+            Predicate::Greater(lhs, rhs) => {
+                panic!("Cannot create constraint from {} <= {}", lhs, rhs)
+            }
+            Predicate::In(_, _) => todo!(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Substitution {
     subs: IndexMap<Variable, Term>,
@@ -227,7 +287,7 @@ impl Substitution {
         self.subs.insert(var.clone(), term);
     }
 
-    pub fn to_smt2(&self, var_manager: &VarManager) -> String {
+    pub fn to_smt2(&self, _var_manager: &VarManager) -> String {
         todo!()
     }
 }

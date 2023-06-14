@@ -10,11 +10,11 @@ use crate::encode::{
     AlignmentEncoder, ConstraintEncoder, EncodingResult, MddEncoder, WordEquationEncoder,
 };
 
-use crate::model::formula::{Atom, Constraint, Formula, Predicate};
+use crate::model::formula::Atom;
 use crate::model::words::Symbol;
 use crate::model::words::WordEquation;
 use crate::model::Substitution;
-use crate::model::{Sort, VarManager};
+use crate::model::{Constraint, Sort, VarManager};
 
 use crate::encode::domain::{get_substitutions, DomainEncoder};
 use crate::parse::Instance;
@@ -79,16 +79,10 @@ pub struct ConjunctiveSolver {
 impl ConjunctiveSolver {
     fn inst_encoder(con: &Constraint) -> Box<dyn ConstraintEncoder> {
         match con {
-            Constraint::WordEquation(_) => todo!(),
-            Constraint::LinearConstraint(_) => todo!(),
-            Constraint::RegularConstraint(_) => todo!(),
+            Constraint::WordEquation(eq) => Box::new(AlignmentEncoder::new(eq.clone())),
+            Constraint::LinearConstraint(lc) => Box::new(MddEncoder::new(lc.clone())),
+            Constraint::RegularConstraint(_) => todo!("Regular constraints are not supported"),
         }
-
-        /*
-        Predicate::WordEquation(eq) => Box::new(AlignmentEncoder::new(eq.clone())),
-            Predicate::RegularConstraint(_, _) => todo!(),
-            Predicate::LinearConstraint(lc) => Box::new(MddEncoder::new(lc.clone())),
-         */
     }
 
     pub fn new(instance: Instance) -> Result<Self, String> {
@@ -127,7 +121,7 @@ impl ConjunctiveSolver {
 
     fn encode_bounded(&mut self, bounds: &Bounds) -> EncodingResult {
         let mut encoding = EncodingResult::empty();
-        if self.encoders.len() == 0 {
+        if self.encoders.is_empty() {
             return EncodingResult::Trivial(true);
         }
 

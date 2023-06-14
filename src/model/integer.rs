@@ -158,6 +158,10 @@ impl LinearArithTerm {
         self.factors.len()
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.factors.is_empty()
+    }
+
     /// Normalize the term by combining all coefficients of the same variable.
     /// After calling this, there is at most one factor per variable and at most one constant.
     pub fn normalize(&mut self) {
@@ -313,9 +317,8 @@ impl From<(LinearArithTerm, LinearArithTerm, LinearConstraintType)> for LinearCo
         let lhs = value.0;
         let rhs = value.1;
         let typ = value.2;
-        log::info!("Creating constraint {} {} {}", lhs, typ, rhs);
         if let Some(mut c) = rhs.is_constant() {
-            let mut lhs = lhs.clone();
+            let mut lhs = lhs;
             lhs.normalize();
             let mut consts = vec![];
             for fac in lhs.iter() {
@@ -331,7 +334,7 @@ impl From<(LinearArithTerm, LinearArithTerm, LinearConstraintType)> for LinearCo
                 lhs.remove_factor(&fac);
             }
             let res = Self { lhs, rhs: c, typ };
-            log::info!("Created constraint {}", res);
+
             res
         } else {
             let mut lhs = lhs.subtract(&rhs);
@@ -351,7 +354,7 @@ impl From<(LinearArithTerm, LinearArithTerm, LinearConstraintType)> for LinearCo
                 lhs.remove_factor(&fac);
             }
             let res = Self { lhs, rhs: 0, typ };
-            log::info!("Created constraint {}", res);
+
             res
         }
     }
