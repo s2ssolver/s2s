@@ -9,6 +9,99 @@ use quickcheck::Arbitrary;
 
 use crate::model::{Sort, Variable};
 
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub enum StringTerm {
+    Variable(Variable),
+    Constant(Vec<char>),
+    Concat(Box<StringTerm>, Box<StringTerm>),
+}
+
+impl Default for StringTerm {
+    fn default() -> Self {
+        Self::empty()
+    }
+}
+
+impl Sorted for StringTerm {
+    fn sort(&self) -> Sort {
+        Sort::String
+    }
+}
+
+impl StringTerm {
+    /// The empty string
+    pub fn empty() -> Self {
+        Self::Constant(vec![])
+    }
+
+    pub fn is_const(&self) -> Option<Vec<char>> {
+        match self {
+            StringTerm::Constant(c) => Some(c.to_vec()),
+            StringTerm::Variable(_) => None,
+            StringTerm::Concat(x, y) => match (x.is_const(), y.is_const()) {
+                (Some(x), Some(y)) => Some(x.iter().chain(y.iter()).cloned().collect()),
+                _ => None,
+            },
+        }
+    }
+
+    pub fn constant(str: &str) -> Self {
+        Self::Constant(str.chars().collect())
+    }
+
+    pub fn variable(var: &Variable) -> Self {
+        Self::Variable(var.clone())
+    }
+
+    pub fn concat(lhs: Self, rhs: Self) -> Self {
+        match (lhs, rhs) {
+            (StringTerm::Constant(x), StringTerm::Constant(y)) => {
+                StringTerm::Constant(x.iter().chain(y.iter()).cloned().collect())
+            }
+            (x, y) => StringTerm::Concat(Box::new(x), Box::new(y)),
+        }
+    }
+
+    pub fn concat_const(lhs: Self, other: &str) -> Self {
+        Self::concat(lhs, StringTerm::Constant(other.chars().collect()))
+    }
+
+    pub fn concat_var(lhs: Self, var: &Variable) -> Self {
+        Self::concat(lhs, StringTerm::Variable(var.clone()))
+    }
+
+    pub fn apply_substitution(&self, subs: &Substitution) -> Self {
+        match self {
+            StringTerm::Variable(var) => {
+                if let Some(term) = subs.get(var) {
+                    match term {
+                        Term::String(s) => s.clone(),
+                        _ => panic!("Cannot substitute variable {} with term {}", var, term),
+                    }
+                } else {
+                    self.clone()
+                }
+            }
+            StringTerm::Constant(_) => self.clone(),
+            StringTerm::Concat(lhs, rhs) => {
+                StringTerm::concat(lhs.apply_substitution(subs), rhs.apply_substitution(subs))
+            }
+        }
+    }
+}
+
+impl Alphabet for StringTerm {
+    fn alphabet(&self) -> IndexSet<char> {
+        match self {
+            StringTerm::Variable(_) => IndexSet::new(),
+            StringTerm::Constant(word) => word.iter().cloned().collect(),
+            StringTerm::Concat(lhs, rhs) => {
+                lhs.alphabet().union(&rhs.alphabet()).cloned().collect()
+            }
+        }
+    }
+}
+
 /// Represents a pattern symbol, which can be either a constant word or a variable.
 #[derive(Clone, Debug, PartialEq, Hash, Eq)]
 pub enum Symbol {
@@ -216,6 +309,20 @@ impl Pattern {
     }
 }
 
+impl From<StringTerm> for Pattern {
+    fn from(value: StringTerm) -> Self {
+        match value {
+            StringTerm::Variable(var) => Self::variable(&var),
+            StringTerm::Constant(word) => Self::constant(&word.iter().collect::<String>()),
+            StringTerm::Concat(lhs, rhs) => {
+                let mut res = Self::from(*lhs);
+                res.extend(Self::from(*rhs));
+                res
+            }
+        }
+    }
+}
+
 impl std::ops::Index<usize> for Pattern {
     type Output = Symbol;
 
@@ -315,37 +422,9 @@ impl WordEquation {
     }
 }
 
-/* Substitution */
-
-impl Substitutable for Pattern {
-    fn substitute(&self, subs: &super::VarSubstitutions) -> Self {
-        let mut res = Pattern::empty();
-        for symbol in &self.symbols {
-            match symbol {
-                Symbol::Constant(_) => res.append(symbol),
-                Symbol::Variable(var) => match subs.get_str(var) {
-                    Some(p) => res.extend(p.clone()),
-                    _ => res.append(symbol),
-                },
-            }
-        }
-        res
-    }
-}
-
-impl Substitutable for WordEquation {
-    fn substitute(&self, subs: &super::VarSubstitutions) -> Self {
-        Self::new(self.lhs.substitute(subs), self.rhs.substitute(subs))
-    }
-}
-
-impl Proposition for WordEquation {
-    fn truth_value(&self) -> Option<bool> {
-        if self.lhs.is_constant() && self.rhs.is_constant() {
-            Some(self.lhs == self.rhs)
-        } else {
-            None
-        }
+impl From<(StringTerm, StringTerm)> for WordEquation {
+    fn from(value: (StringTerm, StringTerm)) -> Self {
+        Self::new(value.0.into(), value.1.into())
     }
 }
 
@@ -360,6 +439,55 @@ impl Display for Pattern {
             }
         }
         Ok(())
+    }
+}
+
+impl Substitutable for Pattern {
+    fn apply_substitution(&self, sub: &Substitution) -> Self {
+        let mut res = Self::empty();
+        for sym in self.symbols() {
+            match sym {
+                Symbol::Constant(c) => {
+                    res.append_word(&c.to_string());
+                }
+                Symbol::Variable(v) => match sub.get(v) {
+                    Some(Term::String(st)) => res.extend(Pattern::from(st.clone())),
+                    Some(_) => panic!("Cannot substitute variable {} with non-string term", v),
+                    None => todo!(),
+                },
+            }
+        }
+        res
+    }
+}
+
+impl Substitutable for WordEquation {
+    fn apply_substitution(&self, sub: &Substitution) -> Self {
+        Self::new(
+            self.lhs.apply_substitution(sub),
+            self.rhs.apply_substitution(sub),
+        )
+    }
+}
+
+impl Evaluable for WordEquation {
+    fn eval(&self, sub: &Substitution) -> Option<bool> {
+        let substituted = self.apply_substitution(sub);
+        if substituted.lhs.is_constant() && substituted.rhs.is_constant() {
+            return Some(substituted.lhs == substituted.rhs);
+        } else {
+            None
+        }
+    }
+}
+
+impl Display for StringTerm {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            StringTerm::Variable(var) => write!(f, "{}", var),
+            StringTerm::Constant(word) => write!(f, "{}", word.iter().collect::<String>()),
+            StringTerm::Concat(lhs, rhs) => write!(f, "{}{}", lhs, rhs),
+        }
     }
 }
 
@@ -382,7 +510,10 @@ impl Display for Symbol {
 
 use quickcheck;
 
-use super::{Proposition, Substitutable, VarManager};
+use super::{
+    formula::{Alphabet, Sorted, Term},
+    Evaluable, Substitutable, Substitution, VarManager,
+};
 
 impl Arbitrary for Symbol {
     fn arbitrary(g: &mut quickcheck::Gen) -> Self {

@@ -9,7 +9,7 @@
 
 mod bounds;
 mod encode;
-mod model;
+pub mod model;
 mod parse;
 mod preprocess;
 mod sat;

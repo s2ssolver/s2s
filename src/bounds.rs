@@ -9,7 +9,7 @@ use indexmap::IndexMap;
 use quickcheck::Arbitrary;
 
 use crate::model::{
-    formula::{Atom, Formula, Predicate},
+    formula::{Atom, Constraint, Formula, Predicate},
     integer::{LinearArithFactor, LinearConstraint, LinearConstraintType},
     VarManager, Variable,
 };
@@ -201,16 +201,20 @@ impl Bounds {
         while !stop {
             for atom in formla.asserted_atoms() {
                 match atom {
-                    Atom::Predicate(Predicate::WordEquation(eq)) => {
-                        let lincon = LinearConstraint::from_word_equation(eq);
-                        let newbounds = lincon_upper_bound(&lincon, &bounds);
-                        bounds = bounds.intersect(&newbounds);
-                    }
-                    Atom::Predicate(Predicate::LinearConstraint(lincon)) => {
-                        let newbounds = lincon_upper_bound(lincon, &bounds);
-                        bounds = bounds.intersect(&newbounds);
-                    }
-                    Atom::False | Atom::True | Atom::BoolVar(_) | Atom::Predicate(_) => {}
+                    Atom::Predicate(p) => match Constraint::from(p) {
+                        Constraint::WordEquation(eq) => {
+                            let lincon = LinearConstraint::from_word_equation(&eq);
+                            let newbounds = lincon_upper_bound(&lincon, &bounds);
+                            bounds = bounds.intersect(&newbounds);
+                        }
+                        Constraint::LinearConstraint(lc) => {
+                            let newbounds = lincon_upper_bound(&lc, &bounds);
+                            bounds = bounds.intersect(&newbounds);
+                        }
+                        Constraint::RegularConstraint(_) => todo!(),
+                    },
+
+                    Atom::False | Atom::True | Atom::BoolVar(_) => {}
                 }
             }
             if bounds == bound_prev {

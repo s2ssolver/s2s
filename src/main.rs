@@ -2,7 +2,9 @@ use std::{path::Path, process::exit, time::Instant};
 
 use clap::{Parser as ClapParser, ValueEnum};
 
-use satstr::{preprocess, ConjunctiveSolver, Parser, PreprocessingResult, Solver};
+use satstr::{
+    model::Evaluable, preprocess, ConjunctiveSolver, Parser, PreprocessingResult, Solver,
+};
 
 /// The command line interface for the solver
 #[derive(ClapParser, Debug)]
@@ -110,7 +112,7 @@ fn main() {
     match res {
         satstr::SolverResult::Sat(m) => {
             if !cli.skip_verify {
-                match instance.get_formula().is_solution(&m) {
+                match instance.get_formula().eval(&m) {
                     Some(true) => println!("sat\n{}", m),
                     Some(false) => panic!("Model is incorrect"),
                     None => panic!("Model is incomplete"),

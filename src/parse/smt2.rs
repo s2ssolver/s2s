@@ -7,12 +7,8 @@ use aws_smt_ir::{
 };
 
 use crate::{
-    model::formula::{Atom, Formula, Predicate},
-    model::{
-        integer::{IntArithTerm, LinearArithTerm, LinearConstraint, LinearConstraintType},
-        words::{Pattern, WordEquation},
-        Sort, VarManager,
-    },
+    model::formula::{Formula, Predicate},
+    model::{integer::IntTerm, words::StringTerm, Sort, VarManager},
 };
 
 use super::{Instance, ParseError};
@@ -114,8 +110,8 @@ impl<'a> FormulaBuilder<'a> {
         Ok(sorts)
     }
 
-    fn build_string_patter(&self, t: &Term) -> Result<Pattern, ParseError> {
-        let mut builder = PatternBuilder {
+    fn build_string_term(&self, t: &Term) -> Result<StringTerm, ParseError> {
+        let mut builder = StringTermBuilder {
             var_manager: self.var_manager,
         };
         let res = {
@@ -128,7 +124,7 @@ impl<'a> FormulaBuilder<'a> {
         Ok(res)
     }
 
-    fn build_arith_term(&self, t: &Term) -> Result<IntArithTerm, ParseError> {
+    fn build_int_term(&self, t: &Term) -> Result<IntTerm, ParseError> {
         let mut builder = IntArithTermBuilder {
             var_manager: self.var_manager,
         };
@@ -140,17 +136,6 @@ impl<'a> FormulaBuilder<'a> {
             }
         };
         Ok(res)
-    }
-
-    fn build_lin_arith_term(&self, t: &Term) -> Result<LinearArithTerm, ParseError> {
-        let arith_term = self.build_arith_term(t)?;
-        match LinearArithTerm::from_int_arith_term(&arith_term) {
-            Some(t) => Ok(t),
-            None => Err(ParseError::Unsupported(format!(
-                "Nonelinear arithemtic: {}",
-                arith_term
-            ))),
-        }
     }
 }
 
@@ -209,37 +194,30 @@ impl<'a> Visitor<ALL> for FormulaBuilder<'a> {
                     let sort_rhs = sorts[1];
                     match (sort_lhs, sort_rhs) {
                         (Sort::String, Sort::String) => {
-                            let pat_lhs = match self.build_string_patter(lhs) {
+                            let pat_lhs = match self.build_string_term(lhs) {
                                 Ok(p) => p,
                                 Err(e) => return ControlFlow::Break(Err(e)),
                             };
-                            let pat_rhs = match self.build_string_patter(rhs) {
+                            let pat_rhs = match self.build_string_term(rhs) {
                                 Ok(p) => p,
                                 Err(e) => return ControlFlow::Break(Err(e)),
                             };
-                            let equation = WordEquation::new(pat_lhs, pat_rhs);
-                            let eq_atom =
-                                Formula::Atom(Atom::Predicate(Predicate::WordEquation(equation)));
+                            let equation = Predicate::Equality(pat_lhs.into(), pat_rhs.into());
+                            let eq_atom = Formula::Predicate(equation);
                             ControlFlow::Break(Ok(eq_atom))
                         }
                         (Sort::Int, Sort::Int) => {
-                            let term_lhs = match self.build_lin_arith_term(lhs) {
+                            let term_lhs = match self.build_int_term(lhs) {
                                 Ok(p) => p,
                                 Err(e) => return ControlFlow::Break(Err(e)),
                             };
-                            let term_rhs = match self.build_lin_arith_term(rhs) {
+                            let term_rhs = match self.build_int_term(rhs) {
                                 Ok(p) => p,
                                 Err(e) => return ControlFlow::Break(Err(e)),
                             };
 
-                            let equation = LinearConstraint::from_linear_arith_term(
-                                &term_lhs,
-                                &term_rhs,
-                                LinearConstraintType::Eq,
-                            );
-                            ControlFlow::Break(Ok(Formula::Atom(Atom::Predicate(
-                                Predicate::LinearConstraint(equation),
-                            ))))
+                            let equation = Predicate::Equality(term_lhs.into(), term_rhs.into());
+                            ControlFlow::Break(Ok(Formula::Predicate(equation)))
                         }
                         (Sort::Bool, Sort::Bool) => todo!("Parse boolean equivalence"),
                         (_, _) => ControlFlow::Break(Err(ParseError::SyntaxError(
@@ -282,31 +260,32 @@ impl<'a> Visitor<ALL> for FormulaBuilder<'a> {
                                 ParseError::Unsupported("Lexicographic order".to_string()),
                             )),
                             (Sort::Int, Sort::Int) => {
-                                let term_lhs = match self.build_lin_arith_term(lhs) {
+                                let term_lhs = match self.build_int_term(lhs) {
                                     Ok(p) => p,
                                     Err(e) => return ControlFlow::Break(Err(e)),
                                 };
-                                let term_rhs = match self.build_lin_arith_term(rhs) {
+                                let term_rhs = match self.build_int_term(rhs) {
                                     Ok(p) => p,
                                     Err(e) => return ControlFlow::Break(Err(e)),
                                 };
 
-                                let typ = match arith_op {
-                                    ArithOp::Lte(_) => LinearConstraintType::Leq,
-                                    ArithOp::Lt(_) => LinearConstraintType::Less,
-
-                                    ArithOp::Gt(_) => LinearConstraintType::Greater,
-
-                                    ArithOp::Gte(_) => LinearConstraintType::Geq,
-
+                                let pred = match arith_op {
+                                    ArithOp::Lte(_) => {
+                                        Predicate::Less(term_lhs.into(), term_rhs.into())
+                                    }
+                                    ArithOp::Lt(_) => {
+                                        Predicate::Leq(term_lhs.into(), term_rhs.into())
+                                    }
+                                    ArithOp::Gt(_) => {
+                                        Predicate::Greater(term_rhs.into(), term_lhs.into())
+                                    }
+                                    ArithOp::Gte(_) => {
+                                        Predicate::Geq(term_rhs.into(), term_lhs.into())
+                                    }
                                     _ => unreachable!(),
                                 };
-                                let constr = LinearConstraint::from_linear_arith_term(
-                                    &term_lhs, &term_rhs, typ,
-                                );
-                                ControlFlow::Break(Ok(Formula::Atom(Atom::Predicate(
-                                    Predicate::LinearConstraint(constr),
-                                ))))
+
+                                ControlFlow::Break(Ok(Formula::Predicate(pred)))
                             }
                             (_, _) => ControlFlow::Break(Err(ParseError::SyntaxError(
                                 format!(
@@ -403,12 +382,12 @@ impl<'a> Visitor<ALL> for FormulaBuilder<'a> {
     }
 }
 
-struct PatternBuilder<'a> {
+struct StringTermBuilder<'a> {
     var_manager: &'a VarManager,
 }
 
-impl<'a> Visitor<ALL> for PatternBuilder<'a> {
-    type BreakTy = Result<Pattern, ParseError>;
+impl<'a> Visitor<ALL> for StringTermBuilder<'a> {
+    type BreakTy = Result<StringTerm, ParseError>;
 
     fn visit_term(&mut self, term: &Term<ALL>) -> ControlFlow<Self::BreakTy> {
         match term {
@@ -418,11 +397,11 @@ impl<'a> Visitor<ALL> for PatternBuilder<'a> {
             Term::OtherOp(s) => match s.as_ref() {
                 all::Op::String(sop) => match sop {
                     StringOp::StrConcat(ts) => {
-                        let mut pat = Pattern::empty();
+                        let mut pat = StringTerm::empty();
                         for t in ts {
                             match t.visit_with(self) {
                                 ControlFlow::Continue(_) => unreachable!(),
-                                ControlFlow::Break(Ok(p)) => pat.extend(p),
+                                ControlFlow::Break(Ok(p)) => pat = StringTerm::concat(pat, p),
                                 ControlFlow::Break(Err(e)) => return ControlFlow::Break(Err(e)),
                             }
                         }
@@ -481,7 +460,7 @@ impl<'a> Visitor<ALL> for PatternBuilder<'a> {
 
     fn visit_const(&mut self, constant: &aws_smt_ir::IConst) -> ControlFlow<Self::BreakTy> {
         match constant.as_ref() {
-            aws_smt_ir::Constant::String(s) => ControlFlow::Break(Ok(Pattern::constant(s))),
+            aws_smt_ir::Constant::String(s) => ControlFlow::Break(Ok(StringTerm::constant(s))),
             aws_smt_ir::Constant::Numeral(_)
             | aws_smt_ir::Constant::Decimal(_)
             | aws_smt_ir::Constant::Hexadecimal(_)
@@ -504,7 +483,7 @@ impl<'a> Visitor<ALL> for PatternBuilder<'a> {
                     None,
                 )));
             }
-            ControlFlow::Break(Ok(Pattern::variable(vvar)))
+            ControlFlow::Break(Ok(StringTerm::variable(vvar)))
         } else {
             ControlFlow::Break(Err(ParseError::UnknownIdentifier(name.to_string())))
         }
@@ -516,7 +495,7 @@ struct IntArithTermBuilder<'a> {
 }
 
 impl<'a> Visitor<ALL> for IntArithTermBuilder<'a> {
-    type BreakTy = Result<IntArithTerm, ParseError>;
+    type BreakTy = Result<IntTerm, ParseError>;
 
     fn visit_term(&mut self, term: &Term<ALL>) -> ControlFlow<Self::BreakTy> {
         match term {
@@ -544,13 +523,13 @@ impl<'a> Visitor<ALL> for IntArithTermBuilder<'a> {
                                 ControlFlow::Break(Ok(p)) => p,
                                 ControlFlow::Break(Err(e)) => return ControlFlow::Break(Err(e)),
                             };
-                            lhs = IntArithTerm::plus(&lhs, &rhs);
+                            lhs = IntTerm::plus(&lhs, &rhs);
                         }
                         ControlFlow::Break(Ok(lhs))
                     }
                     ArithOp::Neg(t) => match t.visit_with(self) {
                         ControlFlow::Continue(_) => unreachable!(),
-                        ControlFlow::Break(Ok(p)) => ControlFlow::Break(Ok(IntArithTerm::neg(&p))),
+                        ControlFlow::Break(Ok(p)) => ControlFlow::Break(Ok(IntTerm::neg(&p))),
                         ControlFlow::Break(Err(e)) => ControlFlow::Break(Err(e)),
                     },
                     ArithOp::Minus(ts) => {
@@ -572,7 +551,7 @@ impl<'a> Visitor<ALL> for IntArithTermBuilder<'a> {
                                 ControlFlow::Break(Ok(p)) => p,
                                 ControlFlow::Break(Err(e)) => return ControlFlow::Break(Err(e)),
                             };
-                            lhs = IntArithTerm::plus(&lhs, &rhs.neg());
+                            lhs = IntTerm::plus(&lhs, &rhs.neg());
                         }
                         ControlFlow::Break(Ok(lhs))
                     }
@@ -595,7 +574,7 @@ impl<'a> Visitor<ALL> for IntArithTermBuilder<'a> {
                                 ControlFlow::Break(Ok(p)) => p,
                                 ControlFlow::Break(Err(e)) => return ControlFlow::Break(Err(e)),
                             };
-                            lhs = IntArithTerm::times(&lhs, &rhs);
+                            lhs = IntTerm::times(&lhs, &rhs);
                         }
                         ControlFlow::Break(Ok(lhs))
                     }
@@ -643,7 +622,7 @@ impl<'a> Visitor<ALL> for IntArithTermBuilder<'a> {
             aws_smt_ir::Constant::Numeral(n) => {
                 let as_isize: Result<isize, _> = n.try_into();
                 match as_isize {
-                    Ok(i) => ControlFlow::Break(Ok(IntArithTerm::constant(i))),
+                    Ok(i) => ControlFlow::Break(Ok(IntTerm::constant(i))),
                     Err(_) => ControlFlow::Break(Err(ParseError::SyntaxError(
                         format!("Integer constant out of range: {}", n),
                         None,
@@ -672,7 +651,7 @@ impl<'a> Visitor<ALL> for IntArithTermBuilder<'a> {
                     None,
                 )));
             }
-            ControlFlow::Break(Ok(IntArithTerm::var(vvar)))
+            ControlFlow::Break(Ok(IntTerm::var(vvar)))
         } else {
             ControlFlow::Break(Err(ParseError::UnknownIdentifier(name.to_string())))
         }
@@ -684,7 +663,7 @@ pub struct StringLenToArithBuilder<'a> {
 }
 
 impl<'a> Visitor<ALL> for StringLenToArithBuilder<'a> {
-    type BreakTy = Result<IntArithTerm, ParseError>;
+    type BreakTy = Result<IntTerm, ParseError>;
 
     fn visit_term(&mut self, term: &Term<ALL>) -> ControlFlow<Self::BreakTy> {
         match term {
@@ -704,7 +683,7 @@ impl<'a> Visitor<ALL> for StringLenToArithBuilder<'a> {
                         for t in iter {
                             match t.visit_with(self) {
                                 ControlFlow::Continue(_) => unreachable!(),
-                                ControlFlow::Break(Ok(p)) => lhs = IntArithTerm::plus(&lhs, &p),
+                                ControlFlow::Break(Ok(p)) => lhs = IntTerm::plus(&lhs, &p),
                                 ControlFlow::Break(Err(e)) => return ControlFlow::Break(Err(e)),
                             }
                         }
@@ -766,7 +745,7 @@ impl<'a> Visitor<ALL> for StringLenToArithBuilder<'a> {
     fn visit_const(&mut self, constant: &aws_smt_ir::IConst) -> ControlFlow<Self::BreakTy> {
         match constant.as_ref() {
             aws_smt_ir::Constant::String(s) => {
-                ControlFlow::Break(Ok(IntArithTerm::Const(s.chars().count() as isize)))
+                ControlFlow::Break(Ok(IntTerm::Const(s.chars().count() as isize)))
             }
             aws_smt_ir::Constant::Numeral(_)
             | aws_smt_ir::Constant::Decimal(_)
@@ -789,7 +768,7 @@ impl<'a> Visitor<ALL> for StringLenToArithBuilder<'a> {
                     None,
                 )));
             }
-            ControlFlow::Break(Ok(IntArithTerm::Var(
+            ControlFlow::Break(Ok(IntTerm::Var(
                 self.var_manager.str_length_var(vvar).unwrap().clone(),
             )))
         } else {

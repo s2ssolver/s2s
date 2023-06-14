@@ -1,60 +1,19 @@
-use indexmap::IndexMap;
-
 use crate::{
-    model::formula::{Atom, Formula, Predicate},
+    model::{
+        formula::{Atom, Formula, Predicate},
+        Substitution,
+    },
     model::{
         integer::{LinearArithFactor, LinearArithTerm, LinearConstraint},
         words::{Pattern, Symbol, WordEquation},
-        VarManager, Variable,
+        VarManager,
     },
     PreprocessingResult,
 };
 
-#[derive(Debug, Clone, Default)]
-pub struct Substitutions {
-    subs: IndexMap<Variable, Pattern>,
-}
-
-impl Substitutions {
-    pub fn new() -> Self {
-        Self {
-            subs: IndexMap::new(),
-        }
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.subs.is_empty()
-    }
-
-    pub fn add(&mut self, var: &Variable, pat: &Pattern) {
-        let rhs = match self.subs.get(var) {
-            Some(p) => {
-                if p.len() < pat.len() {
-                    pat.clone()
-                } else {
-                    p.clone()
-                }
-            }
-
-            None => pat.clone(),
-        };
-        self.subs.insert(var.clone(), rhs);
-    }
-
-    pub fn extend(&mut self, other: &Substitutions) {
-        for (v, p) in other.iter() {
-            self.add(v, p);
-        }
-    }
-
-    pub fn iter(&self) -> impl Iterator<Item = (&Variable, &Pattern)> {
-        self.subs.iter()
-    }
-}
-
 fn apply_substitutions_predicate(
     pred: &Predicate,
-    substitutions: &Substitutions,
+    substitutions: &Substitution,
     var_manager: &VarManager,
 ) -> PreprocessingResult<Predicate> {
     match pred {

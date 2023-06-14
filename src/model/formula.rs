@@ -4,69 +4,142 @@ use std::fmt::Display;
 
 use indexmap::IndexSet;
 
-use crate::model::{
-    integer::LinearConstraint,
-    regex::Regex,
-    words::{Pattern, WordEquation},
-    Variable,
+use crate::model::{regex::Regex, Variable};
+
+use super::{
+    integer::{IntTerm, LinearArithTerm, LinearConstraint, LinearConstraintType},
+    words::{StringTerm, WordEquation},
+    Evaluable, Sort, Substitutable, Substitution,
 };
 
-use super::{Proposition, Substitutable, VarSubstitutions};
-
-/// A predicate, which is either a word equation, a regular constraint, or a linear constraint.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub enum Predicate {
-    /// A word equation
-    WordEquation(WordEquation),
-    /// A regular constraint
-    RegularConstraint(Pattern, Regex),
-    /// A linear constraint
-    LinearConstraint(LinearConstraint),
+pub trait Sorted {
+    fn sort(&self) -> Sort;
 }
 
-impl Predicate {
-    /// Create a new predicate from a given word equation
-    pub fn word_equation(eq: WordEquation) -> Self {
-        Self::WordEquation(eq)
-    }
+pub trait Alphabet {
+    fn alphabet(&self) -> IndexSet<char>;
+}
 
-    /// Create a new predicate from a given regular constraint
-    pub fn regular_constraint(p: Pattern, r: Regex) -> Self {
-        Self::RegularConstraint(p, r)
-    }
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub enum Term {
+    String(StringTerm),
+    Int(IntTerm),
+    Regular(Regex),
+    Bool(Box<Formula>),
+}
 
-    /// Returns the alphabet of constants used in this predicate.
-    /// For word equations and regular constraints, this is the union of the constant occurring.
-    /// For linear constraints, the alphabet is empty.
-    pub fn alphabet(&self) -> IndexSet<char> {
+impl Term {
+    pub fn is_const(&self) -> bool {
         match self {
-            Predicate::WordEquation(eq) => eq.alphabet(),
-            Predicate::LinearConstraint(_) => IndexSet::new(),
-            Predicate::RegularConstraint(_, _) => todo!("Regular Constraints not supported yet"),
+            Term::String(s) => s.is_const().is_some(),
+            Term::Int(i) => i.is_const().is_some(),
+            Term::Regular(_) => todo!(),
+            Term::Bool(f) => f.is_const(),
         }
     }
 }
 
-/// An atomic formula.
-/// An atomic formula is either a predicate, a boolean variable, or the constant true or false.
-#[derive(Clone, Debug, PartialEq)]
+impl From<StringTerm> for Term {
+    fn from(s: StringTerm) -> Self {
+        Term::String(s)
+    }
+}
+
+impl From<IntTerm> for Term {
+    fn from(i: IntTerm) -> Self {
+        Term::Int(i)
+    }
+}
+
+impl Sorted for Term {
+    fn sort(&self) -> Sort {
+        match self {
+            Term::String(_) => Sort::String,
+            Term::Int(_) => Sort::Int,
+            Term::Regular(_) => Sort::String,
+            Term::Bool(_) => Sort::Bool,
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub enum Predicate {
+    Equality(Term, Term),
+    Leq(Term, Term),
+    Less(Term, Term),
+    Geq(Term, Term),
+    Greater(Term, Term),
+    In(Term, Term),
+}
+
 pub enum Atom {
-    /// A predicate
     Predicate(Predicate),
-    /// A boolean variable
     BoolVar(Variable),
-    /// The constant true
     True,
-    /// The constant false
     False,
 }
 
-impl Atom {
-    /// Create a new atom from a word equation
-    pub fn word_equation(eq: WordEquation) -> Self {
-        Self::Predicate(Predicate::WordEquation(eq))
+pub enum Literal {
+    Pos(Atom),
+    Neg(Atom),
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub enum Constraint {
+    WordEquation(WordEquation),
+    LinearConstraint(LinearConstraint),
+    RegularConstraint(Regex),
+}
+
+impl From<Predicate> for Constraint {
+    fn from(value: Predicate) -> Self {
+        match value {
+            Predicate::Equality(Term::String(lhs), Term::String(rhs)) => {
+                Constraint::WordEquation(WordEquation::new(lhs.into(), rhs.into()))
+            }
+            Predicate::Equality(Term::Int(lhs), Term::Int(rhs)) => {
+                let lin_lhs = LinearArithTerm::from(lhs);
+                let lin_rhs = LinearArithTerm::from(rhs);
+                let con = LinearConstraint::from((lin_lhs, lin_rhs, LinearConstraintType::Eq));
+                Constraint::LinearConstraint(con)
+            }
+            Predicate::Equality(l, s) => panic!("Cannot create constraint from {} = {}", l, s),
+            Predicate::Leq(Term::Int(lhs), Term::Int(rhs)) => {
+                let lin_lhs = LinearArithTerm::from(lhs);
+                let lin_rhs = LinearArithTerm::from(rhs);
+                let con = LinearConstraint::from((lin_lhs, lin_rhs, LinearConstraintType::Leq));
+                Constraint::LinearConstraint(con)
+            }
+            Predicate::Leq(lhs, rhs) => panic!("Cannot create constraint from {} <= {}", lhs, rhs),
+            Predicate::Less(Term::Int(lhs), Term::Int(rhs)) => {
+                let lin_lhs = LinearArithTerm::from(lhs);
+                let lin_rhs = LinearArithTerm::from(rhs);
+                let con = LinearConstraint::from((lin_lhs, lin_rhs, LinearConstraintType::Less));
+                Constraint::LinearConstraint(con)
+            }
+            Predicate::Less(lhs, rhs) => panic!("Cannot create constraint from {} <= {}", lhs, rhs),
+            Predicate::Geq(Term::Int(lhs), Term::Int(rhs)) => {
+                let lin_lhs = LinearArithTerm::from(lhs);
+                let lin_rhs = LinearArithTerm::from(rhs);
+                let con = LinearConstraint::from((lin_lhs, lin_rhs, LinearConstraintType::Geq));
+                Constraint::LinearConstraint(con)
+            }
+            Predicate::Geq(lhs, rhs) => panic!("Cannot create constraint from {} <= {}", lhs, rhs),
+            Predicate::Greater(Term::Int(lhs), Term::Int(rhs)) => {
+                let lin_lhs = LinearArithTerm::from(lhs);
+                let lin_rhs = LinearArithTerm::from(rhs);
+                let con = LinearConstraint::from((lin_lhs, lin_rhs, LinearConstraintType::Greater));
+                Constraint::LinearConstraint(con)
+            }
+            Predicate::Greater(lhs, rhs) => {
+                panic!("Cannot create constraint from {} <= {}", lhs, rhs)
+            }
+            Predicate::In(_, _) => todo!(),
+        }
     }
 }
+
+// Todo: Implement TryFrom instead of panicing
 
 /// A first-order formula with quantifiers.
 /// A formula is inductive defined as follows:
@@ -75,10 +148,12 @@ impl Atom {
 /// - If `f` and `g` are formulas, then `f ∧ g` ([Formula::And]) and `f ∨ g` ([Formula::Or]) are formulas
 ///
 /// The variants [Formula::Not], [Formula::And], and [Formula::Or] should not be used directly but instead the corresponding constructors [Formula::not], [Formula::and], and [Formula::or], respectively, should be used.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum Formula {
-    /// An atom
-    Atom(Atom),
+    True,
+    False,
+    BoolVar(Variable),
+    Predicate(Predicate),
     /// A disjunction
     Or(Vec<Formula>),
     /// A conjunction
@@ -90,22 +165,22 @@ pub enum Formula {
 impl Formula {
     /// Returns the formula `true`
     pub fn ttrue() -> Self {
-        Self::Atom(Atom::True)
+        Self::True
     }
 
     /// Returns the formula `false`
     pub fn ffalse() -> Self {
-        Self::Atom(Atom::True)
+        Self::False
     }
 
     /// Creates a new formula only consisting of a single Boolean variable
     pub fn bool(var: Variable) -> Self {
-        Self::Atom(Atom::BoolVar(var))
+        Self::BoolVar(var)
     }
 
     /// Creates a new formula only consisting of a single predicate
     pub fn predicate(pred: Predicate) -> Self {
-        Self::Atom(Atom::Predicate(pred))
+        Self::Predicate(pred)
     }
 
     /// Creates the conjunction of the given formulas.
@@ -165,17 +240,17 @@ impl Formula {
     /// Returns `false` otherwise.
     pub fn is_conjunctive(&self) -> bool {
         match self {
-            Formula::Atom(_) => true,
             Formula::Or(_) => false,
             Formula::And(fs) => fs.iter().all(Self::is_conjunctive),
             Formula::Not(f) => f.is_conjunctive(),
+            Formula::Predicate(_) | Formula::BoolVar(_) | Formula::True | Formula::False => true,
         }
     }
 
     /// Counts the number of atoms in this formula.
     pub fn num_atoms(&self) -> usize {
         match self {
-            Formula::Atom(_) => 1,
+            Formula::Predicate(_) | Formula::BoolVar(_) | Formula::True | Formula::False => 1,
             Formula::Or(fs) | Formula::And(fs) => fs.iter().map(Self::num_atoms).sum(),
             Formula::Not(f) => f.num_atoms(),
         }
@@ -185,9 +260,9 @@ impl Formula {
     /// In other words, the conjunction of the returned atoms is entailed by this formula.
     ///
     /// TODO: This should return the asserted literals, not the asserted atoms. That is, it should return a list of atoms and their polarity in which they are asserted.
-    pub fn asserted_atoms(&self) -> Vec<&Atom> {
+    pub fn asserted_atoms(&self) -> Vec<Atom> {
         match self {
-            Formula::Atom(a) => vec![a],
+            Formula::Predicate(a) => vec![Atom::Predicate(a.clone())],
             Formula::Or(_fs) => {
                 vec![]
             }
@@ -196,6 +271,9 @@ impl Formula {
                 .map(Self::asserted_atoms)
                 .fold(Vec::new(), |acc, x| acc.into_iter().chain(x).collect()),
             Formula::Not(_f) => vec![],
+            Formula::True => vec![Atom::True],
+            Formula::False => vec![Atom::True],
+            Formula::BoolVar(v) => vec![Atom::BoolVar(v.clone())],
         }
     }
 
@@ -204,11 +282,21 @@ impl Formula {
     /// See [Predicate] for more information.
     pub fn alphabet(&self) -> IndexSet<char> {
         match self {
-            Formula::Atom(a) => match a {
-                Atom::Predicate(p) => p.alphabet(),
-                Atom::BoolVar(_) => IndexSet::new(),
-                Atom::True => IndexSet::new(),
-                Atom::False => IndexSet::new(),
+            Formula::True => IndexSet::new(),
+            Formula::False => IndexSet::new(),
+            Formula::BoolVar(_) => IndexSet::new(),
+            Formula::Predicate(p) => match p {
+                Predicate::Equality(Term::String(lhs), Term::String(rhs))
+                | Predicate::Leq(Term::String(lhs), Term::String(rhs))
+                | Predicate::Less(Term::String(lhs), Term::String(rhs))
+                | Predicate::Geq(Term::String(lhs), Term::String(rhs))
+                | Predicate::Greater(Term::String(lhs), Term::String(rhs))
+                | Predicate::In(Term::String(lhs), Term::String(rhs)) => {
+                    let mut alphabet = lhs.alphabet();
+                    alphabet.extend(rhs.alphabet());
+                    alphabet
+                }
+                _ => IndexSet::new(),
             },
             Formula::Or(fs) | Formula::And(fs) => fs
                 .iter()
@@ -218,118 +306,207 @@ impl Formula {
         }
     }
 
-    /// Returns `Some(true)` if the given substitution is a solution to this formula.
-    /// Returns `Some(false)` if the given substitution is not a solution to this formula.
-    /// Returns `None` if it is not possible to determine whether the given substitution is a solution to this formula.
-    pub fn is_solution(&self, subs: &VarSubstitutions) -> Option<bool> {
-        self.substitute(subs).truth_value()
-    }
-}
-
-/* Substitutions */
-
-impl Substitutable for Predicate {
-    fn substitute(&self, subst: &VarSubstitutions) -> Self {
+    pub fn is_const(&self) -> bool {
         match self {
-            Predicate::WordEquation(eq) => Predicate::WordEquation(eq.substitute(subst)),
-            Predicate::RegularConstraint(_, _) => {
-                todo!("Regular Constraints not supported yet")
-            }
-            Predicate::LinearConstraint(l) => Predicate::LinearConstraint(l.substitute(subst)),
-        }
-    }
-}
-
-impl Substitutable for Atom {
-    fn substitute(&self, subst: &VarSubstitutions) -> Self {
-        match self {
-            Atom::Predicate(p) => Atom::Predicate(p.substitute(subst)),
-            Atom::BoolVar(x) => match subst.get_bool(x) {
-                Some(true) => Atom::True,
-                Some(false) => Atom::False,
-                None => Atom::BoolVar(x.clone()),
+            Formula::True | Formula::False => true,
+            Formula::BoolVar(_) => false,
+            Formula::Predicate(p) => match p {
+                Predicate::Equality(lhs, rhs)
+                | Predicate::Leq(lhs, rhs)
+                | Predicate::Less(lhs, rhs)
+                | Predicate::Geq(lhs, rhs)
+                | Predicate::Greater(lhs, rhs)
+                | Predicate::In(lhs, rhs) => lhs.is_const() && rhs.is_const(),
             },
-            _ => self.clone(),
+            Formula::Or(fs) | Formula::And(fs) => fs.iter().all(Self::is_const),
+            Formula::Not(f) => f.is_const(),
         }
     }
+
+    pub fn to_nnf(&self) -> Self {
+        todo!("Implement NNF conversion")
+    }
 }
+
+/* Substitution and Evaluation */
 
 impl Substitutable for Formula {
-    fn substitute(&self, subst: &VarSubstitutions) -> Self {
+    fn apply_substitution(&self, sub: &Substitution) -> Self {
         match self {
-            Formula::Atom(a) => Formula::Atom(a.substitute(subst)),
-            Formula::Or(fs) => Formula::Or(fs.iter().map(|f| f.substitute(subst)).collect()),
-            Formula::And(fs) => Formula::And(fs.iter().map(|f| f.substitute(subst)).collect()),
-            Formula::Not(f) => Formula::Not(Box::new(f.substitute(subst))),
-        }
-    }
-}
-
-impl Proposition for Predicate {
-    fn truth_value(&self) -> Option<bool> {
-        match self {
-            Predicate::WordEquation(eq) => eq.truth_value(),
-            Predicate::RegularConstraint(_, _) => todo!("Regular Constraints not supported yet"),
-            Predicate::LinearConstraint(l) => l.truth_value(),
-        }
-    }
-}
-
-impl Proposition for Atom {
-    fn truth_value(&self) -> Option<bool> {
-        match self {
-            Atom::Predicate(p) => p.truth_value(),
-            Atom::BoolVar(_) => None,
-            Atom::True => Some(true),
-            Atom::False => Some(false),
-        }
-    }
-}
-
-impl Proposition for Formula {
-    fn truth_value(&self) -> Option<bool> {
-        match self {
-            Formula::Atom(a) => a.truth_value(),
-            Formula::Or(fs) => fs
-                .iter()
-                .fold(Some(false), |acc, f| match (acc, f.truth_value()) {
-                    (Some(true), _) => Some(true),
-                    (_, Some(true)) => Some(true),
-                    (Some(false), None) => None,
-                    (None, Some(false)) => None,
-                    (None, None) => None,
-                    (Some(false), Some(false)) => Some(false),
-                }),
-            Formula::And(fs) => fs
-                .iter()
-                .fold(Some(true), |acc, f| match (acc, f.truth_value()) {
-                    (Some(false), _) => Some(false),
-                    (_, Some(false)) => Some(false),
-                    (Some(true), None) => None,
-                    (None, Some(true)) => None,
-                    (None, None) => None,
-                    (Some(true), Some(true)) => Some(true),
-                }),
-            Formula::Not(f) => match f.truth_value() {
-                Some(true) => Some(false),
-                Some(false) => Some(true),
-                None => None,
+            Formula::True => Formula::True,
+            Formula::False => Formula::False,
+            Formula::BoolVar(x) => match sub.get(x) {
+                Some(Term::Bool(f)) => *f.clone(),
+                // TODO: Return Result instead of panicing
+                Some(_) => panic!(
+                    "Cannot substitute Boolean variable {} with non-Boolean term",
+                    x
+                ),
+                None => Formula::BoolVar(x.clone()),
             },
+            Formula::Predicate(p) => Formula::Predicate(p.apply_substitution(sub)),
+            Formula::Or(fs) => Formula::or(fs.iter().map(|f| f.apply_substitution(sub)).collect()),
+            Formula::And(fs) => {
+                Formula::and(fs.iter().map(|f| f.apply_substitution(sub)).collect())
+            }
+            Formula::Not(f) => Formula::not(f.apply_substitution(sub)),
         }
+    }
+}
+
+impl Substitutable for Predicate {
+    fn apply_substitution(&self, subs: &Substitution) -> Self {
+        match self {
+            Predicate::Equality(lhs, rhs) => {
+                Predicate::Equality(lhs.apply_substitution(subs), rhs.apply_substitution(subs))
+            }
+            Predicate::Leq(lhs, rhs) => {
+                Predicate::Leq(lhs.apply_substitution(subs), rhs.apply_substitution(subs))
+            }
+            Predicate::Less(lhs, rhs) => {
+                Predicate::Less(lhs.apply_substitution(subs), rhs.apply_substitution(subs))
+            }
+            Predicate::Geq(lhs, rhs) => {
+                Predicate::Geq(lhs.apply_substitution(subs), rhs.apply_substitution(subs))
+            }
+            Predicate::Greater(lhs, rhs) => {
+                Predicate::Greater(lhs.apply_substitution(subs), rhs.apply_substitution(subs))
+            }
+            Predicate::In(lhs, rhs) => {
+                Predicate::In(lhs.apply_substitution(subs), rhs.apply_substitution(subs))
+            }
+        }
+    }
+}
+
+impl Substitutable for Term {
+    fn apply_substitution(&self, subs: &Substitution) -> Self {
+        match self {
+            Term::String(s) => Term::String(s.apply_substitution(subs)),
+            Term::Int(i) => Term::Int(i.apply_substitution(subs)),
+            Term::Regular(r) => todo!("Regular terms not implemented yet"),
+            Term::Bool(f) => Term::Bool(Box::new(f.apply_substitution(subs))),
+        }
+    }
+}
+
+impl Evaluable for Formula {
+    fn eval(&self, sub: &Substitution) -> Option<bool> {
+        let res = match self {
+            Formula::True => true,
+            Formula::False => false,
+            Formula::BoolVar(x) => match sub.get(x) {
+                Some(Term::Bool(f)) => f.eval(sub)?,
+                Some(_) => panic!(
+                    "Cannot substitute Boolean variable {} with non-Boolean term",
+                    x
+                ),
+                None => return None,
+            },
+            Formula::Predicate(p) => p.eval(sub)?,
+            Formula::Or(fs) => {
+                let mut iter = fs.iter().map(|f| f.eval(sub));
+                if iter.any(|t| t == Some(true)) {
+                    true
+                } else if iter.all(|f| f == Some(false)) {
+                    false
+                } else {
+                    return None;
+                }
+            }
+            Formula::And(fs) => {
+                let mut iter = fs.iter().map(|f| f.eval(sub));
+                if iter.all(|t| t == Some(true)) {
+                    true
+                } else if iter.any(|f| f == Some(false)) {
+                    false
+                } else {
+                    return None;
+                }
+            }
+            Formula::Not(f) => !f.eval(sub)?,
+        };
+        Some(res)
+    }
+}
+
+impl Evaluable for Predicate {
+    fn eval(&self, sub: &Substitution) -> Option<bool> {
+        let res = match self {
+            Predicate::Equality(Term::String(lhs), Term::String(rhs)) => {
+                match (
+                    lhs.apply_substitution(sub).is_const(),
+                    rhs.apply_substitution(sub).is_const(),
+                ) {
+                    (Some(l), Some(r)) => l == r,
+                    (_, _) => return None,
+                }
+            }
+            Predicate::Equality(Term::Int(lhs), Term::Int(rhs)) => {
+                match (
+                    lhs.apply_substitution(sub).is_const(),
+                    rhs.apply_substitution(sub).is_const(),
+                ) {
+                    (Some(l), Some(r)) => l == r,
+                    (_, _) => return None,
+                }
+            }
+            Predicate::Equality(l, r) => {
+                panic!("= unsupported to sorts {} and {}", l.sort(), r.sort())
+            }
+            Predicate::Leq(Term::Int(lhs), Term::Int(rhs)) => {
+                match (
+                    lhs.apply_substitution(sub).is_const(),
+                    rhs.apply_substitution(sub).is_const(),
+                ) {
+                    (Some(l), Some(r)) => l <= r,
+                    (_, _) => return None,
+                }
+            }
+            Predicate::Leq(l, r) => panic!("<= unsupported to sorts {} and {}", l.sort(), r.sort()),
+            Predicate::Less(Term::Int(lhs), Term::Int(rhs)) => {
+                match (
+                    lhs.apply_substitution(sub).is_const(),
+                    rhs.apply_substitution(sub).is_const(),
+                ) {
+                    (Some(l), Some(r)) => l <= r,
+                    (_, _) => return None,
+                }
+            }
+            Predicate::Less(l, r) => {
+                panic!("< unsupported for sorts {} and {}", l.sort(), r.sort())
+            }
+            Predicate::Geq(Term::Int(lhs), Term::Int(rhs)) => {
+                match (
+                    lhs.apply_substitution(sub).is_const(),
+                    rhs.apply_substitution(sub).is_const(),
+                ) {
+                    (Some(l), Some(r)) => l <= r,
+                    (_, _) => return None,
+                }
+            }
+            Predicate::Geq(l, r) => {
+                panic!(">= unsupported for sorts {} and {}", l.sort(), r.sort())
+            }
+            Predicate::Greater(Term::Int(lhs), Term::Int(rhs)) => {
+                match (
+                    lhs.apply_substitution(sub).is_const(),
+                    rhs.apply_substitution(sub).is_const(),
+                ) {
+                    (Some(l), Some(r)) => l <= r,
+                    (_, _) => return None,
+                }
+            }
+            Predicate::Greater(l, r) => {
+                panic!("> unsupported for sorts {} and {}", l.sort(), r.sort())
+            }
+            Predicate::In(_, _) => todo!(),
+        };
+        Some(res)
     }
 }
 
 /* Pretty Printing */
-
-impl Display for Predicate {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Predicate::WordEquation(weq) => write!(f, "{}", weq),
-            Predicate::RegularConstraint(_, _) => todo!(),
-            Predicate::LinearConstraint(c) => write!(f, "{}", c),
-        }
-    }
-}
 
 impl Display for Atom {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -342,10 +519,37 @@ impl Display for Atom {
     }
 }
 
+impl Display for Term {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Term::String(t) => write!(f, "{}", t),
+            Term::Int(t) => write!(f, "{}", t),
+            Term::Bool(t) => write!(f, "{}", t),
+            Term::Regular(r) => todo!(),
+        }
+    }
+}
+
+impl Display for Predicate {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Predicate::Equality(lhs, rhs) => write!(f, "{} = {}", lhs, rhs),
+            Predicate::Leq(lhs, rhs) => write!(f, "{} <= {}", lhs, rhs),
+            Predicate::Less(lhs, rhs) => write!(f, "{} < {}", lhs, rhs),
+            Predicate::Geq(lhs, rhs) => write!(f, "{} >= {}", lhs, rhs),
+            Predicate::Greater(lhs, rhs) => write!(f, "{} > {}", lhs, rhs),
+            Predicate::In(lhs, rhs) => write!(f, "{} in {}", lhs, rhs),
+        }
+    }
+}
+
 impl Display for Formula {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Formula::Atom(a) => write!(f, "{}", a),
+            Formula::True => write!(f, "true"),
+            Formula::False => write!(f, "false"),
+            Formula::BoolVar(v) => write!(f, "{}", v),
+            Formula::Predicate(p) => write!(f, "{}", p),
             Formula::Or(fs) => {
                 write!(f, "(")?;
                 let mut first = true;

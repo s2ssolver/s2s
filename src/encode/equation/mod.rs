@@ -7,8 +7,8 @@ pub use woorpje::WoorpjeEncoder;
 
 use crate::model::words::WordEquation;
 
-use super::PredicateEncoder;
+use super::ConstraintEncoder;
 
-pub trait WordEquationEncoder: PredicateEncoder {
+pub trait WordEquationEncoder: ConstraintEncoder {
     fn new(equation: WordEquation) -> Self;
 }

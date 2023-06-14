@@ -14,7 +14,7 @@ use std::collections::HashMap;
 
 use crate::bounds::Bounds;
 use crate::encode::domain::DomainEncoding;
-use crate::encode::{EncodingResult, FilledPattern, FilledPos, PredicateEncoder, LAMBDA};
+use crate::encode::{ConstraintEncoder, EncodingResult, FilledPattern, FilledPos, LAMBDA};
 use crate::model::words::WordEquation;
 use crate::model::VarManager;
 use crate::sat::{as_lit, neg, pvar, Clause, Cnf, PVar};
@@ -98,7 +98,7 @@ impl WoorpjeEncoder {
     }
 }
 
-impl PredicateEncoder for WoorpjeEncoder {
+impl ConstraintEncoder for WoorpjeEncoder {
     fn is_incremental(&self) -> bool {
         false
     }
@@ -310,8 +310,7 @@ mod tests {
         bounds::IntDomain,
         encode::domain::{get_substitutions, DomainEncoder},
         model::{
-            words::Pattern, Proposition, Sort, Substitutable, VarManager, VarSubstitutions,
-            Variable,
+            words::Pattern, Evaluable, Sort, Substitutable, Substitution, VarManager, Variable,
         },
     };
 
@@ -399,14 +398,14 @@ mod tests {
         let res = solver.solve();
         if let Some(true) = res {
             let solution =
-                VarSubstitutions::from(get_substitutions(dom_encoder.encoding(), &vm, &solver));
+                Substitution::from(get_substitutions(dom_encoder.encoding(), &vm, &solver));
 
             assert!(
-                eq.substitute(&solution).truth_value().unwrap(),
+                eq.eval(&solution).unwrap(),
                 "{} is not a solution: {:?} != {:?}",
                 solution,
-                eq.lhs().substitute(&solution),
-                eq.rhs().substitute(&solution)
+                eq.lhs().apply_substitution(&solution),
+                eq.rhs().apply_substitution(&solution)
             );
             println!("Solution: {}", solution);
             if let Some(svs) = encoder.get_state_vars() {
@@ -594,7 +593,7 @@ mod tests {
             (var_f, "eadaacba".chars().collect()),
             (var_e, "ae".chars().collect()),
         ]);
-        let _solution = VarSubstitutions::from(solution);
+        let _solution = Substitution::from(solution);
         let bounds = Bounds::with_defaults(IntDomain::Bounded(0, 10));
         let res = solve_woorpje(&eq, bounds, &eq.alphabet());
 

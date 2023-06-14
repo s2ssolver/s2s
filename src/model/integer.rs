@@ -1,18 +1,17 @@
-use super::{Proposition, Substitutable};
 use crate::model::words::Symbol;
 use std::{collections::HashMap, fmt::Display, ops::Index};
 
-use super::{words::WordEquation, Variable};
+use super::{formula::Term, words::WordEquation, Substitution, Variable};
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum IntArithTerm {
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum IntTerm {
     Var(Variable),
     Const(isize),
-    Plus(Box<IntArithTerm>, Box<IntArithTerm>),
-    Times(Box<IntArithTerm>, Box<IntArithTerm>),
+    Plus(Box<IntTerm>, Box<IntTerm>),
+    Times(Box<IntTerm>, Box<IntTerm>),
 }
 
-impl IntArithTerm {
+impl IntTerm {
     pub fn var(x: &Variable) -> Self {
         Self::Var(x.clone())
     }
@@ -22,15 +21,15 @@ impl IntArithTerm {
     }
 
     /// Returns `Some(c)` if the term is equal to constant value `c`, `None` otherwise.
-    pub fn is_constant(&self) -> Option<isize> {
+    pub fn is_const(&self) -> Option<isize> {
         match self {
-            IntArithTerm::Var(_) => None,
-            IntArithTerm::Const(c) => Some(*c),
-            IntArithTerm::Plus(a, b) => match (a.is_constant(), b.is_constant()) {
+            IntTerm::Var(_) => None,
+            IntTerm::Const(c) => Some(*c),
+            IntTerm::Plus(a, b) => match (a.is_const(), b.is_const()) {
                 (Some(c1), Some(c2)) => Some(c1 + c2),
                 _ => None,
             },
-            IntArithTerm::Times(a, b) => match (a.is_constant(), b.is_constant()) {
+            IntTerm::Times(a, b) => match (a.is_const(), b.is_const()) {
                 (Some(c1), Some(c2)) => Some(c1 * c2),
                 _ => None,
             },
@@ -48,23 +47,39 @@ impl IntArithTerm {
     /// Negate the term
     pub fn neg(&self) -> Self {
         match self {
-            IntArithTerm::Var(v) => {
-                IntArithTerm::times(&IntArithTerm::constant(-1), &IntArithTerm::var(v))
+            IntTerm::Var(v) => IntTerm::times(&IntTerm::constant(-1), &IntTerm::var(v)),
+            IntTerm::Const(c) => IntTerm::constant(-c),
+            IntTerm::Plus(x, y) => IntTerm::plus(&x.neg(), &y.neg()),
+            IntTerm::Times(x, y) => IntTerm::times(&x.neg(), y),
+        }
+    }
+
+    pub fn apply_substitution(&self, subs: &Substitution) -> Self {
+        match self {
+            IntTerm::Var(x) => match subs.get(x) {
+                Some(Term::Int(t)) => t.clone(),
+                // TODO: Return result
+                Some(_) => panic!("Cannot substitute integer variable with string"),
+                None => self.clone(),
+            },
+            IntTerm::Const(_) => self.clone(),
+            IntTerm::Plus(x, y) => {
+                IntTerm::plus(&x.apply_substitution(subs), &y.apply_substitution(subs))
             }
-            IntArithTerm::Const(c) => IntArithTerm::constant(-c),
-            IntArithTerm::Plus(x, y) => IntArithTerm::plus(&x.neg(), &y.neg()),
-            IntArithTerm::Times(x, y) => IntArithTerm::times(&x.neg(), y),
+            IntTerm::Times(x, y) => {
+                IntTerm::times(&x.apply_substitution(subs), &y.apply_substitution(subs))
+            }
         }
     }
 }
 
-impl Display for IntArithTerm {
+impl Display for IntTerm {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            IntArithTerm::Var(x) => write!(f, "{}", x),
-            IntArithTerm::Const(c) => write!(f, "{}", c),
-            IntArithTerm::Plus(x, y) => write!(f, "({} + {})", x, y),
-            IntArithTerm::Times(x, y) => write!(f, "({} * {})", x, y),
+            IntTerm::Var(x) => write!(f, "{}", x),
+            IntTerm::Const(c) => write!(f, "{}", c),
+            IntTerm::Plus(x, y) => write!(f, "({} + {})", x, y),
+            IntTerm::Times(x, y) => write!(f, "({} * {})", x, y),
         }
     }
 }
@@ -169,42 +184,6 @@ impl LinearArithTerm {
     }
 
     /// Convert an integer arithmetic term to a linear arithmetic term.
-    /// Returns `None` if the term is not linear, i.e., if it contains a product of two variables.
-    pub fn from_int_arith_term(t: &IntArithTerm) -> Option<Self> {
-        match t {
-            IntArithTerm::Var(x) => Some(Self::from_var(x)),
-            IntArithTerm::Const(c) => Some(Self::from_const(*c)),
-            IntArithTerm::Plus(x, y) => {
-                let mut res = Self::from_int_arith_term(x)?;
-                res.extend(Self::from_int_arith_term(y)?);
-                Some(res)
-            }
-            IntArithTerm::Times(x, y) => {
-                let res_x = Self::from_int_arith_term(x)?;
-                let res_y = Self::from_int_arith_term(y)?;
-                // Distribute x over y, abort if non-linear
-                let mut res = Self::new();
-                for xx in res_x.iter() {
-                    for yy in res_y.iter() {
-                        match (yy, xx) {
-                            (
-                                LinearArithFactor::VarCoeff(_, _),
-                                LinearArithFactor::VarCoeff(_, _),
-                            ) => return None,
-                            (LinearArithFactor::Const(c2), LinearArithFactor::VarCoeff(v, c1))
-                            | (LinearArithFactor::VarCoeff(v, c1), LinearArithFactor::Const(c2)) => {
-                                res.add_factor(LinearArithFactor::VarCoeff(v.clone(), c1 * c2));
-                            }
-                            (LinearArithFactor::Const(c1), LinearArithFactor::Const(c2)) => {
-                                res.add_factor(LinearArithFactor::Const(c1 * c2));
-                            }
-                        }
-                    }
-                }
-                Some(res)
-            }
-        }
-    }
 
     pub fn subtract(&self, other: &Self) -> Self {
         let mut res = self.clone();
@@ -239,6 +218,44 @@ impl Index<usize> for LinearArithTerm {
 
     fn index(&self, index: usize) -> &Self::Output {
         &self.factors[index]
+    }
+}
+
+impl From<IntTerm> for LinearArithTerm {
+    fn from(value: IntTerm) -> Self {
+        match value {
+            IntTerm::Var(x) => Self::from_var(&x),
+            IntTerm::Const(c) => Self::from_const(c),
+            IntTerm::Plus(x, y) => {
+                let mut res = Self::from(*x);
+                res.extend(Self::from(*y));
+                res
+            }
+            IntTerm::Times(x, y) => {
+                let res_x = Self::from(*x);
+                let res_y = Self::from(*y);
+                // Distribute x over y, abort if non-linear
+                let mut res = Self::new();
+                for xx in res_x.iter() {
+                    for yy in res_y.iter() {
+                        match (yy, xx) {
+                            (
+                                LinearArithFactor::VarCoeff(_, _),
+                                LinearArithFactor::VarCoeff(_, _),
+                            ) => panic!("Non-linear constraint"),
+                            (LinearArithFactor::Const(c2), LinearArithFactor::VarCoeff(v, c1))
+                            | (LinearArithFactor::VarCoeff(v, c1), LinearArithFactor::Const(c2)) => {
+                                res.add_factor(LinearArithFactor::VarCoeff(v.clone(), c1 * c2));
+                            }
+                            (LinearArithFactor::Const(c1), LinearArithFactor::Const(c2)) => {
+                                res.add_factor(LinearArithFactor::Const(c1 * c2));
+                            }
+                        }
+                    }
+                }
+                res
+            }
+        }
     }
 }
 
@@ -282,11 +299,20 @@ impl LinearConstraint {
         }
     }
 
-    pub fn from_linear_arith_term(
-        lhs: &LinearArithTerm,
-        rhs: &LinearArithTerm,
-        typ: LinearConstraintType,
-    ) -> Self {
+    pub fn lhs(&self) -> &LinearArithTerm {
+        &self.lhs
+    }
+
+    pub fn rhs(&self) -> isize {
+        self.rhs
+    }
+}
+
+impl From<(LinearArithTerm, LinearArithTerm, LinearConstraintType)> for LinearConstraint {
+    fn from(value: (LinearArithTerm, LinearArithTerm, LinearConstraintType)) -> Self {
+        let lhs = value.0;
+        let rhs = value.1;
+        let typ = value.2;
         log::info!("Creating constraint {} {} {}", lhs, typ, rhs);
         if let Some(mut c) = rhs.is_constant() {
             let mut lhs = lhs.clone();
@@ -308,7 +334,7 @@ impl LinearConstraint {
             log::info!("Created constraint {}", res);
             res
         } else {
-            let mut lhs = lhs.subtract(rhs);
+            let mut lhs = lhs.subtract(&rhs);
             lhs.normalize();
             let mut consts = vec![];
             let mut c = 0;
@@ -327,63 +353,6 @@ impl LinearConstraint {
             let res = Self { lhs, rhs: 0, typ };
             log::info!("Created constraint {}", res);
             res
-        }
-    }
-
-    pub fn lhs(&self) -> &LinearArithTerm {
-        &self.lhs
-    }
-
-    pub fn rhs(&self) -> isize {
-        self.rhs
-    }
-}
-
-/* Substitution */
-
-impl Substitutable for LinearConstraint {
-    fn substitute(&self, subst: &super::VarSubstitutions) -> Self {
-        let mut new_lhs = IntArithTerm::constant(0);
-        for fac in &self.lhs().factors {
-            let term = match fac {
-                LinearArithFactor::VarCoeff(x, c) => {
-                    if let Some(s) = subst.get_int(x) {
-                        IntArithTerm::times(&s, &IntArithTerm::Const(*c))
-                    } else {
-                        IntArithTerm::times(&IntArithTerm::Var(x.clone()), &IntArithTerm::Const(*c))
-                    }
-                }
-                LinearArithFactor::Const(c) => IntArithTerm::Const(*c),
-            };
-
-            new_lhs = IntArithTerm::plus(&new_lhs, &term);
-        }
-        let linterm = LinearArithTerm::from_int_arith_term(&new_lhs)
-            .expect("Non-linear arithmetic term in linear constraint");
-        Self::from_linear_arith_term(&linterm, &LinearArithTerm::from_const(self.rhs), self.typ)
-    }
-}
-
-impl Proposition for LinearConstraint {
-    fn truth_value(&self) -> Option<bool> {
-        let mut lhs = 0;
-        for fac in self.lhs.iter() {
-            match fac {
-                LinearArithFactor::VarCoeff(_, _) => {
-                    return None;
-                }
-                LinearArithFactor::Const(c) => {
-                    lhs += c;
-                }
-            }
-        }
-
-        match self.typ {
-            LinearConstraintType::Eq => Some(lhs == self.rhs),
-            LinearConstraintType::Leq => Some(lhs <= self.rhs),
-            LinearConstraintType::Less => Some(lhs < self.rhs),
-            LinearConstraintType::Geq => Some(lhs >= self.rhs),
-            LinearConstraintType::Greater => Some(lhs > self.rhs),
         }
     }
 }

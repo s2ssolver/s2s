@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use crate::bounds::Bounds;
 use crate::encode::card::exactly_one;
 use crate::encode::domain::DomainEncoding;
-use crate::encode::{EncodingResult, FilledPattern, FilledPos, PredicateEncoder, LAMBDA};
+use crate::encode::{ConstraintEncoder, EncodingResult, FilledPattern, FilledPos, LAMBDA};
 use crate::model::words::WordEquation;
 use crate::model::VarManager;
 use crate::sat::{as_lit, neg, pvar, Cnf, PVar};
@@ -541,7 +541,7 @@ impl WordEquationEncoder for IWoorpjeEncoder {
     }
 }
 
-impl PredicateEncoder for IWoorpjeEncoder {
+impl ConstraintEncoder for IWoorpjeEncoder {
     fn encode(
         &mut self,
         bounds: &Bounds,
@@ -601,7 +601,7 @@ mod tests {
     use crate::{
         bounds::IntDomain,
         encode::domain::{get_substitutions, DomainEncoder},
-        model::{words::Pattern, Proposition, Sort, Substitutable, VarManager, VarSubstitutions},
+        model::{words::Pattern, Evaluable, Sort, Substitutable, Substitution, VarManager},
     };
 
     fn solve_iwoorpje(
@@ -637,13 +637,13 @@ mod tests {
         let res = solver.solve_with(assumptions.into_iter());
         if let Some(true) = res {
             let solution = get_substitutions(dom_encoder.encoding(), &vm, &solver);
-            let solution = VarSubstitutions::from(solution);
+            let solution = Substitution::from(solution);
             assert!(
-                eq.substitute(&solution).truth_value().unwrap(),
+                eq.eval(&solution).unwrap(),
                 "{} is not a solution: {:?} != {:?}",
                 solution,
-                eq.lhs().substitute(&solution),
-                eq.rhs().substitute(&solution)
+                eq.lhs().apply_substitution(&solution),
+                eq.rhs().apply_substitution(&solution)
             );
         }
         res
@@ -689,10 +689,10 @@ mod tests {
         match result {
             Some(true) => {
                 let sol = get_substitutions(dom_encoder.encoding(), &vm, &solver);
-                let solution = VarSubstitutions::from(sol);
+                let solution = Substitution::from(sol);
 
                 assert!(
-                    eq.substitute(&solution).truth_value().unwrap(),
+                    eq.eval(&solution).unwrap(),
                     "Not a solution: {} ({})",
                     solution,
                     eq

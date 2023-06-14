@@ -7,13 +7,13 @@ use std::time::Instant;
 
 use crate::bounds::{Bounds, IntDomain};
 use crate::encode::{
-    AlignmentEncoder, EncodingResult, MddEncoder, PredicateEncoder, WordEquationEncoder,
+    AlignmentEncoder, ConstraintEncoder, EncodingResult, MddEncoder, WordEquationEncoder,
 };
 
-use crate::model::formula::{Atom, Formula, Predicate};
+use crate::model::formula::{Atom, Constraint, Formula, Predicate};
 use crate::model::words::Symbol;
 use crate::model::words::WordEquation;
-use crate::model::VarSubstitutions;
+use crate::model::Substitution;
 use crate::model::{Sort, VarManager};
 
 use crate::encode::domain::{get_substitutions, DomainEncoder};
@@ -23,7 +23,7 @@ use crate::sat::Cnf;
 /// The result of a satisfiability check
 pub enum SolverResult {
     /// The instance is satisfiable with the given model
-    Sat(VarSubstitutions),
+    Sat(Substitution),
     /// The instance is unsatisfiable
     Unsat,
     /// The solver could not determine the satisfiability of the instance
@@ -37,7 +37,7 @@ impl SolverResult {
     }
 
     /// Returns the model if the instance is satisfiable
-    pub fn get_model(&self) -> Option<&VarSubstitutions> {
+    pub fn get_model(&self) -> Option<&Substitution> {
         match self {
             SolverResult::Sat(model) => Some(model),
             _ => None,
@@ -72,17 +72,23 @@ pub trait Solver {
 pub struct ConjunctiveSolver {
     instance: Instance,
     alphabet: IndexSet<char>,
-    encoders: HashMap<Predicate, Box<dyn PredicateEncoder>>,
+    encoders: HashMap<Constraint, Box<dyn ConstraintEncoder>>,
     domain_encoder: DomainEncoder,
 }
 
 impl ConjunctiveSolver {
-    fn inst_encoder(predicate: &Predicate) -> Box<dyn PredicateEncoder> {
-        match predicate {
-            Predicate::WordEquation(eq) => Box::new(AlignmentEncoder::new(eq.clone())),
+    fn inst_encoder(con: &Constraint) -> Box<dyn ConstraintEncoder> {
+        match con {
+            Constraint::WordEquation(_) => todo!(),
+            Constraint::LinearConstraint(_) => todo!(),
+            Constraint::RegularConstraint(_) => todo!(),
+        }
+
+        /*
+        Predicate::WordEquation(eq) => Box::new(AlignmentEncoder::new(eq.clone())),
             Predicate::RegularConstraint(_, _) => todo!(),
             Predicate::LinearConstraint(lc) => Box::new(MddEncoder::new(lc.clone())),
-        }
+         */
     }
 
     pub fn new(instance: Instance) -> Result<Self, String> {
@@ -93,25 +99,23 @@ impl ConjunctiveSolver {
             "Instance is not a conjunctive formula: {}",
             instance.get_formula()
         ));
-        match instance.get_formula() {
-            Formula::Atom(Atom::Predicate(Predicate::WordEquation(eq))) => {
-                encoders.insert(
-                    Predicate::WordEquation(eq.clone()),
-                    Self::inst_encoder(&Predicate::WordEquation(eq.clone())),
-                );
-            }
-            Formula::And(fs) => {
-                for f in fs {
-                    match f {
-                        Formula::Atom(Atom::Predicate(p)) => {
-                            encoders.insert(p.clone(), Self::inst_encoder(p));
-                        }
-                        _ => return non_conjunctive_error,
-                    }
-                }
-            }
-            _ => return non_conjunctive_error,
+
+        if !instance.get_formula().is_conjunctive() {
+            return non_conjunctive_error;
         }
+        for a in instance.get_formula().asserted_atoms() {
+            match a {
+                Atom::Predicate(p) => {
+                    let constraint = Constraint::from(p.clone());
+                    let encoder = Self::inst_encoder(&constraint);
+                    encoders.insert(constraint, encoder);
+                }
+                Atom::BoolVar(_) => todo!("Boolean variables are not supported"),
+                Atom::True => (), // Do nothing
+                Atom::False => todo!("Handle false atoms"),
+            }
+        }
+
         let dom_encoder = DomainEncoder::new(alphabet.clone());
         Ok(Self {
             instance,
@@ -123,13 +127,16 @@ impl ConjunctiveSolver {
 
     fn encode_bounded(&mut self, bounds: &Bounds) -> EncodingResult {
         let mut encoding = EncodingResult::empty();
-        let bounds = if let Formula::Atom(Atom::Predicate(Predicate::WordEquation(eq))) =
-            self.instance.get_formula()
-        {
-            sharpen_bounds(eq, bounds, self.instance.get_var_manager())
-        } else {
-            bounds.clone()
-        };
+        if self.encoders.len() == 0 {
+            return EncodingResult::Trivial(true);
+        }
+
+        let mut bounds = bounds.clone();
+        if self.encoders.len() == 1 {
+            if let Some(Constraint::WordEquation(eq)) = self.encoders.keys().next() {
+                bounds = sharpen_bounds(eq, &bounds, self.instance.get_var_manager())
+            }
+        }
 
         let ts = Instant::now();
         let subs_cnf = self
@@ -239,7 +246,7 @@ impl Solver for ConjunctiveSolver {
                         );
                         time_solving += t_solving;
                         if let Some(true) = res {
-                            let mut model = VarSubstitutions::from(get_substitutions(
+                            let mut model = Substitution::from(get_substitutions(
                                 self.domain_encoder.encoding(),
                                 self.instance.get_var_manager(),
                                 &cadical,
@@ -261,9 +268,7 @@ impl Solver for ConjunctiveSolver {
                         }
                     }
                     EncodingResult::Trivial(false) => return SolverResult::Unsat,
-                    EncodingResult::Trivial(true) => {
-                        return SolverResult::Sat(VarSubstitutions::new())
-                    }
+                    EncodingResult::Trivial(true) => return SolverResult::Sat(Substitution::new()),
                 }
             } else {
                 log::info!("Empty bounds, skipping");

@@ -2,7 +2,7 @@ use std::{collections::HashMap, fmt::Display, sync::atomic::AtomicUsize};
 
 use indexmap::IndexMap;
 
-use self::{integer::IntArithTerm, words::Pattern};
+use self::formula::Term;
 
 pub mod formula;
 pub mod integer;
@@ -189,23 +189,17 @@ impl VarManager {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub struct VarSubstitutions {
-    str: IndexMap<Variable, Pattern>,
-    int: IndexMap<Variable, IntArithTerm>,
-    bool: IndexMap<Variable, bool>,
-
+pub struct Substitution {
+    subs: IndexMap<Variable, Term>,
     use_defaults: bool,
 }
 
 /// A substitution of [variables](Variable) by terms.
 /// A variable of sort [string](Sort::String) can be substituted by [Pattern], a variable of sort [int](Sort::Int) can be substituted by an [IntArithTerm].
-
-impl VarSubstitutions {
+impl Substitution {
     pub fn new() -> Self {
         Self {
-            str: IndexMap::new(),
-            int: IndexMap::new(),
-            bool: IndexMap::new(),
+            subs: IndexMap::new(),
             use_defaults: false,
         }
     }
@@ -217,89 +211,45 @@ impl VarSubstitutions {
     /// Returns true if the substitution is an assignemt.
     /// We call a substitution an assignment if it substitutes variables with constants.
     pub fn is_assignment(&self) -> bool {
-        for (_, val) in &self.str {
-            if !val.is_constant() {
-                return false;
-            }
-        }
-        for (_, val) in &self.int {
-            if val.is_constant().is_none() {
+        for (_, val) in &self.subs {
+            if !val.is_const() {
                 return false;
             }
         }
         true
     }
 
-    pub fn get_str(&self, var: &Variable) -> Option<Pattern> {
-        match var.sort {
-            Sort::String => {
-                let res = self.str.get(var);
-                if res.is_none() && self.use_defaults {
-                    Some(Pattern::empty())
-                } else {
-                    res.cloned()
-                }
-            }
-            _ => panic!("Variable {} is not of sort string", var),
-        }
+    pub fn get(&self, var: &Variable) -> Option<&Term> {
+        self.subs.get(var)
     }
 
-    pub fn set_str(&mut self, var: &Variable, val: Pattern) {
-        match var.sort {
-            Sort::String => self.str.insert(var.clone(), val),
-            _ => panic!("Variable {} is not of sort string", var),
-        };
+    pub fn set(&mut self, var: &Variable, term: Term) {
+        self.subs.insert(var.clone(), term);
     }
 
-    pub fn get_int(&self, var: &Variable) -> Option<IntArithTerm> {
-        match var.sort {
-            Sort::Int => {
-                let res = self.int.get(var);
-                if res.is_none() && self.use_defaults {
-                    Some(IntArithTerm::constant(0))
-                } else {
-                    res.cloned()
-                }
-            }
-            _ => panic!("Variable {} is not of sort int", var),
-        }
-    }
-
-    pub fn get_bool(&self, var: &Variable) -> Option<&bool> {
-        match var.sort {
-            Sort::Bool => {
-                let res = self.bool.get(var);
-                if res.is_none() && self.use_defaults {
-                    Some(&false)
-                } else {
-                    res
-                }
-            }
-            _ => panic!("Variable {} is not of sort bool", var),
-        }
+    pub fn to_smt2(&self, var_manager: &VarManager) -> String {
+        todo!()
     }
 }
 
-impl From<HashMap<Variable, Vec<char>>> for VarSubstitutions {
+impl From<HashMap<Variable, Vec<char>>> for Substitution {
     fn from(value: HashMap<Variable, Vec<char>>) -> Self {
         let mut sub = Self::new();
         for (var, val) in value {
-            let str = String::from_iter(val);
-            sub.set_str(&var, Pattern::constant(&str));
+            sub.set(&var, Term::String(words::StringTerm::Constant(val)));
         }
         sub
     }
 }
 
 pub trait Substitutable {
-    /// Substitute all variables according to the given substitutions
-    fn substitute(&self, subst: &VarSubstitutions) -> Self;
+    // TODO: Return Result<Self, Error>
+    fn apply_substitution(&self, sub: &Substitution) -> Self;
 }
 
-/// A proposition is an object that can be evaluated to true or false.
-pub trait Proposition {
-    /// Returns the truth value of the proposition, if it can be determined.
-    fn truth_value(&self) -> Option<bool>;
+pub trait Evaluable: Substitutable {
+    // TODO: Return Result<Self, Error>
+    fn eval(&self, sub: &Substitution) -> Option<bool>;
 }
 
 /* Pretty Printing */
@@ -319,30 +269,17 @@ impl Display for Variable {
     }
 }
 
-impl Display for VarSubstitutions {
+impl Display for Substitution {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let mut first = true;
-        for (var, val) in &self.str {
+        for (var, val) in &self.subs {
             if !first {
                 write!(f, ", ")?;
             }
             first = false;
             write!(f, "{} -> {}", var, val)?;
         }
-        for (var, val) in &self.int {
-            if !first {
-                write!(f, ", ")?;
-            }
-            first = false;
-            write!(f, "{} -> {}", var, val)?;
-        }
-        for (var, val) in &self.bool {
-            if !first {
-                write!(f, ", ")?;
-            }
-            first = false;
-            write!(f, "{} -> {}", var, val)?;
-        }
+
         Ok(())
     }
 }

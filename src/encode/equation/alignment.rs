@@ -6,9 +6,9 @@ use std::time::Instant;
 use crate::bounds::Bounds;
 use crate::encode::card::{exactly_one, IncrementalAMO};
 use crate::encode::domain::DomainEncoding;
-use crate::encode::{EncodingResult, FilledPattern, PredicateEncoder, LAMBDA};
+use crate::encode::{ConstraintEncoder, EncodingResult, FilledPattern, LAMBDA};
 use crate::model::words::{Pattern, Symbol, WordEquation};
-use crate::model::{VarManager, Variable};
+use crate::model::{Evaluable, Substitutable, VarManager, Variable};
 use crate::sat::{as_lit, neg, pvar, Cnf, PVar};
 use indexmap::IndexMap;
 
@@ -613,7 +613,7 @@ impl WordEquationEncoder for AlignmentEncoder {
     }
 }
 
-impl PredicateEncoder for AlignmentEncoder {
+impl ConstraintEncoder for AlignmentEncoder {
     fn encode(
         &mut self,
         bounds: &Bounds,
@@ -746,7 +746,7 @@ mod tests {
     use crate::{
         bounds::IntDomain,
         encode::domain::{get_substitutions, DomainEncoder},
-        model::{words::Pattern, Proposition, Sort, Substitutable, VarManager, VarSubstitutions},
+        model::{words::Pattern, Sort, Substitution, VarManager},
     };
 
     #[test]
@@ -831,14 +831,14 @@ mod tests {
         let res = solver.solve_with(assumptions.into_iter());
         if let Some(true) = res {
             let solution = get_substitutions(dom_encoder.encoding(), &vm, &solver);
-            let solution = VarSubstitutions::from(solution);
+            let solution = Substitution::from(solution);
             assert!(
-                eq.substitute(&solution).truth_value().unwrap(),
+                eq.eval(&solution).unwrap(),
                 "{} is not a solution for {}: {:?} != {:?}",
                 solution,
                 eq,
-                eq.lhs().substitute(&solution),
-                eq.rhs().substitute(&solution)
+                eq.lhs().apply_substitution(&solution),
+                eq.rhs().apply_substitution(&solution)
             );
         }
         res
@@ -882,14 +882,14 @@ mod tests {
         }
         if let Some(true) = result {
             let solution = get_substitutions(dom_encoder.encoding(), &vm, &solver);
-            let solution = VarSubstitutions::from(solution);
+            let solution = Substitution::from(solution);
             assert!(
-                eq.substitute(&solution).truth_value().unwrap(),
+                eq.eval(&solution).unwrap(),
                 "{} is not a solution for {}: {:?} != {:?}",
                 solution,
                 eq,
-                eq.lhs().substitute(&solution),
-                eq.rhs().substitute(&solution)
+                eq.lhs().apply_substitution(&solution),
+                eq.rhs().apply_substitution(&solution)
             );
         }
         result

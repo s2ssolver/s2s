@@ -6,7 +6,8 @@ mod smt2;
 use crate::{
     model::formula::{Atom, Formula},
     model::{
-        words::{Pattern, Symbol, WordEquation},
+        formula::Predicate,
+        words::{Pattern, StringTerm, Symbol, WordEquation},
         VarManager,
     },
 };
@@ -179,27 +180,27 @@ fn parse_woorpje(input: &str) -> Result<Instance, ParseError> {
                     "Must have exactly one '=' in an equation. Was: '{}'",
                     second
                 );
-                let mut lhs = Pattern::empty();
+                let mut lhs = StringTerm::empty();
                 for c in sides[0].chars() {
                     if alphabet.contains(&c) {
-                        lhs.append(&Symbol::Constant(c));
+                        lhs = StringTerm::concat_const(lhs, String::from(c).as_str());
                     } else if let Some(v) = vm.by_name(c.to_string().as_str()) {
-                        lhs.append(&Symbol::Variable(v.clone()));
+                        lhs = StringTerm::concat_var(lhs, v);
                     } else {
                         panic!("Unknown symbol in equation '{}'", c);
                     }
                 }
-                let mut rhs = Pattern::empty();
+                let mut rhs = StringTerm::empty();
                 for c in sides[1].chars() {
                     if alphabet.contains(&c) {
-                        rhs.append(&Symbol::Constant(c));
+                        rhs = StringTerm::concat_const(rhs, String::from(c).as_str());
                     } else if let Some(v) = vm.by_name(c.to_string().as_str()) {
-                        rhs.append(&Symbol::Variable(v.clone()));
+                        rhs = StringTerm::concat_var(rhs, v);
                     } else {
                         panic!("Unknown symbol in equation '{}'", c);
                     }
                 }
-                formula = Formula::Atom(Atom::word_equation(WordEquation::new(lhs, rhs)));
+                formula = Formula::Predicate(Predicate::Equality(lhs.into(), rhs.into()));
             }
             _ => {}
         }
@@ -210,6 +211,7 @@ fn parse_woorpje(input: &str) -> Result<Instance, ParseError> {
 
 #[cfg(test)]
 mod tests {
+
     use super::*;
 
     #[test]
@@ -225,11 +227,16 @@ Equation: aX = ab"#;
             Symbol::Constant('a'),
             Symbol::Variable(vm.by_name("X").unwrap().clone()),
         ]);
-        let expected_rhs = Pattern::constant("ab");
-        let expected_eq = WordEquation::new(expected_lhs, expected_rhs);
+        let expected_lhs =
+            StringTerm::concat_var(StringTerm::constant("a"), vm.by_name("X").unwrap());
+        let expected_rhs = StringTerm::constant("ab");
+
         assert_eq!(
             *instance.get_formula(),
-            Formula::Atom(Atom::word_equation(expected_eq))
+            Formula::Predicate(Predicate::Equality(
+                expected_lhs.into(),
+                expected_rhs.into()
+            ))
         );
     }
 

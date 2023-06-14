@@ -8,7 +8,7 @@ use crate::{
     sat::{as_lit, neg, pvar, PVar},
 };
 
-use super::{EncodingResult, PredicateEncoder};
+use super::{ConstraintEncoder, EncodingResult};
 
 /// Encodes linear constraints by using multi-valued decision diagrams.
 pub struct MddEncoder {
@@ -59,7 +59,7 @@ impl MddEncoder {
     }
 }
 
-impl PredicateEncoder for MddEncoder {
+impl ConstraintEncoder for MddEncoder {
     fn is_incremental(&self) -> bool {
         true
     }

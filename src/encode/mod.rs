@@ -165,7 +165,7 @@ impl EncodingResult {
 /// the SAT solver will lead to a speedup.
 ///
 /// Note that if an incremental encoder can be used in a non-incremental way by simply resetting its state when updating the bounds.
-pub trait PredicateEncoder {
+pub trait ConstraintEncoder {
     /// Returns true if the encoder performs incremental encoding.
     fn is_incremental(&self) -> bool;
     /// Resets the encoder to the initial state.
