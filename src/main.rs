@@ -88,7 +88,7 @@ fn main() {
 
     // Preprocess the formula
     let ts = Instant::now();
-    match preprocess(&instance) {
+    /*match preprocess(&instance) {
         PreprocessingResult::Unchanged => {
             log::debug!("No preprocessing applied.");
         }
@@ -102,7 +102,7 @@ fn main() {
             return;
         }
     }
-    log::info!("Preprocessing done ({}ms).", ts.elapsed().as_millis());
+    log::info!("Preprocessing done ({}ms).", ts.elapsed().as_millis());*/
 
     let mut solver = ConjunctiveSolver::new(instance.clone()).unwrap();
 
@@ -113,15 +113,14 @@ fn main() {
         satstr::SolverResult::Sat(m) => {
             if !cli.skip_verify {
                 match instance.get_formula().eval(&m) {
-                    Some(true) => println!("sat\n{}", m),
+                    Some(true) => {}
                     Some(false) => panic!("Model is incorrect"),
                     None => panic!("Model is incomplete"),
                 }
-            } else {
-                println!("sat");
-                if instance.get_print_model() {
-                    println!("{}", m);
-                }
+            }
+            println!("sat");
+            if instance.get_print_model() {
+                println!("{}", m);
             }
         }
         satstr::SolverResult::Unsat => println!("unsat"),
