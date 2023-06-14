@@ -271,10 +271,10 @@ impl<'a> Visitor<ALL> for FormulaBuilder<'a> {
 
                                 let pred = match arith_op {
                                     ArithOp::Lte(_) => {
-                                        Predicate::Less(term_lhs.into(), term_rhs.into())
+                                        Predicate::Leq(term_lhs.into(), term_rhs.into())
                                     }
                                     ArithOp::Lt(_) => {
-                                        Predicate::Leq(term_lhs.into(), term_rhs.into())
+                                        Predicate::Less(term_lhs.into(), term_rhs.into())
                                     }
                                     ArithOp::Gt(_) => {
                                         Predicate::Greater(term_lhs.into(), term_rhs.into())
