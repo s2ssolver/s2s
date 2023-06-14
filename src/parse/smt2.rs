@@ -277,10 +277,10 @@ impl<'a> Visitor<ALL> for FormulaBuilder<'a> {
                                         Predicate::Leq(term_lhs.into(), term_rhs.into())
                                     }
                                     ArithOp::Gt(_) => {
-                                        Predicate::Greater(term_rhs.into(), term_lhs.into())
+                                        Predicate::Greater(term_lhs.into(), term_rhs.into())
                                     }
                                     ArithOp::Gte(_) => {
-                                        Predicate::Geq(term_rhs.into(), term_lhs.into())
+                                        Predicate::Geq(term_lhs.into(), term_rhs.into())
                                     }
                                     _ => unreachable!(),
                                 };
