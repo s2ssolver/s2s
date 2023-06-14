@@ -7,8 +7,8 @@ use indexmap::IndexSet;
 use crate::model::{regex::Regex, Variable};
 
 use super::{
-    integer::{IntTerm, LinearArithTerm, LinearConstraint, LinearConstraintType},
-    words::{StringTerm, WordEquation},
+    integer::{IntTerm},
+    words::{StringTerm},
     Evaluable, Sort, Substitutable, Substitution,
 };
 

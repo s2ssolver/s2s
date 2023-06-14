@@ -333,9 +333,9 @@ impl From<(LinearArithTerm, LinearArithTerm, LinearConstraintType)> for LinearCo
             for fac in consts {
                 lhs.remove_factor(&fac);
             }
-            let res = Self { lhs, rhs: c, typ };
+            
 
-            res
+            Self { lhs, rhs: c, typ }
         } else {
             let mut lhs = lhs.subtract(&rhs);
             lhs.normalize();
@@ -353,9 +353,9 @@ impl From<(LinearArithTerm, LinearArithTerm, LinearConstraintType)> for LinearCo
             for fac in consts {
                 lhs.remove_factor(&fac);
             }
-            let res = Self { lhs, rhs: 0, typ };
+            
 
-            res
+            Self { lhs, rhs: 0, typ }
         }
     }
 }

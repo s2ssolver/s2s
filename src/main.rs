@@ -3,7 +3,7 @@ use std::{path::Path, process::exit, time::Instant};
 use clap::{Parser as ClapParser, ValueEnum};
 
 use satstr::{
-    model::Evaluable, preprocess, ConjunctiveSolver, Parser, PreprocessingResult, Solver,
+    model::Evaluable, ConjunctiveSolver, Parser, Solver,
 };
 
 /// The command line interface for the solver
