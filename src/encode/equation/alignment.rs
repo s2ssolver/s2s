@@ -632,12 +632,18 @@ impl ConstraintEncoder for AlignmentEncoder {
 
         // Todo: If the bound stays the same, the previous rounds' encoding is still correct.
         // In this case, we need to return the same set of assumptions.
-        if bound == self.bound {
-            if let Some(v) = self.bound_selector {
-                res.add_assumption(as_lit(v));
+        if let Some(lastbounds) = &self.last_var_bounds {
+            if lastbounds == bounds {
+                if let Some(v) = self.bound_selector {
+                    res.add_assumption(as_lit(v));
+                }
+                log::debug!(
+                    "Bound did not change ({}, {}), returning assumption from previous round",
+                    lastbounds,
+                    bounds
+                );
+                return res;
             }
-            log::debug!("Bound did not change, returning assumption from previous round");
-            return res;
         }
         if let Some(v) = self.bound_selector {
             // Deactivate all clauses that were only valid for the previous bound
