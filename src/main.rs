@@ -114,8 +114,8 @@ fn main() {
             if !cli.skip_verify {
                 match instance.get_formula().eval(&m) {
                     Some(true) => {}
-                    Some(false) => panic!("Model is incorrect"),
-                    None => panic!("Model is incomplete"),
+                    Some(false) => panic!("Model is incorrect ({})", m),
+                    None => panic!("Model is incomplete ({})", m),
                 }
             }
             println!("sat");
