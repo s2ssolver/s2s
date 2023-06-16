@@ -118,12 +118,10 @@ fn main() {
                 subs.use_defaults();
                 println!("{}", subs);
             }
-            return;
         }
         Some(false) => {
             log::info!("Formula is trivially false");
             println!("unsat");
-            return;
         }
         None => {
             let mut solver = ConjunctiveSolver::new(instance.clone()).unwrap();

@@ -57,11 +57,11 @@ impl WordEquationStripPrefixSuffix {
         }
 
         if i == 0 && j == 0 {
-            return None;
+            None
         } else {
             let lhs = lhs.factor(i, lhs.len() - j).unwrap_or(Pattern::empty());
             let rhs = rhs.factor(i, rhs.len() - j).unwrap_or(Pattern::empty());
-            return Some(WordEquation::new(lhs, rhs));
+            Some(WordEquation::new(lhs, rhs))
         }
     }
 }
@@ -255,10 +255,10 @@ impl WordEquationSubstitutions {
         match (lhs.first(), rhs.first()) {
             (Some(Symbol::Variable(x)), None) | (None, Some(Symbol::Variable(x))) => {
                 // x = ""
-                return Some(VarConstraint::Eq(x.clone(), vec![]));
+                Some(VarConstraint::Eq(x.clone(), vec![]))
             }
             (Some(Symbol::Variable(x)), Some(_)) => {
-                let next = match lhs.iter().skip(1).next() {
+                let next = match lhs.iter().nth(1) {
                     Some(Symbol::Variable(_)) => return None, // Cannot infer anything
                     Some(Symbol::Constant(c)) => Some(*c),
                     None => None,
@@ -285,7 +285,7 @@ impl WordEquationSubstitutions {
                 }
             }
             (Some(_), Some(Symbol::Variable(x))) => {
-                let next = match rhs.iter().skip(1).next() {
+                let next = match rhs.iter().nth(1) {
                     Some(Symbol::Variable(_)) => return None, // Cannot infer anything
                     Some(Symbol::Constant(c)) => Some(*c),
                     None => None,
@@ -404,7 +404,7 @@ impl WordEquationSubstitutions {
                     }
                 }
                 if let Some(pref) = self.prefixes.get(x) {
-                    if !eq.starts_with(&pref) {
+                    if !eq.starts_with(pref) {
                         log::trace!(
                             "Conflict {} and {}",
                             con,
@@ -416,7 +416,7 @@ impl WordEquationSubstitutions {
                     }
                 }
                 if let Some(suff) = self.suffixes.get(x) {
-                    if !eq.ends_with(&suff) {
+                    if !eq.ends_with(suff) {
                         log::trace!(
                             "Conflict {} and {}",
                             con,
@@ -439,21 +439,18 @@ impl Preprocessor for WordEquationSubstitutions {
             return PreprocessingResult::Unchanged(Formula::predicate(predicate));
         }
         if !self.conflict {
-            match predicate.clone() {
-                Predicate::Equality(Term::String(lhs), Term::String(rhs)) => {
-                    let lhs = Pattern::from(lhs);
-                    let rhs = Pattern::from(rhs);
-                    let eq: WordEquation = WordEquation::new(lhs, rhs);
-                    if let Some(pc) = Self::derive_const_prefix(&eq) {
-                        log::trace!("From {}: Inferred {}", eq, pc);
-                        self.add_constraint(&pc)
-                    }
-                    if let Some(sc) = Self::derive_const_suffix(&eq) {
-                        log::trace!("From {}: Inferred {}", eq, sc);
-                        self.add_constraint(&sc)
-                    }
+            if let Predicate::Equality(Term::String(lhs), Term::String(rhs)) = predicate.clone() {
+                let lhs = Pattern::from(lhs);
+                let rhs = Pattern::from(rhs);
+                let eq: WordEquation = WordEquation::new(lhs, rhs);
+                if let Some(pc) = Self::derive_const_prefix(&eq) {
+                    log::trace!("From {}: Inferred {}", eq, pc);
+                    self.add_constraint(&pc)
                 }
-                _ => (),
+                if let Some(sc) = Self::derive_const_suffix(&eq) {
+                    log::trace!("From {}: Inferred {}", eq, sc);
+                    self.add_constraint(&sc)
+                }
             }
         }
         PreprocessingResult::Unchanged(Formula::predicate(predicate))
@@ -461,7 +458,7 @@ impl Preprocessor for WordEquationSubstitutions {
 
     fn get_substitution(&self) -> Option<Substitution> {
         if self.conflict {
-            return None;
+            None
         } else {
             let mut sub = Substitution::new();
             for (x, p) in &self.prefixes {
@@ -574,7 +571,7 @@ mod tests {
     fn test_strip_const_prefix_no_match() {
         let lhs = Pattern::constant("foo");
         let rhs = Pattern::constant("bar");
-        let eq = WordEquation::new(lhs.into(), rhs.into());
+        let eq = WordEquation::new(lhs, rhs);
         assert_eq!(WordEquationStripPrefixSuffix::strip_matches(&eq), None);
     }
 
@@ -582,7 +579,7 @@ mod tests {
     fn test_strip_const_prefix_match() {
         let lhs = Pattern::constant("foofoo");
         let rhs = Pattern::constant("foobar");
-        let eq = WordEquation::new(lhs.into(), rhs.into());
+        let eq = WordEquation::new(lhs, rhs);
         assert_eq!(
             WordEquationStripPrefixSuffix::strip_matches(&eq),
             Some(WordEquation::new(
@@ -596,7 +593,7 @@ mod tests {
     fn test_strip_const_suffix_match() {
         let lhs = Pattern::constant("foobar");
         let rhs = Pattern::constant("barbar");
-        let eq = WordEquation::new(lhs.into(), rhs.into());
+        let eq = WordEquation::new(lhs, rhs);
         assert_eq!(
             WordEquationStripPrefixSuffix::strip_matches(&eq),
             Some(WordEquation::new(
@@ -610,7 +607,7 @@ mod tests {
     fn test_strip_const_prefixsuffix_match() {
         let lhs = Pattern::constant("fooabcbar");
         let rhs = Pattern::constant("foodefbar");
-        let eq = WordEquation::new(lhs.into(), rhs.into());
+        let eq = WordEquation::new(lhs, rhs);
         assert_eq!(
             WordEquationStripPrefixSuffix::strip_matches(&eq),
             Some(WordEquation::new(
@@ -669,7 +666,7 @@ mod tests {
                         );
                         TestResult::passed()
                     }
-                    _ => return TestResult::discard(),
+                    _ => TestResult::discard(),
                 }
             }
             _ => TestResult::discard(),
@@ -698,7 +695,7 @@ mod tests {
         let rhs = Pattern::constant("foo");
         let eq = WordEquation::new(lhs, rhs);
 
-        let mut expected = Some(VarConstraint::equal(&x, "foo"));
+        let expected = Some(VarConstraint::equal(&x, "foo"));
 
         let got = WordEquationSubstitutions::derive_const_prefix(&eq);
         assert_eq!(got, expected, "Expected: {:?} but got {:?}", expected, got);
@@ -710,8 +707,8 @@ mod tests {
         let x = vm.tmp_var(Sort::String);
         let lhs = Pattern::variable(&x);
         let rhs = Pattern::constant("foo");
-        let eq = WordEquation::new(lhs.into(), rhs.into());
-        let mut expected = Some(VarConstraint::equal(&x, "foo"));
+        let eq = WordEquation::new(lhs, rhs);
+        let expected = Some(VarConstraint::equal(&x, "foo"));
 
         let got = WordEquationSubstitutions::derive_const_suffix(&eq);
         assert_eq!(got, expected, "Expected: {:?} but got {:?}", expected, got);
@@ -759,10 +756,7 @@ mod tests {
         let rhs = Pattern::constant("fooab").append_var(&y).clone();
         let eq = WordEquation::new(lhs, rhs);
 
-        let mut expected = Some(VarConstraint::ConstPrefix(
-            x.clone(),
-            "foo".chars().collect(),
-        ));
+        let expected = Some(VarConstraint::ConstPrefix(x, "foo".chars().collect()));
 
         let got = WordEquationSubstitutions::derive_const_prefix(&eq);
         assert_eq!(got, expected, "Expected: {:?} but got {:?}", expected, got);
@@ -778,10 +772,7 @@ mod tests {
         let rhs = Pattern::constant("ab").append_var(&y).clone();
         let eq = WordEquation::new(lhs, rhs);
 
-        let mut expected = Some(VarConstraint::ConstSuffix(
-            y.clone(),
-            "foo".chars().collect(),
-        ));
+        let expected = Some(VarConstraint::ConstSuffix(y, "foo".chars().collect()));
 
         let got = WordEquationSubstitutions::derive_const_suffix(&eq);
         assert_eq!(got, expected, "Expected: {:?} but got {:?}", expected, got);

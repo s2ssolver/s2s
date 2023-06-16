@@ -364,10 +364,10 @@ impl From<Vec<Symbol>> for Pattern {
     }
 }
 
-impl Into<StringTerm> for Pattern {
-    fn into(self) -> StringTerm {
+impl From<Pattern> for StringTerm {
+    fn from(value: Pattern) -> Self {
         let mut res = StringTerm::empty();
-        for symbol in self.symbols {
+        for symbol in value.symbols {
             match symbol {
                 Symbol::Constant(c) => res = StringTerm::concat_const(res, &c.to_string()),
                 Symbol::Variable(v) => res = StringTerm::concat_var(res, &v),
@@ -495,16 +495,16 @@ impl TryFrom<Predicate> for WordEquation {
     }
 }
 
-impl Into<Predicate> for WordEquation {
-    fn into(self) -> Predicate {
-        Predicate::Equality(Term::String(self.lhs.into()), Term::String(self.rhs.into()))
+impl From<WordEquation> for Predicate {
+    fn from(val: WordEquation) -> Self {
+        Predicate::Equality(Term::String(val.lhs.into()), Term::String(val.rhs.into()))
     }
 }
 
-impl Into<Formula> for WordEquation {
-    fn into(self) -> Formula {
-        let lhs = Term::String(self.lhs.into());
-        let rhs = Term::String(self.rhs.into());
+impl From<WordEquation> for Formula {
+    fn from(val: WordEquation) -> Self {
+        let lhs = Term::String(val.lhs.into());
+        let rhs = Term::String(val.rhs.into());
         Formula::Predicate(Predicate::Equality(lhs, rhs))
     }
 }

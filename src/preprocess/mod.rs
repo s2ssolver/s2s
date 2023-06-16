@@ -26,20 +26,6 @@ pub enum PreprocessingResult {
 }
 
 impl PreprocessingResult {
-    fn is_unchanged(&self) -> bool {
-        match self {
-            PreprocessingResult::Unchanged(_) => true,
-            _ => false,
-        }
-    }
-
-    fn is_changed(&self) -> bool {
-        match self {
-            PreprocessingResult::Changed(_) => true,
-            _ => false,
-        }
-    }
-
     fn get_formula(&self) -> &Formula {
         match self {
             PreprocessingResult::Changed(f) => f,
@@ -149,12 +135,13 @@ pub fn preprocess(instance: &Instance) -> (PreprocessingResult, Substitution) {
     let max_rounds = 10;
     let mut preprocessed = PreprocessingResult::Unchanged(instance.get_formula().clone());
     for r in 0..max_rounds {
-        let mut preprocessors: Vec<Box<dyn Preprocessor>> = Vec::new();
-        // Add preprocessors
-        preprocessors.push(Box::new(WordEquationStripPrefixSuffix::new()));
-        preprocessors.push(Box::new(WordEquationConstMatching::new()));
-        preprocessors.push(Box::new(WordEquationTrivial::new()));
-        preprocessors.push(Box::new(WordEquationSubstitutions::new()));
+        let mut preprocessors: Vec<Box<dyn Preprocessor>> = vec![
+            // Add preprocessors
+            Box::new(WordEquationStripPrefixSuffix::new()),
+            Box::new(WordEquationConstMatching::new()),
+            Box::new(WordEquationTrivial::new()),
+            Box::new(WordEquationSubstitutions::new()),
+        ];
 
         log::debug!("Preprocessing round {}", r);
         let mut rd_changed = false;
