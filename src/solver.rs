@@ -86,7 +86,10 @@ impl ConjunctiveSolver {
     }
 
     pub fn new(instance: Instance) -> Result<Self, String> {
-        let alphabet = instance.get_formula().alphabet();
+        let mut alphabet = instance.get_formula().alphabet();
+
+        alphabet.insert('a');
+
         let mut encoders = HashMap::new();
 
         let non_conjunctive_error = Err(format!(
@@ -191,8 +194,9 @@ impl Solver for ConjunctiveSolver {
         let mut effective_bounds = current_bounds.intersect(&limit_upper_bounds);
 
         log::info!(
-            "Started solving loop for system of {} equations",
-            self.instance.get_formula().num_atoms()
+            "Started solving loop for system of {} equations, alphabet size {}",
+            self.instance.get_formula().num_atoms(),
+            self.alphabet.len()
         );
         log::debug!("{}", self.instance.get_formula());
 
