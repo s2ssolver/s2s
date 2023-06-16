@@ -369,7 +369,7 @@ impl Evaluable for Formula {
             }
             Formula::Not(f) => !f.eval(sub)?,
         };
-        log::trace!("Formula {} under {} is {}", self, sub, res);
+
         Some(res)
     }
 }
@@ -425,7 +425,7 @@ impl Evaluable for Predicate {
                     lhs.apply_substitution(sub).is_const(),
                     rhs.apply_substitution(sub).is_const(),
                 ) {
-                    (Some(l), Some(r)) => l > r,
+                    (Some(l), Some(r)) => l >= r,
                     (_, _) => return None,
                 }
             }
