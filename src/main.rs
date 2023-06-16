@@ -92,7 +92,9 @@ fn main() {
 
     // Preprocess the formula
     let ts = Instant::now();
-    // Todo: use substitutions from preprocessing
+
+    // Keep a copy of the formula before preprocessing for validating the model
+    let original_formula = instance.get_formula().clone();
     let mut subs = Substitution::new();
     match preprocess(&instance) {
         (PreprocessingResult::Unchanged(_), s) => {
@@ -113,6 +115,7 @@ fn main() {
             log::info!("Formula is trivially true");
             println!("sat");
             if instance.get_print_model() {
+                subs.use_defaults();
                 println!("{}", subs);
             }
             return;
@@ -130,16 +133,18 @@ fn main() {
 
             match res {
                 satstr::SolverResult::Sat(m) => {
+                    let mut model = subs.compose(&m);
+                    model.use_defaults();
                     if !cli.skip_verify {
-                        match instance.get_formula().eval(&m) {
+                        match original_formula.eval(&model) {
                             Some(true) => {}
-                            Some(false) => panic!("Model is incorrect ({})", m),
-                            None => panic!("Model is incomplete ({})", m),
+                            Some(false) => panic!("Model is incorrect ({})", model),
+                            None => panic!("Model is incomplete ({})", model),
                         }
                     }
                     println!("sat");
                     if instance.get_print_model() {
-                        println!("{}", m);
+                        println!("{}", model);
                     }
                 }
                 satstr::SolverResult::Unsat => println!("unsat"),
