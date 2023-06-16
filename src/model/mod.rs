@@ -268,6 +268,10 @@ impl Substitution {
         self.use_defaults = true;
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.subs.is_empty()
+    }
+
     /// Returns true if the substitution is an assignemt.
     /// We call a substitution an assignment if it substitutes variables with constants.
     pub fn is_assignment(&self) -> bool {
@@ -301,6 +305,10 @@ impl Substitution {
                 IntTerm::plus(&Self::strterm_to_lem(l), &Self::strterm_to_lem(r))
             }
         }
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = (&Variable, &Term)> {
+        self.subs.iter()
     }
 
     pub fn to_smt2(&self, _var_manager: &VarManager) -> String {

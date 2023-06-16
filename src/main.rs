@@ -2,9 +2,7 @@ use std::{path::Path, process::exit, time::Instant};
 
 use clap::{Parser as ClapParser, ValueEnum};
 
-use satstr::{
-    model::Evaluable, ConjunctiveSolver, Parser, Solver,
-};
+use satstr::{model::Evaluable, ConjunctiveSolver, Parser, Solver};
 
 /// The command line interface for the solver
 #[derive(ClapParser, Debug)]
@@ -14,8 +12,11 @@ struct Options {
     #[arg(short, long, value_enum, default_value = "auto")]
     format: Format,
 
+    #[arg(long)]
+    skip_preprocess: bool,
+
     /// Skip the verification of the solution. If this is set to true, the solver will not check if the model is correct.
-    #[arg(short = 'x', long)]
+    #[arg(long)]
     skip_verify: bool,
 
     /// The maximum variable bound to check before returning `unsat`

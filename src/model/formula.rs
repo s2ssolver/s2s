@@ -427,7 +427,7 @@ impl Evaluable for Predicate {
                     lhs.apply_substitution(sub).is_const(),
                     rhs.apply_substitution(sub).is_const(),
                 ) {
-                    (Some(l), Some(r)) => l <= r,
+                    (Some(l), Some(r)) => l > r,
                     (_, _) => return None,
                 }
             }
@@ -439,7 +439,7 @@ impl Evaluable for Predicate {
                     lhs.apply_substitution(sub).is_const(),
                     rhs.apply_substitution(sub).is_const(),
                 ) {
-                    (Some(l), Some(r)) => l <= r,
+                    (Some(l), Some(r)) => l > r,
                     (_, _) => return None,
                 }
             }
@@ -448,6 +448,7 @@ impl Evaluable for Predicate {
             }
             Predicate::In(_, _) => todo!(),
         };
+        log::trace!("Predicate {} under {} is {}", self, sub, res);
         Some(res)
     }
 }

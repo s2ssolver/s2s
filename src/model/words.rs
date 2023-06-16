@@ -45,6 +45,16 @@ impl StringTerm {
         }
     }
 
+    pub fn reverse(&self) -> StringTerm {
+        match self {
+            StringTerm::Variable(var) => StringTerm::Variable(var.clone()),
+            StringTerm::Constant(word) => {
+                StringTerm::Constant(word.iter().rev().cloned().collect())
+            }
+            StringTerm::Concat(lhs, rhs) => StringTerm::concat(rhs.reverse(), lhs.reverse()),
+        }
+    }
+
     pub fn constant(str: &str) -> Self {
         Self::Constant(str.chars().collect())
     }
@@ -267,6 +277,10 @@ impl Pattern {
         self.symbols.iter()
     }
 
+    pub fn iter(&self) -> Iter<Symbol> {
+        self.symbols()
+    }
+
     /// Returns the factor of the pattern between the given indices.
     /// If indices are out of bounds, they are clamped to the pattern length.
     /// Returns `None` if `i > j`.
@@ -303,6 +317,19 @@ impl Pattern {
         self.reverse().starts_with(&other.reverse())
     }
 
+    /// Returns true iff the pattern contains the given pattern as a factor.
+    pub fn contains(&self, other: &Self) -> bool {
+        if other.len() > self.len() {
+            return false;
+        }
+        for i in 0..=(self.len() - other.len()) {
+            if self.factor(i, i + other.len()).unwrap() == *other {
+                return true;
+            }
+        }
+        false
+    }
+
     /// Returns true iff the pattern is empty.
     pub fn is_empty(&self) -> bool {
         self.symbols.is_empty()
@@ -334,6 +361,19 @@ impl std::ops::Index<usize> for Pattern {
 impl From<Vec<Symbol>> for Pattern {
     fn from(value: Vec<Symbol>) -> Self {
         Self::new(value)
+    }
+}
+
+impl Into<StringTerm> for Pattern {
+    fn into(self) -> StringTerm {
+        let mut res = StringTerm::empty();
+        for symbol in self.symbols {
+            match symbol {
+                Symbol::Constant(c) => res = StringTerm::concat_const(res, &c.to_string()),
+                Symbol::Variable(v) => res = StringTerm::concat_var(res, &v),
+            }
+        }
+        res
     }
 }
 
@@ -422,9 +462,48 @@ impl WordEquation {
     }
 }
 
+/* Conversions */
+
+impl From<&str> for StringTerm {
+    fn from(value: &str) -> Self {
+        Self::constant(value)
+    }
+}
+
+impl From<Variable> for StringTerm {
+    fn from(value: Variable) -> Self {
+        Self::variable(&value)
+    }
+}
+
 impl From<(StringTerm, StringTerm)> for WordEquation {
     fn from(value: (StringTerm, StringTerm)) -> Self {
         Self::new(value.0.into(), value.1.into())
+    }
+}
+
+impl TryFrom<Predicate> for WordEquation {
+    type Error = (); // Todo: better error type
+
+    fn try_from(value: Predicate) -> Result<Self, Self::Error> {
+        match value {
+            Predicate::Equality(Term::String(lhs), Term::String(rhs)) => {
+                Ok(Self::new(lhs.into(), rhs.into()))
+            }
+            _ => Err(()),
+        }
+    }
+}
+
+impl Into<Predicate> for WordEquation {
+    fn into(self) -> Predicate {
+        Predicate::Equality(Term::String(self.lhs.into()), Term::String(self.rhs.into()))
+    }
+}
+
+impl Into<Formula> for WordEquation {
+    fn into(self) -> Formula {
+        self.into()
     }
 }
 
@@ -511,7 +590,7 @@ impl Display for Symbol {
 use quickcheck;
 
 use super::{
-    formula::{Alphabet, Sorted, Term},
+    formula::{Alphabet, Formula, Predicate, Sorted, Term},
     Evaluable, Substitutable, Substitution, VarManager,
 };
 
@@ -588,5 +667,11 @@ mod tests {
     #[quickcheck]
     fn equation_reverse_reverse_is_identity(eq: WordEquation) -> bool {
         eq == eq.reverse().reverse()
+    }
+
+    #[quickcheck]
+    fn term_patter_conversion(pat: Pattern) -> bool {
+        let t: StringTerm = pat.clone().into();
+        pat == t.into()
     }
 }
