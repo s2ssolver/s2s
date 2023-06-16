@@ -1,3 +1,4 @@
+mod int;
 mod string;
 
 use crate::{
@@ -6,6 +7,7 @@ use crate::{
         Substitutable, Substitution, Variable,
     },
     parse::Instance,
+    preprocess::int::ConstIntReducer,
 };
 
 use self::string::{
@@ -141,6 +143,7 @@ pub fn preprocess(instance: &Instance) -> (PreprocessingResult, Substitution) {
             Box::new(WordEquationConstMatching::new()),
             Box::new(WordEquationTrivial::new()),
             Box::new(WordEquationSubstitutions::new()),
+            Box::new(ConstIntReducer::new()),
         ];
 
         log::debug!("Preprocessing round {}", r);
