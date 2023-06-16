@@ -1,7 +1,7 @@
 use crate::model::words::Symbol;
 use std::{collections::HashMap, fmt::Display, ops::Index};
 
-use super::{formula::Term, words::WordEquation, Substitution, Variable};
+use super::{formula::Term, words::WordEquation, Evaluable, Substitutable, Substitution, Variable};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum IntTerm {
@@ -333,7 +333,6 @@ impl From<(LinearArithTerm, LinearArithTerm, LinearConstraintType)> for LinearCo
             for fac in consts {
                 lhs.remove_factor(&fac);
             }
-            
 
             Self { lhs, rhs: c, typ }
         } else {
@@ -353,9 +352,54 @@ impl From<(LinearArithTerm, LinearArithTerm, LinearConstraintType)> for LinearCo
             for fac in consts {
                 lhs.remove_factor(&fac);
             }
-            
 
             Self { lhs, rhs: 0, typ }
+        }
+    }
+}
+
+impl Substitutable for LinearArithTerm {
+    fn apply_substitution(&self, sub: &Substitution) -> Self {
+        let mut res = Self::new();
+        for f in self.iter() {
+            match f {
+                LinearArithFactor::VarCoeff(x, c) => {
+                    let mut t = IntTerm::var(x);
+                    t = IntTerm::times(&IntTerm::constant(*c), &t);
+                    t = t.apply_substitution(sub);
+                    res.extend(Self::from(t));
+                }
+                LinearArithFactor::Const(c) => {
+                    res.add_factor(LinearArithFactor::Const(*c));
+                }
+            }
+        }
+        res
+    }
+}
+
+impl Substitutable for LinearConstraint {
+    fn apply_substitution(&self, sub: &Substitution) -> Self {
+        Self {
+            lhs: self.lhs.apply_substitution(sub),
+            rhs: self.rhs,
+            typ: self.typ,
+        }
+    }
+}
+
+impl Evaluable for LinearConstraint {
+    fn eval(&self, sub: &Substitution) -> Option<bool> {
+        let lhs = self.lhs.apply_substitution(sub);
+        let rhs = self.rhs;
+        let typ = self.typ;
+        let lhs = lhs.is_constant()?;
+        match typ {
+            LinearConstraintType::Eq => Some(lhs == rhs),
+            LinearConstraintType::Leq => Some(lhs <= rhs),
+            LinearConstraintType::Less => Some(lhs < rhs),
+            LinearConstraintType::Geq => Some(lhs >= rhs),
+            LinearConstraintType::Greater => Some(lhs > rhs),
         }
     }
 }

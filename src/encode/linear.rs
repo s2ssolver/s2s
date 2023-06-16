@@ -4,7 +4,7 @@ use indexmap::IndexMap;
 
 use crate::{
     bounds::Bounds,
-    model::{integer::LinearConstraint, Sort, Variable},
+    model::{integer::LinearConstraint, Evaluable, Sort, Substitution, Variable},
     sat::{as_lit, neg, pvar, PVar},
 };
 
@@ -76,6 +76,16 @@ impl ConstraintEncoder for MddEncoder {
     ) -> super::EncodingResult {
         self.round += 1;
         let mut res = EncodingResult::empty();
+
+        // Check if trivial
+        match self.linear.eval(&Substitution::new()) {
+            Some(true) => return res,
+            Some(false) => {
+                res.add_clause(vec![neg(self.mdd_root), as_lit(self.mdd_false)]);
+                return res;
+            }
+            None => {}
+        }
 
         let mut queue = VecDeque::new();
         // (level, value, pvar)
