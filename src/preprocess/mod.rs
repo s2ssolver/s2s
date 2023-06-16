@@ -1,3 +1,4 @@
+mod formula;
 mod int;
 mod string;
 
@@ -7,7 +8,7 @@ use crate::{
         Substitutable, Substitution, Variable,
     },
     parse::Instance,
-    preprocess::int::ConstIntReducer,
+    preprocess::{formula::ConjunctionSimplifier, int::ConstIntReducer},
 };
 
 use self::string::{
@@ -144,6 +145,7 @@ pub fn preprocess(instance: &Instance) -> (PreprocessingResult, Substitution) {
             Box::new(WordEquationTrivial::new()),
             Box::new(WordEquationSubstitutions::new()),
             Box::new(ConstIntReducer::new()),
+            Box::new(ConjunctionSimplifier::new()),
         ];
 
         log::debug!("Preprocessing round {}", r);
