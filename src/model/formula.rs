@@ -6,11 +6,7 @@ use indexmap::IndexSet;
 
 use crate::model::{regex::Regex, Variable};
 
-use super::{
-    integer::{IntTerm},
-    words::{StringTerm},
-    Evaluable, Sort, Substitutable, Substitution,
-};
+use super::{integer::IntTerm, words::StringTerm, Evaluable, Sort, Substitutable, Substitution};
 
 pub trait Sorted {
     fn sort(&self) -> Sort;
@@ -351,20 +347,21 @@ impl Evaluable for Formula {
             },
             Formula::Predicate(p) => p.eval(sub)?,
             Formula::Or(fs) => {
-                let mut iter = fs.iter().map(|f| f.eval(sub));
-                if iter.any(|t| t == Some(true)) {
+                let iter = fs.iter().map(|f| f.eval(sub));
+                if iter.clone().any(|t| t == Some(true)) {
                     true
-                } else if iter.all(|f| f == Some(false)) {
+                } else if iter.clone().all(|f| f == Some(false)) {
                     false
                 } else {
                     return None;
                 }
             }
             Formula::And(fs) => {
-                let mut iter = fs.iter().map(|f| f.eval(sub));
-                if iter.all(|t| t == Some(true)) {
+                let iter = fs.iter().map(|f| f.eval(sub));
+
+                if iter.clone().all(|t| t == Some(true)) {
                     true
-                } else if iter.any(|f| f == Some(false)) {
+                } else if iter.clone().any(|f| f == Some(false)) {
                     false
                 } else {
                     return None;
@@ -372,6 +369,7 @@ impl Evaluable for Formula {
             }
             Formula::Not(f) => !f.eval(sub)?,
         };
+        log::trace!("Formula {} under {} is {}", self, sub, res);
         Some(res)
     }
 }
