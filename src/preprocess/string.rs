@@ -1,24 +1,42 @@
-use std::cmp::min;
+//! Contains preprocessing rules for string constraints.
+
+use std::{cmp::min, fmt::Display};
+
+use indexmap::IndexMap;
 
 use crate::model::{
     formula::{Formula, Predicate, Term},
-    words::{StringTerm, Symbol, WordEquation},
-    Substitution,
+    words::{Pattern, StringTerm, Symbol, WordEquation},
+    Substitution, Variable,
 };
 
 use super::{PreprocessingResult, Preprocessor};
-
+#[derive(Debug, Default)]
 pub struct WordEquationStripPrefixSuffix {}
-pub struct WordEquationPrefixSuffixMatch {}
+
+#[derive(Debug, Default)]
+pub struct WordEquationConstMatching {}
+
+#[derive(Debug, Default)]
 pub struct WordEquationParikhMatch {}
+
+#[derive(Debug, Default)]
 pub struct WordEquationFactorization {}
+
+#[derive(Debug, Default)]
 pub struct WordEquationTrivial {}
-pub struct WordEquationFixedPrefixSuffix {}
 
 /// Derives valid substitutions from word equations.
 /// If applied, the resulting formula is equisatisfiable to the original one.
 /// If the formula is asserted, i.e., always true, the found substitutions are valid for the whole formula.
-pub struct WordEquationSubstitutions {}
+#[derive(Debug, Default)]
+pub struct WordEquationSubstitutions {
+    suffixes: IndexMap<Variable, Vec<char>>,
+    prefixes: IndexMap<Variable, Vec<char>>,
+    eqs: IndexMap<Variable, Vec<char>>,
+
+    conflict: bool,
+}
 
 impl WordEquationStripPrefixSuffix {
     /// Strips the longest common prefix from both sides of the given word equation and returns the result.
@@ -41,33 +59,48 @@ impl WordEquationStripPrefixSuffix {
         if i == 0 && j == 0 {
             return None;
         } else {
-            let lhs = lhs.factor(i, lhs.len() - j).unwrap();
-            let rhs = rhs.factor(i, rhs.len() - j).unwrap();
+            let lhs = lhs.factor(i, lhs.len() - j).unwrap_or(Pattern::empty());
+            let rhs = rhs.factor(i, rhs.len() - j).unwrap_or(Pattern::empty());
             return Some(WordEquation::new(lhs, rhs));
         }
     }
 }
 
 impl Preprocessor for WordEquationStripPrefixSuffix {
-    fn preprocess(&self, fm: &Formula) -> PreprocessingResult {
-        match fm {
-            Formula::Predicate(p) => match p {
-                Predicate::Equality(Term::String(_), Term::String(_)) => {
-                    if let Some(preprocessed) = Self::strip_matches(&p.clone().try_into().unwrap())
-                    {
-                        PreprocessingResult::Changed(preprocessed.into())
-                    } else {
-                        PreprocessingResult::Unchanged
+    fn get_substitution(&self) -> Option<Substitution> {
+        None
+    }
+
+    fn get_name(&self) -> String {
+        String::from("Word Equation Stripping")
+    }
+
+    fn apply_predicate(&mut self, predicate: Predicate, _is_asserted: bool) -> PreprocessingResult {
+        match predicate {
+            Predicate::Equality(Term::String(lhs), Term::String(rhs)) => {
+                let lhs = Pattern::from(lhs);
+                let rhs = Pattern::from(rhs);
+                let eq = WordEquation::new(lhs, rhs);
+                match Self::strip_matches(&eq) {
+                    Some(stripped) => {
+                        PreprocessingResult::Changed(Formula::predicate(stripped.into()))
                     }
+                    None => PreprocessingResult::Unchanged(Formula::predicate(eq.into())),
                 }
-                _ => PreprocessingResult::Unchanged,
-            },
-            _ => PreprocessingResult::Unchanged,
+            }
+            _ => PreprocessingResult::Unchanged(Formula::predicate(predicate)),
         }
+    }
+
+    fn new() -> Self
+    where
+        Self: Sized,
+    {
+        Self {}
     }
 }
 
-impl WordEquationPrefixSuffixMatch {
+impl WordEquationConstMatching {
     /// Checks whether the patterns of the given word equation start and end with the same constant.
     fn consts_match(weq: &WordEquation) -> bool {
         // Check if there is a mismatch in the first position
@@ -91,21 +124,44 @@ impl WordEquationPrefixSuffixMatch {
     }
 }
 
-impl Preprocessor for WordEquationPrefixSuffixMatch {
-    fn preprocess(&self, fm: &Formula) -> PreprocessingResult {
-        match fm {
-            Formula::Predicate(p) => match p {
-                Predicate::Equality(Term::String(_), Term::String(_)) => {
-                    if Self::consts_match(&p.clone().try_into().unwrap()) {
-                        PreprocessingResult::Changed(Formula::False)
-                    } else {
-                        PreprocessingResult::Unchanged
-                    }
+impl Preprocessor for WordEquationConstMatching {
+    fn apply_predicate(&mut self, predicate: Predicate, _is_asserted: bool) -> PreprocessingResult {
+        match predicate {
+            Predicate::Equality(Term::String(lhs), Term::String(rhs)) => {
+                let lhs = Pattern::from(lhs);
+                let rhs = Pattern::from(rhs);
+                let eq = WordEquation::new(lhs, rhs);
+                if !Self::consts_match(&eq) {
+                    PreprocessingResult::Unchanged(Formula::False)
+                } else {
+                    PreprocessingResult::Unchanged(Formula::predicate(eq.into()))
                 }
-                _ => PreprocessingResult::Unchanged,
-            },
-            _ => PreprocessingResult::Unchanged,
+            }
+            _ => PreprocessingResult::Unchanged(Formula::predicate(predicate)),
         }
+    }
+
+    fn apply_boolvar(
+        &mut self,
+        var: crate::model::Variable,
+        _is_asserted: bool,
+    ) -> PreprocessingResult {
+        PreprocessingResult::Unchanged(Formula::bool(var))
+    }
+
+    fn get_substitution(&self) -> Option<Substitution> {
+        None
+    }
+
+    fn get_name(&self) -> String {
+        String::from("Word Equation Const Matching")
+    }
+
+    fn new() -> Self
+    where
+        Self: Sized,
+    {
+        Self {}
     }
 }
 
@@ -126,6 +182,8 @@ impl WordEquationTrivial {
             } else {
                 Some(true)
             }
+        } else if weq.lhs().is_constant() && weq.rhs().is_constant() {
+            Some(weq.lhs() == weq.rhs())
         } else {
             None
         }
@@ -133,36 +191,75 @@ impl WordEquationTrivial {
 }
 
 impl Preprocessor for WordEquationTrivial {
-    fn preprocess(&self, fm: &Formula) -> PreprocessingResult {
-        match fm {
-            Formula::Predicate(p) => match p {
-                Predicate::Equality(Term::String(_), Term::String(_)) => {
-                    match Self::is_trivial(&p.clone().try_into().unwrap()) {
-                        Some(true) => PreprocessingResult::Changed(Formula::True),
-                        Some(false) => PreprocessingResult::Changed(Formula::False),
-                        None => PreprocessingResult::Unchanged,
-                    }
+    fn apply_predicate(&mut self, predicate: Predicate, _is_asserted: bool) -> PreprocessingResult {
+        match predicate {
+            Predicate::Equality(Term::String(lhs), Term::String(rhs)) => {
+                let lhs = Pattern::from(lhs);
+                let rhs = Pattern::from(rhs);
+                let eq: WordEquation = WordEquation::new(lhs, rhs);
+                match Self::is_trivial(&eq) {
+                    Some(true) => PreprocessingResult::Changed(Formula::True),
+                    Some(false) => PreprocessingResult::Changed(Formula::False),
+                    None => PreprocessingResult::Unchanged(Formula::predicate(eq.into())),
                 }
-                _ => PreprocessingResult::Unchanged,
-            },
-            _ => PreprocessingResult::Unchanged,
+            }
+            _ => PreprocessingResult::Unchanged(Formula::predicate(predicate)),
         }
+    }
+
+    fn get_substitution(&self) -> Option<Substitution> {
+        None
+    }
+
+    fn get_name(&self) -> String {
+        String::from("Word Equation Trivial Reducer")
+    }
+
+    fn new() -> Self
+    where
+        Self: Sized,
+    {
+        Self {}
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, Hash)]
+enum VarConstraint {
+    /// The variable must have the given constant prefix
+    ConstPrefix(Variable, Vec<char>),
+    /// The variable must have the given constant suffix
+    ConstSuffix(Variable, Vec<char>),
+    /// The variable must be equal to the given constant
+    Eq(Variable, Vec<char>),
+}
+
+impl VarConstraint {
+    fn equal(var: &Variable, val: &str) -> Self {
+        VarConstraint::Eq(var.clone(), val.chars().collect())
+    }
+
+    fn suffix(var: &Variable, val: &str) -> Self {
+        VarConstraint::ConstSuffix(var.clone(), val.chars().collect())
+    }
+
+    fn prefix(var: &Variable, val: &str) -> Self {
+        VarConstraint::ConstPrefix(var.clone(), val.chars().collect())
     }
 }
 
 impl WordEquationSubstitutions {
-    fn derive_prefix_sub(eq: &WordEquation) -> Substitution {
-        let mut subs = Substitution::new();
+    /// Derives constant prefix constraints from the given word equation.
+    fn derive_const_prefix(eq: &WordEquation) -> Option<VarConstraint> {
         let lhs = eq.lhs();
         let rhs = eq.rhs();
-        let sub_term = match (lhs.first(), rhs.first()) {
+        match (lhs.first(), rhs.first()) {
             (Some(Symbol::Variable(x)), None) | (None, Some(Symbol::Variable(x))) => {
                 // x = ""
-                Some((x, Term::String(StringTerm::empty())))
+                return Some(VarConstraint::Eq(x.clone(), vec![]));
             }
             (Some(Symbol::Variable(x)), Some(_)) => {
                 let next = match lhs.iter().skip(1).next() {
-                    Some(Symbol::Variable(_)) => return subs, // Cannot infer anything
+                    Some(Symbol::Variable(_)) => return None, // Cannot infer anything
                     Some(Symbol::Constant(c)) => Some(*c),
                     None => None,
                 };
@@ -176,20 +273,20 @@ impl WordEquationSubstitutions {
                         break;
                     }
                 }
+                let pref_len = pref.len();
                 if !pref.is_empty() {
-                    let mut pref =
-                        StringTerm::constant(pref.into_iter().collect::<String>().as_str());
-                    if rhs_iter.next().is_some() {
-                        pref = StringTerm::concat(pref, StringTerm::variable(x));
+                    if rhs.len() > pref_len {
+                        Some(VarConstraint::ConstPrefix(x.clone(), pref))
+                    } else {
+                        Some(VarConstraint::Eq(x.clone(), pref))
                     }
-                    Some((x, Term::String(pref)))
                 } else {
                     None
                 }
             }
             (Some(_), Some(Symbol::Variable(x))) => {
                 let next = match rhs.iter().skip(1).next() {
-                    Some(Symbol::Variable(_)) => return subs, // Cannot infer anything
+                    Some(Symbol::Variable(_)) => return None, // Cannot infer anything
                     Some(Symbol::Constant(c)) => Some(*c),
                     None => None,
                 };
@@ -203,162 +300,223 @@ impl WordEquationSubstitutions {
                         break;
                     }
                 }
-
+                let pref_len = pref.len();
                 if !pref.is_empty() {
-                    let mut pref =
-                        StringTerm::constant(pref.into_iter().collect::<String>().as_str());
-                    if lhs_iter.next().is_some() {
-                        pref = StringTerm::concat(pref, StringTerm::variable(x));
+                    if lhs.len() > pref_len {
+                        Some(VarConstraint::ConstPrefix(x.clone(), pref))
+                    } else {
+                        Some(VarConstraint::Eq(x.clone(), pref))
                     }
-                    Some((x, Term::String(pref)))
                 } else {
                     None
                 }
             }
             _ => None,
-        };
-        match sub_term {
-            Some((x, t)) => subs.set(x, t),
-            None => (),
         }
-        subs
     }
 
-    fn derive_suffix_sub(eq: &WordEquation) -> Substitution {
-        let mut subs = Substitution::new();
-        for (x, t) in Self::derive_prefix_sub(&eq.reverse()).iter() {
-            if let Term::String(st) = t {
-                subs.set(x, Term::String(st.reverse()));
+    fn derive_const_suffix(eq: &WordEquation) -> Option<VarConstraint> {
+        match Self::derive_const_prefix(&eq.reverse())? {
+            VarConstraint::ConstPrefix(x, p) => {
+                Some(VarConstraint::ConstSuffix(x, p.into_iter().rev().collect()))
             }
+            VarConstraint::ConstSuffix(_, _) => unreachable!(),
+            VarConstraint::Eq(x, e) => Some(VarConstraint::Eq(x, e.into_iter().rev().collect())),
         }
-        subs
     }
 
-    fn combine_substitutions(sub1: &Substitution, sub2: &Substitution) -> Option<Substitution> {
-        let mut combined = Substitution::new();
-        for (x, t1) in sub1.iter() {
-            match sub2.get(x) {
-                Some(t2) => {
-                    if let (Term::String(st1), Term::String(st2)) = (t1, t2) {
-                        match (st1, st2) {
-                            // Two constants
-                            (StringTerm::Constant(c1), StringTerm::Constant(c2)) => {
-                                if c1 == c2 {
-                                    combined.set(x, t1.clone())
-                                } else {
-                                    // Conflict
-                                    return None;
-                                }
-                            }
-                            // Prefix/Suffix and constant
-                            (StringTerm::Constant(c), StringTerm::Concat(p, s))
-                            | (StringTerm::Concat(p, s), StringTerm::Constant(c)) => {
-                                debug_assert!(p.as_ref() == &StringTerm::variable(x));
-                                if let StringTerm::Constant(c2) = s.as_ref() {
-                                    if c2 == c {
-                                        combined.set(x, StringTerm::Constant(c.clone()).into())
-                                    } else {
-                                        // Conflict
-                                        return None;
-                                    }
-                                } else {
-                                    unreachable!()
-                                }
-                            }
-                            // Prefix and Prefix
-                            (StringTerm::Concat(p1, s1), StringTerm::Concat(p2, s2)) => {
-                                if let (StringTerm::Constant(c1), StringTerm::Constant(c2)) =
-                                    (p1.as_ref(), p2.as_ref())
-                                {
-                                    // Prefix and prefix
-                                    debug_assert!(s1.as_ref() == &StringTerm::variable(x));
-                                    debug_assert!(s2.as_ref() == &StringTerm::variable(x));
-                                    if c1.starts_with(c2) {
-                                        combined.set(
-                                            x,
-                                            StringTerm::concat(
-                                                StringTerm::Constant(c1.clone()),
-                                                s1.as_ref().clone(),
-                                            )
-                                            .into(),
-                                        )
-                                    } else if c2.starts_with(c1) {
-                                        combined.set(
-                                            x,
-                                            StringTerm::concat(
-                                                StringTerm::Constant(c2.clone()),
-                                                s1.as_ref().clone(),
-                                            )
-                                            .into(),
-                                        )
-                                    } else {
-                                        // Conflict
-                                        return None;
-                                    }
-                                } else if let (StringTerm::Constant(c1), StringTerm::Constant(c2)) =
-                                    (s1.as_ref(), s2.as_ref())
-                                {
-                                    // Suffix and suffix
-                                    debug_assert!(s1.as_ref() == &StringTerm::variable(x));
-                                    debug_assert!(s2.as_ref() == &StringTerm::variable(x));
-                                    if c1.ends_with(c2) {
-                                        combined.set(
-                                            x,
-                                            StringTerm::concat(
-                                                StringTerm::Constant(c1.clone()),
-                                                s1.as_ref().clone(),
-                                            )
-                                            .into(),
-                                        )
-                                    } else if c2.ends_with(c1) {
-                                        combined.set(
-                                            x,
-                                            StringTerm::concat(
-                                                s1.as_ref().clone(),
-                                                StringTerm::Constant(c2.clone()),
-                                            )
-                                            .into(),
-                                        )
-                                    } else {
-                                        // Conflict
-                                        return None;
-                                    }
-                                } else if let (
-                                    StringTerm::Constant(_c1),
-                                    StringTerm::Constant(_c2),
-                                ) = (p1.as_ref(), s2.as_ref())
-                                {
-                                    // Prefix and suffix
-                                    debug_assert!(s1.as_ref() == &StringTerm::variable(x));
-                                    debug_assert!(p2.as_ref() == &StringTerm::variable(x));
-                                    //TODO: Implement this case
-                                } else if let (
-                                    StringTerm::Constant(_c1),
-                                    StringTerm::Constant(_c2),
-                                ) = (s1.as_ref(), p2.as_ref())
-                                {
-                                    // Suffix and prefix
-                                    debug_assert!(p1.as_ref() == &StringTerm::variable(x));
-                                    debug_assert!(s2.as_ref() == &StringTerm::variable(x));
-                                    //TODO: Implement this case
-                                }
-                            }
-
-                            _ => unreachable!("All cases covered"),
-                        }
+    /// Return false on conflict
+    fn add_constraint(&mut self, con: &VarConstraint) {
+        if self.conflict {
+            return;
+        }
+        match con {
+            VarConstraint::ConstPrefix(x, p) => {
+                if let Some(eq) = self.eqs.get(x) {
+                    if !eq.starts_with(p) {
+                        log::trace!(
+                            "Conflict {} and {}",
+                            con,
+                            VarConstraint::equal(x, String::from_iter(eq).as_str())
+                        );
+                        self.conflict = true;
+                        return;
                     }
                 }
-                None => combined.set(x, t1.clone()),
+                if let Some(prev) = self.prefixes.get(x) {
+                    if prev.starts_with(p) {
+                        return;
+                    } else if p.starts_with(prev) {
+                        self.prefixes.insert(x.clone(), p.clone());
+                        return;
+                    } else {
+                        log::trace!(
+                            "Conflict {} and {}",
+                            con,
+                            VarConstraint::prefix(x, String::from_iter(prev).as_str())
+                        );
+                        self.conflict = true;
+                        return;
+                    }
+                }
+                self.prefixes.insert(x.clone(), p.clone());
+            }
+            VarConstraint::ConstSuffix(x, s) => {
+                if let Some(eq) = self.eqs.get(x) {
+                    if !eq.ends_with(s) {
+                        log::trace!(
+                            "Conflict {} and {}",
+                            con,
+                            VarConstraint::equal(x, String::from_iter(eq).as_str())
+                        );
+                        self.conflict = true;
+                        return;
+                    }
+                }
+                if let Some(suff) = self.suffixes.get(x) {
+                    if suff.ends_with(s) {
+                        return;
+                    } else if s.ends_with(suff) {
+                        self.suffixes.insert(x.clone(), s.clone());
+                        return;
+                    } else {
+                        log::trace!(
+                            "Conflict {} and {}",
+                            con,
+                            VarConstraint::suffix(x, String::from_iter(suff).as_str())
+                        );
+                        self.conflict = true;
+                        return;
+                    }
+                }
+                self.suffixes.insert(x.clone(), s.clone());
+            }
+            VarConstraint::Eq(x, eq) => {
+                if let Some(eq2) = self.eqs.get(x) {
+                    if eq != eq2 {
+                        log::trace!(
+                            "Conflict {} and {}",
+                            con,
+                            VarConstraint::suffix(x, String::from_iter(eq2).as_str())
+                        );
+                        self.conflict = true;
+                        return;
+                    }
+                }
+                if let Some(pref) = self.prefixes.get(x) {
+                    if !eq.starts_with(&pref) {
+                        log::trace!(
+                            "Conflict {} and {}",
+                            con,
+                            VarConstraint::prefix(x, String::from_iter(pref).as_str())
+                        );
+                        self.conflict = true;
+                    } else {
+                        self.prefixes.remove(x);
+                    }
+                }
+                if let Some(suff) = self.suffixes.get(x) {
+                    if !eq.ends_with(&suff) {
+                        log::trace!(
+                            "Conflict {} and {}",
+                            con,
+                            VarConstraint::suffix(x, String::from_iter(suff).as_str())
+                        );
+                        self.conflict = true;
+                    } else {
+                        self.suffixes.remove(x);
+                    }
+                }
+                self.eqs.insert(x.clone(), eq.clone());
             }
         }
+    }
+}
 
-        for (x, t1) in sub2.iter() {
-            if combined.get(x).is_none() {
-                combined.set(x, t1.clone());
+impl Preprocessor for WordEquationSubstitutions {
+    fn apply_predicate(&mut self, predicate: Predicate, is_asserted: bool) -> PreprocessingResult {
+        if !is_asserted {
+            return PreprocessingResult::Unchanged(Formula::predicate(predicate));
+        }
+        if !self.conflict {
+            match predicate.clone() {
+                Predicate::Equality(Term::String(lhs), Term::String(rhs)) => {
+                    let lhs = Pattern::from(lhs);
+                    let rhs = Pattern::from(rhs);
+                    let eq: WordEquation = WordEquation::new(lhs, rhs);
+                    if let Some(pc) = Self::derive_const_prefix(&eq) {
+                        log::trace!("From {}: Inferred {}", eq, pc);
+                        self.add_constraint(&pc)
+                    }
+                    if let Some(sc) = Self::derive_const_suffix(&eq) {
+                        log::trace!("From {}: Inferred {}", eq, sc);
+                        self.add_constraint(&sc)
+                    }
+                }
+                _ => (),
             }
         }
+        PreprocessingResult::Unchanged(Formula::predicate(predicate))
+    }
 
-        Some(combined)
+    fn get_substitution(&self) -> Option<Substitution> {
+        if self.conflict {
+            return None;
+        } else {
+            let mut sub = Substitution::new();
+            for (x, p) in &self.prefixes {
+                sub.set(
+                    x,
+                    StringTerm::concat(
+                        StringTerm::constant(String::from_iter(p.iter()).as_str()),
+                        StringTerm::variable(x),
+                    )
+                    .into(),
+                );
+            }
+            for (x, s) in &self.suffixes {
+                sub.set(
+                    x,
+                    StringTerm::concat(
+                        StringTerm::variable(x),
+                        StringTerm::constant(String::from_iter(s.iter()).as_str()),
+                    )
+                    .into(),
+                );
+            }
+            for (x, e) in &self.eqs {
+                sub.set(
+                    x,
+                    StringTerm::constant(String::from_iter(e.iter()).as_str()).into(),
+                );
+            }
+
+            Some(sub)
+        }
+    }
+
+    fn finalize(&mut self, result: PreprocessingResult) -> PreprocessingResult {
+        if self.conflict {
+            PreprocessingResult::Changed(Formula::False)
+        } else {
+            result
+        }
+    }
+
+    fn get_name(&self) -> String {
+        String::from("Word Equation Infer Substitutions")
+    }
+
+    fn new() -> Self
+    where
+        Self: Sized,
+    {
+        Self {
+            suffixes: IndexMap::new(),
+            prefixes: IndexMap::new(),
+            eqs: IndexMap::new(),
+            conflict: false,
+        }
     }
 }
 
@@ -387,6 +545,20 @@ fn check_parikh(weq: &WordEquation) {
     }
 
     // unchanged
+}
+
+impl Display for VarConstraint {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            VarConstraint::ConstPrefix(x, p) => {
+                write!(f, "{} starts with {}", x, p.iter().collect::<String>())
+            }
+            VarConstraint::ConstSuffix(x, s) => {
+                write!(f, "{} ends with {}", x, s.iter().collect::<String>())
+            }
+            VarConstraint::Eq(x, e) => write!(f, "{} = {}", x, e.iter().collect::<String>()),
+        }
+    }
 }
 
 #[cfg(test)]
@@ -492,7 +664,7 @@ mod tests {
                 match (&weq.lhs().last().unwrap(), &weq.rhs().last().unwrap()) {
                     (Symbol::Constant(sa), Symbol::Constant(sb)) => {
                         assert_eq!(
-                            WordEquationPrefixSuffixMatch::consts_match(&weq),
+                            WordEquationConstMatching::consts_match(&weq),
                             pa == pb && sa == sb
                         );
                         TestResult::passed()
@@ -526,11 +698,10 @@ mod tests {
         let rhs = Pattern::constant("foo");
         let eq = WordEquation::new(lhs, rhs);
 
-        let mut expected = Substitution::new();
-        expected.set(&x, Term::String("foo".into()));
+        let mut expected = Some(VarConstraint::equal(&x, "foo"));
 
-        let got = WordEquationSubstitutions::derive_prefix_sub(&eq);
-        assert_eq!(got, expected, "Expected: {} but got {}", expected, got);
+        let got = WordEquationSubstitutions::derive_const_prefix(&eq);
+        assert_eq!(got, expected, "Expected: {:?} but got {:?}", expected, got);
     }
 
     #[test]
@@ -540,11 +711,10 @@ mod tests {
         let lhs = Pattern::variable(&x);
         let rhs = Pattern::constant("foo");
         let eq = WordEquation::new(lhs.into(), rhs.into());
-        let mut expected = Substitution::new();
-        expected.set(&x, Term::String("foo".into()));
+        let mut expected = Some(VarConstraint::equal(&x, "foo"));
 
-        let got = WordEquationSubstitutions::derive_suffix_sub(&eq);
-        assert_eq!(got, expected, "Expected: {} but got {}", expected, got);
+        let got = WordEquationSubstitutions::derive_const_suffix(&eq);
+        assert_eq!(got, expected, "Expected: {:?} but got {:?}", expected, got);
     }
 
     #[test]
@@ -557,10 +727,10 @@ mod tests {
         let rhs = Pattern::constant("ab").append_var(&y).clone();
         let eq = WordEquation::new(lhs, rhs);
 
-        let expected = Substitution::new();
+        let expected = None;
 
-        let got = WordEquationSubstitutions::derive_prefix_sub(&eq);
-        assert_eq!(got, expected, "Expected: {} but got {}", expected, got);
+        let got = WordEquationSubstitutions::derive_const_prefix(&eq);
+        assert_eq!(got, expected, "Expected: {:?} but got {:?}", expected, got);
     }
 
     #[test]
@@ -573,10 +743,10 @@ mod tests {
         let rhs = Pattern::constant("ab").append_var(&y).clone();
         let eq = WordEquation::new(lhs, rhs);
 
-        let expected = Substitution::new();
+        let expected = None;
 
-        let got = WordEquationSubstitutions::derive_suffix_sub(&eq);
-        assert_eq!(got, expected, "Expected: {} but got {}", expected, got);
+        let got = WordEquationSubstitutions::derive_const_suffix(&eq);
+        assert_eq!(got, expected, "Expected: {:?} but got {:?}", expected, got);
     }
 
     #[test]
@@ -589,14 +759,13 @@ mod tests {
         let rhs = Pattern::constant("fooab").append_var(&y).clone();
         let eq = WordEquation::new(lhs, rhs);
 
-        let mut expected = Substitution::new();
-        expected.set(
-            &x,
-            StringTerm::concat(StringTerm::constant("foo"), StringTerm::variable(&x)).into(),
-        );
+        let mut expected = Some(VarConstraint::ConstPrefix(
+            x.clone(),
+            "foo".chars().collect(),
+        ));
 
-        let got = WordEquationSubstitutions::derive_prefix_sub(&eq);
-        assert_eq!(got, expected, "Expected: {} but got {}", expected, got);
+        let got = WordEquationSubstitutions::derive_const_prefix(&eq);
+        assert_eq!(got, expected, "Expected: {:?} but got {:?}", expected, got);
     }
 
     #[test]
@@ -609,13 +778,27 @@ mod tests {
         let rhs = Pattern::constant("ab").append_var(&y).clone();
         let eq = WordEquation::new(lhs, rhs);
 
-        let mut expected = Substitution::new();
-        expected.set(
-            &y,
-            StringTerm::concat(StringTerm::variable(&y), StringTerm::constant("foo")).into(),
-        );
+        let mut expected = Some(VarConstraint::ConstSuffix(
+            y.clone(),
+            "foo".chars().collect(),
+        ));
 
-        let got = WordEquationSubstitutions::derive_suffix_sub(&eq);
-        assert_eq!(got, expected, "Expected: {} but got {}", expected, got);
+        let got = WordEquationSubstitutions::derive_const_suffix(&eq);
+        assert_eq!(got, expected, "Expected: {:?} but got {:?}", expected, got);
+    }
+    #[test]
+    fn derive_prefix_none() {
+        //aaX = XY:
+        let mut vm = VarManager::new();
+        let x = vm.tmp_var(Sort::String);
+        let y = vm.tmp_var(Sort::String);
+        let lhs = Pattern::constant("aa").append_var(&x).clone();
+        let rhs = Pattern::variable(&x).append_var(&y).clone();
+        let eq = WordEquation::new(lhs, rhs);
+
+        let expected = None;
+
+        let got = WordEquationSubstitutions::derive_const_prefix(&eq);
+        assert_eq!(got, expected, "Expected: {:?} but got {:?}", expected, got);
     }
 }

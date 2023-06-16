@@ -2,7 +2,10 @@ use std::{path::Path, process::exit, time::Instant};
 
 use clap::{Parser as ClapParser, ValueEnum};
 
-use satstr::{model::Evaluable, ConjunctiveSolver, Parser, Solver};
+use satstr::{
+    model::{Evaluable, Substitution},
+    preprocess, ConjunctiveSolver, Parser, PreprocessingResult, Solver,
+};
 
 /// The command line interface for the solver
 #[derive(ClapParser, Debug)]
@@ -89,42 +92,59 @@ fn main() {
 
     // Preprocess the formula
     let ts = Instant::now();
-    /*match preprocess(&instance) {
-        PreprocessingResult::Unchanged => {
+    // Todo: use substitutions from preprocessing
+    let mut subs = Substitution::new();
+    match preprocess(&instance) {
+        (PreprocessingResult::Unchanged(_), s) => {
+            assert!(s.is_empty());
             log::debug!("No preprocessing applied.");
         }
-        PreprocessingResult::Changed(c) => instance.set_formula(c),
-        PreprocessingResult::False => {
+        (PreprocessingResult::Changed(c), s) => {
+            subs = s;
+            instance.set_formula(c)
+        }
+    }
+    log::info!("Preprocessing done ({}ms).", ts.elapsed().as_millis());
+    log::debug!("Formula post preprocessing: {}", instance.get_formula());
+
+    // Check if the formula is trivial
+    match instance.get_formula().eval(&subs) {
+        Some(true) => {
+            log::info!("Formula is trivially true");
+            println!("sat");
+            if instance.get_print_model() {
+                println!("{}", subs);
+            }
+            return;
+        }
+        Some(false) => {
+            log::info!("Formula is trivially false");
             println!("unsat");
             return;
         }
-        PreprocessingResult::True => {
-            println!("sat");
-            return;
-        }
-    }
-    log::info!("Preprocessing done ({}ms).", ts.elapsed().as_millis());*/
+        None => {
+            let mut solver = ConjunctiveSolver::new(instance.clone()).unwrap();
 
-    let mut solver = ConjunctiveSolver::new(instance.clone()).unwrap();
+            let res = solver.solve();
+            log::info!("Done ({}ms).", ts.elapsed().as_millis());
 
-    let res = solver.solve();
-    log::info!("Done ({}ms).", ts.elapsed().as_millis());
-
-    match res {
-        satstr::SolverResult::Sat(m) => {
-            if !cli.skip_verify {
-                match instance.get_formula().eval(&m) {
-                    Some(true) => {}
-                    Some(false) => panic!("Model is incorrect ({})", m),
-                    None => panic!("Model is incomplete ({})", m),
+            match res {
+                satstr::SolverResult::Sat(m) => {
+                    if !cli.skip_verify {
+                        match instance.get_formula().eval(&m) {
+                            Some(true) => {}
+                            Some(false) => panic!("Model is incorrect ({})", m),
+                            None => panic!("Model is incomplete ({})", m),
+                        }
+                    }
+                    println!("sat");
+                    if instance.get_print_model() {
+                        println!("{}", m);
+                    }
                 }
-            }
-            println!("sat");
-            if instance.get_print_model() {
-                println!("{}", m);
+                satstr::SolverResult::Unsat => println!("unsat"),
+                satstr::SolverResult::Unknown => println!("unknown"),
             }
         }
-        satstr::SolverResult::Unsat => println!("unsat"),
-        satstr::SolverResult::Unknown => println!("unknown"),
     }
 }

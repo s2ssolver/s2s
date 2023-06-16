@@ -463,10 +463,7 @@ impl AlignmentEncoder {
                                             l - 1,
                                             p + (l - 1),
                                         )) {
-                                            Some(mv) => {
-                                                // println!("HIT");
-                                                *mv
-                                            }
+                                            Some(mv) => *mv,
                                             None => {
                                                 let mv = pvar();
                                                 for c in dom.alphabet() {

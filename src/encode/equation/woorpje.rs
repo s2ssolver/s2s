@@ -412,7 +412,7 @@ mod tests {
                 for j in 0..svs[0].len() {
                     print!("\t{}", j)
                 }
-                println!();
+
                 for (i, s) in svs.iter().enumerate() {
                     print!("{}\t", i);
                     for j in 0..s.len() {

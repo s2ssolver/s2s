@@ -311,6 +311,24 @@ impl Substitution {
         self.subs.iter()
     }
 
+    /// Calculates the composition of two substitutions.
+    /// The result is the substitution that results from applying the given substitution to this substitution.
+    /// If the given substitution defines variables that are not defined in this substitution, the result will contain these variables.
+    pub fn compose(&self, other: &Self) -> Self {
+        let mut sub = Self::new();
+        for (var, val) in &self.subs {
+            let chained = val.apply_substitution(other);
+            sub.set(var, chained);
+        }
+        for (var, val) in &other.subs {
+            // Add the substitution if it is not yet present
+            if sub.get(var).is_none() {
+                sub.set(var, val.clone());
+            }
+        }
+        sub
+    }
+
     pub fn to_smt2(&self, _var_manager: &VarManager) -> String {
         todo!()
     }

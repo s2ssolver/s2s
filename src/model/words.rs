@@ -503,7 +503,9 @@ impl Into<Predicate> for WordEquation {
 
 impl Into<Formula> for WordEquation {
     fn into(self) -> Formula {
-        self.into()
+        let lhs = Term::String(self.lhs.into());
+        let rhs = Term::String(self.rhs.into());
+        Formula::Predicate(Predicate::Equality(lhs, rhs))
     }
 }
 

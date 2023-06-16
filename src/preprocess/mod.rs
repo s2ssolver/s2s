@@ -1,201 +1,195 @@
 mod string;
 
-use std::fmt::Display;
-
 use crate::{
-    model::{formula::Formula, Substitutable, Substitution},
+    model::{
+        formula::{Formula, Predicate},
+        Substitutable, Substitution, Variable,
+    },
     parse::Instance,
 };
 
+use self::string::{
+    WordEquationConstMatching, WordEquationStripPrefixSuffix, WordEquationSubstitutions,
+    WordEquationTrivial,
+};
+
+/// The result of the application of a preprocessor to a formula.
+/// The result can be either:
+/// - `Unchanged(f)`: The formula was not changed by the preprocessor.
+/// - `Changed(t, s)`: The formula was changed by the preprocessor to `t`, which is equivalent to the original formula.
+///                    If the preprocessor applied a substitution `s`, it is returned as well.
+///
 #[derive(Debug, Clone)]
 pub enum PreprocessingResult {
     Changed(Formula),
-    Unchanged,
+    Unchanged(Formula),
 }
 
 impl PreprocessingResult {
-    const fn as_ref(&self) -> Option<&Formula> {
+    fn is_unchanged(&self) -> bool {
         match self {
-            PreprocessingResult::Unchanged => None,
-            PreprocessingResult::Changed(c) => Some(c),
+            PreprocessingResult::Unchanged(_) => true,
+            _ => false,
         }
     }
 
-    fn is_unchanged(&self) -> bool {
+    fn is_changed(&self) -> bool {
         match self {
-            PreprocessingResult::Unchanged => true,
-            PreprocessingResult::Changed(_) => false,
+            PreprocessingResult::Changed(_) => true,
+            _ => false,
+        }
+    }
+
+    fn get_formula(&self) -> &Formula {
+        match self {
+            PreprocessingResult::Changed(f) => f,
+            PreprocessingResult::Unchanged(f) => f,
         }
     }
 }
 
-impl From<Option<Formula>> for PreprocessingResult {
-    fn from(f: Option<Formula>) -> Self {
-        match f {
-            None => PreprocessingResult::Unchanged,
-            Some(f) => PreprocessingResult::Changed(f),
+impl Substitutable for PreprocessingResult {
+    fn apply_substitution(&self, sub: &Substitution) -> Self {
+        match self {
+            PreprocessingResult::Changed(f) => {
+                PreprocessingResult::Changed(f.apply_substitution(sub))
+            }
+            PreprocessingResult::Unchanged(f) => {
+                PreprocessingResult::Changed(f.apply_substitution(sub))
+            }
         }
     }
 }
 
 trait Preprocessor {
-    fn preprocess(&self, pred: &Formula) -> PreprocessingResult;
-
-    fn preprocess_asserted(&self, pred: &Formula, sub: &mut Substitution) -> PreprocessingResult {
-        self.preprocess(pred)
+    fn apply_predicate(&mut self, predicate: Predicate, _is_asserted: bool) -> PreprocessingResult {
+        PreprocessingResult::Unchanged(Formula::predicate(predicate))
     }
-}
 
-/// Applies the given preprocessors to the given formula and returns the result.
-fn apply_preprocessors(
-    formula: &Formula,
-    preprocessors: &Vec<Box<dyn Preprocessor>>,
-    sub: &mut Substitution,
-    is_asserted: bool,
-) -> PreprocessingResult {
-    let mut current = PreprocessingResult::Unchanged;
-    for processor in preprocessors {
-        let f = match current.as_ref() {
-            None => formula,
-            Some(f) => f,
-        };
-        let result = if is_asserted {
-            processor.preprocess_asserted(f, sub)
-        } else {
-            processor.preprocess(f)
-        };
-        match result {
-            PreprocessingResult::Unchanged => continue,
-            PreprocessingResult::Changed(c) => current = PreprocessingResult::Changed(c),
-        }
+    fn apply_boolvar(&mut self, var: Variable, _is_asserted: bool) -> PreprocessingResult {
+        PreprocessingResult::Unchanged(Formula::bool(var))
     }
-    current
-}
 
-fn preprocess_formula(
-    formula: &Formula,
-    preprocessors: &Vec<Box<dyn Preprocessor>>,
-    sub: &mut Substitution,
-    is_asserted: bool,
-) -> PreprocessingResult {
-    match formula {
-        Formula::True => PreprocessingResult::Unchanged,
-        Formula::False => PreprocessingResult::Unchanged,
-        Formula::BoolVar(_) | Formula::Predicate(_) => {
-            apply_preprocessors(formula, preprocessors, sub, is_asserted)
-        }
-        Formula::Or(fs) => {
-            // Apply preprocessors to all subformulas
-            let mut preprocessed = fs
-                .iter()
-                .enumerate()
-                .map(|(i, f)| (i, apply_preprocessors(f, preprocessors, sub, false)));
-            if preprocessed.all(|(_, p)| p.is_unchanged()) {
-                // Apply preprocessors to the original formula
-                apply_preprocessors(formula, preprocessors, sub, is_asserted)
-            } else {
+    fn apply_fm(&mut self, formula: Formula, is_asserted: bool) -> PreprocessingResult {
+        match formula {
+            Formula::True => PreprocessingResult::Unchanged(Formula::True),
+            Formula::False => PreprocessingResult::Unchanged(Formula::False),
+            Formula::BoolVar(x) => self.apply_boolvar(x, is_asserted),
+            Formula::Predicate(p) => self.apply_predicate(p, is_asserted),
+            Formula::Or(fs) => {
+                let mut changed = false;
                 let mut new_fs = Vec::new();
-                for (i, p) in preprocessed {
-                    match p {
-                        PreprocessingResult::Unchanged => new_fs.push(fs[i].clone()),
-                        PreprocessingResult::Changed(c) => new_fs.push(c),
+                for f in fs {
+                    match self.apply_fm(f, is_asserted) {
+                        PreprocessingResult::Unchanged(f) => new_fs.push(f),
+                        PreprocessingResult::Changed(f) => {
+                            changed = true;
+                            new_fs.push(f);
+                        }
                     }
                 }
-                // Apply preprocessors to the preprocessed formula
-                apply_preprocessors(&Formula::or(new_fs), preprocessors, sub, is_asserted)
+                let new_fm = Formula::or(new_fs);
+                if changed {
+                    PreprocessingResult::Changed(new_fm)
+                } else {
+                    PreprocessingResult::Unchanged(new_fm)
+                }
             }
-        }
-        Formula::And(fs) => {
-            // Apply preprocessors to all subformulas
-            let mut preprocessed = fs
-                .iter()
-                .enumerate()
-                .map(|(i, f)| (i, apply_preprocessors(f, preprocessors, sub, is_asserted)));
-            if preprocessed.all(|(_, p)| p.is_unchanged()) {
-                // Apply preprocessors to the original formula
-                apply_preprocessors(formula, preprocessors, sub, is_asserted)
-            } else {
+            Formula::And(fs) => {
+                let mut changed = false;
                 let mut new_fs = Vec::new();
-                for (i, p) in preprocessed {
-                    match p {
-                        PreprocessingResult::Unchanged => new_fs.push(fs[i].clone()),
-                        PreprocessingResult::Changed(c) => new_fs.push(c),
+                for f in fs {
+                    match self.apply_fm(f, is_asserted) {
+                        PreprocessingResult::Unchanged(f) => new_fs.push(f),
+                        PreprocessingResult::Changed(f) => {
+                            changed = true;
+                            new_fs.push(f);
+                        }
                     }
                 }
-                // Apply preprocessors to the preprocessed formula
-                apply_preprocessors(&Formula::and(new_fs), preprocessors, sub, is_asserted)
-            }
-        }
-        Formula::Not(f) => {
-            // Apply preprocessors to the subformula
-            let preprocessed = apply_preprocessors(f, preprocessors, sub, true);
-            match preprocessed {
-                PreprocessingResult::Unchanged => {
-                    apply_preprocessors(formula, preprocessors, sub, is_asserted)
-                }
-                PreprocessingResult::Changed(c) => {
-                    apply_preprocessors(&Formula::not(c), preprocessors, sub, is_asserted)
+                let new_fm = Formula::and(new_fs);
+                if changed {
+                    PreprocessingResult::Changed(new_fm)
+                } else {
+                    PreprocessingResult::Unchanged(new_fm)
                 }
             }
+            Formula::Not(f) => match self.apply_fm(*f, is_asserted) {
+                PreprocessingResult::Unchanged(f) => {
+                    PreprocessingResult::Unchanged(Formula::not(f))
+                }
+                PreprocessingResult::Changed(f) => PreprocessingResult::Changed(Formula::not(f)),
+            },
         }
     }
+
+    fn get_substitution(&self) -> Option<Substitution>;
+
+    fn get_name(&self) -> String;
+
+    fn finalize(&mut self, result: PreprocessingResult) -> PreprocessingResult {
+        result
+    }
+
+    fn apply(&mut self, formula: Formula) -> PreprocessingResult {
+        let applied = self.apply_fm(formula, true);
+
+        self.finalize(applied)
+    }
+
+    fn new() -> Self
+    where
+        Self: Sized;
 }
 
-pub fn preprocess(instance: &Instance) -> PreprocessingResult {
-    let mut sub = Substitution::new();
-    let mut preprocessors: Vec<Box<dyn Preprocessor>> = Vec::new();
+pub fn preprocess(instance: &Instance) -> (PreprocessingResult, Substitution) {
+    let mut comp_sub = Substitution::new();
+
+    //preprocessors.push(Box::new(WordEquationSubstitutions {}));
     let max_rounds = 10;
-    let mut result = None;
+    let mut preprocessed = PreprocessingResult::Unchanged(instance.get_formula().clone());
     for r in 0..max_rounds {
-        let formula = match result.as_ref() {
-            None => instance.get_formula(),
-            Some(f) => f,
-        };
-        let mut preprocessed = preprocess_formula(formula, &preprocessors, &mut sub, true);
+        let mut preprocessors: Vec<Box<dyn Preprocessor>> = Vec::new();
+        // Add preprocessors
+        preprocessors.push(Box::new(WordEquationStripPrefixSuffix::new()));
+        preprocessors.push(Box::new(WordEquationConstMatching::new()));
+        preprocessors.push(Box::new(WordEquationTrivial::new()));
+        preprocessors.push(Box::new(WordEquationSubstitutions::new()));
 
-        // Apply the inferred substitution to the preprocessed formula
-        preprocessed = match preprocessed {
-            PreprocessingResult::Changed(c) => {
-                // Apply substitutions to the preprocessed formula
-                if sub.is_empty() {
-                    PreprocessingResult::Changed(c)
-                } else {
-                    let applied = c.apply_substitution(&sub);
-                    PreprocessingResult::Changed(applied)
+        log::debug!("Preprocessing round {}", r);
+        let mut rd_changed = false;
+        for preprocess in preprocessors.iter_mut() {
+            log::debug!("Running Preprocessor: {}", preprocess.get_name());
+            preprocessed = match preprocessed {
+                PreprocessingResult::Changed(f) => match preprocess.apply(f) {
+                    PreprocessingResult::Changed(t) => {
+                        rd_changed = true;
+                        PreprocessingResult::Changed(t)
+                    }
+                    PreprocessingResult::Unchanged(t) => PreprocessingResult::Changed(t),
+                },
+                PreprocessingResult::Unchanged(f) => match preprocess.apply(f) {
+                    PreprocessingResult::Changed(t) => {
+                        rd_changed = true;
+                        PreprocessingResult::Changed(t)
+                    }
+                    PreprocessingResult::Unchanged(t) => PreprocessingResult::Unchanged(t),
+                },
+            };
+            if let Some(sub) = preprocess.get_substitution() {
+                if !sub.is_empty() {
+                    log::debug!("Applying inferred substitution: {}", sub);
+                    preprocessed = preprocessed.apply_substitution(&sub);
+                    rd_changed = true;
+                    comp_sub = comp_sub.compose(&sub);
                 }
             }
-            PreprocessingResult::Unchanged => {
-                // Apply substitution to the formula
-                if sub.is_empty() {
-                    PreprocessingResult::Unchanged
-                } else {
-                    let applied = instance.get_formula().apply_substitution(&sub);
-                    PreprocessingResult::Changed(applied)
-                }
-            }
-        };
-
-        match preprocessed {
-            PreprocessingResult::Unchanged => {
-                break;
-            }
-            PreprocessingResult::Changed(c) => {
-                log::debug!("Preprocessing round {} done.", r);
-                result = Some(c);
-            }
+        }
+        if rd_changed {
+            log::debug!("Formula preprocessed to: {}", preprocessed.get_formula());
+        } else {
+            break;
         }
     }
-    match result {
-        None => PreprocessingResult::Unchanged,
-        Some(f) => PreprocessingResult::Changed(f),
-    }
-}
-
-impl Display for PreprocessingResult {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            PreprocessingResult::Unchanged => write!(f, "Unchanged"),
-            PreprocessingResult::Changed(c) => write!(f, "Changed to {}", c),
-        }
-    }
+    (preprocessed, comp_sub)
 }
