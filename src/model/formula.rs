@@ -3,6 +3,7 @@
 use std::fmt::Display;
 
 use indexmap::IndexSet;
+use quickcheck::Arbitrary;
 
 use crate::model::{regex::Regex, Variable};
 
@@ -265,8 +266,31 @@ impl Formula {
         }
     }
 
+    /// Returns the negation normal form of this formula.
     pub fn to_nnf(&self) -> Self {
-        todo!("Implement NNF conversion")
+        match self {
+            Formula::True | Formula::False | Formula::Predicate(_) | Formula::BoolVar(_) => {
+                self.clone()
+            }
+            Formula::Or(fs) => Formula::or(fs.iter().map(|f| f.to_nnf()).collect()),
+            Formula::And(fs) => Formula::and(fs.iter().map(|f| f.to_nnf()).collect()),
+            Formula::Not(f) => match f.as_ref() {
+                Formula::True => Formula::ffalse(),
+                Formula::False => Formula::ttrue(),
+                Formula::BoolVar(_) | Formula::Predicate(_) => self.clone(),
+                Formula::Or(fs) => Formula::and(
+                    fs.iter()
+                        .map(|f| Formula::not(f.clone()).to_nnf())
+                        .collect(),
+                ),
+                Formula::And(fs) => Formula::or(
+                    fs.iter()
+                        .map(|f| Formula::not(f.clone()).to_nnf())
+                        .collect(),
+                ),
+                Formula::Not(ff) => ff.to_nnf(),
+            },
+        }
     }
 }
 
@@ -580,8 +604,13 @@ impl Arbitrary for Formula {
         }
     }
 }
+
 #[cfg(test)]
 mod test {
+
+    use quickcheck_macros::quickcheck;
+
+    use super::*;
 
     #[test]
     #[ignore = "Test not implemented yet"]
@@ -623,5 +652,78 @@ mod test {
     #[ignore = "Test not implemented yet"]
     fn asserted_atoms_mixed() {
         todo!()
+    }
+
+    #[test]
+    fn test_to_nnf_true() {
+        let formula = Formula::True;
+        assert_eq!(formula.to_nnf(), Formula::True);
+    }
+
+    #[test]
+    fn test_to_nnf_false() {
+        let formula = Formula::False;
+        assert_eq!(formula.to_nnf(), Formula::False);
+    }
+
+    #[quickcheck]
+    fn test_to_nnf_predicate(p: Predicate) {
+        let formula = Formula::Predicate(p);
+        assert_eq!(formula.to_nnf(), formula);
+    }
+
+    #[test]
+    fn test_to_nnf_bool_var() {
+        let formula = Formula::BoolVar(Variable::new(String::from("x"), Sort::Bool));
+        assert_eq!(formula.to_nnf(), formula);
+    }
+
+    #[quickcheck]
+    fn test_to_nnf_or(p1: Predicate, p2: Predicate) {
+        let formula = Formula::not(Formula::or(vec![
+            Formula::predicate(p1.clone()),
+            Formula::Predicate(p2.clone()),
+        ]));
+
+        let expected = Formula::and(vec![
+            Formula::not(Formula::Predicate(p1)),
+            Formula::not(Formula::Predicate(p2)),
+        ]);
+        assert_eq!(formula.to_nnf(), expected);
+    }
+
+    #[quickcheck]
+    fn test_to_nnf_and(p1: Predicate, p2: Predicate) {
+        let formula = Formula::not(Formula::and(vec![
+            Formula::predicate(p1.clone()),
+            Formula::Predicate(p2.clone()),
+        ]));
+
+        let expected = Formula::or(vec![
+            Formula::not(Formula::Predicate(p1)),
+            Formula::not(Formula::Predicate(p2)),
+        ]);
+        assert_eq!(formula.to_nnf(), expected);
+    }
+
+    #[quickcheck]
+    fn test_to_nff_double_negations(p: Predicate) {
+        let formula = Formula::not(Formula::not(Formula::Predicate(p.clone())));
+        assert_eq!(formula.to_nnf(), Formula::Predicate(p));
+    }
+
+    /// Calulates the height of nested negations in a formula
+    fn neg_height(fm: &Formula) -> usize {
+        match fm {
+            Formula::True | Formula::False | Formula::Predicate(_) | Formula::BoolVar(_) => 0,
+            Formula::Or(fs) | Formula::And(fs) => fs.iter().map(neg_height).max().unwrap_or(0),
+            Formula::Not(f) => 1 + neg_height(f),
+        }
+    }
+
+    #[quickcheck]
+    fn test_to_nnf_neg_height(fm: Formula) {
+        let fm = fm.to_nnf();
+        assert!(neg_height(&fm) <= 1);
     }
 }
