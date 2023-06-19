@@ -116,7 +116,7 @@ impl ConstraintEncoder for WoorpjeEncoder {
         let subs = dom_enc.string();
         let lhs = FilledPattern::fill(self.equation.lhs(), bounds, var_manager);
         let rhs = FilledPattern::fill(self.equation.rhs(), bounds, var_manager);
-        log::debug!(
+        log::trace!(
             "Encoding {} ({} x {})",
             self.equation,
             lhs.length(),

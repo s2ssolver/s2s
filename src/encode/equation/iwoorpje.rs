@@ -176,7 +176,7 @@ impl IWoorpjeEncoder {
             }
         }
 
-        log::info!("Selected: {}", cnf.len());
+        log::trace!("Selected: {}", cnf.len());
         EncodingResult::Cnf(cnf, assms)
     }
 

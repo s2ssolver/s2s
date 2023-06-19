@@ -41,7 +41,7 @@ impl Preprocessor for ConstIntReducer {
                         }
                     }
                     _ => {
-                        return PreprocessingResult::Unchanged(Formula::predicate(
+                        PreprocessingResult::Unchanged(Formula::predicate(
                             Predicate::Equality(lhs.into(), rhs.into()),
                         ))
                     }
@@ -57,7 +57,7 @@ impl Preprocessor for ConstIntReducer {
                         }
                     }
                     _ => {
-                        return PreprocessingResult::Unchanged(Formula::predicate(Predicate::Geq(
+                        PreprocessingResult::Unchanged(Formula::predicate(Predicate::Geq(
                             lhs.into(),
                             rhs.into(),
                         )))
@@ -74,7 +74,7 @@ impl Preprocessor for ConstIntReducer {
                         }
                     }
                     _ => {
-                        return PreprocessingResult::Unchanged(Formula::predicate(
+                        PreprocessingResult::Unchanged(Formula::predicate(
                             Predicate::Greater(lhs.into(), rhs.into()),
                         ))
                     }
@@ -90,7 +90,7 @@ impl Preprocessor for ConstIntReducer {
                         }
                     }
                     _ => {
-                        return PreprocessingResult::Unchanged(Formula::predicate(Predicate::Leq(
+                        PreprocessingResult::Unchanged(Formula::predicate(Predicate::Leq(
                             lhs.into(),
                             rhs.into(),
                         )))
@@ -107,14 +107,14 @@ impl Preprocessor for ConstIntReducer {
                         }
                     }
                     _ => {
-                        return PreprocessingResult::Unchanged(Formula::predicate(Predicate::Less(
+                        PreprocessingResult::Unchanged(Formula::predicate(Predicate::Less(
                             lhs.into(),
                             rhs.into(),
                         )))
                     }
                 }
             }
-            _ => return PreprocessingResult::Unchanged(Formula::predicate(predicate)),
+            _ => PreprocessingResult::Unchanged(Formula::predicate(predicate)),
         }
     }
 }

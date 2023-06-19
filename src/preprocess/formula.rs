@@ -1,10 +1,7 @@
 //! Preprocessors for formulas
 
 use crate::{
-    model::{
-        formula::{Formula, Predicate, Term},
-        Evaluable, Substitution,
-    },
+    model::{formula::Formula, Evaluable, Substitution},
     preprocess::Preprocessor,
     PreprocessingResult,
 };
@@ -30,7 +27,7 @@ impl Preprocessor for ConjunctionSimplifier {
         Self {}
     }
 
-    fn apply_fm(&mut self, formula: Formula, is_asserted: bool) -> PreprocessingResult {
+    fn apply_fm(&mut self, formula: Formula, _is_asserted: bool) -> PreprocessingResult {
         match formula {
             Formula::BoolVar(_) | Formula::False | Formula::True | Formula::Predicate(_) => {
                 PreprocessingResult::Unchanged(formula)
@@ -39,7 +36,7 @@ impl Preprocessor for ConjunctionSimplifier {
                 let mut changed = false;
                 let mut new_fs = Vec::new();
                 for f in fs {
-                    match self.apply_fm(f, is_asserted) {
+                    match self.apply_fm(f, _is_asserted) {
                         PreprocessingResult::Unchanged(f) => new_fs.push(f),
                         PreprocessingResult::Changed(f) => {
                             changed = true;
@@ -58,7 +55,7 @@ impl Preprocessor for ConjunctionSimplifier {
                 let mut changed = false;
                 let mut new_fs = Vec::new();
                 for f in fs {
-                    let pf = match self.apply_fm(f, is_asserted) {
+                    let pf = match self.apply_fm(f, _is_asserted) {
                         PreprocessingResult::Unchanged(f) => f,
 
                         PreprocessingResult::Changed(f) => {
@@ -82,7 +79,7 @@ impl Preprocessor for ConjunctionSimplifier {
                     PreprocessingResult::Unchanged(new_fm)
                 }
             }
-            Formula::Not(f) => match self.apply_fm(*f, is_asserted) {
+            Formula::Not(f) => match self.apply_fm(*f, _is_asserted) {
                 PreprocessingResult::Unchanged(f) => {
                     PreprocessingResult::Unchanged(Formula::not(f))
                 }

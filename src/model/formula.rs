@@ -446,7 +446,7 @@ impl Evaluable for Predicate {
             }
             Predicate::In(_, _) => todo!(),
         };
-        log::trace!("Predicate {} under {} is {}", self, sub, res);
+
         Some(res)
     }
 }

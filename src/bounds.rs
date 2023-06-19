@@ -205,15 +205,15 @@ impl Bounds {
                         Constraint::WordEquation(eq) => {
                             let lincon = LinearConstraint::from_word_equation(&eq);
                             let newbounds = lincon_upper_bound(&lincon, &bounds);
-                            log::debug!("Intersecting bounds: {} and {}", bounds, newbounds);
+                            log::trace!("Intersecting bounds: {} and {}", bounds, newbounds);
                             bounds = bounds.intersect(&newbounds);
-                            log::debug!("\tResult: {}", bounds);
+                            log::trace!("\tResult: {}", bounds);
                         }
                         Constraint::LinearConstraint(lc) => {
                             let newbounds = lincon_upper_bound(&lc, &bounds);
-                            log::debug!("Intersecting bounds: {} and {}", bounds, newbounds);
+                            log::trace!("Intersecting bounds: {} and {}", bounds, newbounds);
                             bounds = bounds.intersect(&newbounds);
-                            log::debug!("\tResult: {}", bounds);
+                            log::trace!("\tResult: {}", bounds);
                         }
                         Constraint::RegularConstraint(_) => todo!(),
                     },
@@ -389,15 +389,15 @@ fn lincon_upper_bound(lincon: &LinearConstraint, bounds: &Bounds) -> Bounds {
                         match (new_lower, new_upper) {
                             (None, None) => {}
                             (None, Some(u)) => {
-                                log::debug!("{}: var {} upper bounded by {}", lincon, v, u);
+                                log::trace!("{}: var {} upper bounded by {}", lincon, v, u);
                                 new_bounds.set(v, IntDomain::UpperBounded(u));
                             }
                             (Some(l), None) => {
-                                log::debug!("{}: var {} lower bounded by {}", lincon, v, l);
+                                log::trace!("{}: var {} lower bounded by {}", lincon, v, l);
                                 new_bounds.set(v, IntDomain::LowerBounded(l));
                             }
                             (Some(l), Some(u)) => {
-                                log::debug!("{}: var {} bounded by [{},{}]", lincon, v, l, u);
+                                log::trace!("{}: var {} bounded by [{},{}]", lincon, v, l, u);
                                 new_bounds.set(v, IntDomain::Bounded(l, u));
                             }
                         }
@@ -451,7 +451,7 @@ fn lincon_upper_bound(lincon: &LinearConstraint, bounds: &Bounds) -> Bounds {
                             match new_upper {
                                 None => {}
                                 Some(u) => {
-                                    log::info!("{}: var {} upper bounded by {}", lincon, v, u);
+                                    log::trace!("{}: var {} upper bounded by {}", lincon, v, u);
                                     new_bounds.set(v, IntDomain::UpperBounded(u));
                                 }
                             }
@@ -461,7 +461,7 @@ fn lincon_upper_bound(lincon: &LinearConstraint, bounds: &Bounds) -> Bounds {
                             match new_lower {
                                 None => {}
                                 Some(l) => {
-                                    log::info!("{}: var {} lower bounded by {}", lincon, v, l);
+                                    log::trace!("{}: var {} lower bounded by {}", lincon, v, l);
                                     new_bounds.set(v, IntDomain::LowerBounded(l));
                                 }
                             }
@@ -517,7 +517,7 @@ fn lincon_upper_bound(lincon: &LinearConstraint, bounds: &Bounds) -> Bounds {
                             match new_lower {
                                 None => {}
                                 Some(l) => {
-                                    log::info!("{}: var {} lower bounded by {}", lincon, v, l);
+                                    log::trace!("{}: var {} lower bounded by {}", lincon, v, l);
                                     new_bounds.set(v, IntDomain::LowerBounded(l));
                                 }
                             }
@@ -527,7 +527,7 @@ fn lincon_upper_bound(lincon: &LinearConstraint, bounds: &Bounds) -> Bounds {
                             match new_upper {
                                 None => {}
                                 Some(u) => {
-                                    log::info!("{}: var {} lower bounded by {}", lincon, v, u);
+                                    log::trace!("{}: var {} lower bounded by {}", lincon, v, u);
                                     new_bounds.set(v, IntDomain::LowerBounded(u));
                                 }
                             }

@@ -148,10 +148,10 @@ pub fn preprocess(instance: &Instance) -> (PreprocessingResult, Substitution) {
             Box::new(ConjunctionSimplifier::new()),
         ];
 
-        log::debug!("Preprocessing round {}", r);
+        log::trace!("Preprocessing round {}", r);
         let mut rd_changed = false;
         for preprocess in preprocessors.iter_mut() {
-            log::debug!("Running Preprocessor: {}", preprocess.get_name());
+            log::trace!("Running Preprocessor: {}", preprocess.get_name());
             preprocessed = match preprocessed {
                 PreprocessingResult::Changed(f) => match preprocess.apply(f) {
                     PreprocessingResult::Changed(t) => {
