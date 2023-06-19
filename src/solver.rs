@@ -10,6 +10,7 @@ use crate::encode::{
     AlignmentEncoder, ConstraintEncoder, EncodingResult, MddEncoder, WordEquationEncoder,
 };
 
+use crate::error::Error;
 use crate::model::formula::Atom;
 use crate::model::words::Symbol;
 use crate::model::words::WordEquation;
@@ -69,7 +70,32 @@ pub trait Solver {
     fn solve(&mut self) -> SolverResult;
 }
 
-pub struct ConjunctiveSolver {
+/// Returns a solver for the given instance.
+pub fn get_solver(inst: Instance) -> Result<Box<dyn Solver>, Error> {
+    if inst.get_formula().is_conjunctive() {
+        ConjunctiveSolver::new(inst).map(|s| Box::new(s) as Box<dyn Solver>)
+    } else {
+        Err(Error::unsupported("Non-conjuctive formula"))
+    }
+}
+
+struct AbstractionSolver {
+    instance: Instance,
+    alphabet: IndexSet<char>,
+    encoders: HashMap<Constraint, Box<dyn ConstraintEncoder>>,
+    domain_encoder: DomainEncoder,
+}
+
+impl AbstractionSolver {}
+
+impl Solver for AbstractionSolver {
+    fn solve(&mut self) -> SolverResult {
+        todo!()
+    }
+}
+
+/// A solver for conjunctive formulas.
+struct ConjunctiveSolver {
     instance: Instance,
     alphabet: IndexSet<char>,
     encoders: HashMap<Constraint, Box<dyn ConstraintEncoder>>,
@@ -85,20 +111,15 @@ impl ConjunctiveSolver {
         }
     }
 
-    pub fn new(instance: Instance) -> Result<Self, String> {
+    fn new(instance: Instance) -> Result<Self, Error> {
         let mut alphabet = instance.get_formula().alphabet();
 
         alphabet.insert('a');
 
         let mut encoders = HashMap::new();
 
-        let non_conjunctive_error = Err(format!(
-            "Instance is not a conjunctive formula: {}",
-            instance.get_formula()
-        ));
-
         if !instance.get_formula().is_conjunctive() {
-            return non_conjunctive_error;
+            panic!("This solver only supports conjunctive formulas")
         }
         for a in instance.get_formula().asserted_atoms() {
             match a {

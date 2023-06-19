@@ -447,24 +447,28 @@ impl Display for LinearConstraint {
 impl Arbitrary for IntTerm {
     fn arbitrary(g: &mut quickcheck::Gen) -> Self {
         if g.size() <= 1 {
-            g.choose(&[
-                IntTerm::Const(isize::arbitrary(&mut Gen::new(1))),
-                IntTerm::Var(Variable::new(
-                    String::arbitrary(&mut Gen::new(1)),
-                    Sort::Int,
-                )),
-            ]);
+            return g
+                .choose(&[
+                    IntTerm::Const(isize::arbitrary(&mut Gen::new(1))),
+                    IntTerm::Var(Variable::new(
+                        String::arbitrary(&mut Gen::new(1)),
+                        Sort::Int,
+                    )),
+                ])
+                .unwrap()
+                .clone();
         }
+        let mut new_gen = Gen::new(g.size() - 1);
         match g.choose(&[0, 1, 2, 3]) {
             Some(0) => IntTerm::Var(Variable::new(String::arbitrary(g), Sort::Int)),
             Some(1) => IntTerm::Const(isize::arbitrary(g)),
             Some(2) => IntTerm::Plus(
-                Box::new(IntTerm::arbitrary(g)),
-                Box::new(IntTerm::arbitrary(g)),
+                Box::new(IntTerm::arbitrary(&mut new_gen)),
+                Box::new(IntTerm::arbitrary(&mut new_gen)),
             ),
             Some(3) => IntTerm::Times(
-                Box::new(IntTerm::arbitrary(g)),
-                Box::new(IntTerm::arbitrary(g)),
+                Box::new(IntTerm::arbitrary(&mut new_gen)),
+                Box::new(IntTerm::arbitrary(&mut new_gen)),
             ),
             _ => unreachable!(),
         }

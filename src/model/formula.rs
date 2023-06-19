@@ -568,7 +568,7 @@ impl Arbitrary for Term {
 
 impl Arbitrary for Predicate {
     fn arbitrary(g: &mut quickcheck::Gen) -> Self {
-        match g.choose(&[0, 1, 2, 3, 4, 5, 5]) {
+        match g.choose(&[0, 1, 2, 3, 4, 5]) {
             Some(0) => Predicate::Equality(Term::arbitrary(g), Term::arbitrary(g)),
             Some(1) => Predicate::Leq(Term::arbitrary(g), Term::arbitrary(g)),
             Some(2) => Predicate::Less(Term::arbitrary(g), Term::arbitrary(g)),
