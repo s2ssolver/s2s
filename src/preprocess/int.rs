@@ -40,11 +40,10 @@ impl Preprocessor for ConstIntReducer {
                             PreprocessingResult::Changed(Formula::False)
                         }
                     }
-                    _ => {
-                        return PreprocessingResult::Unchanged(Formula::predicate(
-                            Predicate::Equality(lhs.into(), rhs.into()),
-                        ))
-                    }
+                    _ => PreprocessingResult::Unchanged(Formula::predicate(Predicate::Equality(
+                        lhs.into(),
+                        rhs.into(),
+                    ))),
                 }
             }
             Predicate::Geq(Term::Int(lhs), Term::Int(rhs)) => {
@@ -56,12 +55,10 @@ impl Preprocessor for ConstIntReducer {
                             PreprocessingResult::Changed(Formula::False)
                         }
                     }
-                    _ => {
-                        return PreprocessingResult::Unchanged(Formula::predicate(Predicate::Geq(
-                            lhs.into(),
-                            rhs.into(),
-                        )))
-                    }
+                    _ => PreprocessingResult::Unchanged(Formula::predicate(Predicate::Geq(
+                        lhs.into(),
+                        rhs.into(),
+                    ))),
                 }
             }
             Predicate::Greater(Term::Int(lhs), Term::Int(rhs)) => {
@@ -73,11 +70,10 @@ impl Preprocessor for ConstIntReducer {
                             PreprocessingResult::Changed(Formula::False)
                         }
                     }
-                    _ => {
-                        return PreprocessingResult::Unchanged(Formula::predicate(
-                            Predicate::Greater(lhs.into(), rhs.into()),
-                        ))
-                    }
+                    _ => PreprocessingResult::Unchanged(Formula::predicate(Predicate::Greater(
+                        lhs.into(),
+                        rhs.into(),
+                    ))),
                 }
             }
             Predicate::Leq(Term::Int(lhs), Term::Int(rhs)) => {
@@ -89,12 +85,10 @@ impl Preprocessor for ConstIntReducer {
                             PreprocessingResult::Changed(Formula::False)
                         }
                     }
-                    _ => {
-                        return PreprocessingResult::Unchanged(Formula::predicate(Predicate::Leq(
-                            lhs.into(),
-                            rhs.into(),
-                        )))
-                    }
+                    _ => PreprocessingResult::Unchanged(Formula::predicate(Predicate::Leq(
+                        lhs.into(),
+                        rhs.into(),
+                    ))),
                 }
             }
             Predicate::Less(Term::Int(lhs), Term::Int(rhs)) => {
@@ -106,15 +100,13 @@ impl Preprocessor for ConstIntReducer {
                             PreprocessingResult::Changed(Formula::False)
                         }
                     }
-                    _ => {
-                        return PreprocessingResult::Unchanged(Formula::predicate(Predicate::Less(
-                            lhs.into(),
-                            rhs.into(),
-                        )))
-                    }
+                    _ => PreprocessingResult::Unchanged(Formula::predicate(Predicate::Less(
+                        lhs.into(),
+                        rhs.into(),
+                    ))),
                 }
             }
-            _ => return PreprocessingResult::Unchanged(Formula::predicate(predicate)),
+            _ => PreprocessingResult::Unchanged(Formula::predicate(predicate)),
         }
     }
 }

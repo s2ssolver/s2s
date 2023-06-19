@@ -8,7 +8,7 @@ use crate::{
     model::{formula::Predicate, words::StringTerm, VarManager},
 };
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum ParseError {
     /// Syntax error, optionally with line and column number
     SyntaxError(String, Option<(usize, usize)>),
@@ -79,6 +79,10 @@ impl Instance {
 
     pub fn get_var_manager(&self) -> &VarManager {
         &self.var_manager
+    }
+
+    pub fn get_var_manager_mut(&mut self) -> &mut VarManager {
+        &mut self.var_manager
     }
 
     pub fn get_start_bound(&self) -> usize {

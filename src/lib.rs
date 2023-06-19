@@ -7,8 +7,10 @@
 //! The solver terminates when a model is found or when the bounds are relaxed to the point where the problem is unsatisfiable.
 //! Note however, that the solver does not guarantee that unsatisfiability is detected and thus might not terminate.
 
+mod abstr;
 mod bounds;
 mod encode;
+pub mod error;
 pub mod model;
 mod parse;
 mod preprocess;

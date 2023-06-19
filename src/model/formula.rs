@@ -558,8 +558,8 @@ impl Arbitrary for Term {
                 String::arbitrary(g),
                 Sort::Bool,
             )))),
-            Some(&1) => Term::String(StringTerm::arbitrary(g).into()),
-            Some(&2) => Term::Int(IntTerm::arbitrary(g).into()),
+            Some(&1) => Term::String(StringTerm::arbitrary(g)),
+            Some(&2) => Term::Int(IntTerm::arbitrary(g)),
             Some(&3) => unreachable!(),
             _ => unreachable!(),
         }
