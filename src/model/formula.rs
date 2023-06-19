@@ -524,6 +524,62 @@ impl Display for Formula {
     }
 }
 
+/* Arbitrary */
+
+impl Arbitrary for Term {
+    fn arbitrary(g: &mut quickcheck::Gen) -> Self {
+        match g.choose(&[0, 1, 2]) {
+            // TODO regex terms
+            Some(&0) => Term::Bool(Box::new(Formula::BoolVar(Variable::new(
+                String::arbitrary(g),
+                Sort::Bool,
+            )))),
+            Some(&1) => Term::String(StringTerm::arbitrary(g).into()),
+            Some(&2) => Term::Int(IntTerm::arbitrary(g).into()),
+            Some(&3) => unreachable!(),
+            _ => unreachable!(),
+        }
+    }
+}
+
+impl Arbitrary for Predicate {
+    fn arbitrary(g: &mut quickcheck::Gen) -> Self {
+        match g.choose(&[0, 1, 2, 3, 4, 5, 5]) {
+            Some(0) => Predicate::Equality(Term::arbitrary(g), Term::arbitrary(g)),
+            Some(1) => Predicate::Leq(Term::arbitrary(g), Term::arbitrary(g)),
+            Some(2) => Predicate::Less(Term::arbitrary(g), Term::arbitrary(g)),
+            Some(3) => Predicate::Geq(Term::arbitrary(g), Term::arbitrary(g)),
+            Some(4) => Predicate::Greater(Term::arbitrary(g), Term::arbitrary(g)),
+            Some(5) => Predicate::In(Term::arbitrary(g), Term::arbitrary(g)),
+            _ => unreachable!(),
+        }
+    }
+}
+
+impl Arbitrary for Formula {
+    fn arbitrary(g: &mut quickcheck::Gen) -> Self {
+        if g.size() <= 1 {
+            return match g.choose(&[0, 1, 2]) {
+                Some(0) => Formula::True,
+                Some(1) => Formula::False,
+                Some(2) => Formula::BoolVar(Variable::new(String::arbitrary(g), Sort::Bool)),
+                _ => unreachable!(),
+            };
+        } else {
+            let g = &mut quickcheck::Gen::new(g.size() - 1);
+            match g.choose(&[0, 1, 2, 3, 4, 5, 6]) {
+                Some(0) => Formula::True,
+                Some(1) => Formula::False,
+                Some(2) => Formula::BoolVar(Variable::new(String::arbitrary(g), Sort::Bool)),
+                Some(3) => Formula::Predicate(Predicate::arbitrary(g)),
+                Some(4) => Formula::Or(vec![Formula::arbitrary(g), Formula::arbitrary(g)]),
+                Some(5) => Formula::And(vec![Formula::arbitrary(g), Formula::arbitrary(g)]),
+                Some(6) => Formula::Not(Box::new(Formula::arbitrary(g))),
+                _ => unreachable!(),
+            }
+        }
+    }
+}
 #[cfg(test)]
 mod test {
 
