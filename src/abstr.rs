@@ -61,7 +61,7 @@ impl Definition {
 /// if a predicate is defined by a variable, then it is not defined by another variable.
 /// A predicate is defined either positively, negatively, or by an equivalence.
 #[derive(Debug, Default)]
-struct Definitions {
+pub struct Definitions {
     /// The definitions indexed by their Boolean variable.
     var2def: IndexMap<Variable, Definition>,
 }

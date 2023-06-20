@@ -89,7 +89,7 @@ impl Instance {
         max(self.start_bound, 1)
     }
 
-    pub fn get_upper_bound(&self) -> Option<usize> {
+    pub fn get_upper_threshold(&self) -> Option<usize> {
         self.ubound
     }
 

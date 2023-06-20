@@ -127,7 +127,14 @@ fn main() {
         None => {
             let mut solver = get_solver(instance.clone()).unwrap();
 
-            let res = solver.solve();
+            let res = match solver.solve() {
+                Ok(res) => res,
+                Err(r) => {
+                    log::error!("Error while solving: {}", r);
+                    println!("error");
+                    exit(-1);
+                }
+            };
             log::info!("Done ({}ms).", ts.elapsed().as_millis());
 
             match res {

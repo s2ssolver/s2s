@@ -69,6 +69,20 @@ pub enum Predicate {
     In(Term, Term),
 }
 
+impl Predicate {
+    /// Returns the signature of the arguments of this predicate.
+    pub fn signature(&self) -> Vec<Sort> {
+        match self {
+            Predicate::Equality(lhs, rhs)
+            | Predicate::Leq(lhs, rhs)
+            | Predicate::Less(lhs, rhs)
+            | Predicate::Geq(lhs, rhs)
+            | Predicate::Greater(lhs, rhs)
+            | Predicate::In(lhs, rhs) => vec![lhs.sort(), rhs.sort()],
+        }
+    }
+}
+
 pub enum Atom {
     Predicate(Predicate),
     BoolVar(Variable),

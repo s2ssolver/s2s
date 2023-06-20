@@ -8,10 +8,13 @@ use std::{
 use indexmap::IndexMap;
 use quickcheck::Arbitrary;
 
-use crate::model::{
-    formula::{Atom, Formula},
-    integer::{LinearArithFactor, LinearConstraint, LinearConstraintType},
-    Constraint, VarManager, Variable,
+use crate::{
+    error::Error,
+    model::{
+        formula::{Atom, Formula},
+        integer::{LinearArithFactor, LinearConstraint, LinearConstraintType},
+        Constraint, VarManager, Variable,
+    },
 };
 
 /// The domain of an integer variable.
@@ -191,7 +194,7 @@ impl Bounds {
 
     /// Infers the bounds of all variables from the given formula.
     /// All solutions to the formula must satisfy the inferred bounds.
-    pub fn infer(formla: &Formula, var_manager: &VarManager) -> Self {
+    pub fn infer(formla: &Formula, var_manager: &VarManager) -> Result<Self, Error> {
         let mut bounds = Self::new();
         for str_var in var_manager.of_sort(crate::model::Sort::String, true) {
             bounds.set(&str_var.len_var(), IntDomain::LowerBounded(0));
@@ -201,7 +204,7 @@ impl Bounds {
         while !stop {
             for atom in formla.asserted_atoms() {
                 match atom {
-                    Atom::Predicate(p) => match Constraint::from(p) {
+                    Atom::Predicate(p) => match Constraint::try_from(p)? {
                         Constraint::WordEquation(eq) => {
                             let lincon = LinearConstraint::from_word_equation(&eq);
                             let newbounds = lincon_upper_bound(&lincon, &bounds);
@@ -229,7 +232,7 @@ impl Bounds {
                 bound_prev = bounds.clone();
             }
         }
-        bounds
+        Ok(bounds)
     }
 
     /// Intesects all domains with the domains in the bounds, see [IntDomain::intersect].

@@ -1,9 +1,15 @@
-use std::{collections::HashMap, fmt::Display, sync::atomic::AtomicUsize};
+use std::{
+    collections::HashMap,
+    fmt::{format, Display},
+    sync::atomic::AtomicUsize,
+};
 
 use indexmap::IndexMap;
 
+use crate::error::Error;
+
 use self::{
-    formula::{Predicate, Term},
+    formula::{Predicate, Sorted, Term},
     integer::{IntTerm, LinearArithTerm, LinearConstraint, LinearConstraintType},
     regex::Regex,
     words::{StringTerm, WordEquation},
@@ -145,6 +151,11 @@ impl VarManager {
             .filter(move |v| if with_temps { true } else { !v.transient })
     }
 
+    /// Returns an iterator over all variables.
+    pub fn iter_vars(&self) -> impl Iterator<Item = &Variable> {
+        self.vars.values()
+    }
+
     /// Returns a variable by name, if it exists
     pub fn by_name(&self, name: &str) -> Option<&Variable> {
         self.vars.get(name)
@@ -200,50 +211,54 @@ pub enum Constraint {
     RegularConstraint(Regex),
 }
 
-impl From<Predicate> for Constraint {
-    fn from(value: Predicate) -> Self {
+impl TryFrom<Predicate> for Constraint {
+    type Error = Error;
+
+    fn try_from(value: Predicate) -> Result<Self, Self::Error> {
         match value {
-            Predicate::Equality(Term::String(lhs), Term::String(rhs)) => {
-                Constraint::WordEquation(WordEquation::new(lhs.into(), rhs.into()))
-            }
+            Predicate::Equality(Term::String(lhs), Term::String(rhs)) => Ok(
+                Constraint::WordEquation(WordEquation::new(lhs.into(), rhs.into())),
+            ),
             Predicate::Equality(Term::Int(lhs), Term::Int(rhs)) => {
                 let lin_lhs = LinearArithTerm::from(lhs);
                 let lin_rhs = LinearArithTerm::from(rhs);
                 let con = LinearConstraint::from((lin_lhs, lin_rhs, LinearConstraintType::Eq));
-                Constraint::LinearConstraint(con)
+                Ok(Constraint::LinearConstraint(con))
             }
-            Predicate::Equality(l, s) => panic!("Cannot create constraint from {} = {}", l, s),
             Predicate::Leq(Term::Int(lhs), Term::Int(rhs)) => {
                 let lin_lhs = LinearArithTerm::from(lhs);
                 let lin_rhs = LinearArithTerm::from(rhs);
                 let con = LinearConstraint::from((lin_lhs, lin_rhs, LinearConstraintType::Leq));
-                Constraint::LinearConstraint(con)
+                Ok(Constraint::LinearConstraint(con))
             }
-            Predicate::Leq(lhs, rhs) => panic!("Cannot create constraint from {} <= {}", lhs, rhs),
             Predicate::Less(Term::Int(lhs), Term::Int(rhs)) => {
                 let lin_lhs = LinearArithTerm::from(lhs);
                 let lin_rhs = LinearArithTerm::from(rhs);
                 let con = LinearConstraint::from((lin_lhs, lin_rhs, LinearConstraintType::Less));
-                Constraint::LinearConstraint(con)
+                Ok(Constraint::LinearConstraint(con))
             }
-            Predicate::Less(lhs, rhs) => panic!("Cannot create constraint from {} <= {}", lhs, rhs),
             Predicate::Geq(Term::Int(lhs), Term::Int(rhs)) => {
                 let lin_lhs = LinearArithTerm::from(lhs);
                 let lin_rhs = LinearArithTerm::from(rhs);
                 let con = LinearConstraint::from((lin_lhs, lin_rhs, LinearConstraintType::Geq));
-                Constraint::LinearConstraint(con)
+                Ok(Constraint::LinearConstraint(con))
             }
-            Predicate::Geq(lhs, rhs) => panic!("Cannot create constraint from {} <= {}", lhs, rhs),
             Predicate::Greater(Term::Int(lhs), Term::Int(rhs)) => {
                 let lin_lhs = LinearArithTerm::from(lhs);
                 let lin_rhs = LinearArithTerm::from(rhs);
                 let con = LinearConstraint::from((lin_lhs, lin_rhs, LinearConstraintType::Greater));
-                Constraint::LinearConstraint(con)
+                Ok(Constraint::LinearConstraint(con))
             }
-            Predicate::Greater(lhs, rhs) => {
-                panic!("Cannot create constraint from {} <= {}", lhs, rhs)
+            // Unsupported
+            Predicate::Leq(Term::String(_), Term::String(_))
+            | Predicate::Less(Term::String(_), Term::String(_))
+            | Predicate::Geq(Term::String(_), Term::String(_))
+            | Predicate::Greater(Term::String(_), Term::String(_)) => {
+                Err(Error::unsupported("Lexicographic order"))
             }
-            Predicate::In(_, _) => todo!(),
+            Predicate::In(_, _) => Err(Error::unsupported("Membership constraints")),
+            // Undefined
+            _ => Err(Error::SolverError(format!("Undefined predicate {}", value))),
         }
     }
 }
