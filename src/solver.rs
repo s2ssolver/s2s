@@ -80,7 +80,7 @@ struct AbstractionSolver {
     instance: Instance,
     alphabet: IndexSet<char>,
     encoders: HashMap<Definition, Box<dyn ConstraintEncoder>>,
-    abstraction: Abstraction,
+    _abstraction: Abstraction,
     domain_encoder: DomainEncoder,
     // Maps variables of sort Bool to an actual propositional variable
     bool_var_encoding: IndexMap<Variable, PVar>,
@@ -125,7 +125,7 @@ impl AbstractionSolver {
             instance,
             alphabet,
             encoders,
-            abstraction,
+            _abstraction: abstraction,
             bool_var_encoding,
             domain_encoder: dom_encoder,
         })
@@ -146,8 +146,7 @@ impl AbstractionSolver {
                 .encoders
                 .keys()
                 .next()
-                .map(|d| d.get_pred().clone().try_into().ok())
-                .flatten()
+                .and_then(|d| d.get_pred().clone().try_into().ok())
             {
                 bounds = sharpen_bounds(&eq, &bounds, self.instance.get_var_manager())
             }
@@ -231,7 +230,7 @@ impl AbstractionSolver {
 
         while next_bounds.any_empty() && !self.exeed_limit_bounds(&next_bounds, limit_bounds) {
             next_bounds.next_square_uppers();
-            next_bounds = next_bounds.intersect(&limit_bounds);
+            next_bounds = next_bounds.intersect(limit_bounds);
         }
 
         if let Some(upper) = self.instance.get_upper_threshold() {
@@ -404,14 +403,6 @@ impl Solver for AbstractionSolver {
             }
         }
     }
-}
-
-/// A solver for conjunctive formulas.
-struct ConjunctiveSolver {
-    instance: Instance,
-    alphabet: IndexSet<char>,
-    encoders: HashMap<Constraint, Box<dyn ConstraintEncoder>>,
-    domain_encoder: DomainEncoder,
 }
 
 fn sharpen_bounds(eq: &WordEquation, bounds: &Bounds, vars: &VarManager) -> Bounds {

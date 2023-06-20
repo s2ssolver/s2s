@@ -34,9 +34,9 @@ impl Definition {
     /// Creates a new definition.
     pub fn new(var: Variable, pred: Predicate, def_type: DefinitionType) -> Self {
         Self {
-            var: var,
-            pred: pred,
-            def_type: def_type,
+            var,
+            pred,
+            def_type,
         }
     }
 
@@ -51,6 +51,7 @@ impl Definition {
     }
 
     /// Returns the type of the definition.
+    #[allow(dead_code)]
     pub fn get_def_type(&self) -> &DefinitionType {
         &self.def_type
     }
@@ -73,14 +74,8 @@ impl Definitions {
     fn get_def_var(&self, p: &Predicate) -> Option<&Definition> {
         self.var2def
             .iter()
-            .find(|(v, d)| &d.pred == p)
-            .map(|(v, d)| d)
-    }
-
-    /// If the variable defines a predicate, returns the definition.
-    /// Otherwise, returns None.
-    fn get_definition(&self, var: &Variable) -> Option<&Definition> {
-        self.var2def.get(var)
+            .find(|(_v, d)| &d.pred == p)
+            .map(|(_v, d)| d)
     }
 
     /// Adds a definition.
@@ -114,7 +109,7 @@ impl Definitions {
 
 pub struct Abstraction {
     /// The Boolean skeleton, a propositional formula.
-    skeleton: Formula,
+    _skeleton: Formula,
     /// The set of definitional Boolean variables.
     definitions: Definitions,
 }
@@ -122,8 +117,8 @@ pub struct Abstraction {
 impl Abstraction {
     fn new(formula: Formula, definitions: Definitions) -> Self {
         Self {
-            skeleton: formula,
-            definitions: definitions,
+            _skeleton: formula,
+            definitions,
         }
     }
 
@@ -146,7 +141,7 @@ impl Abstraction {
         let res = match formula {
             Formula::True | Formula::False | Formula::BoolVar(_) => formula.clone(),
             Formula::Or(fs) => {
-                let mut fs = fs
+                let fs = fs
                     .into_iter()
                     .map(|f| Self::abstract_fm(f, defs, var_manager))
                     .collect::<Vec<_>>();
@@ -180,7 +175,7 @@ impl Abstraction {
                 Formula::False => Formula::True,
                 Formula::BoolVar(_) => Formula::not(f.as_ref().clone()),
                 Formula::Predicate(p) => {
-                    let dvar = match defs.get_def_var(&p) {
+                    let dvar = match defs.get_def_var(p) {
                         Some(v) => v.get_var().clone(),
                         None => {
                             let v = var_manager.tmp_var(Sort::Bool);
@@ -231,11 +226,7 @@ mod test {
             p.clone(),
             DefinitionType::Positive,
         ));
-        defs.add_definition(Definition::new(
-            v1.clone(),
-            p.clone(),
-            DefinitionType::Negative,
-        ));
+        defs.add_definition(Definition::new(v1, p.clone(), DefinitionType::Negative));
         let res = defs.get_def_var(&p).unwrap().get_def_type();
         assert_eq!(res, &DefinitionType::Equivalence);
     }
@@ -244,7 +235,7 @@ mod test {
         match fm {
             Formula::True | Formula::False | Formula::BoolVar(_) => true,
             Formula::Predicate(_) => false,
-            Formula::And(fs) | Formula::Or(fs) => fs.iter().all(|f| is_bool(f)),
+            Formula::And(fs) | Formula::Or(fs) => fs.iter().all(is_bool),
             Formula::Not(f) => is_bool(f),
         }
     }
@@ -255,8 +246,7 @@ mod test {
             Formula::Predicate(p) => vec![(p.clone(), pol)],
             Formula::And(fs) | Formula::Or(fs) => fs
                 .iter()
-                .map(|f| get_preds(f, pol))
-                .flatten()
+                .flat_map(|f| get_preds(f, pol))
                 .collect::<Vec<_>>(),
             Formula::Not(f) => get_preds(f, !pol),
         }
@@ -265,12 +255,12 @@ mod test {
     #[quickcheck]
     fn abstraction_is_bool(fm: Formula) {
         let fm = fm.to_nnf();
-        let mut instance = Instance::new(fm.clone(), VarManager::new());
+        let mut instance = Instance::new(fm, VarManager::new());
         let abstr = Abstraction::create(&mut instance);
 
         assert!(abstr.is_ok());
         let abstr = abstr.unwrap();
-        assert!(is_bool(&abstr.skeleton));
+        assert!(is_bool(&abstr._skeleton));
     }
 
     #[quickcheck]

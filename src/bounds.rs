@@ -260,6 +260,7 @@ impl Bounds {
     }
 
     /// Returns true if all upper bounds are greater than or  equal to the given value and false otherwise.
+    #[allow(dead_code)]
     pub fn uppers_geq(&self, val: isize) -> bool {
         self.domains
             .values()

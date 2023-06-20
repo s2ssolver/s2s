@@ -1,15 +1,11 @@
-use std::{
-    collections::HashMap,
-    fmt::{format, Display},
-    sync::atomic::AtomicUsize,
-};
+use std::{collections::HashMap, fmt::Display, sync::atomic::AtomicUsize};
 
 use indexmap::IndexMap;
 
 use crate::error::Error;
 
 use self::{
-    formula::{Predicate, Sorted, Term},
+    formula::{Predicate, Term},
     integer::{IntTerm, LinearArithTerm, LinearConstraint, LinearConstraintType},
     regex::Regex,
     words::{StringTerm, WordEquation},
