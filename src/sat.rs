@@ -2,6 +2,13 @@
 
 use std::sync::atomic::{AtomicU32, Ordering};
 
+use indexmap::{IndexMap, IndexSet};
+
+use crate::{
+    error::Error,
+    model::{formula::Formula, Sort, VarManager, Variable},
+};
+
 /// A global counter for propositional variables.
 /// The counter is used to generate new propositional variables.
 /// It is incremented whenever a new variable is generated using [pvar()].
@@ -35,6 +42,152 @@ pub fn pvar() -> PVar {
         panic!("Too many propositional variables")
     }
     v as PVar
+}
+
+/// Converts the given formula to conjunctive normal form using the Tseitin transformation.
+/// Uses the given mapping to map [Variable]s of sort `Bool` to propositional variables [PVar].
+///
+/// This implementation is based on the "Handbook of Automated Reasoning" by J. Harrison.
+///
+/// # Errors
+/// Returns an error if
+/// - the formula contains a variable that is not mapped to a propositional variable
+/// - the formula contains a variable that is mapped to a propositional variable of a different sort
+/// - the formula is not propositional
+/// - the formula is not in negation normal form
+pub fn to_cnf(formula: &Formula, var_manager: &mut VarManager) -> Result<Cnf, Error> {
+    fn maincnf(
+        fm: &Formula,
+        defs: &mut IndexMap<Formula, Variable>,
+        var_manager: &mut VarManager,
+    ) -> Result<Formula, Error> {
+        match fm {
+            Formula::And(fs) | Formula::Or(fs) => {
+                if fs.len() == 0 {
+                    Ok(Formula::False)
+                } else if fs.len() == 1 {
+                    maincnf(&fs[0], defs, var_manager)
+                } else {
+                    defstep(&fm, defs, var_manager)
+                }
+            }
+            Formula::Not(nf) => match nf.as_ref() {
+                Formula::BoolVar(_) => Ok(fm.clone()),
+                Formula::Predicate(_) => {
+                    return Err(Error::EncodingError(
+                        "Formula not propositional".to_string(),
+                    ))
+                }
+                _ => return Err(Error::EncodingError("Not in NNF".to_string())),
+            },
+            Formula::Predicate(_) => {
+                return Err(Error::EncodingError(
+                    "Formula not propositional".to_string(),
+                ))
+            }
+            _ => Ok(fm.clone()),
+        }
+    }
+
+    fn defstep(
+        fm: &Formula,
+        defs: &mut IndexMap<Formula, Variable>,
+        var_manager: &mut VarManager,
+    ) -> Result<Formula, Error> {
+        match fm {
+            Formula::And(fs) | Formula::Or(fs) => {
+                let mut res = Vec::with_capacity(fs.len());
+                for f in fs {
+                    res.push(maincnf(f, defs, var_manager)?);
+                }
+                let res_fm = if matches!(fm, Formula::And(_)) {
+                    Formula::and(res)
+                } else if matches!(fm, Formula::Or(_)) {
+                    Formula::or(res)
+                } else {
+                    unreachable!()
+                };
+                match defs.get(&res_fm) {
+                    Some(v) => Ok(Formula::bool(v.clone())),
+                    None => {
+                        let v = var_manager.tmp_var(Sort::Bool);
+                        defs.insert(res_fm, v.clone());
+                        Ok(Formula::BoolVar(v))
+                    }
+                }
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    let mut defs = IndexMap::new();
+
+    let res = maincnf(formula, &mut defs, var_manager)?;
+    let mut cnf = Cnf::new();
+    match res {
+        Formula::True => (),
+        Formula::False => cnf.push(vec![]),
+        Formula::BoolVar(x) => {
+            if let Variable::Bool { value, .. } = x {
+                cnf.push(vec![as_lit(value)]);
+            } else {
+                panic!("Variable is not a boolean variable")
+            }
+        }
+        Formula::Or(fs) => {
+            let mut clause = Vec::with_capacity(fs.len());
+            for f in fs {
+                if let Formula::BoolVar(Variable::Bool { value, .. }) = f {
+                    clause.push(as_lit(value));
+                } else {
+                    unreachable!()
+                }
+            }
+            cnf.push(clause);
+        }
+        Formula::And(fs) => {
+            for disj in fs {
+                match disj {
+                    Formula::True => (),
+                    Formula::False => cnf.push(vec![]),
+                    Formula::BoolVar(x) => {
+                        if let Variable::Bool { value, .. } = x {
+                            cnf.push(vec![as_lit(value)]);
+                        } else {
+                            unreachable!()
+                        }
+                    }
+                    Formula::Not(f) => {
+                        if let Formula::BoolVar(x) = f.as_ref() {
+                            if let Variable::Bool { value, .. } = x {
+                                cnf.push(vec![neg(*value)]);
+                            } else {
+                                unreachable!()
+                            }
+                        } else {
+                            unreachable!()
+                        }
+                    }
+                    Formula::Or(fs) => {
+                        let mut clause = Vec::with_capacity(fs.len());
+                        for f in fs {
+                            if let Formula::BoolVar(Variable::Bool { value, .. }) = f {
+                                clause.push(as_lit(value));
+                            } else {
+                                unreachable!()
+                            }
+                        }
+                        cnf.push(clause);
+                    }
+                    Formula::Predicate(_) => unreachable!(),
+                    Formula::And(_) => unreachable!(),
+                }
+            }
+        }
+        Formula::Not(_) => unreachable!(),
+        Formula::Predicate(_) => unreachable!(),
+    }
+    Ok(cnf)
 }
 
 #[cfg(test)]
