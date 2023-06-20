@@ -2,7 +2,7 @@
 
 use std::sync::atomic::{AtomicU32, Ordering};
 
-use indexmap::{IndexMap, IndexSet};
+use indexmap::IndexMap;
 
 use crate::{
     error::Error,
@@ -63,28 +63,24 @@ pub fn to_cnf(formula: &Formula, var_manager: &mut VarManager) -> Result<Cnf, Er
     ) -> Result<Formula, Error> {
         match fm {
             Formula::And(fs) | Formula::Or(fs) => {
-                if fs.len() == 0 {
+                if fs.is_empty() {
                     Ok(Formula::False)
                 } else if fs.len() == 1 {
                     maincnf(&fs[0], defs, var_manager)
                 } else {
-                    defstep(&fm, defs, var_manager)
+                    defstep(fm, defs, var_manager)
                 }
             }
             Formula::Not(nf) => match nf.as_ref() {
                 Formula::BoolVar(_) => Ok(fm.clone()),
-                Formula::Predicate(_) => {
-                    return Err(Error::EncodingError(
-                        "Formula not propositional".to_string(),
-                    ))
-                }
-                _ => return Err(Error::EncodingError("Not in NNF".to_string())),
-            },
-            Formula::Predicate(_) => {
-                return Err(Error::EncodingError(
+                Formula::Predicate(_) => Err(Error::EncodingError(
                     "Formula not propositional".to_string(),
-                ))
-            }
+                )),
+                _ => Err(Error::EncodingError("Not in NNF".to_string())),
+            },
+            Formula::Predicate(_) => Err(Error::EncodingError(
+                "Formula not propositional".to_string(),
+            )),
             _ => Ok(fm.clone()),
         }
     }
@@ -158,12 +154,8 @@ pub fn to_cnf(formula: &Formula, var_manager: &mut VarManager) -> Result<Cnf, Er
                         }
                     }
                     Formula::Not(f) => {
-                        if let Formula::BoolVar(x) = f.as_ref() {
-                            if let Variable::Bool { value, .. } = x {
-                                cnf.push(vec![neg(*value)]);
-                            } else {
-                                unreachable!()
-                            }
+                        if let Formula::BoolVar(Variable::Bool { value, .. }) = f.as_ref() {
+                            cnf.push(vec![neg(*value)]);
                         } else {
                             unreachable!()
                         }

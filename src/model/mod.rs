@@ -60,17 +60,11 @@ impl Variable {
     }
 
     pub fn is_int(&self) -> bool {
-        match self {
-            Variable::Int { .. } => true,
-            _ => false,
-        }
+        matches!(self, Variable::Int { .. })
     }
 
     pub fn is_string(&self) -> bool {
-        match self {
-            Variable::String { .. } => true,
-            _ => false,
-        }
+        matches!(self, Variable::String { .. })
     }
 
     pub fn name(&self) -> &str {
