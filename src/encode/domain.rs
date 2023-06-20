@@ -41,7 +41,7 @@ impl DomainEncoder {
     /// This method only needs to be called whenever the set of boolean variables changes (usuall only once).
     /// However, it is safe to call it multiple times as it is idempotent for the same set of variables.
     pub fn init_booleans(&mut self, var_manager: &VarManager) {
-        for v in var_manager.of_sort(Sort::Bool, true) {
+        for v in var_manager.of_sort(Sort::Bool) {
             if self.bools.get(v).is_some() {
                 continue;
             }
@@ -194,7 +194,7 @@ pub fn get_substitutions(
         panic!("Solver is not in a SAT state")
     }
     let mut subs = HashMap::new();
-    for var in var_manager.of_sort(Sort::String, true) {
+    for var in var_manager.of_sort(Sort::String) {
         // initialize substitutions
         let len_var = var_manager.str_length_var(var).unwrap();
         subs.insert(
@@ -264,7 +264,7 @@ impl SubstitutionEncoder {
         let subs = &mut encoding.string;
         log::debug!("Encoding substitutions");
 
-        for str_var in var_manager.of_sort(Sort::String, true) {
+        for str_var in var_manager.of_sort(Sort::String) {
             let var = var_manager
                 .str_length_var(str_var)
                 .unwrap_or_else(|| panic!("No length variable for {}", str_var));
@@ -338,7 +338,7 @@ impl IntegerEncoder {
         var_manager: &VarManager,
     ) -> EncodingResult {
         let mut res = EncodingResult::empty();
-        for v in var_manager.of_sort(Sort::Int, true) {
+        for v in var_manager.of_sort(Sort::Int) {
             if var_manager.is_lenght_var(v) {
                 continue;
             } else {
@@ -362,7 +362,7 @@ impl IntegerEncoder {
     ) -> EncodingResult {
         let mut res = EncodingResult::empty();
 
-        for str_var in var_manager.of_sort(Sort::String, true) {
+        for str_var in var_manager.of_sort(Sort::String) {
             let str_len_var = var_manager.str_length_var(str_var).unwrap();
             let mut len_choices = vec![];
             let last_bound = self

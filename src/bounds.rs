@@ -13,7 +13,7 @@ use crate::{
     model::{
         formula::{Atom, Formula},
         integer::{LinearArithFactor, LinearConstraint, LinearConstraintType},
-        Constraint, VarManager, Variable,
+        Constraint, Sort, VarManager, Variable,
     },
 };
 
@@ -196,7 +196,7 @@ impl Bounds {
     /// All solutions to the formula must satisfy the inferred bounds.
     pub fn infer(formla: &Formula, var_manager: &VarManager) -> Result<Self, Error> {
         let mut bounds = Self::new();
-        for str_var in var_manager.of_sort(crate::model::Sort::String, true) {
+        for str_var in var_manager.of_sort(Sort::String) {
             bounds.set(&str_var.len_var(), IntDomain::LowerBounded(0));
         }
         let mut bound_prev = bounds.clone();

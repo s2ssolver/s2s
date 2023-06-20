@@ -212,6 +212,8 @@ fn parse_woorpje(input: &str) -> Result<Instance, ParseError> {
 #[cfg(test)]
 mod tests {
 
+    use crate::model::Sort;
+
     use super::*;
 
     #[test]
@@ -222,7 +224,7 @@ Equation: aX = ab"#;
 
         let instance = parse_woorpje(input).unwrap();
         let vm = instance.get_var_manager();
-        assert_eq!(vm.of_sort(crate::model::Sort::String, true).count(), 1);
+        assert_eq!(vm.of_sort(Sort::String).count(), 1);
 
         let expected_lhs =
             StringTerm::concat_var(StringTerm::constant("a"), vm.by_name("X").unwrap());

@@ -2,7 +2,10 @@ use std::{collections::HashMap, fmt::Display, sync::atomic::AtomicUsize};
 
 use indexmap::IndexMap;
 
-use crate::error::Error;
+use crate::{
+    error::Error,
+    sat::{pvar, PVar},
+};
 
 use self::{
     formula::{Predicate, Term},
@@ -24,13 +27,11 @@ pub enum Sort {
     Bool,
 }
 
-/// Representation of a variable of a certain sort
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct Variable {
-    name: String,
-    sort: Sort,
-    // Whether the variable is transient (i.e. not declared in the input problem)
-    transient: bool,
+pub enum Variable {
+    String { name: String },
+    Int { name: String },
+    Bool { name: String, value: PVar },
 }
 
 static VAR_COUNTER: AtomicUsize = AtomicUsize::new(1);
@@ -40,45 +41,55 @@ static VAR_COUNTER: AtomicUsize = AtomicUsize::new(1);
 /// Variables should not be created directly, but through a `VarManager`
 impl Variable {
     fn new(name: String, sort: Sort) -> Self {
-        Variable {
-            name,
-            sort,
-            transient: false,
-        }
-    }
-
-    fn new_transient(name: String, sort: Sort) -> Self {
-        Variable {
-            name,
-            sort,
-            transient: true,
+        match sort {
+            Sort::String => Variable::String { name },
+            Sort::Int => Variable::Int { name },
+            Sort::Bool => Variable::Bool {
+                name,
+                value: pvar(),
+            },
         }
     }
 
     pub fn sort(&self) -> Sort {
-        self.sort
+        match self {
+            Variable::String { .. } => Sort::String,
+            Variable::Int { .. } => Sort::Int,
+            Variable::Bool { .. } => Sort::Bool,
+        }
     }
 
     pub fn is_int(&self) -> bool {
-        self.sort == Sort::Int
+        match self {
+            Variable::Int { .. } => true,
+            _ => false,
+        }
     }
 
     pub fn is_string(&self) -> bool {
-        self.sort == Sort::String
+        match self {
+            Variable::String { .. } => true,
+            _ => false,
+        }
     }
 
     pub fn name(&self) -> &str {
-        &self.name
+        match self {
+            Variable::String { name } => name,
+            Variable::Int { name } => name,
+            Variable::Bool { name, .. } => name,
+        }
     }
 
+    /// Returns a variable representing the length of the this variable, if the variable is of sort string.
+    /// Panics if the variable is not of sort string
     pub fn len_var(&self) -> Self {
-        assert!(
-            self.sort == Sort::String,
-            "Cannot get length of non-string variable {}",
-            self
-        );
         let name = format!("{}$len", self.name());
-        Variable::new_transient(name, Sort::Int)
+        match self {
+            Variable::String { .. } => Variable::Int { name },
+            Variable::Int { .. } => panic!("Cannot get length of integer variable {}", self),
+            Variable::Bool { .. } => panic!("Cannot get length of boolean variable {}", self),
+        }
     }
 }
 
@@ -108,7 +119,7 @@ impl VarManager {
             .vars
             .get_mut(&name)
             .expect("Variable should have been created");
-        v.transient = true;
+
         v.clone()
     }
 
@@ -130,21 +141,18 @@ impl VarManager {
     /// Adds an existing variable to the manager.
     /// Prefer using `new_var` or `tmp_var` instead.
     pub fn add_var(&mut self, var: Variable) {
-        assert!(!self.vars.contains_key(&var.name));
-        if var.sort == Sort::String {
+        assert!(!self.vars.contains_key(var.name()));
+        if var.sort() == Sort::String {
             // also insert a integer variable representing the length of the string
             self.add_var(var.len_var());
         }
-        self.vars.insert(var.name.clone(), var);
+        self.vars.insert(var.name().to_string(), var);
     }
 
     /// Returns an iterator over the variables of a certain sort.
     /// If `with_temps` is true, the iterator includes temporal variables.
-    pub fn of_sort(&self, sort: Sort, with_temps: bool) -> impl Iterator<Item = &Variable> {
-        self.vars
-            .values()
-            .filter(move |v| v.sort == sort)
-            .filter(move |v| if with_temps { true } else { !v.transient })
+    pub fn of_sort(&self, sort: Sort) -> impl Iterator<Item = &Variable> {
+        self.vars.values().filter(move |v| v.sort() == sort)
     }
 
     /// Returns an iterator over all variables.
@@ -159,9 +167,8 @@ impl VarManager {
 
     /// Returns true if the variable is temporal, false otherwise.
     /// Returns None if the variable does not exist within the scope of the manager.
-    pub fn is_temporal(&self, var: &Variable) -> Option<bool> {
-        // Don't just check the transient flag, because the variable might not be known by the manager
-        self.vars.get(&var.name).map(|v| v.transient)
+    pub fn is_temporal(&self, _var: &Variable) -> Option<bool> {
+        todo!()
     }
 
     /// Returns a variable representing the length of the given variable, if the string variable exists within the manager.
@@ -169,7 +176,7 @@ impl VarManager {
     /// Panics if the variable is not of sort string
     pub fn str_length_var(&self, var: &Variable) -> Option<&Variable> {
         assert!(
-            var.sort == Sort::String,
+            var.sort() == Sort::String,
             "Cannot get length of non-string variable {}",
             var
         );
@@ -180,7 +187,7 @@ impl VarManager {
 
     pub fn length_str_var(&self, var: &Variable) -> Option<&Variable> {
         assert!(
-            var.sort == Sort::Int,
+            var.sort() == Sort::Int,
             "Cannot get length of non-string variable {}",
             var
         );
@@ -194,8 +201,8 @@ impl VarManager {
     /// Returns true iff the given variable represents the length of a string variable
     pub fn is_lenght_var(&self, var: &Variable) -> bool {
         self.vars
-            .get(&var.name)
-            .map(|v| v.name.ends_with("$len"))
+            .get(var.name())
+            .map(|v| v.name().ends_with("$len"))
             .unwrap_or(false)
     }
 }
@@ -378,7 +385,7 @@ impl Display for Sort {
 }
 impl Display for Variable {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.name)
+        write!(f, "{}", self.name())
     }
 }
 

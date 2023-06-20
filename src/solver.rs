@@ -187,7 +187,7 @@ impl AbstractionSolver {
             Bounds::infer(self.instance.get_formula(), self.instance.get_var_manager())?;
         // Make sure upper bounds for string variables are at least one, otherwise the encoding is not correct.
         // This will have negative effects on the performance of the solver, but avoids having to treat edge cases in the encoding(s).
-        for v in self.instance.get_var_manager().of_sort(Sort::Int, true) {
+        for v in self.instance.get_var_manager().of_sort(Sort::Int) {
             if self.instance.get_var_manager().is_lenght_var(v) {
                 if let Some(0) = limit_bounds.get(v).get_upper() {
                     log::trace!("Setting upper bound for {} from 0 to 1", v);
@@ -207,7 +207,7 @@ impl AbstractionSolver {
             Some(c) => c.clone(),
             None => {
                 let mut current_bounds = Bounds::new();
-                for v in self.instance.get_var_manager().of_sort(Sort::String, true) {
+                for v in self.instance.get_var_manager().of_sort(Sort::String) {
                     let len_var = self.instance.get_var_manager().str_length_var(v).unwrap();
                     current_bounds.set(
                         len_var,
@@ -232,7 +232,7 @@ impl AbstractionSolver {
 
     /// Returns true if the current upper bounds are greater than the limit upper bounds.
     fn exeed_limit_bounds(&self, current_bounds: &Bounds, limit_bounds: &Bounds) -> bool {
-        for v in self.instance.get_var_manager().of_sort(Sort::Int, true) {
+        for v in self.instance.get_var_manager().of_sort(Sort::Int) {
             match (
                 current_bounds.get(v).get_upper(),
                 limit_bounds.get(v).get_upper(),
@@ -252,7 +252,7 @@ impl AbstractionSolver {
 
     /// Returns true if the current upper bounds are greater than the given threshold.
     fn bounds_exceed_threshold(&self, current_bounds: &Bounds, threshold: usize) -> bool {
-        for v in self.instance.get_var_manager().of_sort(Sort::Int, true) {
+        for v in self.instance.get_var_manager().of_sort(Sort::Int) {
             match current_bounds.get(v).get_upper() {
                 Some(c) => {
                     if c <= threshold as isize {
@@ -414,7 +414,7 @@ fn sharpen_bounds(eq: &WordEquation, bounds: &Bounds, vars: &VarManager) -> Boun
         abs_consts += rhs_c - lhs_c;
     }
 
-    for var_k in vars.of_sort(Sort::String, true) {
+    for var_k in vars.of_sort(Sort::String) {
         let var_k_len = vars.str_length_var(var_k).unwrap();
         let denominator = eq.lhs().count(&Symbol::Variable(var_k.clone())) as isize
             - eq.rhs().count(&Symbol::Variable(var_k.clone())) as isize;
@@ -422,7 +422,7 @@ fn sharpen_bounds(eq: &WordEquation, bounds: &Bounds, vars: &VarManager) -> Boun
             continue;
         }
         let mut abs_k: isize = 0;
-        for var_j in vars.of_sort(Sort::String, true) {
+        for var_j in vars.of_sort(Sort::String) {
             if var_j == var_k {
                 continue;
             }
