@@ -1,7 +1,7 @@
 use std::cmp::max;
 use std::collections::HashMap;
 
-use indexmap::{IndexMap, IndexSet};
+use indexmap::IndexSet;
 
 use std::time::Instant;
 
@@ -15,12 +15,12 @@ use crate::error::Error;
 
 use crate::model::words::Symbol;
 use crate::model::words::WordEquation;
+use crate::model::Substitution;
 use crate::model::{Constraint, Sort, VarManager};
-use crate::model::{Substitution, Variable};
 
 use crate::encode::domain::{get_substitutions, DomainEncoder};
 use crate::parse::Instance;
-use crate::sat::{neg, pvar, Cnf, PVar};
+use crate::sat::{neg, Cnf};
 
 /// The result of a satisfiability check
 pub enum SolverResult {
@@ -82,8 +82,6 @@ struct AbstractionSolver {
     encoders: HashMap<Definition, Box<dyn ConstraintEncoder>>,
     _abstraction: Abstraction,
     domain_encoder: DomainEncoder,
-    // Maps variables of sort Bool to an actual propositional variable
-    bool_var_encoding: IndexMap<Variable, PVar>,
 }
 
 impl AbstractionSolver {
@@ -115,18 +113,11 @@ impl AbstractionSolver {
             encoders.insert(d.clone(), encoder);
         }
 
-        // Instatitate bool vars
-        let mut bool_var_encoding = IndexMap::new();
-        for boolvar in instance.get_var_manager().of_sort(Sort::Bool, true) {
-            bool_var_encoding.insert(boolvar.clone(), pvar());
-        }
-
         Ok(Self {
             instance,
             alphabet,
             encoders,
             _abstraction: abstraction,
-            bool_var_encoding,
             domain_encoder: dom_encoder,
         })
     }
@@ -174,7 +165,7 @@ impl AbstractionSolver {
             for (d, enc) in self.encoders.iter_mut() {
                 let mut res = enc.encode(&bounds, dom, self.instance.get_var_manager());
                 // Insert the negation of the definitional boolean var into all clauses
-                let def_pvar = self.bool_var_encoding[d.get_var()];
+                let def_pvar = self.domain_encoder.get_bools()[d.get_var()];
                 res.iter_clauses_mut().for_each(|c| c.push(neg(def_pvar)));
                 encoding.join(res);
             }
@@ -278,6 +269,9 @@ impl AbstractionSolver {
 
 impl Solver for AbstractionSolver {
     fn solve(&mut self) -> Result<SolverResult, Error> {
+        // Encode the booleans
+        self.domain_encoder
+            .init_booleans(self.instance.get_var_manager());
         let limit_bounds = self.find_limit_upper_bound()?;
         log::info!("Found limit bounds: {}", limit_bounds);
 
@@ -296,6 +290,11 @@ impl Solver for AbstractionSolver {
         log::debug!("{}", self.instance.get_formula());
 
         let mut cadical: cadical::Solver = cadical::Solver::new();
+
+        if !self.instance.get_formula().is_conjunctive() {
+            // Convert sekelon to cnf and add clauses to the solver
+        }
+
         let mut time_encoding = 0;
         let mut time_solving = 0;
         let mut fm = Cnf::new();
