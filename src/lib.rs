@@ -7,8 +7,10 @@
 //! The solver terminates when a model is found or when the bounds are relaxed to the point where the problem is unsatisfiable.
 //! Note however, that the solver does not guarantee that unsatisfiability is detected and thus might not terminate.
 
+mod abstr;
 mod bounds;
 mod encode;
+pub mod error;
 pub mod model;
 mod parse;
 mod preprocess;
@@ -17,4 +19,4 @@ mod solver;
 
 pub use parse::Parser;
 pub use preprocess::{preprocess, PreprocessingResult};
-pub use solver::{ConjunctiveSolver, Solver, SolverResult};
+pub use solver::{get_solver, Solver, SolverResult};

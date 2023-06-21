@@ -1,3 +1,7 @@
+use super::{
+    formula::{Alphabet, Formula, Predicate, Sorted, Term},
+    Evaluable, Substitutable, Substitution, VarManager,
+};
 use std::{
     cmp::min,
     fmt::{Display, Formatter},
@@ -587,14 +591,9 @@ impl Display for Symbol {
     }
 }
 
-// Arbitrary generation of patterns
+/* Arbitrary */
 
 use quickcheck;
-
-use super::{
-    formula::{Alphabet, Formula, Predicate, Sorted, Term},
-    Evaluable, Substitutable, Substitution, VarManager,
-};
 
 impl Arbitrary for Symbol {
     fn arbitrary(g: &mut quickcheck::Gen) -> Self {
@@ -622,6 +621,12 @@ impl Arbitrary for Pattern {
 impl Arbitrary for WordEquation {
     fn arbitrary(g: &mut quickcheck::Gen) -> Self {
         WordEquation::new(Pattern::arbitrary(g), Pattern::arbitrary(g))
+    }
+}
+
+impl Arbitrary for StringTerm {
+    fn arbitrary(g: &mut quickcheck::Gen) -> Self {
+        Pattern::arbitrary(g).into()
     }
 }
 

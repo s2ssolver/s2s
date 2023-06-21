@@ -3,8 +3,9 @@ use std::{path::Path, process::exit, time::Instant};
 use clap::{Parser as ClapParser, ValueEnum};
 
 use satstr::{
+    get_solver,
     model::{Evaluable, Substitution},
-    preprocess, ConjunctiveSolver, Parser, PreprocessingResult, Solver,
+    preprocess, Parser, PreprocessingResult,
 };
 
 /// The command line interface for the solver
@@ -124,9 +125,16 @@ fn main() {
             println!("unsat");
         }
         None => {
-            let mut solver = ConjunctiveSolver::new(instance.clone()).unwrap();
+            let mut solver = get_solver(instance.clone()).unwrap();
 
-            let res = solver.solve();
+            let res = match solver.solve() {
+                Ok(res) => res,
+                Err(r) => {
+                    log::error!("Error while solving: {}", r);
+                    println!("error");
+                    exit(-1);
+                }
+            };
             log::info!("Done ({}ms).", ts.elapsed().as_millis());
 
             match res {

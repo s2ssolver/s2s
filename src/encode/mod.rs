@@ -141,6 +141,15 @@ impl EncodingResult {
         }
     }
 
+    /// Returns an iterator over mutable references of the clauses in the encoding
+    /// If the encoding is trivial, returns an empty iterator
+    pub fn iter_clauses_mut(&mut self) -> impl Iterator<Item = &mut Clause> {
+        match self {
+            EncodingResult::Cnf(cnf, _) => cnf.iter_mut(),
+            EncodingResult::Trivial(_) => [].iter_mut(),
+        }
+    }
+
     /// Joins two encoding results, consumes the other one
     pub fn join(&mut self, other: EncodingResult) {
         match self {

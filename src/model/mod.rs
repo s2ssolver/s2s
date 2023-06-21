@@ -2,6 +2,11 @@ use std::{collections::HashMap, fmt::Display, sync::atomic::AtomicUsize};
 
 use indexmap::IndexMap;
 
+use crate::{
+    error::Error,
+    sat::{pvar, PVar},
+};
+
 use self::{
     formula::{Predicate, Term},
     integer::{IntTerm, LinearArithTerm, LinearConstraint, LinearConstraintType},
@@ -22,13 +27,11 @@ pub enum Sort {
     Bool,
 }
 
-/// Representation of a variable of a certain sort
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct Variable {
-    name: String,
-    sort: Sort,
-    // Whether the variable is transient (i.e. not declared in the input problem)
-    transient: bool,
+pub enum Variable {
+    String { name: String },
+    Int { name: String },
+    Bool { name: String, value: PVar },
 }
 
 static VAR_COUNTER: AtomicUsize = AtomicUsize::new(1);
@@ -38,45 +41,49 @@ static VAR_COUNTER: AtomicUsize = AtomicUsize::new(1);
 /// Variables should not be created directly, but through a `VarManager`
 impl Variable {
     fn new(name: String, sort: Sort) -> Self {
-        Variable {
-            name,
-            sort,
-            transient: false,
-        }
-    }
-
-    fn new_transient(name: String, sort: Sort) -> Self {
-        Variable {
-            name,
-            sort,
-            transient: true,
+        match sort {
+            Sort::String => Variable::String { name },
+            Sort::Int => Variable::Int { name },
+            Sort::Bool => Variable::Bool {
+                name,
+                value: pvar(),
+            },
         }
     }
 
     pub fn sort(&self) -> Sort {
-        self.sort
+        match self {
+            Variable::String { .. } => Sort::String,
+            Variable::Int { .. } => Sort::Int,
+            Variable::Bool { .. } => Sort::Bool,
+        }
     }
 
     pub fn is_int(&self) -> bool {
-        self.sort == Sort::Int
+        matches!(self, Variable::Int { .. })
     }
 
     pub fn is_string(&self) -> bool {
-        self.sort == Sort::String
+        matches!(self, Variable::String { .. })
     }
 
     pub fn name(&self) -> &str {
-        &self.name
+        match self {
+            Variable::String { name } => name,
+            Variable::Int { name } => name,
+            Variable::Bool { name, .. } => name,
+        }
     }
 
+    /// Returns a variable representing the length of the this variable, if the variable is of sort string.
+    /// Panics if the variable is not of sort string
     pub fn len_var(&self) -> Self {
-        assert!(
-            self.sort == Sort::String,
-            "Cannot get length of non-string variable {}",
-            self
-        );
         let name = format!("{}$len", self.name());
-        Variable::new_transient(name, Sort::Int)
+        match self {
+            Variable::String { .. } => Variable::Int { name },
+            Variable::Int { .. } => panic!("Cannot get length of integer variable {}", self),
+            Variable::Bool { .. } => panic!("Cannot get length of boolean variable {}", self),
+        }
     }
 }
 
@@ -106,7 +113,7 @@ impl VarManager {
             .vars
             .get_mut(&name)
             .expect("Variable should have been created");
-        v.transient = true;
+
         v.clone()
     }
 
@@ -128,21 +135,23 @@ impl VarManager {
     /// Adds an existing variable to the manager.
     /// Prefer using `new_var` or `tmp_var` instead.
     pub fn add_var(&mut self, var: Variable) {
-        assert!(!self.vars.contains_key(&var.name));
-        if var.sort == Sort::String {
+        assert!(!self.vars.contains_key(var.name()));
+        if var.sort() == Sort::String {
             // also insert a integer variable representing the length of the string
             self.add_var(var.len_var());
         }
-        self.vars.insert(var.name.clone(), var);
+        self.vars.insert(var.name().to_string(), var);
     }
 
     /// Returns an iterator over the variables of a certain sort.
     /// If `with_temps` is true, the iterator includes temporal variables.
-    pub fn of_sort(&self, sort: Sort, with_temps: bool) -> impl Iterator<Item = &Variable> {
-        self.vars
-            .values()
-            .filter(move |v| v.sort == sort)
-            .filter(move |v| if with_temps { true } else { !v.transient })
+    pub fn of_sort(&self, sort: Sort) -> impl Iterator<Item = &Variable> {
+        self.vars.values().filter(move |v| v.sort() == sort)
+    }
+
+    /// Returns an iterator over all variables.
+    pub fn iter_vars(&self) -> impl Iterator<Item = &Variable> {
+        self.vars.values()
     }
 
     /// Returns a variable by name, if it exists
@@ -152,9 +161,8 @@ impl VarManager {
 
     /// Returns true if the variable is temporal, false otherwise.
     /// Returns None if the variable does not exist within the scope of the manager.
-    pub fn is_temporal(&self, var: &Variable) -> Option<bool> {
-        // Don't just check the transient flag, because the variable might not be known by the manager
-        self.vars.get(&var.name).map(|v| v.transient)
+    pub fn is_temporal(&self, _var: &Variable) -> Option<bool> {
+        todo!()
     }
 
     /// Returns a variable representing the length of the given variable, if the string variable exists within the manager.
@@ -162,7 +170,7 @@ impl VarManager {
     /// Panics if the variable is not of sort string
     pub fn str_length_var(&self, var: &Variable) -> Option<&Variable> {
         assert!(
-            var.sort == Sort::String,
+            var.sort() == Sort::String,
             "Cannot get length of non-string variable {}",
             var
         );
@@ -173,7 +181,7 @@ impl VarManager {
 
     pub fn length_str_var(&self, var: &Variable) -> Option<&Variable> {
         assert!(
-            var.sort == Sort::Int,
+            var.sort() == Sort::Int,
             "Cannot get length of non-string variable {}",
             var
         );
@@ -187,8 +195,8 @@ impl VarManager {
     /// Returns true iff the given variable represents the length of a string variable
     pub fn is_lenght_var(&self, var: &Variable) -> bool {
         self.vars
-            .get(&var.name)
-            .map(|v| v.name.ends_with("$len"))
+            .get(var.name())
+            .map(|v| v.name().ends_with("$len"))
             .unwrap_or(false)
     }
 }
@@ -200,50 +208,54 @@ pub enum Constraint {
     RegularConstraint(Regex),
 }
 
-impl From<Predicate> for Constraint {
-    fn from(value: Predicate) -> Self {
+impl TryFrom<Predicate> for Constraint {
+    type Error = Error;
+
+    fn try_from(value: Predicate) -> Result<Self, Self::Error> {
         match value {
-            Predicate::Equality(Term::String(lhs), Term::String(rhs)) => {
-                Constraint::WordEquation(WordEquation::new(lhs.into(), rhs.into()))
-            }
+            Predicate::Equality(Term::String(lhs), Term::String(rhs)) => Ok(
+                Constraint::WordEquation(WordEquation::new(lhs.into(), rhs.into())),
+            ),
             Predicate::Equality(Term::Int(lhs), Term::Int(rhs)) => {
                 let lin_lhs = LinearArithTerm::from(lhs);
                 let lin_rhs = LinearArithTerm::from(rhs);
                 let con = LinearConstraint::from((lin_lhs, lin_rhs, LinearConstraintType::Eq));
-                Constraint::LinearConstraint(con)
+                Ok(Constraint::LinearConstraint(con))
             }
-            Predicate::Equality(l, s) => panic!("Cannot create constraint from {} = {}", l, s),
             Predicate::Leq(Term::Int(lhs), Term::Int(rhs)) => {
                 let lin_lhs = LinearArithTerm::from(lhs);
                 let lin_rhs = LinearArithTerm::from(rhs);
                 let con = LinearConstraint::from((lin_lhs, lin_rhs, LinearConstraintType::Leq));
-                Constraint::LinearConstraint(con)
+                Ok(Constraint::LinearConstraint(con))
             }
-            Predicate::Leq(lhs, rhs) => panic!("Cannot create constraint from {} <= {}", lhs, rhs),
             Predicate::Less(Term::Int(lhs), Term::Int(rhs)) => {
                 let lin_lhs = LinearArithTerm::from(lhs);
                 let lin_rhs = LinearArithTerm::from(rhs);
                 let con = LinearConstraint::from((lin_lhs, lin_rhs, LinearConstraintType::Less));
-                Constraint::LinearConstraint(con)
+                Ok(Constraint::LinearConstraint(con))
             }
-            Predicate::Less(lhs, rhs) => panic!("Cannot create constraint from {} <= {}", lhs, rhs),
             Predicate::Geq(Term::Int(lhs), Term::Int(rhs)) => {
                 let lin_lhs = LinearArithTerm::from(lhs);
                 let lin_rhs = LinearArithTerm::from(rhs);
                 let con = LinearConstraint::from((lin_lhs, lin_rhs, LinearConstraintType::Geq));
-                Constraint::LinearConstraint(con)
+                Ok(Constraint::LinearConstraint(con))
             }
-            Predicate::Geq(lhs, rhs) => panic!("Cannot create constraint from {} <= {}", lhs, rhs),
             Predicate::Greater(Term::Int(lhs), Term::Int(rhs)) => {
                 let lin_lhs = LinearArithTerm::from(lhs);
                 let lin_rhs = LinearArithTerm::from(rhs);
                 let con = LinearConstraint::from((lin_lhs, lin_rhs, LinearConstraintType::Greater));
-                Constraint::LinearConstraint(con)
+                Ok(Constraint::LinearConstraint(con))
             }
-            Predicate::Greater(lhs, rhs) => {
-                panic!("Cannot create constraint from {} <= {}", lhs, rhs)
+            // Unsupported
+            Predicate::Leq(Term::String(_), Term::String(_))
+            | Predicate::Less(Term::String(_), Term::String(_))
+            | Predicate::Geq(Term::String(_), Term::String(_))
+            | Predicate::Greater(Term::String(_), Term::String(_)) => {
+                Err(Error::unsupported("Lexicographic order"))
             }
-            Predicate::In(_, _) => todo!(),
+            Predicate::In(_, _) => Err(Error::unsupported("Membership constraints")),
+            // Undefined
+            _ => Err(Error::SolverError(format!("Undefined predicate {}", value))),
         }
     }
 }
@@ -367,7 +379,7 @@ impl Display for Sort {
 }
 impl Display for Variable {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.name)
+        write!(f, "{}", self.name())
     }
 }
 

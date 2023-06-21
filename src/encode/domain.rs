@@ -21,6 +21,9 @@ pub struct DomainEncoder {
     /// The encoder for integer variables
     integers: IntegerEncoder,
 
+    /// Maps each variable of sort `Bool` to a propositional variable
+    bools: IndexMap<Variable, PVar>,
+
     encoding: Option<DomainEncoding>,
 }
 
@@ -29,7 +32,20 @@ impl DomainEncoder {
         Self {
             strings: SubstitutionEncoder::new(alphabet),
             integers: IntegerEncoder::new(),
+            bools: IndexMap::new(),
             encoding: None,
+        }
+    }
+
+    /// Encodes the boolean variables by instantiating a new propositional variable for each variable of sort `Bool`.
+    /// This method only needs to be called whenever the set of boolean variables changes (usuall only once).
+    /// However, it is safe to call it multiple times as it is idempotent for the same set of variables.
+    pub fn init_booleans(&mut self, var_manager: &VarManager) {
+        for v in var_manager.of_sort(Sort::Bool) {
+            if self.bools.get(v).is_some() {
+                continue;
+            }
+            self.bools.insert(v.clone(), pvar());
         }
     }
 
@@ -49,6 +65,10 @@ impl DomainEncoder {
 
     pub fn encoding(&self) -> &DomainEncoding {
         self.encoding.as_ref().unwrap()
+    }
+
+    pub fn get_bools(&self) -> &IndexMap<Variable, PVar> {
+        &self.bools
     }
 }
 
@@ -123,6 +143,7 @@ pub struct DomainEncoding {
     string: SubstitutionEncoding,
     /// The encoding of the integer domains
     int: IntEncoding,
+
     /// The alphabet used for the substitutions
     alphabet: IndexSet<char>,
     /// If true, then no lambda substitutions are allowed
@@ -163,6 +184,7 @@ impl DomainEncoding {
 
 /// Reads the substitutions from the model.
 /// Panics if the solver is not in a SAT state.
+/// TODO: Move this into the SubstitutionEncoding struct
 pub fn get_substitutions(
     domain_encoding: &DomainEncoding,
     var_manager: &VarManager,
@@ -172,7 +194,7 @@ pub fn get_substitutions(
         panic!("Solver is not in a SAT state")
     }
     let mut subs = HashMap::new();
-    for var in var_manager.of_sort(Sort::String, true) {
+    for var in var_manager.of_sort(Sort::String) {
         // initialize substitutions
         let len_var = var_manager.str_length_var(var).unwrap();
         subs.insert(
@@ -242,7 +264,7 @@ impl SubstitutionEncoder {
         let subs = &mut encoding.string;
         log::debug!("Encoding substitutions");
 
-        for str_var in var_manager.of_sort(Sort::String, true) {
+        for str_var in var_manager.of_sort(Sort::String) {
             let var = var_manager
                 .str_length_var(str_var)
                 .unwrap_or_else(|| panic!("No length variable for {}", str_var));
@@ -316,7 +338,7 @@ impl IntegerEncoder {
         var_manager: &VarManager,
     ) -> EncodingResult {
         let mut res = EncodingResult::empty();
-        for v in var_manager.of_sort(Sort::Int, true) {
+        for v in var_manager.of_sort(Sort::Int) {
             if var_manager.is_lenght_var(v) {
                 continue;
             } else {
@@ -340,7 +362,7 @@ impl IntegerEncoder {
     ) -> EncodingResult {
         let mut res = EncodingResult::empty();
 
-        for str_var in var_manager.of_sort(Sort::String, true) {
+        for str_var in var_manager.of_sort(Sort::String) {
             let str_len_var = var_manager.str_length_var(str_var).unwrap();
             let mut len_choices = vec![];
             let last_bound = self

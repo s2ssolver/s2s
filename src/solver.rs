@@ -5,12 +5,14 @@ use indexmap::IndexSet;
 
 use std::time::Instant;
 
+use crate::abstr::{Abstraction, Definition};
 use crate::bounds::{Bounds, IntDomain};
 use crate::encode::{
     AlignmentEncoder, ConstraintEncoder, EncodingResult, MddEncoder, WordEquationEncoder,
 };
 
-use crate::model::formula::Atom;
+use crate::error::Error;
+
 use crate::model::words::Symbol;
 use crate::model::words::WordEquation;
 use crate::model::Substitution;
@@ -18,7 +20,7 @@ use crate::model::{Constraint, Sort, VarManager};
 
 use crate::encode::domain::{get_substitutions, DomainEncoder};
 use crate::parse::Instance;
-use crate::sat::Cnf;
+use crate::sat::{neg, to_cnf, Cnf};
 
 /// The result of a satisfiability check
 pub enum SolverResult {
@@ -66,18 +68,25 @@ impl std::fmt::Display for SolverResult {
 // todo: Default solver for formulas.
 pub trait Solver {
     /// Solve the given instance.
-    fn solve(&mut self) -> SolverResult;
+    fn solve(&mut self) -> Result<SolverResult, Error>;
 }
 
-pub struct ConjunctiveSolver {
+/// Returns a solver for the given instance.
+pub fn get_solver(inst: Instance) -> Result<Box<dyn Solver>, Error> {
+    AbstractionSolver::new(inst).map(|s| Box::new(s) as Box<dyn Solver>)
+}
+
+struct AbstractionSolver {
     instance: Instance,
     alphabet: IndexSet<char>,
-    encoders: HashMap<Constraint, Box<dyn ConstraintEncoder>>,
+    encoders: HashMap<Definition, Box<dyn ConstraintEncoder>>,
+    abstraction: Abstraction,
     domain_encoder: DomainEncoder,
 }
 
-impl ConjunctiveSolver {
-    fn inst_encoder(con: &Constraint) -> Box<dyn ConstraintEncoder> {
+impl AbstractionSolver {
+    /// Instatiates a new encoder for the given constraint.
+    fn encoder_for_constraint(con: &Constraint) -> Box<dyn ConstraintEncoder> {
         match con {
             Constraint::WordEquation(eq) => Box::new(AlignmentEncoder::new(eq.clone())),
             Constraint::LinearConstraint(lc) => Box::new(MddEncoder::new(lc.clone())),
@@ -85,73 +94,84 @@ impl ConjunctiveSolver {
         }
     }
 
-    pub fn new(instance: Instance) -> Result<Self, String> {
+    fn new(mut instance: Instance) -> Result<Self, Error> {
         let mut alphabet = instance.get_formula().alphabet();
-
+        // Make sure the alphabet contains at least one character
         alphabet.insert('a');
 
-        let mut encoders = HashMap::new();
-
-        let non_conjunctive_error = Err(format!(
-            "Instance is not a conjunctive formula: {}",
-            instance.get_formula()
-        ));
-
-        if !instance.get_formula().is_conjunctive() {
-            return non_conjunctive_error;
-        }
-        for a in instance.get_formula().asserted_atoms() {
-            match a {
-                Atom::Predicate(p) => {
-                    let constraint = Constraint::from(p.clone());
-                    let encoder = Self::inst_encoder(&constraint);
-                    encoders.insert(constraint, encoder);
-                }
-                Atom::BoolVar(_) => todo!("Boolean variables are not supported"),
-                Atom::True => (), // Do nothing
-                Atom::False => todo!("Handle false atoms"),
-            }
-        }
-
+        // Instantiate the Domain encoder
         let dom_encoder = DomainEncoder::new(alphabet.clone());
+
+        // Create the abstraction
+        let abstraction = Abstraction::create(&mut instance)?;
+
+        // Instantiate the encoders
+        let mut encoders = HashMap::new();
+        for d in abstraction.get_definitions().iter() {
+            let constraint = Constraint::try_from(d.get_pred().clone())?;
+            let encoder = Self::encoder_for_constraint(&constraint);
+            encoders.insert(d.clone(), encoder);
+        }
+
         Ok(Self {
             instance,
             alphabet,
             encoders,
+            abstraction,
             domain_encoder: dom_encoder,
         })
     }
 
-    fn encode_bounded(&mut self, bounds: &Bounds) -> EncodingResult {
+    /// Encodes the problem instance with the given bounds.
+    /// Returns the encoding result.
+    fn encode_bounded(&mut self, bounds: &Bounds) -> Result<EncodingResult, Error> {
         let mut encoding = EncodingResult::empty();
         if self.encoders.is_empty() {
-            return EncodingResult::Trivial(true);
+            return Ok(EncodingResult::Trivial(true));
         }
 
         let mut bounds = bounds.clone();
         if self.encoders.len() == 1 {
-            if let Some(Constraint::WordEquation(eq)) = self.encoders.keys().next() {
-                bounds = sharpen_bounds(eq, &bounds, self.instance.get_var_manager())
+            // Check if the only constraint is a word equation
+            if let Some(Constraint::WordEquation(eq)) = self
+                .encoders
+                .keys()
+                .next()
+                .and_then(|d| d.get_pred().clone().try_into().ok())
+            {
+                bounds = sharpen_bounds(&eq, &bounds, self.instance.get_var_manager())
             }
         }
 
+        // Encode the domain
         let ts = Instant::now();
         let subs_cnf = self
             .domain_encoder
             .encode(&bounds, self.instance.get_var_manager());
         log::debug!(
-            "Encoded substitution in {} clauses ({} ms)",
+            "Encoded domain for all variables with {} clauses ({} ms)",
             subs_cnf.clauses(),
             ts.elapsed().as_millis()
         );
         encoding.join(subs_cnf);
         let dom = self.domain_encoder.encoding();
-        for (_, enc) in self.encoders.iter_mut() {
-            let res = enc.encode(&bounds, dom, self.instance.get_var_manager());
-            encoding.join(res);
+
+        if self.instance.get_formula().is_conjunctive() {
+            for (_, enc) in self.encoders.iter_mut() {
+                let res = enc.encode(&bounds, dom, self.instance.get_var_manager());
+                encoding.join(res);
+            }
+        } else {
+            for (d, enc) in self.encoders.iter_mut() {
+                let mut res = enc.encode(&bounds, dom, self.instance.get_var_manager());
+                // Insert the negation of the definitional boolean var into all clauses
+                let def_pvar = self.domain_encoder.get_bools()[d.get_var()];
+                res.iter_clauses_mut().for_each(|c| c.push(neg(def_pvar)));
+                encoding.join(res);
+            }
         }
 
-        encoding
+        Ok(encoding)
     }
 
     // Reset all states
@@ -161,37 +181,106 @@ impl ConjunctiveSolver {
             encoder.reset();
         }
     }
-}
 
-impl Solver for ConjunctiveSolver {
-    fn solve(&mut self) -> SolverResult {
-        let mut limit_upper_bounds =
-            Bounds::infer(self.instance.get_formula(), self.instance.get_var_manager());
-        log::info!("Found limit bounds: {}", limit_upper_bounds);
-        // Make sure upper bounds for string variables are at least one, otherwise the encoding is not correct
-        for v in self.instance.get_var_manager().of_sort(Sort::Int, true) {
+    fn find_limit_upper_bound(&self) -> Result<Bounds, Error> {
+        let mut limit_bounds =
+            Bounds::infer(self.instance.get_formula(), self.instance.get_var_manager())?;
+        // Make sure upper bounds for string variables are at least one, otherwise the encoding is not correct.
+        // This will have negative effects on the performance of the solver, but avoids having to treat edge cases in the encoding(s).
+        for v in self.instance.get_var_manager().of_sort(Sort::Int) {
             if self.instance.get_var_manager().is_lenght_var(v) {
-                if let Some(0) = limit_upper_bounds.get(v).get_upper() {
-                    log::info!("Setting upper bound for {} to 1", v);
-                    limit_upper_bounds.set_upper(v, 1);
+                if let Some(0) = limit_bounds.get(v).get_upper() {
+                    log::trace!("Setting upper bound for {} from 0 to 1", v);
+                    limit_bounds.set_upper(v, 1);
                 }
             }
         }
-        log::debug!("Adjusted limit bounds: {}", limit_upper_bounds);
-        if limit_upper_bounds.any_empty() {
-            log::info!("Empty upper bounds, unsat");
-            return SolverResult::Unsat;
+        Ok(limit_bounds)
+    }
+
+    /// Returns the next bounds to be used in the next round, based on the current bounds and the limit bounds.
+    /// If current bounds are None, the next bounds will be the first bounds to be used.
+    /// If the instance has an upper threshold, the upper bounds are clamped to the threshold.
+    /// If the current bounds are equal to or greater than the limit bounds, None is returned.
+    fn next_bounds(&self, current_bounds: Option<&Bounds>, limit_bounds: &Bounds) -> Bounds {
+        let mut next_bounds = match current_bounds {
+            Some(c) => c.clone(),
+            None => {
+                let mut current_bounds = Bounds::new();
+                for v in self.instance.get_var_manager().of_sort(Sort::String) {
+                    let len_var = self.instance.get_var_manager().str_length_var(v).unwrap();
+                    current_bounds.set(
+                        len_var,
+                        IntDomain::Bounded(0, self.instance.get_start_bound() as isize),
+                    );
+                }
+                current_bounds
+            }
+        };
+        next_bounds.next_square_uppers();
+
+        while next_bounds.any_empty() && !self.exeed_limit_bounds(&next_bounds, limit_bounds) {
+            next_bounds.next_square_uppers();
+            next_bounds = next_bounds.intersect(limit_bounds);
         }
 
-        let mut current_bounds = Bounds::new();
-        for v in self.instance.get_var_manager().of_sort(Sort::String, true) {
-            let len_var = self.instance.get_var_manager().str_length_var(v).unwrap();
-            current_bounds.set(
-                len_var,
-                IntDomain::Bounded(0, self.instance.get_start_bound() as isize),
-            );
+        if let Some(upper) = self.instance.get_upper_threshold() {
+            next_bounds.clamp_uppers(upper as isize);
         }
-        let mut effective_bounds = current_bounds.intersect(&limit_upper_bounds);
+        next_bounds
+    }
+
+    /// Returns true if the current upper bounds are greater than the limit upper bounds.
+    fn exeed_limit_bounds(&self, current_bounds: &Bounds, limit_bounds: &Bounds) -> bool {
+        for v in self.instance.get_var_manager().of_sort(Sort::Int) {
+            match (
+                current_bounds.get(v).get_upper(),
+                limit_bounds.get(v).get_upper(),
+            ) {
+                (Some(c), Some(l)) => {
+                    if c <= l {
+                        return false;
+                    }
+                }
+                (Some(_), None) => return false,
+                (None, Some(_)) => return false,
+                (None, None) => (),
+            }
+        }
+        true
+    }
+
+    /// Returns true if the current upper bounds are greater than the given threshold.
+    fn bounds_exceed_threshold(&self, current_bounds: &Bounds, threshold: usize) -> bool {
+        for v in self.instance.get_var_manager().of_sort(Sort::Int) {
+            match current_bounds.get(v).get_upper() {
+                Some(c) => {
+                    if c <= threshold as isize {
+                        return false;
+                    }
+                }
+                None => return false,
+            }
+        }
+
+        true
+    }
+}
+
+impl Solver for AbstractionSolver {
+    fn solve(&mut self) -> Result<SolverResult, Error> {
+        // Encode the booleans
+        self.domain_encoder
+            .init_booleans(self.instance.get_var_manager());
+        let limit_bounds = self.find_limit_upper_bound()?;
+        log::info!("Found limit bounds: {}", limit_bounds);
+
+        if limit_bounds.any_empty() {
+            log::info!("Empty upper bounds, unsat");
+            return Ok(SolverResult::Unsat);
+        }
+
+        let mut current_bounds = self.next_bounds(None, &limit_bounds);
 
         log::info!(
             "Started solving loop for system of {} equations, alphabet size {}",
@@ -201,16 +290,34 @@ impl Solver for ConjunctiveSolver {
         log::debug!("{}", self.instance.get_formula());
 
         let mut cadical: cadical::Solver = cadical::Solver::new();
+
+        if !self.instance.get_formula().is_conjunctive() {
+            // Convert the skeleton to cnf and add it to the solver
+            let ts = Instant::now();
+            let cnf = to_cnf(
+                self.abstraction.get_skeleton(),
+                self.instance.get_var_manager_mut(),
+            )?;
+            log::info!(
+                "Converted Boolean skeleton into cnf ({} clauses) in {} ms",
+                cnf.len(),
+                ts.elapsed().as_millis()
+            );
+            for clause in cnf.into_iter() {
+                cadical.add_clause(clause);
+            }
+        }
+
         let mut time_encoding = 0;
         let mut time_solving = 0;
         let mut fm = Cnf::new();
 
         loop {
-            log::info!("Current bounds {}", effective_bounds);
-            if !effective_bounds.any_empty() {
+            log::info!("Current bounds {}", current_bounds);
+            if !current_bounds.any_empty() {
                 let ts = Instant::now();
 
-                let encoding = self.encode_bounded(&effective_bounds);
+                let encoding = self.encode_bounded(&current_bounds)?;
                 let elapsed = ts.elapsed().as_millis();
                 log::info!("Encoding took {} ms", elapsed);
                 time_encoding += elapsed;
@@ -258,46 +365,53 @@ impl Solver for ConjunctiveSolver {
                                     time_encoding,
                                     time_solving
                                 );
-                                return SolverResult::Sat(model);
+                                return Ok(SolverResult::Sat(model));
                             }
                             Some(false) => {
-                                if effective_bounds == limit_upper_bounds {
+                                if self.exeed_limit_bounds(&current_bounds, &limit_bounds) {
                                     // We reached the limit bounds, but did not find a solution.
                                     // This means no solution exists.
                                     // Return unsat
                                     log::info!("Reached limit bounds");
-                                    return SolverResult::Unsat;
+                                    return Ok(SolverResult::Unsat);
                                 }
-                                if self.encoders.values().any(|enc| !enc.is_incremental()) {
-                                    // reset states if at least one solver is not incremental
-                                    self.reset();
-                                    cadical = cadical::Solver::new();
-                                    log::debug!("Reset state");
+                                if let Some(threshold) = self.instance.get_upper_threshold() {
+                                    if self.bounds_exceed_threshold(&current_bounds, threshold) {
+                                        // We reached the user-imposed upper bound and did not find a solution
+                                        // Return unknown
+                                        log::info!("Reached set threshold bound");
+                                        return Ok(SolverResult::Unknown);
+                                    }
                                 }
+                                // Do nothing, continue with next round
                             }
-                            None => panic!("SAT Solver returned unknown"),
+                            None => {
+                                return Err(Error::SolverError(
+                                    "SAT Solver returned unknown".to_string(),
+                                ))
+                            }
                         }
                     }
-                    EncodingResult::Trivial(false) => return SolverResult::Unsat,
-                    EncodingResult::Trivial(true) => return SolverResult::Sat(Substitution::new()),
+                    EncodingResult::Trivial(false) => return Ok(SolverResult::Unsat),
+                    EncodingResult::Trivial(true) => {
+                        let mut model = Substitution::new();
+                        model.use_defaults();
+                        return Ok(SolverResult::Sat(model));
+                    }
                 }
             } else {
                 log::info!("Empty bounds, skipping");
             }
-            if let Some(upper) = self.instance.get_upper_bound() {
-                if current_bounds.uppers_geq(upper as isize) {
-                    // We reached the user-imposed upper bound and did not find a solution
-                    // Return unknown
-                    log::info!("Reached set upper bound");
-                    return SolverResult::Unknown;
-                }
-            }
 
-            current_bounds.next_square_uppers();
-            if let Some(upper) = self.instance.get_upper_bound() {
-                current_bounds.clamp_uppers(upper as isize);
+            // Prepare next round
+            current_bounds = self.next_bounds(Some(&current_bounds), &limit_bounds);
+
+            if self.encoders.values().any(|enc| !enc.is_incremental()) {
+                // reset states if at least one solver is not incremental
+                self.reset();
+                cadical = cadical::Solver::new();
+                log::debug!("Reset state");
             }
-            effective_bounds = current_bounds.intersect(&limit_upper_bounds);
         }
     }
 }
@@ -312,7 +426,7 @@ fn sharpen_bounds(eq: &WordEquation, bounds: &Bounds, vars: &VarManager) -> Boun
         abs_consts += rhs_c - lhs_c;
     }
 
-    for var_k in vars.of_sort(Sort::String, true) {
+    for var_k in vars.of_sort(Sort::String) {
         let var_k_len = vars.str_length_var(var_k).unwrap();
         let denominator = eq.lhs().count(&Symbol::Variable(var_k.clone())) as isize
             - eq.rhs().count(&Symbol::Variable(var_k.clone())) as isize;
@@ -320,7 +434,7 @@ fn sharpen_bounds(eq: &WordEquation, bounds: &Bounds, vars: &VarManager) -> Boun
             continue;
         }
         let mut abs_k: isize = 0;
-        for var_j in vars.of_sort(Sort::String, true) {
+        for var_j in vars.of_sort(Sort::String) {
             if var_j == var_k {
                 continue;
             }

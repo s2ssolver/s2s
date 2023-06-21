@@ -3,6 +3,7 @@
 use std::fmt::Display;
 
 use indexmap::IndexSet;
+use quickcheck::Arbitrary;
 
 use crate::model::{regex::Regex, Variable};
 
@@ -66,6 +67,20 @@ pub enum Predicate {
     Geq(Term, Term),
     Greater(Term, Term),
     In(Term, Term),
+}
+
+impl Predicate {
+    /// Returns the signature of the arguments of this predicate.
+    pub fn signature(&self) -> Vec<Sort> {
+        match self {
+            Predicate::Equality(lhs, rhs)
+            | Predicate::Leq(lhs, rhs)
+            | Predicate::Less(lhs, rhs)
+            | Predicate::Geq(lhs, rhs)
+            | Predicate::Greater(lhs, rhs)
+            | Predicate::In(lhs, rhs) => vec![lhs.sort(), rhs.sort()],
+        }
+    }
 }
 
 pub enum Atom {
@@ -265,8 +280,31 @@ impl Formula {
         }
     }
 
+    /// Returns the negation normal form of this formula.
     pub fn to_nnf(&self) -> Self {
-        todo!("Implement NNF conversion")
+        match self {
+            Formula::True | Formula::False | Formula::Predicate(_) | Formula::BoolVar(_) => {
+                self.clone()
+            }
+            Formula::Or(fs) => Formula::or(fs.iter().map(|f| f.to_nnf()).collect()),
+            Formula::And(fs) => Formula::and(fs.iter().map(|f| f.to_nnf()).collect()),
+            Formula::Not(f) => match f.as_ref() {
+                Formula::True => Formula::ffalse(),
+                Formula::False => Formula::ttrue(),
+                Formula::BoolVar(_) | Formula::Predicate(_) => self.clone(),
+                Formula::Or(fs) => Formula::and(
+                    fs.iter()
+                        .map(|f| Formula::not(f.clone()).to_nnf())
+                        .collect(),
+                ),
+                Formula::And(fs) => Formula::or(
+                    fs.iter()
+                        .map(|f| Formula::not(f.clone()).to_nnf())
+                        .collect(),
+                ),
+                Formula::Not(ff) => ff.to_nnf(),
+            },
+        }
     }
 }
 
@@ -524,8 +562,69 @@ impl Display for Formula {
     }
 }
 
+/* Arbitrary */
+
+impl Arbitrary for Term {
+    fn arbitrary(g: &mut quickcheck::Gen) -> Self {
+        match g.choose(&[0, 1, 2]) {
+            // TODO regex terms
+            Some(&0) => Term::Bool(Box::new(Formula::BoolVar(Variable::new(
+                String::arbitrary(g),
+                Sort::Bool,
+            )))),
+            Some(&1) => Term::String(StringTerm::arbitrary(g)),
+            Some(&2) => Term::Int(IntTerm::arbitrary(g)),
+            Some(&3) => unreachable!(),
+            _ => unreachable!(),
+        }
+    }
+}
+
+impl Arbitrary for Predicate {
+    fn arbitrary(g: &mut quickcheck::Gen) -> Self {
+        match g.choose(&[0, 1, 2, 3, 4, 5]) {
+            Some(0) => Predicate::Equality(Term::arbitrary(g), Term::arbitrary(g)),
+            Some(1) => Predicate::Leq(Term::arbitrary(g), Term::arbitrary(g)),
+            Some(2) => Predicate::Less(Term::arbitrary(g), Term::arbitrary(g)),
+            Some(3) => Predicate::Geq(Term::arbitrary(g), Term::arbitrary(g)),
+            Some(4) => Predicate::Greater(Term::arbitrary(g), Term::arbitrary(g)),
+            Some(5) => Predicate::In(Term::arbitrary(g), Term::arbitrary(g)),
+            _ => unreachable!(),
+        }
+    }
+}
+
+impl Arbitrary for Formula {
+    fn arbitrary(g: &mut quickcheck::Gen) -> Self {
+        if g.size() <= 1 {
+            return match g.choose(&[0, 1, 2]) {
+                Some(0) => Formula::True,
+                Some(1) => Formula::False,
+                Some(2) => Formula::BoolVar(Variable::new(String::arbitrary(g), Sort::Bool)),
+                _ => unreachable!(),
+            };
+        } else {
+            let g = &mut quickcheck::Gen::new(g.size() - 1);
+            match g.choose(&[0, 1, 2, 3, 4, 5, 6]) {
+                Some(0) => Formula::True,
+                Some(1) => Formula::False,
+                Some(2) => Formula::BoolVar(Variable::new(String::arbitrary(g), Sort::Bool)),
+                Some(3) => Formula::Predicate(Predicate::arbitrary(g)),
+                Some(4) => Formula::Or(vec![Formula::arbitrary(g), Formula::arbitrary(g)]),
+                Some(5) => Formula::And(vec![Formula::arbitrary(g), Formula::arbitrary(g)]),
+                Some(6) => Formula::Not(Box::new(Formula::arbitrary(g))),
+                _ => unreachable!(),
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod test {
+
+    use quickcheck_macros::quickcheck;
+
+    use super::*;
 
     #[test]
     #[ignore = "Test not implemented yet"]
@@ -567,5 +666,78 @@ mod test {
     #[ignore = "Test not implemented yet"]
     fn asserted_atoms_mixed() {
         todo!()
+    }
+
+    #[test]
+    fn test_to_nnf_true() {
+        let formula = Formula::True;
+        assert_eq!(formula.to_nnf(), Formula::True);
+    }
+
+    #[test]
+    fn test_to_nnf_false() {
+        let formula = Formula::False;
+        assert_eq!(formula.to_nnf(), Formula::False);
+    }
+
+    #[quickcheck]
+    fn test_to_nnf_predicate(p: Predicate) {
+        let formula = Formula::Predicate(p);
+        assert_eq!(formula.to_nnf(), formula);
+    }
+
+    #[test]
+    fn test_to_nnf_bool_var() {
+        let formula = Formula::BoolVar(Variable::new(String::from("x"), Sort::Bool));
+        assert_eq!(formula.to_nnf(), formula);
+    }
+
+    #[quickcheck]
+    fn test_to_nnf_or(p1: Predicate, p2: Predicate) {
+        let formula = Formula::not(Formula::or(vec![
+            Formula::predicate(p1.clone()),
+            Formula::Predicate(p2.clone()),
+        ]));
+
+        let expected = Formula::and(vec![
+            Formula::not(Formula::Predicate(p1)),
+            Formula::not(Formula::Predicate(p2)),
+        ]);
+        assert_eq!(formula.to_nnf(), expected);
+    }
+
+    #[quickcheck]
+    fn test_to_nnf_and(p1: Predicate, p2: Predicate) {
+        let formula = Formula::not(Formula::and(vec![
+            Formula::predicate(p1.clone()),
+            Formula::Predicate(p2.clone()),
+        ]));
+
+        let expected = Formula::or(vec![
+            Formula::not(Formula::Predicate(p1)),
+            Formula::not(Formula::Predicate(p2)),
+        ]);
+        assert_eq!(formula.to_nnf(), expected);
+    }
+
+    #[quickcheck]
+    fn test_to_nff_double_negations(p: Predicate) {
+        let formula = Formula::not(Formula::not(Formula::Predicate(p.clone())));
+        assert_eq!(formula.to_nnf(), Formula::Predicate(p));
+    }
+
+    /// Calulates the height of nested negations in a formula
+    fn neg_height(fm: &Formula) -> usize {
+        match fm {
+            Formula::True | Formula::False | Formula::Predicate(_) | Formula::BoolVar(_) => 0,
+            Formula::Or(fs) | Formula::And(fs) => fs.iter().map(neg_height).max().unwrap_or(0),
+            Formula::Not(f) => 1 + neg_height(f),
+        }
+    }
+
+    #[quickcheck]
+    fn test_to_nnf_neg_height(fm: Formula) {
+        let fm = fm.to_nnf();
+        assert!(neg_height(&fm) <= 1);
     }
 }

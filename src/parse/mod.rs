@@ -8,7 +8,7 @@ use crate::{
     model::{formula::Predicate, words::StringTerm, VarManager},
 };
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum ParseError {
     /// Syntax error, optionally with line and column number
     SyntaxError(String, Option<(usize, usize)>),
@@ -81,11 +81,15 @@ impl Instance {
         &self.var_manager
     }
 
+    pub fn get_var_manager_mut(&mut self) -> &mut VarManager {
+        &mut self.var_manager
+    }
+
     pub fn get_start_bound(&self) -> usize {
         max(self.start_bound, 1)
     }
 
-    pub fn get_upper_bound(&self) -> Option<usize> {
+    pub fn get_upper_threshold(&self) -> Option<usize> {
         self.ubound
     }
 
@@ -208,6 +212,8 @@ fn parse_woorpje(input: &str) -> Result<Instance, ParseError> {
 #[cfg(test)]
 mod tests {
 
+    use crate::model::Sort;
+
     use super::*;
 
     #[test]
@@ -218,7 +224,7 @@ Equation: aX = ab"#;
 
         let instance = parse_woorpje(input).unwrap();
         let vm = instance.get_var_manager();
-        assert_eq!(vm.of_sort(crate::model::Sort::String, true).count(), 1);
+        assert_eq!(vm.of_sort(Sort::String).count(), 1);
 
         let expected_lhs =
             StringTerm::concat_var(StringTerm::constant("a"), vm.by_name("X").unwrap());

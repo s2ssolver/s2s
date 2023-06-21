@@ -1,7 +1,11 @@
+use quickcheck::{Arbitrary, Gen};
+
 use crate::model::words::Symbol;
 use std::{collections::HashMap, fmt::Display, ops::Index};
 
-use super::{formula::Term, words::WordEquation, Evaluable, Substitutable, Substitution, Variable};
+use super::{
+    formula::Term, words::WordEquation, Evaluable, Sort, Substitutable, Substitution, Variable,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum IntTerm {
@@ -435,6 +439,39 @@ impl Display for LinearConstraintType {
 impl Display for LinearConstraint {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{} {} {}", self.lhs, self.typ, self.rhs)
+    }
+}
+
+/* Arbitrary */
+
+impl Arbitrary for IntTerm {
+    fn arbitrary(g: &mut quickcheck::Gen) -> Self {
+        if g.size() <= 1 {
+            return g
+                .choose(&[
+                    IntTerm::Const(isize::arbitrary(&mut Gen::new(1))),
+                    IntTerm::Var(Variable::new(
+                        String::arbitrary(&mut Gen::new(1)),
+                        Sort::Int,
+                    )),
+                ])
+                .unwrap()
+                .clone();
+        }
+        let mut new_gen = Gen::new(g.size() - 1);
+        match g.choose(&[0, 1, 2, 3]) {
+            Some(0) => IntTerm::Var(Variable::new(String::arbitrary(g), Sort::Int)),
+            Some(1) => IntTerm::Const(isize::arbitrary(g)),
+            Some(2) => IntTerm::Plus(
+                Box::new(IntTerm::arbitrary(&mut new_gen)),
+                Box::new(IntTerm::arbitrary(&mut new_gen)),
+            ),
+            Some(3) => IntTerm::Times(
+                Box::new(IntTerm::arbitrary(&mut new_gen)),
+                Box::new(IntTerm::arbitrary(&mut new_gen)),
+            ),
+            _ => unreachable!(),
+        }
     }
 }
 
