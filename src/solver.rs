@@ -80,7 +80,7 @@ struct AbstractionSolver {
     instance: Instance,
     alphabet: IndexSet<char>,
     encoders: HashMap<Definition, Box<dyn ConstraintEncoder>>,
-    _abstraction: Abstraction,
+    abstraction: Abstraction,
     domain_encoder: DomainEncoder,
 }
 
@@ -117,7 +117,7 @@ impl AbstractionSolver {
             instance,
             alphabet,
             encoders,
-            _abstraction: abstraction,
+            abstraction,
             domain_encoder: dom_encoder,
         })
     }
@@ -295,7 +295,7 @@ impl Solver for AbstractionSolver {
             // Convert the skeleton to cnf and add it to the solver
             let ts = Instant::now();
             let cnf = to_cnf(
-                self._abstraction.get_skeleton(),
+                self.abstraction.get_skeleton(),
                 self.instance.get_var_manager_mut(),
             )?;
             log::info!(
@@ -383,8 +383,7 @@ impl Solver for AbstractionSolver {
                                         return Ok(SolverResult::Unknown);
                                     }
                                 }
-
-                                // Do not terminate yet, prepare next round
+                                // Do nothing, continue with next round
                             }
                             None => {
                                 return Err(Error::SolverError(
