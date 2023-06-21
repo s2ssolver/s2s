@@ -109,7 +109,7 @@ impl Definitions {
 
 pub struct Abstraction {
     /// The Boolean skeleton, a propositional formula.
-    _skeleton: Formula,
+    skeleton: Formula,
     /// The set of definitional Boolean variables.
     definitions: Definitions,
 }
@@ -117,13 +117,18 @@ pub struct Abstraction {
 impl Abstraction {
     fn new(formula: Formula, definitions: Definitions) -> Self {
         Self {
-            _skeleton: formula,
+            skeleton: formula,
             definitions,
         }
     }
 
     pub fn get_definitions(&self) -> &Definitions {
         &self.definitions
+    }
+
+    /// Returns the Boolean skeleton.
+    pub fn get_skeleton(&self) -> &Formula {
+        &self.skeleton
     }
 
     /// Abstracts a formula into a Boolean skeleton and a set of definitional Boolean variables.
@@ -260,7 +265,7 @@ mod test {
 
         assert!(abstr.is_ok());
         let abstr = abstr.unwrap();
-        assert!(is_bool(&abstr._skeleton));
+        assert!(is_bool(&abstr.skeleton));
     }
 
     #[quickcheck]

@@ -20,7 +20,7 @@ use crate::model::{Constraint, Sort, VarManager};
 
 use crate::encode::domain::{get_substitutions, DomainEncoder};
 use crate::parse::Instance;
-use crate::sat::{neg, Cnf};
+use crate::sat::{neg, to_cnf, Cnf};
 
 /// The result of a satisfiability check
 pub enum SolverResult {
@@ -292,7 +292,20 @@ impl Solver for AbstractionSolver {
         let mut cadical: cadical::Solver = cadical::Solver::new();
 
         if !self.instance.get_formula().is_conjunctive() {
-            // Convert sekelon to cnf and add clauses to the solver
+            // Convert the skeleton to cnf and add it to the solver
+            let ts = Instant::now();
+            let cnf = to_cnf(
+                self._abstraction.get_skeleton(),
+                self.instance.get_var_manager_mut(),
+            )?;
+            log::info!(
+                "Converted Boolean skeleton into cnf ({} clauses) in {} ms",
+                cnf.len(),
+                ts.elapsed().as_millis()
+            );
+            for clause in cnf.into_iter() {
+                cadical.add_clause(clause);
+            }
         }
 
         let mut time_encoding = 0;
