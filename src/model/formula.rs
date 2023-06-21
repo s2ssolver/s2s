@@ -5,7 +5,7 @@ use std::fmt::Display;
 use indexmap::IndexSet;
 use quickcheck::Arbitrary;
 
-use crate::model::{regex::Regex, Variable};
+use crate::model::{regex::ReTerm, Variable};
 
 use super::{integer::IntTerm, words::StringTerm, Evaluable, Sort, Substitutable, Substitution};
 
@@ -21,7 +21,7 @@ pub trait Alphabet {
 pub enum Term {
     String(StringTerm),
     Int(IntTerm),
-    Regular(Regex),
+    Regular(ReTerm),
     Bool(Box<Formula>),
 }
 
@@ -45,6 +45,12 @@ impl From<StringTerm> for Term {
 impl From<IntTerm> for Term {
     fn from(i: IntTerm) -> Self {
         Term::Int(i)
+    }
+}
+
+impl From<ReTerm> for Term {
+    fn from(r: ReTerm) -> Self {
+        Term::Regular(r)
     }
 }
 

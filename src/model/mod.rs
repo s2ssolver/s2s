@@ -10,7 +10,7 @@ use crate::{
 use self::{
     formula::{Predicate, Term},
     integer::{IntTerm, LinearArithTerm, LinearConstraint, LinearConstraintType},
-    regex::Regex,
+    regex::RegularConstraint,
     words::{StringTerm, WordEquation},
 };
 
@@ -205,7 +205,7 @@ impl VarManager {
 pub enum Constraint {
     WordEquation(WordEquation),
     LinearConstraint(LinearConstraint),
-    RegularConstraint(Regex),
+    RegularConstraint(RegularConstraint),
 }
 
 impl TryFrom<Predicate> for Constraint {

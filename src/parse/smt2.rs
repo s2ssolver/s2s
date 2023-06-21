@@ -1,14 +1,16 @@
 use std::io::BufRead;
 
 use aws_smt_ir::{
-    logic::{all, ArithOp, StringOp, ALL},
-    visit::{ControlFlow, SuperVisit, Visit, Visitor},
-    Ctx, ISort, Script, Sorted, Term,
+    logic::{all::Op, ArithOp, StringOp, ALL},
+    visit::{ControlFlow, Visit, Visitor},
+    Constant, CoreOp, Ctx, IConst, ISort, IVar, Identifier, Logic, Script, Sort, Sorted, Term,
 };
+use num_bigint::BigUint;
+use smt2parser::concrete::Command;
 
 use crate::{
     model::formula::{Formula, Predicate},
-    model::{integer::IntTerm, words::StringTerm, Sort, VarManager},
+    model::{integer::IntTerm, regex::ReTerm, words::StringTerm, Sort as NSort, VarManager},
 };
 
 use super::{Instance, ParseError};
@@ -20,7 +22,7 @@ pub fn parse_smt<R: BufRead>(smt: R) -> Result<Instance, ParseError> {
     let mut asserts = vec![];
     for command in script {
         match command {
-            smt2parser::concrete::Command::Assert { term } => {
+            Command::Assert { term } => {
                 let mut visitor = FormulaBuilder {
                     var_manager: &var_manager,
                     context: Ctx::default(),
@@ -30,10 +32,10 @@ pub fn parse_smt<R: BufRead>(smt: R) -> Result<Instance, ParseError> {
                     ControlFlow::Break(res) => asserts.push(res?),
                 }
             }
-            smt2parser::concrete::Command::DeclareConst { symbol, sort } => {
+            Command::DeclareConst { symbol, sort } => {
                 let _v = var_manager.new_var(&symbol.0, isort2sort(&sort)?);
             }
-            smt2parser::concrete::Command::DeclareFun {
+            Command::DeclareFun {
                 symbol,
                 parameters,
                 sort,
@@ -47,34 +49,32 @@ pub fn parse_smt<R: BufRead>(smt: R) -> Result<Instance, ParseError> {
                     ));
                 }
             }
-            smt2parser::concrete::Command::CheckSat
-            | smt2parser::concrete::Command::SetLogic { .. }
-            | smt2parser::concrete::Command::GetModel => {}
+            Command::CheckSat | Command::SetLogic { .. } | Command::GetModel => {}
 
-            smt2parser::concrete::Command::CheckSatAssuming { .. }
-            | smt2parser::concrete::Command::DeclareDatatype { .. }
-            | smt2parser::concrete::Command::DeclareDatatypes { .. }
-            | smt2parser::concrete::Command::DeclareSort { .. }
-            | smt2parser::concrete::Command::DefineFun { .. }
-            | smt2parser::concrete::Command::DefineFunRec { .. }
-            | smt2parser::concrete::Command::DefineFunsRec { .. }
-            | smt2parser::concrete::Command::DefineSort { .. }
-            | smt2parser::concrete::Command::Echo { .. }
-            | smt2parser::concrete::Command::Exit
-            | smt2parser::concrete::Command::GetAssertions
-            | smt2parser::concrete::Command::GetAssignment
-            | smt2parser::concrete::Command::GetInfo { .. }
-            | smt2parser::concrete::Command::GetOption { .. }
-            | smt2parser::concrete::Command::GetProof
-            | smt2parser::concrete::Command::GetUnsatAssumptions
-            | smt2parser::concrete::Command::GetUnsatCore
-            | smt2parser::concrete::Command::GetValue { .. }
-            | smt2parser::concrete::Command::Pop { .. }
-            | smt2parser::concrete::Command::Push { .. }
-            | smt2parser::concrete::Command::Reset
-            | smt2parser::concrete::Command::ResetAssertions
-            | smt2parser::concrete::Command::SetInfo { .. }
-            | smt2parser::concrete::Command::SetOption { .. } => {
+            Command::CheckSatAssuming { .. }
+            | Command::DeclareDatatype { .. }
+            | Command::DeclareDatatypes { .. }
+            | Command::DeclareSort { .. }
+            | Command::DefineFun { .. }
+            | Command::DefineFunRec { .. }
+            | Command::DefineFunsRec { .. }
+            | Command::DefineSort { .. }
+            | Command::Echo { .. }
+            | Command::Exit
+            | Command::GetAssertions
+            | Command::GetAssignment
+            | Command::GetInfo { .. }
+            | Command::GetOption { .. }
+            | Command::GetProof
+            | Command::GetUnsatAssumptions
+            | Command::GetUnsatCore
+            | Command::GetValue { .. }
+            | Command::Pop { .. }
+            | Command::Push { .. }
+            | Command::Reset
+            | Command::ResetAssertions
+            | Command::SetInfo { .. }
+            | Command::SetOption { .. } => {
                 return Err(ParseError::Unsupported(command.to_string()))
             }
         }
@@ -94,7 +94,7 @@ struct FormulaBuilder<'a> {
 }
 
 impl<'a> FormulaBuilder<'a> {
-    fn get_sorts(&mut self, ts: &[Term]) -> Result<Vec<Sort>, ParseError> {
+    fn get_sorts(&mut self, ts: &[Term]) -> Result<Vec<NSort>, ParseError> {
         let mut sorts = Vec::with_capacity(ts.len());
 
         for t in ts {
@@ -109,34 +109,6 @@ impl<'a> FormulaBuilder<'a> {
         }
         Ok(sorts)
     }
-
-    fn build_string_term(&self, t: &Term) -> Result<StringTerm, ParseError> {
-        let mut builder = StringTermBuilder {
-            var_manager: self.var_manager,
-        };
-        let res = {
-            match t.visit_with(&mut builder) {
-                ControlFlow::Continue(_) => unreachable!(),
-                ControlFlow::Break(Ok(p)) => p,
-                ControlFlow::Break(Err(e)) => return Err(e),
-            }
-        };
-        Ok(res)
-    }
-
-    fn build_int_term(&self, t: &Term) -> Result<IntTerm, ParseError> {
-        let mut builder = IntArithTermBuilder {
-            var_manager: self.var_manager,
-        };
-        let res = {
-            match t.visit_with(&mut builder) {
-                ControlFlow::Continue(_) => unreachable!(),
-                ControlFlow::Break(Ok(p)) => p,
-                ControlFlow::Break(Err(e)) => return Err(e),
-            }
-        };
-        Ok(res)
-    }
 }
 
 impl<'a> Visitor<ALL> for FormulaBuilder<'a> {
@@ -147,13 +119,13 @@ impl<'a> Visitor<ALL> for FormulaBuilder<'a> {
             Term::Constant(_) => todo!(),
             Term::Variable(_) => todo!(),
             Term::CoreOp(op) => match op.as_ref() {
-                aws_smt_ir::CoreOp::True => ControlFlow::Break(Ok(Formula::ttrue())),
-                aws_smt_ir::CoreOp::False => ControlFlow::Break(Ok(Formula::ffalse())),
-                aws_smt_ir::CoreOp::Not(f) => f.visit_with(self).map_break(|t| match t {
+                CoreOp::True => ControlFlow::Break(Ok(Formula::ttrue())),
+                CoreOp::False => ControlFlow::Break(Ok(Formula::ffalse())),
+                CoreOp::Not(f) => f.visit_with(self).map_break(|t| match t {
                     Ok(t) => Ok(Formula::Not(Box::new(t))),
                     Err(e) => Err(e),
                 }),
-                aws_smt_ir::CoreOp::And(fs) => {
+                CoreOp::And(fs) => {
                     let mut fms = Vec::with_capacity(fs.len());
                     for f in fs {
                         match f.visit_with(self) {
@@ -164,7 +136,7 @@ impl<'a> Visitor<ALL> for FormulaBuilder<'a> {
                     }
                     ControlFlow::Break(Ok(Formula::And(fms)))
                 }
-                aws_smt_ir::CoreOp::Or(fs) => {
+                CoreOp::Or(fs) => {
                     let mut fms = Vec::with_capacity(fs.len());
                     for f in fs {
                         match f.visit_with(self) {
@@ -175,9 +147,9 @@ impl<'a> Visitor<ALL> for FormulaBuilder<'a> {
                     }
                     ControlFlow::Break(Ok(Formula::Or(fms)))
                 }
-                aws_smt_ir::CoreOp::Xor(_) => todo!(),
-                aws_smt_ir::CoreOp::Imp(_) => todo!(),
-                aws_smt_ir::CoreOp::Eq(ts) => {
+                CoreOp::Xor(_) => todo!(),
+                CoreOp::Imp(_) => todo!(),
+                CoreOp::Eq(ts) => {
                     if ts.len() != 2 {
                         return ControlFlow::Break(Err(ParseError::SyntaxError(
                             "= needs exactly arguments".to_string(),
@@ -193,12 +165,12 @@ impl<'a> Visitor<ALL> for FormulaBuilder<'a> {
                     let sort_lhs = sorts[0];
                     let sort_rhs = sorts[1];
                     match (sort_lhs, sort_rhs) {
-                        (Sort::String, Sort::String) => {
-                            let pat_lhs = match self.build_string_term(lhs) {
+                        (NSort::String, NSort::String) => {
+                            let pat_lhs = match build_string_term(lhs, self.var_manager) {
                                 Ok(p) => p,
                                 Err(e) => return ControlFlow::Break(Err(e)),
                             };
-                            let pat_rhs = match self.build_string_term(rhs) {
+                            let pat_rhs = match build_string_term(rhs, self.var_manager) {
                                 Ok(p) => p,
                                 Err(e) => return ControlFlow::Break(Err(e)),
                             };
@@ -206,12 +178,12 @@ impl<'a> Visitor<ALL> for FormulaBuilder<'a> {
                             let eq_atom = Formula::Predicate(equation);
                             ControlFlow::Break(Ok(eq_atom))
                         }
-                        (Sort::Int, Sort::Int) => {
-                            let term_lhs = match self.build_int_term(lhs) {
+                        (NSort::Int, NSort::Int) => {
+                            let term_lhs = match build_int_term(lhs, self.var_manager) {
                                 Ok(p) => p,
                                 Err(e) => return ControlFlow::Break(Err(e)),
                             };
-                            let term_rhs = match self.build_int_term(rhs) {
+                            let term_rhs = match build_int_term(rhs, self.var_manager) {
                                 Ok(p) => p,
                                 Err(e) => return ControlFlow::Break(Err(e)),
                             };
@@ -219,18 +191,18 @@ impl<'a> Visitor<ALL> for FormulaBuilder<'a> {
                             let equation = Predicate::Equality(term_lhs.into(), term_rhs.into());
                             ControlFlow::Break(Ok(Formula::Predicate(equation)))
                         }
-                        (Sort::Bool, Sort::Bool) => todo!("Parse boolean equivalence"),
+                        (NSort::Bool, NSort::Bool) => todo!("Parse boolean equivalence"),
                         (_, _) => ControlFlow::Break(Err(ParseError::SyntaxError(
                             format!("Sorts for '=' mismatch: {} and {}", sort_lhs, sort_rhs),
                             None,
                         ))),
                     }
                 }
-                aws_smt_ir::CoreOp::Distinct(_) => todo!(),
-                aws_smt_ir::CoreOp::Ite(_, _, _) => todo!(),
+                CoreOp::Distinct(_) => todo!(),
+                CoreOp::Ite(_, _, _) => todo!(),
             },
             Term::OtherOp(op) => match op.as_ref() {
-                all::Op::Arith(arith_op) => match arith_op {
+                Op::Arith(arith_op) => match arith_op {
                     ArithOp::Plus(_) => todo!(),
                     ArithOp::Neg(_) => todo!(),
                     ArithOp::Minus(_) => todo!(),
@@ -256,15 +228,15 @@ impl<'a> Visitor<ALL> for FormulaBuilder<'a> {
                         let sort_lhs = sorts[0];
                         let sort_rhs = sorts[1];
                         match (sort_lhs, sort_rhs) {
-                            (Sort::String, Sort::String) => ControlFlow::Break(Err(
+                            (NSort::String, NSort::String) => ControlFlow::Break(Err(
                                 ParseError::Unsupported("Lexicographic order".to_string()),
                             )),
-                            (Sort::Int, Sort::Int) => {
-                                let term_lhs = match self.build_int_term(lhs) {
+                            (NSort::Int, NSort::Int) => {
+                                let term_lhs = match build_int_term(lhs, self.var_manager) {
                                     Ok(p) => p,
                                     Err(e) => return ControlFlow::Break(Err(e)),
                                 };
-                                let term_rhs = match self.build_int_term(rhs) {
+                                let term_rhs = match build_int_term(rhs, self.var_manager) {
                                     Ok(p) => p,
                                     Err(e) => return ControlFlow::Break(Err(e)),
                                 };
@@ -301,76 +273,49 @@ impl<'a> Visitor<ALL> for FormulaBuilder<'a> {
                     ArithOp::ToInt(_) => todo!(),
                     ArithOp::IsInt(_) => todo!(),
                 },
-                all::Op::Array(_) => todo!(),
-                all::Op::BitVec(_) => todo!(),
-                all::Op::Set(_) => todo!(),
-                all::Op::String(_) => todo!(),
+                Op::Array(_) => todo!(),
+                Op::BitVec(_) => todo!(),
+                Op::Set(_) => todo!(),
+                Op::String(string_op) => match string_op {
+                    StringOp::InRe(t, r) => {
+                        let pat = match build_string_term(t, self.var_manager) {
+                            Ok(p) => p,
+                            Err(e) => return ControlFlow::Break(Err(e)),
+                        };
+                        let re = match build_re_term(r, self.var_manager) {
+                            Ok(p) => p,
+                            Err(e) => return ControlFlow::Break(Err(e)),
+                        };
+                        let pred = Predicate::In(pat.into(), re.into());
+                        ControlFlow::Break(Ok(Formula::Predicate(pred)))
+                    }
+                    StringOp::LexOrd(_)
+                    | StringOp::RefClosLexOrd(_)
+                    | StringOp::SingStrAt(_, _)
+                    | StringOp::Substr(_, _, _)
+                    | StringOp::PrefixOf(_, _)
+                    | StringOp::SuffixOf(_, _)
+                    | StringOp::Contains(_, _)
+                    | StringOp::IndexOf(_, _, _)
+                    | StringOp::Replace(_, _, _)
+                    | StringOp::ReplaceAll(_, _, _)
+                    | StringOp::ReplaceRe(_, _, _)
+                    | StringOp::IsDigit(_)
+                    | StringOp::ReplaceReAll(_, _, _) => {
+                        ControlFlow::Break(Err(ParseError::Unsupported(format!("{}", string_op))))
+                    }
+
+                    _ => ControlFlow::Break(Err(ParseError::SyntaxError(
+                        format!("Unexpected string operation: {}", string_op),
+                        None,
+                    ))),
+                },
             },
             Term::UF(_) => todo!(),
             Term::Let(_) => todo!(),
             Term::Match(_) => todo!(),
             Term::Quantifier(_) => todo!(),
         }
-    }
-
-    fn visit_const(
-        &mut self,
-        _constant: &aws_smt_ir::IConst,
-    ) -> aws_smt_ir::visit::ControlFlow<Self::BreakTy> {
-        aws_smt_ir::visit::ControlFlow::CONTINUE
-    }
-
-    fn visit_var(
-        &mut self,
-        _var: &aws_smt_ir::IVar<<ALL as aws_smt_ir::Logic>::Var>,
-    ) -> aws_smt_ir::visit::ControlFlow<Self::BreakTy> {
-        aws_smt_ir::visit::ControlFlow::CONTINUE
-    }
-
-    fn visit_core_op(
-        &mut self,
-        op: &aws_smt_ir::ICoreOp<ALL>,
-    ) -> aws_smt_ir::visit::ControlFlow<Self::BreakTy> {
-        op.super_visit_with(self)
-    }
-
-    fn visit_theory_op(
-        &mut self,
-        op: &aws_smt_ir::IOp<ALL>,
-    ) -> aws_smt_ir::visit::ControlFlow<Self::BreakTy> {
-        op.super_visit_with(self)
-    }
-
-    fn visit_uninterpreted_func(
-        &mut self,
-        uf: &aws_smt_ir::IUF<ALL>,
-    ) -> aws_smt_ir::visit::ControlFlow<Self::BreakTy> {
-        uf.super_visit_with(self)
-    }
-
-    fn visit_let(
-        &mut self,
-        l: &aws_smt_ir::ILet<ALL>,
-    ) -> aws_smt_ir::visit::ControlFlow<Self::BreakTy> {
-        l.super_visit_with(self)
-    }
-
-    fn visit_match(
-        &mut self,
-        m: &aws_smt_ir::IMatch<ALL>,
-    ) -> aws_smt_ir::visit::ControlFlow<Self::BreakTy> {
-        m.super_visit_with(self)
-    }
-
-    fn visit_quantifier(
-        &mut self,
-        quantifier: &aws_smt_ir::IQuantifier<ALL>,
-    ) -> aws_smt_ir::visit::ControlFlow<Self::BreakTy> {
-        quantifier.super_visit_with(self)
-    }
-
-    fn context(&self) -> Option<&Ctx> {
-        Some(&self.context)
     }
 
     fn context_mut(&mut self) -> Option<&mut Ctx> {
@@ -380,6 +325,42 @@ impl<'a> Visitor<ALL> for FormulaBuilder<'a> {
         );
         Some(&mut self.context)
     }
+}
+
+fn build_string_term(t: &Term, var_manager: &VarManager) -> Result<StringTerm, ParseError> {
+    let mut builder = StringTermBuilder { var_manager };
+    let res = {
+        match t.visit_with(&mut builder) {
+            ControlFlow::Continue(_) => unreachable!(),
+            ControlFlow::Break(Ok(p)) => p,
+            ControlFlow::Break(Err(e)) => return Err(e),
+        }
+    };
+    Ok(res)
+}
+
+fn build_int_term(t: &Term, var_manager: &VarManager) -> Result<IntTerm, ParseError> {
+    let mut builder = IntArithTermBuilder { var_manager };
+    let res = {
+        match t.visit_with(&mut builder) {
+            ControlFlow::Continue(_) => unreachable!(),
+            ControlFlow::Break(Ok(p)) => p,
+            ControlFlow::Break(Err(e)) => return Err(e),
+        }
+    };
+    Ok(res)
+}
+
+fn build_re_term(t: &Term, var_manager: &VarManager) -> Result<ReTerm, ParseError> {
+    let mut builder = ReTermBuilder { var_manager };
+    let res = {
+        match t.visit_with(&mut builder) {
+            ControlFlow::Continue(_) => unreachable!(),
+            ControlFlow::Break(Ok(p)) => p,
+            ControlFlow::Break(Err(e)) => return Err(e),
+        }
+    };
+    Ok(res)
 }
 
 struct StringTermBuilder<'a> {
@@ -395,7 +376,7 @@ impl<'a> Visitor<ALL> for StringTermBuilder<'a> {
             Term::Variable(v) => v.visit_with(self),
 
             Term::OtherOp(s) => match s.as_ref() {
-                all::Op::String(sop) => match sop {
+                Op::String(sop) => match sop {
                     StringOp::StrConcat(ts) => {
                         let mut pat = StringTerm::empty();
                         for t in ts {
@@ -444,11 +425,9 @@ impl<'a> Visitor<ALL> for StringTermBuilder<'a> {
                         "String operation".to_string(),
                     ))),
                 },
-                all::Op::Arith(_) | all::Op::Array(_) | all::Op::BitVec(_) | all::Op::Set(_) => {
-                    ControlFlow::Break(Err(ParseError::Unsupported(
-                        "Non-String operation".to_string(),
-                    )))
-                }
+                Op::Arith(_) | Op::Array(_) | Op::BitVec(_) | Op::Set(_) => ControlFlow::Break(
+                    Err(ParseError::Unsupported("Non-String operation".to_string())),
+                ),
             },
             Term::CoreOp(_) | Term::UF(_) | Term::Let(_) | Term::Match(_) | Term::Quantifier(_) => {
                 ControlFlow::Break(Err(ParseError::Unsupported(
@@ -458,26 +437,23 @@ impl<'a> Visitor<ALL> for StringTermBuilder<'a> {
         }
     }
 
-    fn visit_const(&mut self, constant: &aws_smt_ir::IConst) -> ControlFlow<Self::BreakTy> {
+    fn visit_const(&mut self, constant: &IConst) -> ControlFlow<Self::BreakTy> {
         match constant.as_ref() {
-            aws_smt_ir::Constant::String(s) => ControlFlow::Break(Ok(StringTerm::constant(s))),
-            aws_smt_ir::Constant::Numeral(_)
-            | aws_smt_ir::Constant::Decimal(_)
-            | aws_smt_ir::Constant::Hexadecimal(_)
-            | aws_smt_ir::Constant::Binary(_) => ControlFlow::Break(Err(ParseError::SyntaxError(
+            Constant::String(s) => ControlFlow::Break(Ok(StringTerm::constant(s))),
+            Constant::Numeral(_)
+            | Constant::Decimal(_)
+            | Constant::Hexadecimal(_)
+            | Constant::Binary(_) => ControlFlow::Break(Err(ParseError::SyntaxError(
                 "Can only concatenate string constants".to_string(),
                 None,
             ))),
         }
     }
 
-    fn visit_var(
-        &mut self,
-        var: &aws_smt_ir::IVar<<ALL as aws_smt_ir::Logic>::Var>,
-    ) -> ControlFlow<Self::BreakTy> {
+    fn visit_var(&mut self, var: &IVar<<ALL as Logic>::Var>) -> ControlFlow<Self::BreakTy> {
         let name = var.as_ref().sym_str();
         if let Some(vvar) = self.var_manager.by_name(name) {
-            if vvar.sort() != Sort::String {
+            if vvar.sort() != NSort::String {
                 return ControlFlow::Break(Err(ParseError::SyntaxError(
                     format!("Expected string variable but found {} ", vvar.sort()),
                     None,
@@ -487,6 +463,219 @@ impl<'a> Visitor<ALL> for StringTermBuilder<'a> {
         } else {
             ControlFlow::Break(Err(ParseError::UnknownIdentifier(name.to_string())))
         }
+    }
+}
+
+struct ReTermBuilder<'a> {
+    var_manager: &'a VarManager,
+}
+
+impl<'a> Visitor<ALL> for ReTermBuilder<'a> {
+    type BreakTy = Result<ReTerm, ParseError>;
+
+    fn visit_term(&mut self, term: &Term<ALL>) -> ControlFlow<Self::BreakTy> {
+        match term {
+            Term::Constant(c) => c.visit_with(self),
+            Term::Variable(v) => v.visit_with(self),
+
+            Term::OtherOp(s) => match s.as_ref() {
+                Op::String(sop) => match sop {
+                    StringOp::ToRe(t) => match build_string_term(t, self.var_manager) {
+                        Ok(p) => ControlFlow::Break(Ok(ReTerm::String(p))),
+                        Err(e) => ControlFlow::Break(Err(e)),
+                    },
+                    StringOp::ReNone => ControlFlow::Break(Ok(ReTerm::None)),
+                    StringOp::ReAll => ControlFlow::Break(Ok(ReTerm::All)),
+                    StringOp::ReAllChar => ControlFlow::Break(Ok(ReTerm::Any)),
+                    StringOp::ReConcat(rs) => {
+                        let mut res = Vec::with_capacity(rs.len());
+                        for r in rs {
+                            match r.visit_with(self) {
+                                ControlFlow::Continue(_) => unreachable!(),
+                                ControlFlow::Break(Ok(t)) => res.push(t),
+                                ControlFlow::Break(Err(e)) => return ControlFlow::Break(Err(e)),
+                            }
+                        }
+                        ControlFlow::Break(Ok(ReTerm::Concat(res)))
+                    }
+                    StringOp::ReUnion(rs) => {
+                        let mut res = Vec::with_capacity(rs.len());
+                        for r in rs {
+                            match r.visit_with(self) {
+                                ControlFlow::Continue(_) => unreachable!(),
+                                ControlFlow::Break(Ok(t)) => res.push(t),
+                                ControlFlow::Break(Err(e)) => return ControlFlow::Break(Err(e)),
+                            }
+                        }
+                        ControlFlow::Break(Ok(ReTerm::Union(res)))
+                    }
+                    StringOp::ReIntersect(rs) => {
+                        let mut res = Vec::with_capacity(rs.len());
+                        for r in rs {
+                            match r.visit_with(self) {
+                                ControlFlow::Continue(_) => unreachable!(),
+                                ControlFlow::Break(Ok(t)) => res.push(t),
+                                ControlFlow::Break(Err(e)) => return ControlFlow::Break(Err(e)),
+                            }
+                        }
+                        ControlFlow::Break(Ok(ReTerm::Inter(res)))
+                    }
+                    StringOp::ReKleeneStar(r) => match r.visit_with(self) {
+                        ControlFlow::Continue(_) => unreachable!(),
+                        ControlFlow::Break(Ok(t)) => {
+                            ControlFlow::Break(Ok(ReTerm::Star(Box::new(t))))
+                        }
+                        ControlFlow::Break(Err(e)) => ControlFlow::Break(Err(e)),
+                    },
+                    StringOp::ReCompl(r) => match r.visit_with(self) {
+                        ControlFlow::Continue(_) => unreachable!(),
+                        ControlFlow::Break(Ok(t)) => {
+                            ControlFlow::Break(Ok(ReTerm::Comp(Box::new(t))))
+                        }
+                        ControlFlow::Break(Err(e)) => ControlFlow::Break(Err(e)),
+                    },
+                    StringOp::ReDiff(rs) => {
+                        if rs.len() != 2 {
+                            return ControlFlow::Break(Err(ParseError::SyntaxError(
+                                "Regular Difference needs exactly two arguments".to_string(),
+                                None,
+                            )));
+                        }
+                        let lhs = match rs[0].visit_with(self) {
+                            ControlFlow::Continue(_) => unreachable!(),
+                            ControlFlow::Break(Ok(t)) => t,
+                            ControlFlow::Break(Err(e)) => return ControlFlow::Break(Err(e)),
+                        };
+                        let rhs = match rs[1].visit_with(self) {
+                            ControlFlow::Continue(_) => unreachable!(),
+                            ControlFlow::Break(Ok(t)) => t,
+                            ControlFlow::Break(Err(e)) => return ControlFlow::Break(Err(e)),
+                        };
+                        ControlFlow::Break(Ok(ReTerm::Diff(Box::new(lhs), Box::new(rhs))))
+                    }
+                    StringOp::ReKleeneCross(r) => match r.visit_with(self) {
+                        ControlFlow::Continue(_) => unreachable!(),
+                        ControlFlow::Break(Ok(t)) => {
+                            ControlFlow::Break(Ok(ReTerm::Plus(Box::new(t))))
+                        }
+                        ControlFlow::Break(Err(e)) => ControlFlow::Break(Err(e)),
+                    },
+                    StringOp::ReOpt(r) => match r.visit_with(self) {
+                        ControlFlow::Continue(_) => unreachable!(),
+                        ControlFlow::Break(Ok(t)) => {
+                            ControlFlow::Break(Ok(ReTerm::Optional(Box::new(t))))
+                        }
+                        ControlFlow::Break(Err(e)) => ControlFlow::Break(Err(e)),
+                    },
+                    StringOp::ReRange(l, u) => {
+                        let lterm = match build_string_term(l, self.var_manager) {
+                            Ok(p) => p,
+                            Err(e) => return ControlFlow::Break(Err(e)),
+                        };
+                        let uterm = match build_string_term(u, self.var_manager) {
+                            Ok(p) => p,
+                            Err(e) => return ControlFlow::Break(Err(e)),
+                        };
+                        ControlFlow::Break(Ok(ReTerm::Range(lterm, uterm)))
+                    }
+                    StringOp::RePow(i, r) => {
+                        let exp = match i[0].as_ref() {
+                            smt2parser::visitors::Index::Numeral(n) => match biguint2isize(n) {
+                                Ok(i) => i,
+                                Err(e) => return ControlFlow::Break(Err(e)),
+                            },
+                            smt2parser::visitors::Index::Symbol(_) => {
+                                return ControlFlow::Break(Err(ParseError::Unsupported(
+                                    "Symbolic exponentiation".to_string(),
+                                )))
+                            }
+                        };
+
+                        let rterm = match r.visit_with(self) {
+                            ControlFlow::Continue(_) => unreachable!(),
+                            ControlFlow::Break(Ok(t)) => t,
+                            ControlFlow::Break(Err(e)) => return ControlFlow::Break(Err(e)),
+                        };
+                        ControlFlow::Break(Ok(ReTerm::Pow(Box::new(rterm), exp as usize)))
+                    }
+                    StringOp::ReLoop(indices, re) => {
+                        let lower = match indices[0].as_ref() {
+                            smt2parser::visitors::Index::Numeral(n) => match biguint2isize(n) {
+                                Ok(i) => i,
+                                Err(e) => return ControlFlow::Break(Err(e)),
+                            },
+                            smt2parser::visitors::Index::Symbol(_) => {
+                                return ControlFlow::Break(Err(ParseError::Unsupported(
+                                    "Symbolic exponentiation".to_string(),
+                                )))
+                            }
+                        };
+                        let upper = match indices[1].as_ref() {
+                            smt2parser::visitors::Index::Numeral(n) => match biguint2isize(n) {
+                                Ok(i) => i,
+                                Err(e) => return ControlFlow::Break(Err(e)),
+                            },
+                            smt2parser::visitors::Index::Symbol(_) => {
+                                return ControlFlow::Break(Err(ParseError::Unsupported(
+                                    "Symbolic exponentiation".to_string(),
+                                )))
+                            }
+                        };
+                        let rterm = match re.visit_with(self) {
+                            ControlFlow::Continue(_) => unreachable!(),
+                            ControlFlow::Break(Ok(t)) => t,
+                            ControlFlow::Break(Err(e)) => return ControlFlow::Break(Err(e)),
+                        };
+                        ControlFlow::Break(Ok(ReTerm::Loop(
+                            Box::new(rterm),
+                            lower as usize,
+                            upper as usize,
+                        )))
+                    }
+                    StringOp::StrConcat(_)
+                    | StringOp::Len(_)
+                    | StringOp::LexOrd(_)
+                    | StringOp::InRe(_, _)
+                    | StringOp::RefClosLexOrd(_)
+                    | StringOp::SingStrAt(_, _)
+                    | StringOp::Substr(_, _, _)
+                    | StringOp::PrefixOf(_, _)
+                    | StringOp::SuffixOf(_, _)
+                    | StringOp::Contains(_, _)
+                    | StringOp::IndexOf(_, _, _)
+                    | StringOp::Replace(_, _, _)
+                    | StringOp::ReplaceAll(_, _, _)
+                    | StringOp::ReplaceRe(_, _, _)
+                    | StringOp::ReplaceReAll(_, _, _)
+                    | StringOp::IsDigit(_)
+                    | StringOp::ToCode(_)
+                    | StringOp::FromCode(_)
+                    | StringOp::ToInt(_)
+                    | StringOp::FromInt(_) => ControlFlow::Break(Err(ParseError::Unsupported(
+                        "String operation".to_string(),
+                    ))),
+                },
+                Op::Arith(_) | Op::Array(_) | Op::BitVec(_) | Op::Set(_) => ControlFlow::Break(
+                    Err(ParseError::Unsupported("Non-String operation".to_string())),
+                ),
+            },
+            Term::CoreOp(_) | Term::UF(_) | Term::Let(_) | Term::Match(_) | Term::Quantifier(_) => {
+                ControlFlow::Break(Err(ParseError::Unsupported(
+                    "Non-String operation".to_string(),
+                )))
+            }
+        }
+    }
+}
+
+fn biguint2isize(n: &BigUint) -> Result<isize, ParseError> {
+    let as_isize: Result<isize, _> = n.try_into();
+    match as_isize {
+        Ok(i) => Ok(i),
+        Err(_) => Err(ParseError::SyntaxError(
+            format!("Integer constant out of range: {}", n),
+            None,
+        )),
     }
 }
 
@@ -503,7 +692,7 @@ impl<'a> Visitor<ALL> for IntArithTermBuilder<'a> {
             Term::Variable(v) => v.visit_with(self),
 
             Term::OtherOp(s) => match s.as_ref() {
-                all::Op::Arith(arith_op) => match arith_op {
+                Op::Arith(arith_op) => match arith_op {
                     ArithOp::Plus(ts) => {
                         if ts.len() < 2 {
                             return ControlFlow::Break(Err(ParseError::SyntaxError(
@@ -593,7 +782,7 @@ impl<'a> Visitor<ALL> for IntArithTermBuilder<'a> {
                         ControlFlow::Break(Err(ParseError::Unsupported(arith_op.to_string())))
                     }
                 },
-                all::Op::String(StringOp::Len(ts)) => {
+                Op::String(StringOp::Len(ts)) => {
                     let mut builder = StringLenToArithBuilder {
                         var_manager: self.var_manager,
                     };
@@ -603,11 +792,9 @@ impl<'a> Visitor<ALL> for IntArithTermBuilder<'a> {
                         ControlFlow::Break(Err(e)) => ControlFlow::Break(Err(e)),
                     }
                 }
-                all::Op::String(_) | all::Op::Array(_) | all::Op::BitVec(_) | all::Op::Set(_) => {
-                    ControlFlow::Break(Err(ParseError::Unsupported(
-                        "Non-String operation".to_string(),
-                    )))
-                }
+                Op::String(_) | Op::Array(_) | Op::BitVec(_) | Op::Set(_) => ControlFlow::Break(
+                    Err(ParseError::Unsupported("Non-String operation".to_string())),
+                ),
             },
             Term::CoreOp(_) | Term::UF(_) | Term::Let(_) | Term::Match(_) | Term::Quantifier(_) => {
                 ControlFlow::Break(Err(ParseError::Unsupported(
@@ -617,9 +804,9 @@ impl<'a> Visitor<ALL> for IntArithTermBuilder<'a> {
         }
     }
 
-    fn visit_const(&mut self, constant: &aws_smt_ir::IConst) -> ControlFlow<Self::BreakTy> {
+    fn visit_const(&mut self, constant: &IConst) -> ControlFlow<Self::BreakTy> {
         match constant.as_ref() {
-            aws_smt_ir::Constant::Numeral(n) => {
+            Constant::Numeral(n) => {
                 let as_isize: Result<isize, _> = n.try_into();
                 match as_isize {
                     Ok(i) => ControlFlow::Break(Ok(IntTerm::constant(i))),
@@ -629,23 +816,20 @@ impl<'a> Visitor<ALL> for IntArithTermBuilder<'a> {
                     ))),
                 }
             }
-            aws_smt_ir::Constant::String(_)
-            | aws_smt_ir::Constant::Decimal(_)
-            | aws_smt_ir::Constant::Hexadecimal(_)
-            | aws_smt_ir::Constant::Binary(_) => ControlFlow::Break(Err(ParseError::SyntaxError(
+            Constant::String(_)
+            | Constant::Decimal(_)
+            | Constant::Hexadecimal(_)
+            | Constant::Binary(_) => ControlFlow::Break(Err(ParseError::SyntaxError(
                 format!("Expected numeral constant but found {}", constant),
                 None,
             ))),
         }
     }
 
-    fn visit_var(
-        &mut self,
-        var: &aws_smt_ir::IVar<<ALL as aws_smt_ir::Logic>::Var>,
-    ) -> ControlFlow<Self::BreakTy> {
+    fn visit_var(&mut self, var: &IVar<<ALL as Logic>::Var>) -> ControlFlow<Self::BreakTy> {
         let name = var.as_ref().sym_str();
         if let Some(vvar) = self.var_manager.by_name(name) {
-            if vvar.sort() != Sort::Int {
+            if vvar.sort() != NSort::Int {
                 return ControlFlow::Break(Err(ParseError::SyntaxError(
                     format!("Expected int variable but found {} ", vvar.sort()),
                     None,
@@ -671,7 +855,7 @@ impl<'a> Visitor<ALL> for StringLenToArithBuilder<'a> {
             Term::Variable(v) => v.visit_with(self),
 
             Term::OtherOp(s) => match s.as_ref() {
-                all::Op::String(sop) => match sop {
+                Op::String(sop) => match sop {
                     StringOp::StrConcat(ts) => {
                         // Sum all lengths
                         let mut iter = ts.iter();
@@ -726,7 +910,7 @@ impl<'a> Visitor<ALL> for StringLenToArithBuilder<'a> {
                         format!("Expected string term but found {}", sop),
                     ))),
                 },
-                all::Op::Arith(_) | all::Op::Array(_) | all::Op::BitVec(_) | all::Op::Set(_) => {
+                Op::Arith(_) | Op::Array(_) | Op::BitVec(_) | Op::Set(_) => {
                     ControlFlow::Break(Err(ParseError::Unsupported(format!(
                         "Expected string term but found {}",
                         s
@@ -742,27 +926,25 @@ impl<'a> Visitor<ALL> for StringLenToArithBuilder<'a> {
         }
     }
 
-    fn visit_const(&mut self, constant: &aws_smt_ir::IConst) -> ControlFlow<Self::BreakTy> {
+    fn visit_const(&mut self, constant: &IConst) -> ControlFlow<Self::BreakTy> {
         match constant.as_ref() {
-            aws_smt_ir::Constant::String(s) => {
+            Constant::String(s) => {
                 ControlFlow::Break(Ok(IntTerm::Const(s.chars().count() as isize)))
             }
-            aws_smt_ir::Constant::Numeral(_)
-            | aws_smt_ir::Constant::Decimal(_)
-            | aws_smt_ir::Constant::Hexadecimal(_)
-            | aws_smt_ir::Constant::Binary(_) => ControlFlow::Break(Err(ParseError::Unsupported(
-                format!("Expected string term but found {}", constant),
-            ))),
+            Constant::Numeral(_)
+            | Constant::Decimal(_)
+            | Constant::Hexadecimal(_)
+            | Constant::Binary(_) => ControlFlow::Break(Err(ParseError::Unsupported(format!(
+                "Expected string term but found {}",
+                constant
+            )))),
         }
     }
 
-    fn visit_var(
-        &mut self,
-        var: &aws_smt_ir::IVar<<ALL as aws_smt_ir::Logic>::Var>,
-    ) -> ControlFlow<Self::BreakTy> {
+    fn visit_var(&mut self, var: &IVar<<ALL as Logic>::Var>) -> ControlFlow<Self::BreakTy> {
         let name = var.as_ref().sym_str();
         if let Some(vvar) = self.var_manager.by_name(name) {
-            if vvar.sort() != Sort::String {
+            if vvar.sort() != NSort::String {
                 return ControlFlow::Break(Err(ParseError::SyntaxError(
                     format!("Expected string variable but found {} ", vvar.sort()),
                     None,
@@ -777,24 +959,24 @@ impl<'a> Visitor<ALL> for StringLenToArithBuilder<'a> {
     }
 }
 
-fn isort2sort(sort: &ISort) -> Result<Sort, ParseError> {
+fn isort2sort(sort: &ISort) -> Result<NSort, ParseError> {
     match sort.as_ref() {
-        aws_smt_ir::Sort::Simple { identifier } => match identifier.as_ref() {
-            aws_smt_ir::Identifier::Simple { symbol } => match symbol.0.to_lowercase().as_str() {
-                "string" => Ok(Sort::String),
-                "int" => Ok(Sort::Int),
-                "bool" => Ok(Sort::Bool),
+        Sort::Simple { identifier } => match identifier.as_ref() {
+            Identifier::Simple { symbol } => match symbol.0.to_lowercase().as_str() {
+                "string" => Ok(NSort::String),
+                "int" => Ok(NSort::Int),
+                "bool" => Ok(NSort::Bool),
                 _ => Err(ParseError::Unsupported(format!("Sort {}", symbol.0))),
             },
-            aws_smt_ir::Identifier::Indexed { symbol, .. } => {
+            Identifier::Indexed { symbol, .. } => {
                 Err(ParseError::Unsupported(format!("Sort {}", symbol.0)))
             }
         },
-        aws_smt_ir::Sort::Parameterized { identifier, .. } => match identifier.as_ref() {
-            aws_smt_ir::Identifier::Simple { symbol } => {
+        Sort::Parameterized { identifier, .. } => match identifier.as_ref() {
+            Identifier::Simple { symbol } => {
                 Err(ParseError::Unsupported(format!("Sort {}", symbol.0)))
             }
-            aws_smt_ir::Identifier::Indexed { symbol, .. } => {
+            Identifier::Indexed { symbol, .. } => {
                 Err(ParseError::Unsupported(format!("Sort {}", symbol.0)))
             }
         },

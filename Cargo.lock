@@ -961,6 +961,7 @@ dependencies = [
  "indexmap",
  "itertools",
  "log",
+ "num-bigint",
  "quickcheck",
  "quickcheck_macros",
  "serial_test",
