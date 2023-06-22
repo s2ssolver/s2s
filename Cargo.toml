@@ -18,6 +18,7 @@ smt2parser = "0.6.1"
 aws-smt-ir = "0.2.0"
 bimap = "0.6.3"
 num-bigint = "0.3.3"
+regulaer = {path = "../regulaer"}
 
 
 [dev-dependencies]

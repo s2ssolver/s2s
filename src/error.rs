@@ -15,6 +15,9 @@ pub enum Error {
 
     /// An error indicating that the solver does not support the given feature.
     Unsupported(String),
+
+    /// An otherwise unclassified error.
+    Other(String),
 }
 
 impl Error {
@@ -30,6 +33,7 @@ impl Display for Error {
             Error::EncodingError(e) => write!(f, "Encoding error: {}", e),
             Error::SolverError(e) => write!(f, "Solver error: {}", e),
             Error::Unsupported(e) => write!(f, "Unsupported: {}", e),
+            Error::Other(e) => write!(f, "Error: {}", e),
         }
     }
 }

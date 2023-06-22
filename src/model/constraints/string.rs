@@ -1,15 +1,20 @@
 use std::{
     cmp::min,
     fmt::{Display, Formatter},
+    hash::Hash,
     slice::Iter,
 };
 
 use indexmap::IndexSet;
 use quickcheck::Arbitrary;
+use regulaer::{nfa::NFA, re::Regex};
 
-use crate::model::{
-    terms::{ReTerm, Term},
-    Evaluable, Sort, Substitutable, Substitution, Variable,
+use crate::{
+    error::Error,
+    model::{
+        terms::{ReTerm, Term},
+        Evaluable, Sort, Substitutable, Substitution, Variable,
+    },
 };
 
 /// Represents a pattern symbol, which can be either a constant word or a variable.
@@ -420,12 +425,76 @@ impl WordEquation {
 }
 
 /// Represents a constraint on a pattern to be contained in a regular language, given by a regular expression
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone)]
 pub struct RegularConstraint {
-    /// The regular expression. TODO: replace with Regex from regex crate
-    re: ReTerm,
     /// The variable that is constrained by the regular expression.
     pattern: Pattern,
+
+    /// The regular expression
+    re: Regex<char>,
+
+    /// The NFA that accepts the language of the regular expression.
+    /// This is computed lazily.
+    automaton: Option<NFA<char>>,
+}
+
+impl RegularConstraint {
+    pub fn new(re: Regex<char>, pattern: Pattern) -> Self {
+        Self {
+            re,
+            pattern,
+            automaton: None,
+        }
+    }
+
+    /// Compiles the regular expression into an NFA and returns it.
+    /// If the NFA has already been computed, it is returned directly.
+    /// Otherwise, the regular expression is compiled.
+    ///
+    /// # Errors
+    /// Returns an error if the regular expression cannot be compiled.
+    pub fn compile(&mut self) -> Result<&NFA<char>, Error> {
+        if self.automaton.is_none() {
+            match regulaer::nfa::compile(&self.re) {
+                Ok(nfa) => self.automaton = Some(nfa),
+                Err(_e) => {
+                    return Err(Error::Other(format!("Error compiling regular expression",)))
+                }
+            }
+        }
+        Ok(self.automaton.as_ref().unwrap())
+    }
+
+    /// Returns the pattern
+    pub fn get_pattern(&self) -> &Pattern {
+        &self.pattern
+    }
+
+    /// Returns the regular expression
+    pub fn get_re(&self) -> &Regex<char> {
+        &self.re
+    }
+
+    /// Returns the NFA that accepts the language of the regular expression.
+    /// Returns `None` if the NFA has not been computed, yet.
+    /// To compute the NFA, use `compile()`.
+    pub fn get_automaton(&self) -> Option<&NFA<char>> {
+        self.automaton.as_ref()
+    }
+}
+
+impl PartialEq for RegularConstraint {
+    fn eq(&self, other: &Self) -> bool {
+        self.re == other.re && self.pattern == other.pattern
+    }
+}
+impl Eq for RegularConstraint {}
+
+impl Hash for RegularConstraint {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.re.hash(state);
+        self.pattern.hash(state);
+    }
 }
 
 /* Evaluation */
@@ -465,6 +534,85 @@ impl Evaluable for WordEquation {
             Some(substituted.lhs == substituted.rhs)
         } else {
             None
+        }
+    }
+}
+
+/* Conversions */
+
+impl TryFrom<ReTerm> for Regex<char> {
+    type Error = Error;
+
+    fn try_from(value: ReTerm) -> Result<Self, Self::Error> {
+        match value {
+            ReTerm::None => Ok(Regex::none()),
+            ReTerm::Any => Ok(Regex::all_char()),
+            ReTerm::All => Ok(Regex::all()),
+            ReTerm::String(p) => {
+                let pat: Pattern = p.into();
+                let mut res = String::new();
+                for v in pat.symbols {
+                    match v {
+                        Symbol::Constant(c) => res.push(c),
+                        Symbol::Variable(_) => {
+                            return Err(Error::Unsupported(
+                                "Ungrounded Regular Expression".to_string(),
+                            ))
+                        }
+                    }
+                }
+                Ok(Regex::word(&res))
+            }
+            ReTerm::Union(rs) => {
+                let mut res = vec![];
+                for r in rs {
+                    res.push(r.try_into()?);
+                }
+                Ok(Regex::union(res))
+            }
+            ReTerm::Concat(rs) => {
+                let mut res = vec![];
+                for r in rs {
+                    res.push(r.try_into()?);
+                }
+                Ok(Regex::concat(res))
+            }
+            ReTerm::Star(r) => Ok(Regex::star((*r).try_into()?)),
+            ReTerm::Plus(r) => Ok(Regex::plus((*r).try_into()?)),
+            ReTerm::Optional(r) => Ok(Regex::opt((*r).try_into()?)),
+            ReTerm::Inter(rs) => {
+                let mut res = vec![];
+                for r in rs {
+                    res.push(r.try_into()?);
+                }
+                Ok(Regex::inter(res))
+            }
+            ReTerm::Diff(r1, r2) => Ok(Regex::diff((*r1).try_into()?, (*r2).try_into()?)),
+            ReTerm::Comp(r) => Ok(Regex::comp((*r).try_into()?)),
+            ReTerm::Range(l, u) => {
+                let p1: Pattern = l.into();
+                let p2: Pattern = u.into();
+                if !p1.is_constant() || !p2.is_constant() {
+                    return Err(Error::Unsupported(
+                        "Range expressions must be grounded".to_string(),
+                    ));
+                }
+                if p1.len() != 1 || p2.len() != 1 {
+                    Ok(Regex::none())
+                } else {
+                    if let Symbol::Constant(c1) = p1.first().unwrap() {
+                        if let Symbol::Constant(c2) = p2.first().unwrap() {
+                            Ok(Regex::range(*c1, *c2))
+                        } else {
+                            unreachable!()
+                        }
+                    } else {
+                        unreachable!()
+                    }
+                }
+            }
+            ReTerm::Pow(r, exp) => Ok(Regex::pow((*r).try_into()?, exp)),
+            ReTerm::Loop(_, _, _) => todo!(),
         }
     }
 }
