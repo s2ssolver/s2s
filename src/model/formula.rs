@@ -5,9 +5,9 @@ use std::fmt::Display;
 use indexmap::IndexSet;
 use quickcheck::Arbitrary;
 
-use crate::model::{regex::ReTerm, Variable};
+use crate::model::Variable;
 
-use super::{integer::IntTerm, words::StringTerm, Evaluable, Sort, Substitutable, Substitution};
+use super::{terms::Term, Evaluable, Sort, Substitutable, Substitution};
 
 pub trait Sorted {
     fn sort(&self) -> Sort;
@@ -17,54 +17,19 @@ pub trait Alphabet {
     fn alphabet(&self) -> IndexSet<char>;
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub enum Term {
-    String(StringTerm),
-    Int(IntTerm),
-    Regular(ReTerm),
-    Bool(Box<Formula>),
-}
-
-impl Term {
-    pub fn is_const(&self) -> bool {
-        match self {
-            Term::String(s) => s.is_const().is_some(),
-            Term::Int(i) => i.is_const().is_some(),
-            Term::Regular(_) => todo!(),
-            Term::Bool(f) => f.is_const(),
-        }
-    }
-}
-
-impl From<StringTerm> for Term {
-    fn from(s: StringTerm) -> Self {
-        Term::String(s)
-    }
-}
-
-impl From<IntTerm> for Term {
-    fn from(i: IntTerm) -> Self {
-        Term::Int(i)
-    }
-}
-
-impl From<ReTerm> for Term {
-    fn from(r: ReTerm) -> Self {
-        Term::Regular(r)
-    }
-}
-
-impl Sorted for Term {
-    fn sort(&self) -> Sort {
-        match self {
-            Term::String(_) => Sort::String,
-            Term::Int(_) => Sort::Int,
-            Term::Regular(_) => Sort::String,
-            Term::Bool(_) => Sort::Bool,
-        }
-    }
-}
-
+/// Predicates are, besides purely boolean variable, the atomic formulas of first-order logic.
+/// Predicates are relations over [Terms] that are either true or false.
+/// The following predicates are supported:
+/// - Equality (`=`) between two terms
+/// - Inequalities (`<=`, `<`, `>=`, `>`) between two terms
+/// - Membership (`in`) of a term in a language defined by a term
+///
+/// Note that the predicates are overloaded, i.e., their semantics depends on the sorts of the terms.
+/// For example, the predicates `<=`, `<`, `>=`, `>` compare terms of sort `Int` arithmetically and terms of sort `String` lexicographically.
+/// Moreover, not all predicates are supported for all sorts.
+/// For example, the predicate `in` is only defined for terms of sort `String` and `ReLang`.
+/// Lastly note that not all semantically sound predicates are supported by the solver.
+/// For instance, lexicographic ordering of strings is not supported.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum Predicate {
     Equality(Term, Term),
@@ -87,8 +52,14 @@ impl Predicate {
             | Predicate::In(lhs, rhs) => vec![lhs.sort(), rhs.sort()],
         }
     }
+
+    pub fn equality(lhs: &Term, rhs: &Term) -> Self {
+        Self::Equality(lhs.clone(), rhs.clone())
+    }
 }
 
+/// The atomic formulas of first-order logic, which are either [Predicate]s, Boolean [Variable]s, or the constants `True` and `False`.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum Atom {
     Predicate(Predicate),
     BoolVar(Variable),
@@ -96,26 +67,23 @@ pub enum Atom {
     False,
 }
 
+/// A literal is an atom or the negation of an atom.
+/// The purpose of the enum is to enumerate the literals of a formula, it is not used to represent formulas.
 pub enum Literal {
     Pos(Atom),
     Neg(Atom),
 }
 
-// Todo: Implement TryFrom instead of panicing
-
-/// A first-order formula with quantifiers.
+/// A first-order formula without quantifiers.
 /// A formula is inductive defined as follows:
 /// - An [Atom] is a formula
 /// - If `f` is a formula, then `¬f` ([Formula::Not]) is a formula
 /// - If `f` and `g` are formulas, then `f ∧ g` ([Formula::And]) and `f ∨ g` ([Formula::Or]) are formulas
 ///
-/// The variants [Formula::Not], [Formula::And], and [Formula::Or] should not be used directly but instead the corresponding constructors [Formula::not], [Formula::and], and [Formula::or], respectively, should be used.
+/// The variants should not be used directly but instead the corresponding constructors should be used.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum Formula {
-    True,
-    False,
-    BoolVar(Variable),
-    Predicate(Predicate),
+    Atom(Atom),
     /// A disjunction
     Or(Vec<Formula>),
     /// A conjunction
@@ -125,24 +93,56 @@ pub enum Formula {
 }
 
 impl Formula {
-    /// Returns the formula `true`
+    /// Returns the formula `true`.
+    /// This is a shortcut for `Formula::Atom(Atom::True)`.
+    ///
+    /// # Example
+    /// ```rust
+    /// use satstr::model::formula::{Formula, Atom};
+    /// assert_eq!(Formula::ttrue(), Formula::Atom(Atom::True));
+    /// ```
     pub fn ttrue() -> Self {
-        Self::True
+        Self::Atom(Atom::True)
     }
 
-    /// Returns the formula `false`
+    /// Returns the formula `false`.
+    /// This is a shortcut for `Formula::Atom(Atom::False)`.
+    ///
+    /// # Example
+    /// ```rust
+    /// use satstr::model::formula::{Formula, Atom};
+    /// assert_eq!(Formula::ffalse(), Formula::Atom(Atom::False));
+    /// ```
     pub fn ffalse() -> Self {
-        Self::False
+        Self::Atom(Atom::False)
     }
 
     /// Creates a new formula only consisting of a single Boolean variable
-    pub fn bool(var: Variable) -> Self {
-        Self::BoolVar(var)
+    ///
+    /// # Example
+    /// ```rust
+    /// use satstr::model::formula::{Formula, Predicate, Atom};
+    /// use satstr::model::terms::Term;
+    /// use satstr::model::{Variable, Sort};
+    /// let x = Variable::new(String::from("x"), Sort::Bool);
+    /// assert_eq!(Formula::boolvar(x.clone()), Formula::Atom(Atom::BoolVar(x)));
+    /// ```
+    pub fn boolvar(var: Variable) -> Self {
+        Self::Atom(Atom::BoolVar(var))
     }
 
-    /// Creates a new formula only consisting of a single predicate
+    /// Creates a new formula only consisting of a single [Predicate].
+    /// This is a shortcut for `Formula::Atom(Atom::Predicate(pred))`.
+    ///
+    /// # Example
+    /// ```rust
+    /// use satstr::model::formula::{Formula, Predicate, Atom};
+    /// use satstr::model::terms::Term;
+    /// let pred = Predicate::Equality(Term::Int(1.into()), Term::Int(2.into()));
+    /// assert_eq!(Formula::predicate(pred.clone()), Formula::Atom(Atom::Predicate(pred)));
+    /// ```
     pub fn predicate(pred: Predicate) -> Self {
-        Self::Predicate(pred)
+        Self::Atom(Atom::Predicate(pred))
     }
 
     /// Creates the conjunction of the given formulas.
@@ -150,11 +150,25 @@ impl Formula {
     /// - If one of the formulas is `false`, returns `false`
     /// - If one of the formulas is `true`, removes it
     /// - If one of the formulas is a conjunction, adds its conjuncts (i.e. flattens the formula)
+    ///
+    /// # Example
+    /// ```rust
+    /// use satstr::model::formula::{Formula, Predicate};
+    /// use satstr::model::terms::Term;
+    ///
+    /// let f1 = Formula::ffalse();
+    /// let f2 = Formula::ttrue();
+    /// let f3 = Formula::predicate(Predicate::Equality(Term::Int(1.into()), Term::Int(2.into())));
+    /// assert_eq!(Formula::and(vec![f1.clone(), f2.clone(), f3.clone()]), f1);
+    /// assert_eq!(Formula::and(vec![f2.clone(), f3.clone()]), f3);
+    /// ```
     pub fn and(fs: Vec<Formula>) -> Self {
         let mut conjs = Vec::new();
         for f in fs {
             match f {
                 Formula::And(fs) => conjs.extend(fs),
+                Formula::Atom(Atom::False) => return Self::ffalse(),
+                Formula::Atom(Atom::True) => (),
                 f => conjs.push(f),
             }
         }
@@ -172,11 +186,25 @@ impl Formula {
     /// - If one of the formulas is `true`, returns `true`
     /// - If one of the formulas is `false`, removes it
     /// - If one of the formulas is a disjunction, adds its disjuncts (i.e. flattens the formula)
+    ///
+    /// # Example
+    /// ```rust
+    /// use satstr::model::formula::{Formula, Predicate};
+    /// use satstr::model::terms::Term;
+    ///
+    /// let f1 = Formula::ffalse();
+    /// let f2 = Formula::ttrue();
+    /// let f3 = Formula::predicate(Predicate::Equality(Term::Int(1.into()), Term::Int(2.into())));
+    /// assert_eq!(Formula::or(vec![f1.clone(), f2.clone(), f3.clone()]), f2);
+    /// assert_eq!(Formula::or(vec![f1.clone(), f3.clone()]), f3);
+    /// ```
     pub fn or(fs: Vec<Formula>) -> Self {
         let mut disj = Vec::new();
         for f in fs {
             match f {
                 Formula::Or(fs) => disj.extend(fs),
+                Formula::Atom(Atom::True) => return Self::ttrue(),
+                Formula::Atom(Atom::False) => (),
                 f => disj.push(f),
             }
         }
@@ -190,10 +218,26 @@ impl Formula {
     }
 
     /// Creates the negation of the given formula.
-    /// Flattens double negations.
+    /// Flattens double negations and replaces negations of `true` and `false` with the corresponding constants.
+    ///
+    /// # Example
+    /// ```rust
+    /// use satstr::model::formula::{Formula, Predicate};
+    /// use satstr::model::terms::Term;
+    ///
+    /// let f1 = Formula::ffalse();
+    /// let f2 = Formula::ttrue();
+    /// let f3 = Formula::predicate(Predicate::Equality(Term::Int(1.into()), Term::Int(2.into())));
+    /// assert_eq!(Formula::not(f1.clone()), f2);
+    /// assert_eq!(Formula::not(f2.clone()), f1);
+    /// assert_eq!(Formula::not(f3.clone()), Formula::Not(Box::new(f3.clone())));
+    /// assert_eq!(Formula::not(Formula::not(f3.clone())), f3.clone());
+    /// ```
     #[allow(clippy::should_implement_trait)]
     pub fn not(f: Formula) -> Self {
         match f {
+            Formula::Atom(Atom::True) => Self::ffalse(),
+            Formula::Atom(Atom::False) => Self::ttrue(),
             Formula::Not(f) => *f,
             f => Self::Not(Box::new(f)),
         }
@@ -201,19 +245,47 @@ impl Formula {
 
     /// Returns `true` if this formula is conjunctive, i.e., if it is a single atom or a conjunction of atoms.
     /// Returns `false` otherwise.
+    /// Note that this function does not check if the formula is in conjunctive normal form.
+    ///
+    /// # Example
+    /// ```rust
+    /// use satstr::model::formula::{Formula, Predicate};
+    /// use satstr::model::terms::Term;
+    ///
+    /// let f1 = Formula::ffalse();
+    /// let f2 = Formula::ttrue();
+    /// let f3 = Formula::predicate(Predicate::Equality(Term::Int(1.into()), Term::Int(2.into())));
+    /// assert!(f1.is_conjunctive());
+    /// assert!(Formula::And(vec![f1.clone(), f2.clone(), f3.clone()]).is_conjunctive());
+    /// assert!(!Formula::Or(vec![f1.clone(), f2.clone(), f3.clone()]).is_conjunctive());
+    /// ```
     pub fn is_conjunctive(&self) -> bool {
         match self {
             Formula::Or(_) => false,
             Formula::And(fs) => fs.iter().all(Self::is_conjunctive),
             Formula::Not(f) => f.is_conjunctive(),
-            Formula::Predicate(_) | Formula::BoolVar(_) | Formula::True | Formula::False => true,
+            Formula::Atom(_) => true,
         }
     }
 
     /// Counts the number of atoms in this formula.
+    ///
+    /// # Example
+    /// ```rust
+    /// use satstr::model::formula::{Formula, Predicate};
+    /// use satstr::model::terms::Term;
+    ///
+    /// let f1 = Formula::ffalse();
+    /// let f2 = Formula::ttrue();
+    /// let f3 = Formula::predicate(Predicate::Equality(Term::Int(1.into()), Term::Int(2.into())));
+    /// assert_eq!(f1.num_atoms(), 1);
+    /// assert_eq!(Formula::And(vec![f1.clone(), f3.clone()]).num_atoms(), 2);
+    /// assert_eq!(Formula::Or(vec![f1.clone(), Formula::And(vec![f2.clone(), f3.clone()])]).num_atoms(), 3);
+    /// assert_eq!(Formula::Not(Box::new(f3.clone())).num_atoms(), 1);
+    /// ```
     pub fn num_atoms(&self) -> usize {
         match self {
-            Formula::Predicate(_) | Formula::BoolVar(_) | Formula::True | Formula::False => 1,
+            Formula::Atom(_) => 1,
             Formula::Or(fs) | Formula::And(fs) => fs.iter().map(Self::num_atoms).sum(),
             Formula::Not(f) => f.num_atoms(),
         }
@@ -221,11 +293,27 @@ impl Formula {
 
     /// Returns the atoms of this formula that need to be satisfied in every model.
     /// In other words, the conjunction of the returned atoms is entailed by this formula.
+    /// This is the case for all atoms in a conjunction, but not for atoms in a disjunction.
+    /// An atom that is negated is also not entailed by the formula, see [Formula::asserted_literals].
     ///
-    /// TODO: This should return the asserted literals, not the asserted atoms. That is, it should return a list of atoms and their polarity in which they are asserted.
+    /// # Example
+    /// ```rust
+    /// use satstr::model::formula::{Formula, Predicate, Atom};
+    /// use satstr::model::terms::Term;
+    ///
+    /// let f1 = Formula::ffalse();
+    /// let f2 = Formula::ttrue();
+    /// let a = Predicate::Equality(Term::Int(1.into()), Term::Int(2.into()));
+    /// let f3 = Formula::predicate(a.clone());
+    /// assert_eq!(f1.asserted_atoms(), vec![Atom::False]);
+    /// assert_eq!(Formula::And(vec![f1.clone(), f2.clone(), f3.clone()]).asserted_atoms(), vec![Atom::False, Atom::True, Atom::Predicate(a)]);
+    /// assert_eq!(Formula::Or(vec![f1.clone(), f2.clone(), f3.clone()]).asserted_atoms(), vec![]);
+    /// assert_eq!(Formula::And(vec![f1.clone(), Formula::Or(vec![f2.clone(), f3.clone()])]).asserted_atoms(), vec![Atom::False]);
+    /// assert_eq!(Formula::not(f3.clone()).asserted_atoms(), vec![]);
+    /// ```
     pub fn asserted_atoms(&self) -> Vec<Atom> {
         match self {
-            Formula::Predicate(a) => vec![Atom::Predicate(a.clone())],
+            Formula::Atom(a) => vec![a.clone()],
             Formula::Or(_fs) => {
                 vec![]
             }
@@ -234,46 +322,31 @@ impl Formula {
                 .map(Self::asserted_atoms)
                 .fold(Vec::new(), |acc, x| acc.into_iter().chain(x).collect()),
             Formula::Not(_f) => vec![],
-            Formula::True => vec![Atom::True],
-            Formula::False => vec![Atom::True],
-            Formula::BoolVar(v) => vec![Atom::BoolVar(v.clone())],
         }
     }
 
-    /// Returns the alphabet of constants used in this formula.
-    /// Collects the alphabet of all predicates occurring in this formula and returns the union of them.
-    /// See [Predicate] for more information.
-    pub fn alphabet(&self) -> IndexSet<char> {
+    /// Returns true if the formula contains no variables.
+    /// This is the case if all literals occirring in the formula do not contain variables.
+    ///
+    /// # Example
+    /// ```rust
+    /// use satstr::model::formula::{Formula, Predicate, Atom};
+    /// use satstr::model::terms::{Term, IntTerm};
+    /// use satstr::model::{Variable, Sort};
+    ///
+    /// let f1 = Formula::boolvar(Variable::temp(Sort::Bool));
+    /// let f2 = Formula::predicate(Predicate::Equality(Term::Int(1.into()), Term::Int(2.into())));
+    /// let f3 = Formula::predicate(Predicate::Equality(Term::Int(IntTerm::Var(Variable::temp(Sort::Int))), Term::Int(2.into())));
+    /// assert!(!f1.is_ground());
+    /// assert!(f2.is_ground());
+    /// assert!(!f3.is_ground());
+    /// assert!(!Formula::and(vec![f1.clone(), f2.clone(), f3.clone()]).is_ground());
+    /// ```
+    pub fn is_ground(&self) -> bool {
         match self {
-            Formula::True => IndexSet::new(),
-            Formula::False => IndexSet::new(),
-            Formula::BoolVar(_) => IndexSet::new(),
-            Formula::Predicate(p) => match p {
-                Predicate::Equality(Term::String(lhs), Term::String(rhs))
-                | Predicate::Leq(Term::String(lhs), Term::String(rhs))
-                | Predicate::Less(Term::String(lhs), Term::String(rhs))
-                | Predicate::Geq(Term::String(lhs), Term::String(rhs))
-                | Predicate::Greater(Term::String(lhs), Term::String(rhs))
-                | Predicate::In(Term::String(lhs), Term::String(rhs)) => {
-                    let mut alphabet = lhs.alphabet();
-                    alphabet.extend(rhs.alphabet());
-                    alphabet
-                }
-                _ => IndexSet::new(),
-            },
-            Formula::Or(fs) | Formula::And(fs) => fs
-                .iter()
-                .map(Self::alphabet)
-                .fold(IndexSet::new(), |acc, x| acc.union(&x).cloned().collect()),
-            Formula::Not(f) => f.alphabet(),
-        }
-    }
-
-    pub fn is_const(&self) -> bool {
-        match self {
-            Formula::True | Formula::False => true,
-            Formula::BoolVar(_) => false,
-            Formula::Predicate(p) => match p {
+            Formula::Atom(Atom::True) | Formula::Atom(Atom::False) => true,
+            Formula::Atom(Atom::BoolVar(_)) => false,
+            Formula::Atom(Atom::Predicate(p)) => match p {
                 Predicate::Equality(lhs, rhs)
                 | Predicate::Leq(lhs, rhs)
                 | Predicate::Less(lhs, rhs)
@@ -281,23 +354,21 @@ impl Formula {
                 | Predicate::Greater(lhs, rhs)
                 | Predicate::In(lhs, rhs) => lhs.is_const() && rhs.is_const(),
             },
-            Formula::Or(fs) | Formula::And(fs) => fs.iter().all(Self::is_const),
-            Formula::Not(f) => f.is_const(),
+            Formula::Or(fs) | Formula::And(fs) => fs.iter().all(Self::is_ground),
+            Formula::Not(f) => f.is_ground(),
         }
     }
 
     /// Returns the negation normal form of this formula.
     pub fn to_nnf(&self) -> Self {
         match self {
-            Formula::True | Formula::False | Formula::Predicate(_) | Formula::BoolVar(_) => {
-                self.clone()
-            }
+            Formula::Atom(_) => self.clone(),
             Formula::Or(fs) => Formula::or(fs.iter().map(|f| f.to_nnf()).collect()),
             Formula::And(fs) => Formula::and(fs.iter().map(|f| f.to_nnf()).collect()),
             Formula::Not(f) => match f.as_ref() {
-                Formula::True => Formula::ffalse(),
-                Formula::False => Formula::ttrue(),
-                Formula::BoolVar(_) | Formula::Predicate(_) => self.clone(),
+                Formula::Atom(Atom::True) => Formula::ffalse(),
+                Formula::Atom(Atom::False) => Formula::ttrue(),
+                Formula::Atom(_) => self.clone(),
                 Formula::Or(fs) => Formula::and(
                     fs.iter()
                         .map(|f| Formula::not(f.clone()).to_nnf())
@@ -319,24 +390,52 @@ impl Formula {
 impl Substitutable for Formula {
     fn apply_substitution(&self, sub: &Substitution) -> Self {
         match self {
-            Formula::True => Formula::True,
-            Formula::False => Formula::False,
-            Formula::BoolVar(x) => match sub.get(x) {
-                Some(Term::Bool(f)) => *f.clone(),
-                // TODO: Return Result instead of panicing
-                Some(_) => panic!(
-                    "Cannot substitute Boolean variable {} with non-Boolean term",
-                    x
-                ),
-                None => Formula::BoolVar(x.clone()),
-            },
-            Formula::Predicate(p) => Formula::Predicate(p.apply_substitution(sub)),
+            Formula::Atom(Atom::True) => Formula::ttrue(),
+            Formula::Atom(Atom::False) => Formula::ffalse(),
+            Formula::Atom(Atom::BoolVar(v)) => {
+                if let Some(Term::Bool(f)) = sub.get(v) {
+                    return f.as_ref().clone();
+                } else {
+                    Formula::Atom(Atom::BoolVar(v.clone()))
+                }
+            }
+            Formula::Atom(Atom::Predicate(p)) => {
+                Formula::Atom(Atom::Predicate(p.apply_substitution(sub)))
+            }
             Formula::Or(fs) => Formula::or(fs.iter().map(|f| f.apply_substitution(sub)).collect()),
             Formula::And(fs) => {
                 Formula::and(fs.iter().map(|f| f.apply_substitution(sub)).collect())
             }
             Formula::Not(f) => Formula::not(f.apply_substitution(sub)),
         }
+    }
+}
+
+impl Alphabet for Formula {
+    /// Returns the alphabet of constants used in this formula.
+    /// Collects the alphabet of all predicates occurring in this formula and returns the union of them.
+    /// See [Predicate] for more information.
+    fn alphabet(&self) -> IndexSet<char> {
+        match self {
+            Formula::Atom(a) => a.alphabet(),
+            Formula::Or(fs) | Formula::And(fs) => fs
+                .iter()
+                .map(Self::alphabet)
+                .fold(IndexSet::new(), |acc, x| acc.union(&x).cloned().collect()),
+            Formula::Not(f) => f.alphabet(),
+        }
+    }
+}
+
+impl Alphabet for Atom {
+    fn alphabet(&self) -> IndexSet<char> {
+        todo!()
+    }
+}
+
+impl Alphabet for Predicate {
+    fn alphabet(&self) -> IndexSet<char> {
+        todo!()
     }
 }
 
@@ -365,56 +464,52 @@ impl Substitutable for Predicate {
     }
 }
 
-impl Substitutable for Term {
-    fn apply_substitution(&self, subs: &Substitution) -> Self {
-        match self {
-            Term::String(s) => Term::String(s.apply_substitution(subs)),
-            Term::Int(i) => Term::Int(i.apply_substitution(subs)),
-            Term::Regular(_r) => todo!("Regular terms not implemented yet"),
-            Term::Bool(f) => Term::Bool(Box::new(f.apply_substitution(subs))),
-        }
-    }
-}
-
 impl Evaluable for Formula {
     fn eval(&self, sub: &Substitution) -> Option<bool> {
-        let res = match self {
-            Formula::True => true,
-            Formula::False => false,
-            Formula::BoolVar(x) => match sub.get(x) {
-                Some(Term::Bool(f)) => f.eval(sub)?,
-                Some(_) => panic!(
-                    "Cannot substitute Boolean variable {} with non-Boolean term",
-                    x
-                ),
-                None => return None,
+        match self {
+            Formula::Atom(Atom::True) => Some(true),
+            Formula::Atom(Atom::False) => Some(false),
+            Formula::Atom(Atom::Predicate(p)) => p.eval(sub),
+            Formula::Atom(Atom::BoolVar(x)) => match sub.get(x) {
+                Some(Term::Bool(b)) => b.eval(sub),
+                _ => None,
             },
-            Formula::Predicate(p) => p.eval(sub)?,
             Formula::Or(fs) => {
-                let iter = fs.iter().map(|f| f.eval(sub));
-                if iter.clone().any(|t| t == Some(true)) {
-                    true
-                } else if iter.clone().all(|f| f == Some(false)) {
-                    false
+                let mut is_falses = true;
+                for f in fs {
+                    match f.eval(&Substitution::new()) {
+                        Some(true) => return Some(true),
+                        Some(false) => (),
+                        None => is_falses = false,
+                    }
+                }
+                if is_falses {
+                    Some(false)
                 } else {
-                    return None;
+                    None
                 }
             }
             Formula::And(fs) => {
-                let iter = fs.iter().map(|f| f.eval(sub));
-
-                if iter.clone().all(|t| t == Some(true)) {
-                    true
-                } else if iter.clone().any(|f| f == Some(false)) {
-                    false
+                let mut is_true = true;
+                for f in fs {
+                    match f.eval(&Substitution::new()) {
+                        Some(false) => return Some(false),
+                        Some(true) => (),
+                        None => is_true = false,
+                    }
+                }
+                if is_true {
+                    Some(true)
                 } else {
-                    return None;
+                    None
                 }
             }
-            Formula::Not(f) => !f.eval(sub)?,
-        };
-
-        Some(res)
+            Formula::Not(f) => match f.eval(&Substitution::new()) {
+                Some(true) => Some(false),
+                Some(false) => Some(true),
+                None => None,
+            },
+        }
     }
 }
 
@@ -508,17 +603,6 @@ impl Display for Atom {
     }
 }
 
-impl Display for Term {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Term::String(t) => write!(f, "{}", t),
-            Term::Int(t) => write!(f, "{}", t),
-            Term::Bool(t) => write!(f, "{}", t),
-            Term::Regular(_r) => todo!(),
-        }
-    }
-}
-
 impl Display for Predicate {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -535,10 +619,7 @@ impl Display for Predicate {
 impl Display for Formula {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Formula::True => write!(f, "true"),
-            Formula::False => write!(f, "false"),
-            Formula::BoolVar(v) => write!(f, "{}", v),
-            Formula::Predicate(p) => write!(f, "{}", p),
+            Formula::Atom(a) => write!(f, "{}", a),
             Formula::Or(fs) => {
                 write!(f, "(")?;
                 let mut first = true;
@@ -570,18 +651,19 @@ impl Display for Formula {
 
 /* Arbitrary */
 
-impl Arbitrary for Term {
+impl Arbitrary for Atom {
     fn arbitrary(g: &mut quickcheck::Gen) -> Self {
-        match g.choose(&[0, 1, 2]) {
-            // TODO regex terms
-            Some(&0) => Term::Bool(Box::new(Formula::BoolVar(Variable::new(
-                String::arbitrary(g),
-                Sort::Bool,
-            )))),
-            Some(&1) => Term::String(StringTerm::arbitrary(g)),
-            Some(&2) => Term::Int(IntTerm::arbitrary(g)),
-            Some(&3) => unreachable!(),
-            _ => unreachable!(),
+        if g.size() <= 1 {
+            let v = Atom::BoolVar(Variable::new(String::arbitrary(g), Sort::Bool));
+            g.choose(&[Atom::True, Atom::False, v]).unwrap().clone()
+        } else {
+            match g.choose(&[0, 1, 2, 3]) {
+                Some(0) => Atom::Predicate(Predicate::arbitrary(g)),
+                Some(1) => Atom::BoolVar(Variable::new(String::arbitrary(g), Sort::Bool)),
+                Some(2) => Atom::True,
+                Some(3) => Atom::False,
+                _ => unreachable!(),
+            }
         }
     }
 }
@@ -603,22 +685,30 @@ impl Arbitrary for Predicate {
 impl Arbitrary for Formula {
     fn arbitrary(g: &mut quickcheck::Gen) -> Self {
         if g.size() <= 1 {
-            return match g.choose(&[0, 1, 2]) {
-                Some(0) => Formula::True,
-                Some(1) => Formula::False,
-                Some(2) => Formula::BoolVar(Variable::new(String::arbitrary(g), Sort::Bool)),
-                _ => unreachable!(),
-            };
+            Formula::Atom(Atom::arbitrary(g))
         } else {
-            let g = &mut quickcheck::Gen::new(g.size() - 1);
-            match g.choose(&[0, 1, 2, 3, 4, 5, 6]) {
-                Some(0) => Formula::True,
-                Some(1) => Formula::False,
-                Some(2) => Formula::BoolVar(Variable::new(String::arbitrary(g), Sort::Bool)),
-                Some(3) => Formula::Predicate(Predicate::arbitrary(g)),
-                Some(4) => Formula::Or(vec![Formula::arbitrary(g), Formula::arbitrary(g)]),
-                Some(5) => Formula::And(vec![Formula::arbitrary(g), Formula::arbitrary(g)]),
-                Some(6) => Formula::Not(Box::new(Formula::arbitrary(g))),
+            let mut newgen = quickcheck::Gen::new(g.size().saturating_sub(1));
+
+            match g.choose(&[0, 1, 2, 3]) {
+                Some(0) => {
+                    let mut newgen = quickcheck::Gen::new(g.size().saturating_sub(1));
+                    Formula::Atom(Atom::arbitrary(&mut newgen))
+                }
+                Some(1) => {
+                    let mut newgen = quickcheck::Gen::new(g.size().saturating_div(2));
+                    Formula::Or(vec![
+                        Formula::arbitrary(&mut newgen),
+                        Formula::arbitrary(&mut newgen),
+                    ])
+                }
+                Some(2) => {
+                    let mut newgen = quickcheck::Gen::new(g.size().saturating_div(2));
+                    Formula::And(vec![
+                        Formula::arbitrary(&mut newgen),
+                        Formula::arbitrary(&mut newgen),
+                    ])
+                }
+                Some(3) => Formula::Not(Box::new(Formula::arbitrary(&mut newgen))),
                 _ => unreachable!(),
             }
         }
@@ -676,25 +766,25 @@ mod test {
 
     #[test]
     fn test_to_nnf_true() {
-        let formula = Formula::True;
-        assert_eq!(formula.to_nnf(), Formula::True);
+        let formula = Formula::ttrue();
+        assert_eq!(formula.to_nnf(), Formula::ttrue());
     }
 
     #[test]
     fn test_to_nnf_false() {
-        let formula = Formula::False;
-        assert_eq!(formula.to_nnf(), Formula::False);
+        let formula = Formula::ffalse();
+        assert_eq!(formula.to_nnf(), Formula::ffalse());
     }
 
     #[quickcheck]
     fn test_to_nnf_predicate(p: Predicate) {
-        let formula = Formula::Predicate(p);
+        let formula = Formula::Atom(Atom::Predicate(p));
         assert_eq!(formula.to_nnf(), formula);
     }
 
     #[test]
     fn test_to_nnf_bool_var() {
-        let formula = Formula::BoolVar(Variable::new(String::from("x"), Sort::Bool));
+        let formula = Formula::Atom(Atom::BoolVar(Variable::new(String::from("x"), Sort::Bool)));
         assert_eq!(formula.to_nnf(), formula);
     }
 
@@ -702,12 +792,12 @@ mod test {
     fn test_to_nnf_or(p1: Predicate, p2: Predicate) {
         let formula = Formula::not(Formula::or(vec![
             Formula::predicate(p1.clone()),
-            Formula::Predicate(p2.clone()),
+            Formula::predicate(p2.clone()),
         ]));
 
         let expected = Formula::and(vec![
-            Formula::not(Formula::Predicate(p1)),
-            Formula::not(Formula::Predicate(p2)),
+            Formula::not(Formula::predicate(p1)),
+            Formula::not(Formula::predicate(p2)),
         ]);
         assert_eq!(formula.to_nnf(), expected);
     }
@@ -716,26 +806,26 @@ mod test {
     fn test_to_nnf_and(p1: Predicate, p2: Predicate) {
         let formula = Formula::not(Formula::and(vec![
             Formula::predicate(p1.clone()),
-            Formula::Predicate(p2.clone()),
+            Formula::predicate(p2.clone()),
         ]));
 
         let expected = Formula::or(vec![
-            Formula::not(Formula::Predicate(p1)),
-            Formula::not(Formula::Predicate(p2)),
+            Formula::not(Formula::predicate(p1)),
+            Formula::not(Formula::predicate(p2)),
         ]);
         assert_eq!(formula.to_nnf(), expected);
     }
 
     #[quickcheck]
     fn test_to_nff_double_negations(p: Predicate) {
-        let formula = Formula::not(Formula::not(Formula::Predicate(p.clone())));
-        assert_eq!(formula.to_nnf(), Formula::Predicate(p));
+        let formula = Formula::not(Formula::not(Formula::predicate(p.clone())));
+        assert_eq!(formula.to_nnf(), Formula::predicate(p));
     }
 
     /// Calulates the height of nested negations in a formula
     fn neg_height(fm: &Formula) -> usize {
         match fm {
-            Formula::True | Formula::False | Formula::Predicate(_) | Formula::BoolVar(_) => 0,
+            Formula::Atom(_) => 0,
             Formula::Or(fs) | Formula::And(fs) => fs.iter().map(neg_height).max().unwrap_or(0),
             Formula::Not(f) => 1 + neg_height(f),
         }
@@ -743,6 +833,7 @@ mod test {
 
     #[quickcheck]
     fn test_to_nnf_neg_height(fm: Formula) {
+        println!("{:?}", fm);
         let fm = fm.to_nnf();
         assert!(neg_height(&fm) <= 1);
     }

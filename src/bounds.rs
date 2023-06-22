@@ -11,9 +11,9 @@ use quickcheck::Arbitrary;
 use crate::{
     error::Error,
     model::{
+        constraints::{Constraint, LinearArithFactor, LinearConstraint, LinearConstraintType},
         formula::{Atom, Formula},
-        integer::{LinearArithFactor, LinearConstraint, LinearConstraintType},
-        Constraint, Sort, VarManager, Variable,
+        Sort, VarManager, Variable,
     },
 };
 

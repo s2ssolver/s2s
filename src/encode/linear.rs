@@ -4,7 +4,10 @@ use indexmap::IndexMap;
 
 use crate::{
     bounds::Bounds,
-    model::{integer::LinearConstraint, Evaluable, Sort, Substitution, Variable},
+    model::{
+        constraints::{LinearArithFactor, LinearConstraint, LinearConstraintType},
+        Evaluable, Sort, Substitution, Variable,
+    },
     sat::{as_lit, neg, pvar, PVar},
 };
 
@@ -93,7 +96,7 @@ impl ConstraintEncoder for MddEncoder {
 
         while let Some((level, value, node_var)) = queue.pop_front() {
             match &self.linear.lhs()[level] {
-                crate::model::integer::LinearArithFactor::VarCoeff(v, coeff) => {
+                LinearArithFactor::VarCoeff(v, coeff) => {
                     let last_bound = match self.last_bound(v) {
                         0 => 0,
                         b => b + 1,
@@ -119,35 +122,35 @@ impl ConstraintEncoder for MddEncoder {
                             queue.push_back((level + 1, new_value, child_pvar));
                         } else {
                             let node = match self.linear.typ {
-                                crate::model::integer::LinearConstraintType::Eq => {
+                                LinearConstraintType::Eq => {
                                     if new_value == self.linear.rhs {
                                         self.mdd_true
                                     } else {
                                         self.mdd_false
                                     }
                                 }
-                                crate::model::integer::LinearConstraintType::Leq => {
+                                LinearConstraintType::Leq => {
                                     if new_value <= self.linear.rhs {
                                         self.mdd_true
                                     } else {
                                         self.mdd_false
                                     }
                                 }
-                                crate::model::integer::LinearConstraintType::Less => {
+                                LinearConstraintType::Less => {
                                     if new_value < self.linear.rhs {
                                         self.mdd_true
                                     } else {
                                         self.mdd_false
                                     }
                                 }
-                                crate::model::integer::LinearConstraintType::Geq => {
+                                LinearConstraintType::Geq => {
                                     if new_value >= self.linear.rhs {
                                         self.mdd_true
                                     } else {
                                         self.mdd_false
                                     }
                                 }
-                                crate::model::integer::LinearConstraintType::Greater => {
+                                LinearConstraintType::Greater => {
                                     if new_value > self.linear.rhs {
                                         self.mdd_true
                                     } else {
@@ -159,7 +162,7 @@ impl ConstraintEncoder for MddEncoder {
                         }
                     }
                 }
-                crate::model::integer::LinearArithFactor::Const(_) => {
+                LinearArithFactor::Const(_) => {
                     todo!("Consts not supported: {}", self.linear)
                 }
             }

@@ -5,7 +5,7 @@ use indexmap::IndexMap;
 use crate::{
     error::Error,
     model::{
-        formula::{Formula, Predicate},
+        formula::{Atom, Formula, Predicate},
         Sort, VarManager, Variable,
     },
     parse::Instance,
@@ -144,15 +144,7 @@ impl Abstraction {
         var_manager: &mut VarManager,
     ) -> Formula {
         let res = match formula {
-            Formula::True | Formula::False | Formula::BoolVar(_) => formula.clone(),
-            Formula::Or(fs) => {
-                let fs = fs
-                    .into_iter()
-                    .map(|f| Self::abstract_fm(f, defs, var_manager))
-                    .collect::<Vec<_>>();
-                Formula::or(fs)
-            }
-            Formula::Predicate(p) => {
+            Formula::Atom(Atom::Predicate(p)) => {
                 let dvar = match defs.get_def_var(&p) {
                     Some(v) => v.get_var().clone(),
                     None => {
@@ -165,9 +157,17 @@ impl Abstraction {
                         v
                     }
                 };
-
-                Formula::BoolVar(dvar)
+                Formula::boolvar(dvar)
             }
+            Formula::Atom(_) => formula.clone(),
+            Formula::Or(fs) => {
+                let fs = fs
+                    .into_iter()
+                    .map(|f| Self::abstract_fm(f, defs, var_manager))
+                    .collect::<Vec<_>>();
+                Formula::or(fs)
+            }
+
             Formula::And(fs) => {
                 let fs = fs
                     .into_iter()
@@ -176,10 +176,10 @@ impl Abstraction {
                 Formula::and(fs)
             }
             Formula::Not(f) => match f.as_ref() {
-                Formula::True => Formula::False,
-                Formula::False => Formula::True,
-                Formula::BoolVar(_) => Formula::not(f.as_ref().clone()),
-                Formula::Predicate(p) => {
+                Formula::Atom(Atom::True) => Formula::ffalse(),
+                Formula::Atom(Atom::False) => Formula::ttrue(),
+                Formula::Atom(Atom::BoolVar(_)) => Formula::not(f.as_ref().clone()),
+                Formula::Atom(Atom::Predicate(p)) => {
                     let dvar = match defs.get_def_var(p) {
                         Some(v) => v.get_var().clone(),
                         None => {
@@ -192,7 +192,7 @@ impl Abstraction {
                             v
                         }
                     };
-                    Formula::BoolVar(dvar)
+                    Formula::boolvar(dvar)
                 }
                 _ => unreachable!("Formula not in NNF"),
             },
@@ -238,8 +238,8 @@ mod test {
 
     fn is_bool(fm: &Formula) -> bool {
         match fm {
-            Formula::True | Formula::False | Formula::BoolVar(_) => true,
-            Formula::Predicate(_) => false,
+            Formula::Atom(Atom::Predicate(_)) => false,
+            Formula::Atom(_) => true,
             Formula::And(fs) | Formula::Or(fs) => fs.iter().all(is_bool),
             Formula::Not(f) => is_bool(f),
         }
@@ -247,8 +247,8 @@ mod test {
 
     fn get_preds(fm: &Formula, pol: bool) -> Vec<(Predicate, bool)> {
         match fm {
-            Formula::True | Formula::False | Formula::BoolVar(_) => vec![],
-            Formula::Predicate(p) => vec![(p.clone(), pol)],
+            Formula::Atom(Atom::Predicate(p)) => vec![(p.clone(), pol)],
+            Formula::Atom(_) => vec![],
             Formula::And(fs) | Formula::Or(fs) => fs
                 .iter()
                 .flat_map(|f| get_preds(f, pol))

@@ -1,92 +1,8 @@
-use quickcheck::{Arbitrary, Gen};
-
-use crate::model::words::Symbol;
 use std::{collections::HashMap, fmt::Display, ops::Index};
 
-use super::{
-    formula::Term, words::WordEquation, Evaluable, Sort, Substitutable, Substitution, Variable,
-};
+use crate::model::{terms::IntTerm, Evaluable, Substitutable, Substitution, Variable};
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum IntTerm {
-    Var(Variable),
-    Const(isize),
-    Plus(Box<IntTerm>, Box<IntTerm>),
-    Times(Box<IntTerm>, Box<IntTerm>),
-}
-
-impl IntTerm {
-    pub fn var(x: &Variable) -> Self {
-        Self::Var(x.clone())
-    }
-
-    pub fn constant(c: isize) -> Self {
-        Self::Const(c)
-    }
-
-    /// Returns `Some(c)` if the term is equal to constant value `c`, `None` otherwise.
-    pub fn is_const(&self) -> Option<isize> {
-        match self {
-            IntTerm::Var(_) => None,
-            IntTerm::Const(c) => Some(*c),
-            IntTerm::Plus(a, b) => match (a.is_const(), b.is_const()) {
-                (Some(c1), Some(c2)) => Some(c1 + c2),
-                _ => None,
-            },
-            IntTerm::Times(a, b) => match (a.is_const(), b.is_const()) {
-                (Some(c1), Some(c2)) => Some(c1 * c2),
-                _ => None,
-            },
-        }
-    }
-
-    pub fn plus(x: &Self, y: &Self) -> Self {
-        Self::Plus(Box::new(x.clone()), Box::new(y.clone()))
-    }
-
-    pub fn times(x: &Self, y: &Self) -> Self {
-        Self::Times(Box::new(x.clone()), Box::new(y.clone()))
-    }
-
-    /// Negate the term
-    pub fn neg(&self) -> Self {
-        match self {
-            IntTerm::Var(v) => IntTerm::times(&IntTerm::constant(-1), &IntTerm::var(v)),
-            IntTerm::Const(c) => IntTerm::constant(-c),
-            IntTerm::Plus(x, y) => IntTerm::plus(&x.neg(), &y.neg()),
-            IntTerm::Times(x, y) => IntTerm::times(&x.neg(), y),
-        }
-    }
-
-    pub fn apply_substitution(&self, subs: &Substitution) -> Self {
-        match self {
-            IntTerm::Var(x) => match subs.get(x) {
-                Some(Term::Int(t)) => t.clone(),
-                // TODO: Return result
-                Some(_) => panic!("Cannot substitute integer variable with string"),
-                None => self.clone(),
-            },
-            IntTerm::Const(_) => self.clone(),
-            IntTerm::Plus(x, y) => {
-                IntTerm::plus(&x.apply_substitution(subs), &y.apply_substitution(subs))
-            }
-            IntTerm::Times(x, y) => {
-                IntTerm::times(&x.apply_substitution(subs), &y.apply_substitution(subs))
-            }
-        }
-    }
-}
-
-impl Display for IntTerm {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            IntTerm::Var(x) => write!(f, "{}", x),
-            IntTerm::Const(c) => write!(f, "{}", c),
-            IntTerm::Plus(x, y) => write!(f, "({} + {})", x, y),
-            IntTerm::Times(x, y) => write!(f, "({} * {})", x, y),
-        }
-    }
-}
+use super::{Symbol, WordEquation};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum LinearArithFactor {
@@ -439,39 +355,6 @@ impl Display for LinearConstraintType {
 impl Display for LinearConstraint {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{} {} {}", self.lhs, self.typ, self.rhs)
-    }
-}
-
-/* Arbitrary */
-
-impl Arbitrary for IntTerm {
-    fn arbitrary(g: &mut quickcheck::Gen) -> Self {
-        if g.size() <= 1 {
-            return g
-                .choose(&[
-                    IntTerm::Const(isize::arbitrary(&mut Gen::new(1))),
-                    IntTerm::Var(Variable::new(
-                        String::arbitrary(&mut Gen::new(1)),
-                        Sort::Int,
-                    )),
-                ])
-                .unwrap()
-                .clone();
-        }
-        let mut new_gen = Gen::new(g.size() - 1);
-        match g.choose(&[0, 1, 2, 3]) {
-            Some(0) => IntTerm::Var(Variable::new(String::arbitrary(g), Sort::Int)),
-            Some(1) => IntTerm::Const(isize::arbitrary(g)),
-            Some(2) => IntTerm::Plus(
-                Box::new(IntTerm::arbitrary(&mut new_gen)),
-                Box::new(IntTerm::arbitrary(&mut new_gen)),
-            ),
-            Some(3) => IntTerm::Times(
-                Box::new(IntTerm::arbitrary(&mut new_gen)),
-                Box::new(IntTerm::arbitrary(&mut new_gen)),
-            ),
-            _ => unreachable!(),
-        }
     }
 }
 

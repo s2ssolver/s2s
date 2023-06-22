@@ -7,7 +7,7 @@ use crate::bounds::Bounds;
 use crate::encode::card::{exactly_one, IncrementalAMO};
 use crate::encode::domain::DomainEncoding;
 use crate::encode::{ConstraintEncoder, EncodingResult, FilledPattern, LAMBDA};
-use crate::model::words::{Pattern, Symbol, WordEquation};
+use crate::model::constraints::{Pattern, Symbol, WordEquation};
 use crate::model::{VarManager, Variable};
 use crate::sat::{as_lit, neg, pvar, Cnf, PVar};
 use indexmap::IndexMap;
@@ -757,7 +757,7 @@ mod tests {
     use crate::{
         bounds::IntDomain,
         encode::domain::{get_substitutions, DomainEncoder},
-        model::{words::Pattern, Sort, Substitution, VarManager},
+        model::{constraints::Pattern, Sort, Substitution, VarManager},
     };
 
     #[test]

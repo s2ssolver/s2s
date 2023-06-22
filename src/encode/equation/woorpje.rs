@@ -15,7 +15,8 @@ use std::collections::HashMap;
 use crate::bounds::Bounds;
 use crate::encode::domain::DomainEncoding;
 use crate::encode::{ConstraintEncoder, EncodingResult, FilledPattern, FilledPos, LAMBDA};
-use crate::model::words::WordEquation;
+
+use crate::model::constraints::WordEquation;
 use crate::model::VarManager;
 use crate::sat::{as_lit, neg, pvar, Clause, Cnf, PVar};
 
@@ -310,7 +311,8 @@ mod tests {
         bounds::IntDomain,
         encode::domain::{get_substitutions, DomainEncoder},
         model::{
-            words::Pattern, Evaluable, Sort, Substitutable, Substitution, VarManager, Variable,
+            constraints::Pattern, Evaluable, Sort, Substitutable, Substitution, VarManager,
+            Variable,
         },
     };
 

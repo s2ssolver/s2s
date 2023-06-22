@@ -4,7 +4,8 @@ use crate::bounds::Bounds;
 use crate::encode::card::exactly_one;
 use crate::encode::domain::DomainEncoding;
 use crate::encode::{ConstraintEncoder, EncodingResult, FilledPattern, FilledPos, LAMBDA};
-use crate::model::words::WordEquation;
+
+use crate::model::constraints::WordEquation;
 use crate::model::VarManager;
 use crate::sat::{as_lit, neg, pvar, Cnf, PVar};
 use indexmap::IndexSet;
@@ -601,7 +602,7 @@ mod tests {
     use crate::{
         bounds::IntDomain,
         encode::domain::{get_substitutions, DomainEncoder},
-        model::{words::Pattern, Evaluable, Sort, Substitutable, Substitution, VarManager},
+        model::{constraints::Pattern, Evaluable, Sort, Substitutable, Substitution, VarManager},
     };
 
     fn solve_iwoorpje(

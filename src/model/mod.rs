@@ -2,22 +2,18 @@ use std::{collections::HashMap, fmt::Display, sync::atomic::AtomicUsize};
 
 use indexmap::IndexMap;
 
-use crate::{
-    error::Error,
-    sat::{pvar, PVar},
-};
+use crate::sat::{pvar, PVar};
 
-use self::{
-    formula::{Predicate, Term},
-    integer::{IntTerm, LinearArithTerm, LinearConstraint, LinearConstraintType},
-    regex::RegularConstraint,
-    words::{StringTerm, WordEquation},
-};
+use self::terms::{IntTerm, StringTerm, Term};
 
+pub mod constraints;
 pub mod formula;
-pub mod integer;
+
 pub mod regex;
-pub mod words;
+pub mod terms;
+
+// Re-exports
+pub use constraints::Constraint;
 
 /// The sort of a variable
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -25,6 +21,7 @@ pub enum Sort {
     String,
     Int,
     Bool,
+    ReLang,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -40,7 +37,8 @@ static VAR_COUNTER: AtomicUsize = AtomicUsize::new(1);
 /// Two variables are equal if they have the same name.
 /// Variables should not be created directly, but through a `VarManager`
 impl Variable {
-    fn new(name: String, sort: Sort) -> Self {
+    /// Creates a new variable with the given name and sort.
+    pub fn new(name: String, sort: Sort) -> Self {
         match sort {
             Sort::String => Variable::String { name },
             Sort::Int => Variable::Int { name },
@@ -48,9 +46,32 @@ impl Variable {
                 name,
                 value: pvar(),
             },
+            Sort::ReLang => todo!(),
         }
     }
 
+    /// Creates a new temporal variable of the given sort.
+    ///
+    /// # Example
+    /// ```
+    /// use satstr::model::{Variable, Sort};
+    /// let str_var = Variable::temp(Sort::String);
+    /// let bool_var = Variable::temp(Sort::Bool);
+    /// assert!(str_var.is_string());
+    /// assert!(bool_var.is_bool());
+    /// ```
+    pub fn temp(sort: Sort) -> Self {
+        let id = VAR_COUNTER.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        let name = format!("tmp_{}", id);
+        Self::new(name, sort)
+    }
+
+    /// Returns the sort of the variable
+    /// # Example
+    /// ```
+    /// use satstr::model::{Variable, Sort};
+    /// assert_eq!(Variable::temp(Sort::Bool).sort(), Sort::Bool);
+    /// ```
     pub fn sort(&self) -> Sort {
         match self {
             Variable::String { .. } => Sort::String,
@@ -65,6 +86,10 @@ impl Variable {
 
     pub fn is_string(&self) -> bool {
         matches!(self, Variable::String { .. })
+    }
+
+    pub fn is_bool(&self) -> bool {
+        matches!(self, Variable::Bool { .. })
     }
 
     pub fn name(&self) -> &str {
@@ -103,18 +128,11 @@ impl VarManager {
     }
 
     /// Creates a new temporal variable and returns a copy of it
-    /// Temporal variables are not declared in the input problem and are not printed in the output
+    /// Temporal variables are not declared in the input problem and are not printed in the output.
     pub fn tmp_var(&mut self, sort: Sort) -> Variable {
-        let id = VAR_COUNTER.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-        let name = format!("tmp_{}", id);
-        self.new_var(name.as_str(), sort);
-        // set transient flag
-        let v = self
-            .vars
-            .get_mut(&name)
-            .expect("Variable should have been created");
-
-        v.clone()
+        let tmp = Variable::temp(sort);
+        self.add_var(tmp.clone());
+        tmp
     }
 
     /// Creates new variable and returns a copy of it.
@@ -198,65 +216,6 @@ impl VarManager {
             .get(var.name())
             .map(|v| v.name().ends_with("$len"))
             .unwrap_or(false)
-    }
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub enum Constraint {
-    WordEquation(WordEquation),
-    LinearConstraint(LinearConstraint),
-    RegularConstraint(RegularConstraint),
-}
-
-impl TryFrom<Predicate> for Constraint {
-    type Error = Error;
-
-    fn try_from(value: Predicate) -> Result<Self, Self::Error> {
-        match value {
-            Predicate::Equality(Term::String(lhs), Term::String(rhs)) => Ok(
-                Constraint::WordEquation(WordEquation::new(lhs.into(), rhs.into())),
-            ),
-            Predicate::Equality(Term::Int(lhs), Term::Int(rhs)) => {
-                let lin_lhs = LinearArithTerm::from(lhs);
-                let lin_rhs = LinearArithTerm::from(rhs);
-                let con = LinearConstraint::from((lin_lhs, lin_rhs, LinearConstraintType::Eq));
-                Ok(Constraint::LinearConstraint(con))
-            }
-            Predicate::Leq(Term::Int(lhs), Term::Int(rhs)) => {
-                let lin_lhs = LinearArithTerm::from(lhs);
-                let lin_rhs = LinearArithTerm::from(rhs);
-                let con = LinearConstraint::from((lin_lhs, lin_rhs, LinearConstraintType::Leq));
-                Ok(Constraint::LinearConstraint(con))
-            }
-            Predicate::Less(Term::Int(lhs), Term::Int(rhs)) => {
-                let lin_lhs = LinearArithTerm::from(lhs);
-                let lin_rhs = LinearArithTerm::from(rhs);
-                let con = LinearConstraint::from((lin_lhs, lin_rhs, LinearConstraintType::Less));
-                Ok(Constraint::LinearConstraint(con))
-            }
-            Predicate::Geq(Term::Int(lhs), Term::Int(rhs)) => {
-                let lin_lhs = LinearArithTerm::from(lhs);
-                let lin_rhs = LinearArithTerm::from(rhs);
-                let con = LinearConstraint::from((lin_lhs, lin_rhs, LinearConstraintType::Geq));
-                Ok(Constraint::LinearConstraint(con))
-            }
-            Predicate::Greater(Term::Int(lhs), Term::Int(rhs)) => {
-                let lin_lhs = LinearArithTerm::from(lhs);
-                let lin_rhs = LinearArithTerm::from(rhs);
-                let con = LinearConstraint::from((lin_lhs, lin_rhs, LinearConstraintType::Greater));
-                Ok(Constraint::LinearConstraint(con))
-            }
-            // Unsupported
-            Predicate::Leq(Term::String(_), Term::String(_))
-            | Predicate::Less(Term::String(_), Term::String(_))
-            | Predicate::Geq(Term::String(_), Term::String(_))
-            | Predicate::Greater(Term::String(_), Term::String(_)) => {
-                Err(Error::unsupported("Lexicographic order"))
-            }
-            Predicate::In(_, _) => Err(Error::unsupported("Membership constraints")),
-            // Undefined
-            _ => Err(Error::SolverError(format!("Undefined predicate {}", value))),
-        }
     }
 }
 
@@ -350,7 +309,7 @@ impl From<HashMap<Variable, Vec<char>>> for Substitution {
     fn from(value: HashMap<Variable, Vec<char>>) -> Self {
         let mut sub = Self::new();
         for (var, val) in value {
-            sub.set(&var, Term::String(words::StringTerm::Constant(val)));
+            sub.set(&var, Term::String(StringTerm::Constant(val)));
         }
         sub
     }
@@ -374,6 +333,7 @@ impl Display for Sort {
             Sort::String => write!(f, "String"),
             Sort::Int => write!(f, "Int"),
             Sort::Bool => write!(f, "Bool"),
+            Sort::ReLang => write!(f, "ReLang"),
         }
     }
 }

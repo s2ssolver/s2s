@@ -4,7 +4,7 @@ mod string;
 
 use crate::{
     model::{
-        formula::{Formula, Predicate},
+        formula::{Atom, Formula, Predicate},
         Substitutable, Substitution, Variable,
     },
     parse::Instance,
@@ -56,15 +56,15 @@ trait Preprocessor {
     }
 
     fn apply_boolvar(&mut self, var: Variable, _is_asserted: bool) -> PreprocessingResult {
-        PreprocessingResult::Unchanged(Formula::bool(var))
+        PreprocessingResult::Unchanged(Formula::boolvar(var))
     }
 
     fn apply_fm(&mut self, formula: Formula, is_asserted: bool) -> PreprocessingResult {
         match formula {
-            Formula::True => PreprocessingResult::Unchanged(Formula::True),
-            Formula::False => PreprocessingResult::Unchanged(Formula::False),
-            Formula::BoolVar(x) => self.apply_boolvar(x, is_asserted),
-            Formula::Predicate(p) => self.apply_predicate(p, is_asserted),
+            Formula::Atom(Atom::True) => PreprocessingResult::Unchanged(Formula::ttrue()),
+            Formula::Atom(Atom::False) => PreprocessingResult::Unchanged(Formula::ffalse()),
+            Formula::Atom(Atom::BoolVar(x)) => self.apply_boolvar(x, is_asserted),
+            Formula::Atom(Atom::Predicate(p)) => self.apply_predicate(p, is_asserted),
             Formula::Or(fs) => {
                 let mut changed = false;
                 let mut new_fs = Vec::new();

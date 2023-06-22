@@ -3,7 +3,7 @@ use std::{ops::Index, slice::Iter};
 use crate::{
     bounds::Bounds,
     model::{
-        words::{Pattern, Symbol},
+        constraints::{Pattern, Symbol},
         VarManager, Variable,
     },
     sat::{Clause, Cnf, PLit},

@@ -5,8 +5,9 @@ use std::{cmp::min, fmt::Display};
 use indexmap::IndexMap;
 
 use crate::model::{
-    formula::{Formula, Predicate, Term},
-    words::{Pattern, StringTerm, Symbol, WordEquation},
+    constraints::{Pattern, Symbol, WordEquation},
+    formula::{Formula, Predicate},
+    terms::{StringTerm, Term},
     Substitution, Variable,
 };
 
@@ -132,7 +133,7 @@ impl Preprocessor for WordEquationConstMatching {
                 let rhs = Pattern::from(rhs);
                 let eq = WordEquation::new(lhs, rhs);
                 if !Self::consts_match(&eq) {
-                    PreprocessingResult::Unchanged(Formula::False)
+                    PreprocessingResult::Unchanged(Formula::ffalse())
                 } else {
                     PreprocessingResult::Unchanged(Formula::predicate(eq.into()))
                 }
@@ -146,7 +147,7 @@ impl Preprocessor for WordEquationConstMatching {
         var: crate::model::Variable,
         _is_asserted: bool,
     ) -> PreprocessingResult {
-        PreprocessingResult::Unchanged(Formula::bool(var))
+        PreprocessingResult::Unchanged(Formula::boolvar(var))
     }
 
     fn get_substitution(&self) -> Option<Substitution> {
@@ -198,8 +199,8 @@ impl Preprocessor for WordEquationTrivial {
                 let rhs = Pattern::from(rhs);
                 let eq: WordEquation = WordEquation::new(lhs, rhs);
                 match Self::is_trivial(&eq) {
-                    Some(true) => PreprocessingResult::Changed(Formula::True),
-                    Some(false) => PreprocessingResult::Changed(Formula::False),
+                    Some(true) => PreprocessingResult::Changed(Formula::ttrue()),
+                    Some(false) => PreprocessingResult::Changed(Formula::ffalse()),
                     None => PreprocessingResult::Unchanged(Formula::predicate(eq.into())),
                 }
             }
@@ -494,7 +495,7 @@ impl Preprocessor for WordEquationSubstitutions {
 
     fn finalize(&mut self, result: PreprocessingResult) -> PreprocessingResult {
         if self.conflict {
-            PreprocessingResult::Changed(Formula::False)
+            PreprocessingResult::Changed(Formula::ffalse())
         } else {
             result
         }
@@ -563,7 +564,7 @@ mod tests {
     use quickcheck::TestResult;
     use quickcheck_macros::quickcheck;
 
-    use crate::model::{words::Pattern, Sort, VarManager};
+    use crate::model::{Sort, VarManager};
 
     use super::*;
 

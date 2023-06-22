@@ -5,7 +5,7 @@ mod smt2;
 
 use crate::{
     model::formula::Formula,
-    model::{formula::Predicate, words::StringTerm, VarManager},
+    model::{formula::Predicate, terms::StringTerm, VarManager},
 };
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -200,7 +200,7 @@ fn parse_woorpje(input: &str) -> Result<Instance, ParseError> {
                         panic!("Unknown symbol in equation '{}'", c);
                     }
                 }
-                formula = Formula::Predicate(Predicate::Equality(lhs.into(), rhs.into()));
+                formula = Formula::predicate(Predicate::Equality(lhs.into(), rhs.into()));
             }
             _ => {}
         }
@@ -212,7 +212,7 @@ fn parse_woorpje(input: &str) -> Result<Instance, ParseError> {
 #[cfg(test)]
 mod tests {
 
-    use crate::model::Sort;
+    use crate::model::{terms::StringTerm, Sort};
 
     use super::*;
 
@@ -232,7 +232,7 @@ Equation: aX = ab"#;
 
         assert_eq!(
             *instance.get_formula(),
-            Formula::Predicate(Predicate::Equality(
+            Formula::predicate(Predicate::Equality(
                 expected_lhs.into(),
                 expected_rhs.into()
             ))

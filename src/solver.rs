@@ -13,10 +13,11 @@ use crate::encode::{
 
 use crate::error::Error;
 
-use crate::model::words::Symbol;
-use crate::model::words::WordEquation;
-use crate::model::Substitution;
-use crate::model::{Constraint, Sort, VarManager};
+use crate::model::constraints::{Symbol, WordEquation};
+use crate::model::formula::Alphabet;
+
+use crate::model::{Constraint, Substitution};
+use crate::model::{Sort, VarManager};
 
 use crate::encode::domain::{get_substitutions, DomainEncoder};
 use crate::parse::Instance;

@@ -2,7 +2,8 @@
 
 use crate::{
     model::{
-        formula::{Formula, Predicate, Term},
+        formula::{Formula, Predicate},
+        terms::Term,
         Substitution,
     },
     preprocess::Preprocessor,
@@ -35,9 +36,9 @@ impl Preprocessor for ConstIntReducer {
                 match (lhs.is_const(), rhs.is_const()) {
                     (Some(l), Some(r)) => {
                         if l == r {
-                            PreprocessingResult::Changed(Formula::True)
+                            PreprocessingResult::Changed(Formula::ttrue())
                         } else {
-                            PreprocessingResult::Changed(Formula::False)
+                            PreprocessingResult::Changed(Formula::ffalse())
                         }
                     }
                     _ => PreprocessingResult::Unchanged(Formula::predicate(Predicate::Equality(
@@ -50,9 +51,9 @@ impl Preprocessor for ConstIntReducer {
                 match (lhs.is_const(), rhs.is_const()) {
                     (Some(l), Some(r)) => {
                         if l >= r {
-                            PreprocessingResult::Changed(Formula::True)
+                            PreprocessingResult::Changed(Formula::ttrue())
                         } else {
-                            PreprocessingResult::Changed(Formula::False)
+                            PreprocessingResult::Changed(Formula::ffalse())
                         }
                     }
                     _ => PreprocessingResult::Unchanged(Formula::predicate(Predicate::Geq(
@@ -65,9 +66,9 @@ impl Preprocessor for ConstIntReducer {
                 match (lhs.is_const(), rhs.is_const()) {
                     (Some(l), Some(r)) => {
                         if l > r {
-                            PreprocessingResult::Changed(Formula::True)
+                            PreprocessingResult::Changed(Formula::ttrue())
                         } else {
-                            PreprocessingResult::Changed(Formula::False)
+                            PreprocessingResult::Changed(Formula::ffalse())
                         }
                     }
                     _ => PreprocessingResult::Unchanged(Formula::predicate(Predicate::Greater(
@@ -80,9 +81,9 @@ impl Preprocessor for ConstIntReducer {
                 match (lhs.is_const(), rhs.is_const()) {
                     (Some(l), Some(r)) => {
                         if l <= r {
-                            PreprocessingResult::Changed(Formula::True)
+                            PreprocessingResult::Changed(Formula::ttrue())
                         } else {
-                            PreprocessingResult::Changed(Formula::False)
+                            PreprocessingResult::Changed(Formula::ffalse())
                         }
                     }
                     _ => PreprocessingResult::Unchanged(Formula::predicate(Predicate::Leq(
@@ -95,9 +96,9 @@ impl Preprocessor for ConstIntReducer {
                 match (lhs.is_const(), rhs.is_const()) {
                     (Some(l), Some(r)) => {
                         if l < r {
-                            PreprocessingResult::Changed(Formula::True)
+                            PreprocessingResult::Changed(Formula::ttrue())
                         } else {
-                            PreprocessingResult::Changed(Formula::False)
+                            PreprocessingResult::Changed(Formula::ffalse())
                         }
                     }
                     _ => PreprocessingResult::Unchanged(Formula::predicate(Predicate::Less(

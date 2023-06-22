@@ -1,7 +1,3 @@
-use super::{
-    formula::{Alphabet, Formula, Predicate, Sorted, Term},
-    Evaluable, Substitutable, Substitution, VarManager,
-};
 use std::{
     cmp::min,
     fmt::{Display, Formatter},
@@ -11,121 +7,22 @@ use std::{
 use indexmap::IndexSet;
 use quickcheck::Arbitrary;
 
-use crate::model::{Sort, Variable};
-
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub enum StringTerm {
-    Variable(Variable),
-    Constant(Vec<char>),
-    Concat(Box<StringTerm>, Box<StringTerm>),
-}
-
-impl Default for StringTerm {
-    fn default() -> Self {
-        Self::empty()
-    }
-}
-
-impl Sorted for StringTerm {
-    fn sort(&self) -> Sort {
-        Sort::String
-    }
-}
-
-impl StringTerm {
-    /// The empty string
-    pub fn empty() -> Self {
-        Self::Constant(vec![])
-    }
-
-    pub fn is_const(&self) -> Option<Vec<char>> {
-        match self {
-            StringTerm::Constant(c) => Some(c.to_vec()),
-            StringTerm::Variable(_) => None,
-            StringTerm::Concat(x, y) => match (x.is_const(), y.is_const()) {
-                (Some(x), Some(y)) => Some(x.iter().chain(y.iter()).cloned().collect()),
-                _ => None,
-            },
-        }
-    }
-
-    pub fn reverse(&self) -> StringTerm {
-        match self {
-            StringTerm::Variable(var) => StringTerm::Variable(var.clone()),
-            StringTerm::Constant(word) => {
-                StringTerm::Constant(word.iter().rev().cloned().collect())
-            }
-            StringTerm::Concat(lhs, rhs) => StringTerm::concat(rhs.reverse(), lhs.reverse()),
-        }
-    }
-
-    pub fn constant(str: &str) -> Self {
-        Self::Constant(str.chars().collect())
-    }
-
-    pub fn variable(var: &Variable) -> Self {
-        Self::Variable(var.clone())
-    }
-
-    pub fn concat(lhs: Self, rhs: Self) -> Self {
-        match (lhs, rhs) {
-            (StringTerm::Constant(x), StringTerm::Constant(y)) => {
-                StringTerm::Constant(x.iter().chain(y.iter()).cloned().collect())
-            }
-            (x, y) => StringTerm::Concat(Box::new(x), Box::new(y)),
-        }
-    }
-
-    pub fn concat_const(lhs: Self, other: &str) -> Self {
-        Self::concat(lhs, StringTerm::Constant(other.chars().collect()))
-    }
-
-    pub fn concat_var(lhs: Self, var: &Variable) -> Self {
-        Self::concat(lhs, StringTerm::Variable(var.clone()))
-    }
-
-    pub fn apply_substitution(&self, subs: &Substitution) -> Self {
-        match self {
-            StringTerm::Variable(var) => {
-                if let Some(term) = subs.get(var) {
-                    match term {
-                        Term::String(s) => s.clone(),
-                        _ => panic!("Cannot substitute variable {} with term {}", var, term),
-                    }
-                } else {
-                    self.clone()
-                }
-            }
-            StringTerm::Constant(_) => self.clone(),
-            StringTerm::Concat(lhs, rhs) => {
-                StringTerm::concat(lhs.apply_substitution(subs), rhs.apply_substitution(subs))
-            }
-        }
-    }
-}
-
-impl Alphabet for StringTerm {
-    fn alphabet(&self) -> IndexSet<char> {
-        match self {
-            StringTerm::Variable(_) => IndexSet::new(),
-            StringTerm::Constant(word) => word.iter().cloned().collect(),
-            StringTerm::Concat(lhs, rhs) => {
-                lhs.alphabet().union(&rhs.alphabet()).cloned().collect()
-            }
-        }
-    }
-}
+use crate::model::{
+    terms::{ReTerm, Term},
+    Evaluable, Sort, Substitutable, Substitution, Variable,
+};
 
 /// Represents a pattern symbol, which can be either a constant word or a variable.
 #[derive(Clone, Debug, PartialEq, Hash, Eq)]
 pub enum Symbol {
     /// A constant word
     Constant(char),
-    /// A variable. If the sort is not string, then the program will panic at runtime
+    /// A variable
     Variable(Variable),
 }
 
 impl Symbol {
+    /// Returns true iff the symbol is of sort String.
     fn is_string_sort(&self) -> bool {
         match self {
             Symbol::Constant(_) => true,
@@ -134,11 +31,31 @@ impl Symbol {
     }
 
     /// Returns true iff the symbol is a constant word.
+    /// This is equivalent to `!is_variable()`.
+    ///
+    /// # Example
+    /// ```
+    /// use satstr::model::constraints::Symbol;
+    /// use satstr::model::{Variable, Sort};
+    ///
+    /// assert!(Symbol::Constant('a').is_constant());
+    /// assert!(!Symbol::Variable(Variable::temp(Sort::String)).is_constant());
+    /// ```
     pub fn is_constant(&self) -> bool {
         matches!(self, Symbol::Constant(_))
     }
 
-    /// Returns true iff the symbol is a variable.
+    /// Returns true iff the symbol is a constant word.
+    /// This is equivalent to `!is_constant()`.
+    ///
+    /// # Example
+    /// ```
+    /// use satstr::model::constraints::Symbol;
+    /// use satstr::model::{Variable, Sort};
+    ///
+    /// assert!(Symbol::Variable(Variable::temp(Sort::String)).is_variable());
+    /// assert!(!Symbol::Constant('a').is_variable());
+    /// ```
     pub fn is_variable(&self) -> bool {
         matches!(self, Symbol::Variable(_))
     }
@@ -160,6 +77,7 @@ impl Pattern {
         Self { symbols }
     }
 
+    /// Creates a new pattern from a constant word, given as a string.
     pub fn constant(word: &str) -> Self {
         let mut symbols = vec![];
         for c in word.chars() {
@@ -168,15 +86,41 @@ impl Pattern {
         Self::new(symbols)
     }
 
+    /// Creates a new pattern from a variable.
     pub fn variable(var: &Variable) -> Self {
         Self::new(vec![Symbol::Variable(var.clone())])
     }
 
+    /// Returns the length of the pattern.
+    /// This is the number of symbols in the pattern.
+    /// Variables are counted as one symbol.
+    /// Constants are counted as their length in unicode characters.
+    ///
+    /// # Example
+    /// ```
+    /// use satstr::model::constraints::Pattern;
+    /// use satstr::model::{Variable, Sort};
+    ///
+    /// assert_eq!(Pattern::constant("foo").len(), 3);
+    /// assert_eq!(Pattern::constant("𝄞").len(), 1);
+    /// assert_eq!(Pattern::empty().len(), 0);
+    /// assert_eq!(Pattern::variable(&Variable::temp(Sort::String)).len(), 1);
+    /// ```
     pub fn len(&self) -> usize {
         self.symbols.len()
     }
 
     /// Returns the alphabet of the pattern, i.e. the set of constant characters that occur in the pattern.
+    ///
+    /// # Example
+    /// ```
+    /// use satstr::model::constraints::Pattern;
+    /// use satstr::model::{Variable, Sort};
+    /// use indexmap::indexset;
+    /// assert_eq!(Pattern::constant("foo").alphabet(), indexset!{'f', 'o'});
+    /// assert_eq!(Pattern::empty().alphabet(), indexset!{});
+    /// assert_eq!(Pattern::variable(&Variable::temp(Sort::String)).alphabet(), indexset!{});
+    /// ```
     pub fn alphabet(&self) -> IndexSet<char> {
         let mut alphabet = IndexSet::new();
         for symbol in &self.symbols {
@@ -188,11 +132,33 @@ impl Pattern {
     }
 
     /// Returns the first symbol of the pattern, if it exists.
+    ///
+    /// # Example
+    /// ```
+    /// use satstr::model::constraints::{Pattern, Symbol};
+    /// use satstr::model::{Variable, Sort};
+    ///
+    /// assert_eq!(Pattern::constant("foo").first(), Some(&Symbol::Constant('f')));
+    /// assert_eq!(Pattern::empty().first(), None);
+    /// let v = Variable::temp(Sort::String);
+    /// assert_eq!(Pattern::variable(&v).first(), Some(&Symbol::Variable(v)));
+    /// ```
     pub fn first(&self) -> Option<&Symbol> {
         self.symbols.first()
     }
 
     /// Returns the last symbol of the pattern, if it exists.
+    ///
+    /// # Example
+    /// ```
+    /// use satstr::model::constraints::{Pattern, Symbol};
+    /// use satstr::model::{Variable, Sort};
+    ///
+    /// assert_eq!(Pattern::constant("foo").last(), Some(&Symbol::Constant('o')));
+    /// assert_eq!(Pattern::empty().last(), None);
+    /// let v = Variable::temp(Sort::String);
+    /// assert_eq!(Pattern::variable(&v).last(), Some(&Symbol::Variable(v)));
+    /// ```
     pub fn last(&self) -> Option<&Symbol> {
         self.symbols.last()
     }
@@ -313,12 +279,25 @@ impl Pattern {
         true
     }
 
-    pub fn reverse(&self) -> Self {
+    /// Reverses the pattern.
+    ///
+    /// # Example
+    /// ```
+    /// use satstr::model::constraints::Pattern;
+    /// use satstr::model::{Variable, Sort};
+    ///
+    /// assert_eq!(Pattern::constant("foo").reversed(), Pattern::constant("oof"));
+    /// assert_eq!(Pattern::empty().reversed(), Pattern::empty());
+    /// let var = Variable::temp(Sort::String);
+    /// let pattern = Pattern::constant("rab").append_var(&var).append_word("oof").clone();
+    /// assert_eq!(pattern.reversed(), Pattern::constant("foo").append_var(&var).append_word("bar").clone());
+    /// ```
+    pub fn reversed(&self) -> Self {
         Self::new(self.symbols.iter().rev().cloned().collect())
     }
 
     pub fn ends_with(&self, other: &Self) -> bool {
-        self.reverse().starts_with(&other.reverse())
+        self.reversed().starts_with(&other.reversed())
     }
 
     /// Returns true iff the pattern contains the given pattern as a factor.
@@ -335,22 +314,9 @@ impl Pattern {
     }
 
     /// Returns true iff the pattern is empty.
+    /// This is equivalent to `len() == 0`.
     pub fn is_empty(&self) -> bool {
         self.symbols.is_empty()
-    }
-}
-
-impl From<StringTerm> for Pattern {
-    fn from(value: StringTerm) -> Self {
-        match value {
-            StringTerm::Variable(var) => Self::variable(&var),
-            StringTerm::Constant(word) => Self::constant(&word.iter().collect::<String>()),
-            StringTerm::Concat(lhs, rhs) => {
-                let mut res = Self::from(*lhs);
-                res.extend(Self::from(*rhs));
-                res
-            }
-        }
     }
 }
 
@@ -365,19 +331,6 @@ impl std::ops::Index<usize> for Pattern {
 impl From<Vec<Symbol>> for Pattern {
     fn from(value: Vec<Symbol>) -> Self {
         Self::new(value)
-    }
-}
-
-impl From<Pattern> for StringTerm {
-    fn from(value: Pattern) -> Self {
-        let mut res = StringTerm::empty();
-        for symbol in value.symbols {
-            match symbol {
-                Symbol::Constant(c) => res = StringTerm::concat_const(res, &c.to_string()),
-                Symbol::Variable(v) => res = StringTerm::concat_var(res, &v),
-            }
-        }
-        res
     }
 }
 
@@ -442,7 +395,7 @@ impl WordEquation {
 
     /// Reverses both sides of the equation.
     pub fn reverse(&self) -> Self {
-        Self::new(self.rhs.reverse(), self.lhs.reverse())
+        Self::new(self.rhs.reversed(), self.lhs.reversed())
     }
 
     pub fn variables(&self) -> IndexSet<Variable> {
@@ -466,66 +419,16 @@ impl WordEquation {
     }
 }
 
-/* Conversions */
-
-impl From<&str> for StringTerm {
-    fn from(value: &str) -> Self {
-        Self::constant(value)
-    }
+/// Represents a constraint on a pattern to be contained in a regular language, given by a regular expression
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct RegularConstraint {
+    /// The regular expression. TODO: replace with Regex from regex crate
+    re: ReTerm,
+    /// The variable that is constrained by the regular expression.
+    pattern: Pattern,
 }
 
-impl From<Variable> for StringTerm {
-    fn from(value: Variable) -> Self {
-        Self::variable(&value)
-    }
-}
-
-impl From<(StringTerm, StringTerm)> for WordEquation {
-    fn from(value: (StringTerm, StringTerm)) -> Self {
-        Self::new(value.0.into(), value.1.into())
-    }
-}
-
-impl TryFrom<Predicate> for WordEquation {
-    type Error = (); // Todo: better error type
-
-    fn try_from(value: Predicate) -> Result<Self, Self::Error> {
-        match value {
-            Predicate::Equality(Term::String(lhs), Term::String(rhs)) => {
-                Ok(Self::new(lhs.into(), rhs.into()))
-            }
-            _ => Err(()),
-        }
-    }
-}
-
-impl From<WordEquation> for Predicate {
-    fn from(val: WordEquation) -> Self {
-        Predicate::Equality(Term::String(val.lhs.into()), Term::String(val.rhs.into()))
-    }
-}
-
-impl From<WordEquation> for Formula {
-    fn from(val: WordEquation) -> Self {
-        let lhs = Term::String(val.lhs.into());
-        let rhs = Term::String(val.rhs.into());
-        Formula::Predicate(Predicate::Equality(lhs, rhs))
-    }
-}
-
-/* Pretty Printing */
-
-impl Display for Pattern {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        for symbol in &self.symbols {
-            match symbol {
-                Symbol::Constant(word) => write!(f, "{}", word)?,
-                Symbol::Variable(var) => write!(f, "{}", var)?,
-            }
-        }
-        Ok(())
-    }
-}
+/* Evaluation */
 
 impl Substitutable for Pattern {
     fn apply_substitution(&self, sub: &Substitution) -> Self {
@@ -566,13 +469,16 @@ impl Evaluable for WordEquation {
     }
 }
 
-impl Display for StringTerm {
+/* Pretty Printing */
+impl Display for Pattern {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            StringTerm::Variable(var) => write!(f, "{}", var),
-            StringTerm::Constant(word) => write!(f, "{}", word.iter().collect::<String>()),
-            StringTerm::Concat(lhs, rhs) => write!(f, "{}{}", lhs, rhs),
+        for symbol in &self.symbols {
+            match symbol {
+                Symbol::Constant(word) => write!(f, "{}", word)?,
+                Symbol::Variable(var) => write!(f, "{}", var)?,
+            }
         }
+        Ok(())
     }
 }
 
@@ -597,11 +503,10 @@ use quickcheck;
 
 impl Arbitrary for Symbol {
     fn arbitrary(g: &mut quickcheck::Gen) -> Self {
-        let mut var_manager = VarManager::new();
         let choices = &[
             Symbol::Constant(char::arbitrary(g)),
             Symbol::Constant(char::arbitrary(g)),
-            Symbol::Variable(var_manager.tmp_var(Sort::String)),
+            Symbol::Variable(Variable::temp(Sort::String)),
         ];
 
         g.choose(choices).unwrap().clone()
@@ -624,15 +529,12 @@ impl Arbitrary for WordEquation {
     }
 }
 
-impl Arbitrary for StringTerm {
-    fn arbitrary(g: &mut quickcheck::Gen) -> Self {
-        Pattern::arbitrary(g).into()
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use quickcheck_macros::quickcheck;
+
+    use crate::model::terms::{ReTerm, StringTerm};
+    use crate::model::{Sort, Variable};
 
     use super::*;
 
@@ -667,8 +569,13 @@ mod tests {
     }
 
     #[quickcheck]
+    fn pattern_empty_len_zero_equiv(pat: Pattern) {
+        assert_eq!(pat.is_empty(), pat.len() == 0);
+    }
+
+    #[quickcheck]
     fn pattern_reverse_reverse_is_identity(pat: Pattern) -> bool {
-        pat == pat.reverse().reverse()
+        pat == pat.reversed().reversed()
     }
 
     #[quickcheck]
@@ -680,5 +587,18 @@ mod tests {
     fn term_patter_conversion(pat: Pattern) -> bool {
         let t: StringTerm = pat.clone().into();
         pat == t.into()
+    }
+
+    #[test]
+    fn test_is_grounded_constant_literal() {
+        let r = ReTerm::String(StringTerm::constant("foo"));
+        assert!(r.is_grounded());
+    }
+
+    #[test]
+    fn test_is_grounded_variable_literal() {
+        let v = Variable::new(String::from("x"), Sort::String);
+        let r = ReTerm::String(StringTerm::variable(&v));
+        assert!(!r.is_grounded());
     }
 }

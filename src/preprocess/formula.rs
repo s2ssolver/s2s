@@ -29,9 +29,7 @@ impl Preprocessor for ConjunctionSimplifier {
 
     fn apply_fm(&mut self, formula: Formula, _is_asserted: bool) -> PreprocessingResult {
         match formula {
-            Formula::BoolVar(_) | Formula::False | Formula::True | Formula::Predicate(_) => {
-                PreprocessingResult::Unchanged(formula)
-            }
+            Formula::Atom(_) => PreprocessingResult::Unchanged(formula),
             Formula::Or(fs) => {
                 let mut changed = false;
                 let mut new_fs = Vec::new();
@@ -65,7 +63,7 @@ impl Preprocessor for ConjunctionSimplifier {
                     };
                     match pf.eval(&Substitution::new()) {
                         Some(true) => (),
-                        Some(false) => return PreprocessingResult::Changed(Formula::False),
+                        Some(false) => return PreprocessingResult::Changed(Formula::ffalse()),
                         None => {
                             new_fs.push(pf);
                             changed = true;

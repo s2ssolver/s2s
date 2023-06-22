@@ -10,7 +10,10 @@ use smt2parser::concrete::Command;
 
 use crate::{
     model::formula::{Formula, Predicate},
-    model::{integer::IntTerm, regex::ReTerm, words::StringTerm, Sort as NSort, VarManager},
+    model::{
+        terms::{IntTerm, ReTerm, StringTerm},
+        Sort as NSort, VarManager,
+    },
 };
 
 use super::{Instance, ParseError};
@@ -175,7 +178,7 @@ impl<'a> Visitor<ALL> for FormulaBuilder<'a> {
                                 Err(e) => return ControlFlow::Break(Err(e)),
                             };
                             let equation = Predicate::Equality(pat_lhs.into(), pat_rhs.into());
-                            let eq_atom = Formula::Predicate(equation);
+                            let eq_atom = Formula::predicate(equation);
                             ControlFlow::Break(Ok(eq_atom))
                         }
                         (NSort::Int, NSort::Int) => {
@@ -189,7 +192,7 @@ impl<'a> Visitor<ALL> for FormulaBuilder<'a> {
                             };
 
                             let equation = Predicate::Equality(term_lhs.into(), term_rhs.into());
-                            ControlFlow::Break(Ok(Formula::Predicate(equation)))
+                            ControlFlow::Break(Ok(Formula::predicate(equation)))
                         }
                         (NSort::Bool, NSort::Bool) => todo!("Parse boolean equivalence"),
                         (_, _) => ControlFlow::Break(Err(ParseError::SyntaxError(
@@ -257,7 +260,7 @@ impl<'a> Visitor<ALL> for FormulaBuilder<'a> {
                                     _ => unreachable!(),
                                 };
 
-                                ControlFlow::Break(Ok(Formula::Predicate(pred)))
+                                ControlFlow::Break(Ok(Formula::predicate(pred)))
                             }
                             (_, _) => ControlFlow::Break(Err(ParseError::SyntaxError(
                                 format!(
@@ -287,7 +290,7 @@ impl<'a> Visitor<ALL> for FormulaBuilder<'a> {
                             Err(e) => return ControlFlow::Break(Err(e)),
                         };
                         let pred = Predicate::In(pat.into(), re.into());
-                        ControlFlow::Break(Ok(Formula::Predicate(pred)))
+                        ControlFlow::Break(Ok(Formula::predicate(pred)))
                     }
                     StringOp::LexOrd(_)
                     | StringOp::RefClosLexOrd(_)

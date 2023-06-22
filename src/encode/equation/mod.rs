@@ -5,7 +5,7 @@ pub use alignment::AlignmentEncoder;
 pub use iwoorpje::IWoorpjeEncoder;
 pub use woorpje::WoorpjeEncoder;
 
-use crate::model::words::WordEquation;
+use crate::model::constraints::WordEquation;
 
 use super::ConstraintEncoder;
 

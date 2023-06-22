@@ -6,7 +6,10 @@ use indexmap::IndexMap;
 
 use crate::{
     error::Error,
-    model::{formula::Formula, Sort, VarManager, Variable},
+    model::{
+        formula::{Atom, Formula},
+        Sort, VarManager, Variable,
+    },
 };
 
 /// A global counter for propositional variables.
@@ -64,7 +67,7 @@ pub fn to_cnf(formula: &Formula, var_manager: &mut VarManager) -> Result<Cnf, Er
         match fm {
             Formula::And(fs) | Formula::Or(fs) => {
                 if fs.is_empty() {
-                    Ok(Formula::False)
+                    Ok(Formula::ffalse())
                 } else if fs.len() == 1 {
                     maincnf(&fs[0], defs, var_manager)
                 } else {
@@ -72,13 +75,13 @@ pub fn to_cnf(formula: &Formula, var_manager: &mut VarManager) -> Result<Cnf, Er
                 }
             }
             Formula::Not(nf) => match nf.as_ref() {
-                Formula::BoolVar(_) => Ok(fm.clone()),
-                Formula::Predicate(_) => Err(Error::EncodingError(
+                Formula::Atom(Atom::BoolVar(_)) => Ok(fm.clone()),
+                Formula::Atom(Atom::Predicate(_)) => Err(Error::EncodingError(
                     "Formula not propositional".to_string(),
                 )),
                 _ => Err(Error::EncodingError("Not in NNF".to_string())),
             },
-            Formula::Predicate(_) => Err(Error::EncodingError(
+            Formula::Atom(Atom::Predicate(_)) => Err(Error::EncodingError(
                 "Formula not propositional".to_string(),
             )),
             _ => Ok(fm.clone()),
@@ -104,11 +107,11 @@ pub fn to_cnf(formula: &Formula, var_manager: &mut VarManager) -> Result<Cnf, Er
                     unreachable!()
                 };
                 match defs.get(&res_fm) {
-                    Some(v) => Ok(Formula::bool(v.clone())),
+                    Some(v) => Ok(Formula::boolvar(v.clone())),
                     None => {
                         let v = var_manager.tmp_var(Sort::Bool);
                         defs.insert(res_fm, v.clone());
-                        Ok(Formula::BoolVar(v))
+                        Ok(Formula::boolvar(v))
                     }
                 }
             }
@@ -118,12 +121,13 @@ pub fn to_cnf(formula: &Formula, var_manager: &mut VarManager) -> Result<Cnf, Er
 
     let mut defs = IndexMap::new();
 
-    let res = maincnf(formula, &mut defs, var_manager)?;
+    let res: Formula = maincnf(formula, &mut defs, var_manager)?;
     let mut cnf = Cnf::new();
+    // TODO: Move to function `cnf_to_clauses(fm: &Formula) -> Result<Cnf, Error>`
     match res {
-        Formula::True => (),
-        Formula::False => cnf.push(vec![]),
-        Formula::BoolVar(x) => {
+        Formula::Atom(Atom::True) => (),
+        Formula::Atom(Atom::False) => cnf.push(vec![]),
+        Formula::Atom(Atom::BoolVar(x)) => {
             if let Variable::Bool { value, .. } = x {
                 cnf.push(vec![as_lit(value)]);
             } else {
@@ -133,7 +137,7 @@ pub fn to_cnf(formula: &Formula, var_manager: &mut VarManager) -> Result<Cnf, Er
         Formula::Or(fs) => {
             let mut clause = Vec::with_capacity(fs.len());
             for f in fs {
-                if let Formula::BoolVar(Variable::Bool { value, .. }) = f {
+                if let Formula::Atom(Atom::BoolVar(Variable::Bool { value, .. })) = f {
                     clause.push(as_lit(value));
                 } else {
                     unreachable!()
@@ -144,9 +148,9 @@ pub fn to_cnf(formula: &Formula, var_manager: &mut VarManager) -> Result<Cnf, Er
         Formula::And(fs) => {
             for disj in fs {
                 match disj {
-                    Formula::True => (),
-                    Formula::False => cnf.push(vec![]),
-                    Formula::BoolVar(x) => {
+                    Formula::Atom(Atom::True) => (),
+                    Formula::Atom(Atom::False) => cnf.push(vec![]),
+                    Formula::Atom(Atom::BoolVar(x)) => {
                         if let Variable::Bool { value, .. } = x {
                             cnf.push(vec![as_lit(value)]);
                         } else {
@@ -154,7 +158,9 @@ pub fn to_cnf(formula: &Formula, var_manager: &mut VarManager) -> Result<Cnf, Er
                         }
                     }
                     Formula::Not(f) => {
-                        if let Formula::BoolVar(Variable::Bool { value, .. }) = f.as_ref() {
+                        if let Formula::Atom(Atom::BoolVar(Variable::Bool { value, .. })) =
+                            f.as_ref()
+                        {
                             cnf.push(vec![neg(*value)]);
                         } else {
                             unreachable!()
@@ -163,7 +169,7 @@ pub fn to_cnf(formula: &Formula, var_manager: &mut VarManager) -> Result<Cnf, Er
                     Formula::Or(fs) => {
                         let mut clause = Vec::with_capacity(fs.len());
                         for f in fs {
-                            if let Formula::BoolVar(Variable::Bool { value, .. }) = f {
+                            if let Formula::Atom(Atom::BoolVar(Variable::Bool { value, .. })) = f {
                                 clause.push(as_lit(value));
                             } else {
                                 unreachable!()
@@ -171,13 +177,13 @@ pub fn to_cnf(formula: &Formula, var_manager: &mut VarManager) -> Result<Cnf, Er
                         }
                         cnf.push(clause);
                     }
-                    Formula::Predicate(_) => unreachable!(),
+                    Formula::Atom(Atom::Predicate(_)) => unreachable!(),
                     Formula::And(_) => unreachable!(),
                 }
             }
         }
         Formula::Not(_) => unreachable!(),
-        Formula::Predicate(_) => unreachable!(),
+        Formula::Atom(Atom::Predicate(_)) => unreachable!(),
     }
     Ok(cnf)
 }
