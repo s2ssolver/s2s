@@ -8,6 +8,7 @@ use crate::encode::card::{exactly_one, IncrementalAMO};
 use crate::encode::domain::DomainEncoding;
 use crate::encode::{ConstraintEncoder, EncodingResult, FilledPattern, LAMBDA};
 
+use crate::error::Error;
 use crate::model::constraints::{Pattern, Symbol, WordEquation};
 use crate::model::Variable;
 use crate::sat::{as_lit, neg, pvar, Cnf, PVar};
@@ -615,7 +616,11 @@ impl WordEquationEncoder for AlignmentEncoder {
 }
 
 impl ConstraintEncoder for AlignmentEncoder {
-    fn encode(&mut self, bounds: &Bounds, substitution: &DomainEncoding) -> EncodingResult {
+    fn encode(
+        &mut self,
+        bounds: &Bounds,
+        substitution: &DomainEncoding,
+    ) -> Result<EncodingResult, Error> {
         self.round += 1;
         log::debug!("Encoding {}", self.equation);
         let mut res = EncodingResult::empty();
@@ -638,7 +643,7 @@ impl ConstraintEncoder for AlignmentEncoder {
                     lastbounds,
                     bounds
                 );
-                return res;
+                return Ok(res);
             }
         }
         if let Some(v) = self.bound_selector {
@@ -710,7 +715,7 @@ impl ConstraintEncoder for AlignmentEncoder {
         // Store variable bounds for next round
         self.last_var_bounds = Some(bounds.clone());
         self.last_bound = Some(self.bound);
-        res
+        Ok(res)
     }
 
     fn is_incremental(&self) -> bool {
@@ -827,7 +832,7 @@ mod tests {
         encoding.join(subs_cnf);
 
         let mut encoder = AlignmentEncoder::new(eq.clone());
-        encoding.join(encoder.encode(&bounds, dom_encoder.encoding()));
+        encoding.join(encoder.encode(&bounds, dom_encoder.encoding()).unwrap());
 
         let mut solver: Solver = Solver::default();
         let mut assumptions = HashSet::new();
@@ -879,7 +884,7 @@ mod tests {
             let mut encoding = EncodingResult::empty();
 
             encoding.join(dom_encoder.encode(&bounds, &instance));
-            encoding.join(encoder.encode(&bounds, dom_encoder.encoding()));
+            encoding.join(encoder.encode(&bounds, dom_encoder.encoding()).unwrap());
             result = match encoding {
                 EncodingResult::Cnf(cnf, assm) => {
                     for clause in cnf {

@@ -5,6 +5,7 @@ use crate::encode::card::exactly_one;
 use crate::encode::domain::DomainEncoding;
 use crate::encode::{ConstraintEncoder, EncodingResult, FilledPattern, FilledPos, LAMBDA};
 
+use crate::error::Error;
 use crate::model::constraints::WordEquation;
 use crate::sat::{as_lit, neg, pvar, Cnf, PVar};
 use indexmap::IndexSet;
@@ -542,7 +543,7 @@ impl WordEquationEncoder for IWoorpjeEncoder {
 }
 
 impl ConstraintEncoder for IWoorpjeEncoder {
-    fn encode(&mut self, bounds: &Bounds, dom: &DomainEncoding) -> EncodingResult {
+    fn encode(&mut self, bounds: &Bounds, dom: &DomainEncoding) -> Result<EncodingResult, Error> {
         self.round += 1;
         let mut res = if let Some(old_selector) = self.selector {
             EncodingResult::assumption(neg(old_selector))
@@ -572,7 +573,7 @@ impl ConstraintEncoder for IWoorpjeEncoder {
         res.join(self.encode_accepting_state());
         //res.join(self.guide(substitution));
         //self.check();
-        res
+        Ok(res)
     }
 
     fn is_incremental(&self) -> bool {
@@ -616,7 +617,7 @@ mod tests {
 
         encoding.join(subs_cnf);
         let mut encoder = IWoorpjeEncoder::new(eq.clone());
-        encoding.join(encoder.encode(&bounds, dom_encoder.encoding()));
+        encoding.join(encoder.encode(&bounds, dom_encoder.encoding()).unwrap());
 
         let mut solver: Solver = Solver::default();
         let mut assumptions = HashSet::new();
@@ -666,7 +667,7 @@ mod tests {
             let mut encoding = EncodingResult::empty();
 
             encoding.join(dom_encoder.encode(&bounds, &instance));
-            encoding.join(encoder.encode(&bounds, dom_encoder.encoding()));
+            encoding.join(encoder.encode(&bounds, dom_encoder.encoding()).unwrap());
             result = match encoding {
                 EncodingResult::Cnf(cnf, assm) => {
                     for clause in cnf {

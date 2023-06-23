@@ -2,6 +2,7 @@ use std::{ops::Index, slice::Iter};
 
 use crate::{
     bounds::Bounds,
+    error::Error,
     model::{
         constraints::{Pattern, Symbol},
         Variable,
@@ -183,5 +184,9 @@ pub trait ConstraintEncoder {
     /// This has no effect on non-incremental encoders.
     fn reset(&mut self);
 
-    fn encode(&mut self, bounds: &Bounds, substitution: &DomainEncoding) -> EncodingResult;
+    fn encode(
+        &mut self,
+        bounds: &Bounds,
+        substitution: &DomainEncoding,
+    ) -> Result<EncodingResult, Error>;
 }

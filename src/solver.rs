@@ -158,12 +158,12 @@ impl AbstractionSolver {
 
         if self.instance.get_formula().is_conjunctive() {
             for (_, enc) in self.encoders.iter_mut() {
-                let res = enc.encode(&bounds, dom);
+                let res = enc.encode(&bounds, dom)?;
                 encoding.join(res);
             }
         } else {
             for (d, enc) in self.encoders.iter_mut() {
-                let mut res = enc.encode(&bounds, dom);
+                let mut res = enc.encode(&bounds, dom)?;
                 // Insert the negation of the definitional boolean var into all clauses
                 let def_pvar = self.domain_encoder.get_bools()[d.get_var()];
                 res.iter_clauses_mut().for_each(|c| c.push(neg(def_pvar)));

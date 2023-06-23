@@ -7,19 +7,185 @@
 //!
 //! > TODO: Add CAV paper reference
 
+use indexmap::IndexMap;
+use regulaer::nfa::{NfaError, State, TransitionType, NFA};
+
 use crate::{
     bounds::Bounds,
-    encode::{domain::DomainEncoding, ConstraintEncoder, EncodingResult},
-    model::constraints::RegularConstraint,
+    encode::{domain::DomainEncoding, ConstraintEncoder, EncodingResult, LAMBDA},
+    error::Error,
+    model::{
+        constraints::{RegularConstraint, Symbol},
+        Variable,
+    },
+    sat::{as_lit, neg, pvar, PVar},
 };
 
 use super::RegularConstraintEncoder;
 
+const NFA_NOT_EPSILON_FREE_MSG: &str = "NFA must be epsilon-free";
+
+/// An encoder for regular constraints using automata.
+/// Encodes that a variable is a member of a regular language.
+/// The resulting encoding is incremental.
 pub struct NFAEncoder {
-    constraint: RegularConstraint,
+    var: Variable,
+    nfa: NFA<char>,
+
+    /// The bounds of the variable in the previous round.
+    /// If `None`, the variable was not yet encoded, i.e., prior to the first encoding.
+    last_bound: Option<usize>,
+
+    /// Maps a state and a bound to a propositional variable that is true iff the automaton is in the given state after reading the given number of characters.
+    reach_vars: IndexMap<(State, usize), PVar>,
+
+    /// A selector variable that is added to the assumptions for the current bound
+    bound_selector: Option<PVar>,
 }
 
-impl NFAEncoder {}
+impl NFAEncoder {
+    /// Incrementally adds the reachability vars for the increased bound.
+    fn create_reach_vars(&mut self, bound: usize) {
+        let last_bound = self.last_bound.unwrap_or(0);
+        for l in last_bound..bound {
+            for state in self.nfa.states() {
+                self.reach_vars.insert((state, l), pvar());
+            }
+        }
+    }
+
+    fn encode_intial(&self) -> EncodingResult {
+        if self.last_bound.is_none() {
+            let mut res = EncodingResult::empty();
+            // Only encode in first round
+            for state in self.nfa.states() {
+                if Some(state) == self.nfa.initial() {
+                    // Initial state is reachable after reading 0 characters
+                    res.add_clause(vec![as_lit(self.reach_vars[&(state, 0)])]);
+                } else {
+                    // All other states are not reachable after reading 0 characters
+                    res.add_clause(vec![neg(self.reach_vars[&(state, 0)])]);
+                }
+            }
+            res
+        } else {
+            EncodingResult::Trivial(true)
+        }
+    }
+
+    /// Encodes the set of transitions of the automaton.
+    fn encode_transitions(
+        &self,
+        bound: usize,
+        dom: &DomainEncoding,
+    ) -> Result<EncodingResult, Error> {
+        let mut res = EncodingResult::empty();
+        let last_bound = self.last_bound.unwrap_or(0);
+
+        for l in last_bound..bound {
+            for state in self.nfa.states() {
+                let reach_var = self.reach_vars[&(state, l)];
+
+                for transition in self.nfa.transitions_for(&state)? {
+                    let reach_next = self.reach_vars[&(transition.get_dest(), l + 1)];
+                    match transition.get_type() {
+                        TransitionType::Symbol(c) => {
+                            // Follow transition if we read the given character
+                            let sub_var = dom.string().get(&self.var, l, *c).unwrap();
+                            let clause = vec![neg(reach_var), neg(sub_var), as_lit(reach_next)];
+                            res.add_clause(clause);
+                        }
+                        TransitionType::Range(lb, ub) => {
+                            // Follow transition if we read a character in the given range
+                            for c in *lb..=*ub {
+                                let sub_var = dom.string().get(&self.var, l, c).unwrap();
+                                let clause = vec![neg(reach_var), neg(sub_var), as_lit(reach_next)];
+                                res.add_clause(clause);
+                            }
+                        }
+                        TransitionType::Any => {
+                            // Follow transition if we do not read lambda
+                            let lambda_sub_var = dom.string().get(&self.var, l, LAMBDA).unwrap();
+                            let clause =
+                                vec![neg(reach_var), as_lit(lambda_sub_var), as_lit(reach_next)];
+                            res.add_clause(clause);
+                        }
+                        TransitionType::Epsilon =>
+                        // That must not happen
+                        {
+                            return Err(Error::EncodingError(NFA_NOT_EPSILON_FREE_MSG.to_string()))
+                        }
+                    }
+                }
+            }
+        }
+        Ok(res)
+    }
+
+    fn encode_predecessor(
+        &self,
+        bound: usize,
+        dom: &DomainEncoding,
+    ) -> Result<EncodingResult, Error> {
+        let mut res = EncodingResult::empty();
+        let last_bound = self.last_bound.unwrap_or(0);
+
+        for l in (last_bound + 1)..bound {
+            for state in self.nfa.states() {
+                let reach_var = self.reach_vars[&(state, l)];
+                let mut alo_clause = vec![neg(reach_var)];
+                for pred in self.nfa.predecessors_for(&state)? {
+                    let reach_prev = self.reach_vars[&(pred.get_dest(), l - 1)];
+                    // Tseitin on-the-fly
+                    let def_var = pvar();
+                    alo_clause.push(as_lit(def_var));
+                    match pred.get_type() {
+                        TransitionType::Symbol(c) => {
+                            // Is predecessor if we read the given character
+                            let sub_var = dom.string().get(&self.var, l - 1, *c).unwrap();
+                            res.add_clause(vec![neg(def_var), as_lit(reach_prev)]);
+                            res.add_clause(vec![neg(def_var), as_lit(sub_var)]);
+                        }
+                        TransitionType::Range(lb, ub) => {
+                            // Is predecessor if we read a character in the given range
+                            res.add_clause(vec![neg(def_var), as_lit(reach_prev)]);
+                            let mut range_clause = vec![neg(def_var)];
+                            for c in *lb..=*ub {
+                                let sub_var = dom.string().get(&self.var, l - 1, c).unwrap();
+                                range_clause.push(as_lit(sub_var));
+                            }
+                            res.add_clause(range_clause);
+                        }
+                        TransitionType::Any => {
+                            // Is predecessor if we do not read lambda
+                            let sub_var = dom.string().get(&self.var, l - 1, LAMBDA).unwrap();
+                            res.add_clause(vec![neg(def_var), as_lit(reach_prev)]);
+                            res.add_clause(vec![neg(def_var), neg(sub_var)]);
+                        }
+                        TransitionType::Epsilon => {
+                            return Err(Error::EncodingError(NFA_NOT_EPSILON_FREE_MSG.to_string()))
+                        }
+                    }
+                }
+            }
+        }
+
+        Ok(res)
+    }
+
+    fn encode_final(&self, bound: usize) -> EncodingResult {
+        let mut res = EncodingResult::empty();
+        let selector = self.bound_selector.unwrap();
+
+        let mut clause = vec![neg(selector)];
+        for qf in self.nfa.finals() {
+            let reach_var = self.reach_vars[&(*qf, bound)];
+            clause.push(as_lit(reach_var));
+        }
+        res.add_clause(clause);
+        res
+    }
+}
 
 impl ConstraintEncoder for NFAEncoder {
     fn is_incremental(&self) -> bool {
@@ -27,19 +193,73 @@ impl ConstraintEncoder for NFAEncoder {
     }
 
     fn reset(&mut self) {
-        todo!()
+        self.last_bound = None;
+        self.reach_vars.clear();
+        self.bound_selector = None;
     }
 
-    fn encode(&mut self, _bounds: &Bounds, _substitution: &DomainEncoding) -> EncodingResult {
-        // Make sure automaton is compiled
-        let _ = self.constraint.compile();
+    fn encode(
+        &mut self,
+        bounds: &Bounds,
+        substitution: &DomainEncoding,
+    ) -> Result<EncodingResult, Error> {
+        let bound = bounds.get(&self.var).get_upper().unwrap_or(0) as usize;
+        if Some(bound) == self.last_bound {
+            if let Some(s) = self.bound_selector {
+                return Ok(EncodingResult::assumption(as_lit(s)));
+            } else {
+                return Ok(EncodingResult::Trivial(true));
+            }
+        }
+        let mut res = EncodingResult::empty();
 
-        todo!()
+        // Create new selector for this bound
+        self.bound_selector = Some(pvar());
+        // Create reachability vars for this bound
+        self.create_reach_vars(bound);
+
+        res.join(self.encode_intial());
+        res.join(self.encode_transitions(bound, substitution)?);
+        res.join(self.encode_predecessor(bound, substitution)?);
+        res.join(self.encode_final(bound));
+
+        Ok(res)
     }
 }
 
 impl RegularConstraintEncoder for NFAEncoder {
-    fn new(con: RegularConstraint) -> Self {
-        Self { constraint: con }
+    fn new(mut re_constraint: RegularConstraint) -> Result<Self, Error> {
+        let illegal_pattern_msg = format!(
+            "NFA encode can only handle single variables as LHS, but got {}",
+            re_constraint.get_pattern()
+        );
+        if re_constraint.get_pattern().len() != 1 {
+            return Err(Error::EncodingError(illegal_pattern_msg));
+        }
+        let var = if let Some(Symbol::Variable(v)) = re_constraint.get_pattern().symbols().next() {
+            v.clone()
+        } else {
+            return Err(Error::EncodingError(illegal_pattern_msg));
+        };
+        // Make sure the NFA is compiled
+        re_constraint.compile()?;
+        // We clone the nfa because any changes would break the incremental encoding
+        let mut nfa = re_constraint.get_automaton().unwrap().clone();
+        // Normalize the NFA
+        nfa.normalize()?;
+
+        Ok(Self {
+            var,
+            nfa,
+            last_bound: None,
+            reach_vars: IndexMap::new(),
+            bound_selector: None,
+        })
+    }
+}
+
+impl From<NfaError> for Error {
+    fn from(err: NfaError) -> Self {
+        Error::EncodingError(format!("Error while encoding NFA: {:?}", err))
     }
 }

@@ -16,6 +16,7 @@ use crate::bounds::Bounds;
 use crate::encode::domain::DomainEncoding;
 use crate::encode::{ConstraintEncoder, EncodingResult, FilledPattern, FilledPos, LAMBDA};
 
+use crate::error::Error;
 use crate::model::constraints::WordEquation;
 use crate::sat::{as_lit, neg, pvar, Clause, Cnf, PVar};
 
@@ -106,7 +107,11 @@ impl ConstraintEncoder for WoorpjeEncoder {
     fn reset(&mut self) { // do nothing}
     }
 
-    fn encode(&mut self, bounds: &Bounds, dom_enc: &DomainEncoding) -> EncodingResult {
+    fn encode(
+        &mut self,
+        bounds: &Bounds,
+        dom_enc: &DomainEncoding,
+    ) -> Result<EncodingResult, Error> {
         let mut cnf = Cnf::new();
         let subs = dom_enc.string();
         let lhs = FilledPattern::fill(self.equation.lhs(), bounds);
@@ -123,10 +128,14 @@ impl ConstraintEncoder for WoorpjeEncoder {
         let n = lhs.length();
         let m = rhs.length();
         if n == 0 {
-            return EncodingResult::Trivial(!self.equation.rhs().contains_constant());
+            return Ok(EncodingResult::Trivial(
+                !self.equation.rhs().contains_constant(),
+            ));
         }
         if m == 0 {
-            return EncodingResult::Trivial(!self.equation.lhs().contains_constant());
+            return Ok(EncodingResult::Trivial(
+                !self.equation.lhs().contains_constant(),
+            ));
         }
 
         // Initialize state variables
@@ -279,7 +288,7 @@ impl ConstraintEncoder for WoorpjeEncoder {
         cnf.push(vec![as_lit(state_vars[0][0])]);
         cnf.push(vec![as_lit(state_vars[n][m])]);
         self.state_vars = Some(state_vars);
-        EncodingResult::cnf(cnf)
+        Ok(EncodingResult::cnf(cnf))
     }
 }
 
@@ -374,7 +383,7 @@ mod tests {
         encoding.join(subs_cnf);
 
         let mut encoder = WoorpjeEncoder::new(eq.clone());
-        encoding.join(encoder.encode(&bounds, dom_encoder.encoding()));
+        encoding.join(encoder.encode(&bounds, dom_encoder.encoding()).unwrap());
 
         let mut solver: Solver = Solver::default();
         match encoding {
