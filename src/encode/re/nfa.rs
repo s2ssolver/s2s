@@ -130,10 +130,11 @@ impl NFAEncoder {
         let mut res = EncodingResult::empty();
         let last_bound = self.last_bound.unwrap_or(0);
 
-        for l in (last_bound + 1)..bound {
+        for l in (last_bound + 1)..=bound {
             for state in self.nfa.states() {
                 let reach_var = self.reach_vars[&(state, l)];
                 let mut alo_clause = vec![neg(reach_var)];
+
                 for pred in self.nfa.predecessors_for(&state)? {
                     let reach_prev = self.reach_vars[&(pred.get_dest(), l - 1)];
                     // Tseitin on-the-fly
