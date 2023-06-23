@@ -47,7 +47,7 @@ impl NFAEncoder {
     /// Incrementally adds the reachability vars for the increased bound.
     fn create_reach_vars(&mut self, bound: usize) {
         let last_bound = self.last_bound.unwrap_or(0);
-        for l in last_bound..bound {
+        for l in last_bound..=bound {
             for state in self.nfa.states() {
                 self.reach_vars.insert((state, l), pvar());
             }
@@ -214,7 +214,9 @@ impl ConstraintEncoder for NFAEncoder {
         let mut res = EncodingResult::empty();
 
         // Create new selector for this bound
-        self.bound_selector = Some(pvar());
+        let selector = pvar();
+        self.bound_selector = Some(selector);
+        res.add_assumption(as_lit(selector));
         // Create reachability vars for this bound
         self.create_reach_vars(bound);
 
