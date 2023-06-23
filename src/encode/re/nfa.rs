@@ -64,6 +64,7 @@ impl NFAEncoder {
                     res.add_clause(vec![as_lit(self.reach_vars[&(state, 0)])]);
                 } else {
                     // All other states are not reachable after reading 0 characters
+
                     res.add_clause(vec![neg(self.reach_vars[&(state, 0)])]);
                 }
             }
@@ -110,13 +111,18 @@ impl NFAEncoder {
                                 vec![neg(reach_var), as_lit(lambda_sub_var), as_lit(reach_next)];
                             res.add_clause(clause);
                         }
-                        TransitionType::Epsilon =>
-                        // That must not happen
-                        {
-                            return Err(Error::EncodingError(NFA_NOT_EPSILON_FREE_MSG.to_string()))
+                        TransitionType::Epsilon => {
+                            // That must not happen
+                            return Err(Error::EncodingError(NFA_NOT_EPSILON_FREE_MSG.to_string()));
                         }
                     }
                 }
+
+                // Allow lambda self-transitions
+                let reach_next = self.reach_vars[&(state, l + 1)];
+                let lambda_sub_var = dom.string().get(&self.var, l, LAMBDA).unwrap();
+                let clause = vec![neg(reach_var), neg(lambda_sub_var), as_lit(reach_next)];
+                res.add_clause(clause);
             }
         }
         Ok(res)
@@ -168,6 +174,15 @@ impl NFAEncoder {
                         }
                     }
                 }
+
+                // Allow lambda self-transitions
+                let reach_prev = self.reach_vars[&(state, l - 1)];
+                let lambda_sub_var = dom.string().get(&self.var, l - 1, LAMBDA).unwrap();
+                let def_var = pvar();
+                alo_clause.push(as_lit(def_var));
+                res.add_clause(vec![neg(def_var), as_lit(reach_prev)]);
+                res.add_clause(vec![neg(def_var), as_lit(lambda_sub_var)]);
+
                 res.add_clause(alo_clause);
             }
         }
@@ -265,5 +280,98 @@ impl RegularConstraintEncoder for NFAEncoder {
 impl From<NfaError> for Error {
     fn from(err: NfaError) -> Self {
         Error::EncodingError(format!("Error while encoding NFA: {:?}", err))
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use cadical::Solver;
+    use indexmap::IndexSet;
+    use regulaer::{nfa::compile, re::Regex, RegLang};
+
+    use super::*;
+
+    use crate::{
+        bounds::IntDomain,
+        encode::{
+            domain::{get_substitutions, DomainEncoder},
+            re::RegularConstraintEncoder,
+        },
+        instance::Instance,
+        model::{
+            constraints::{Pattern, RegularConstraint},
+            Sort, Variable,
+        },
+    };
+
+    fn solve_with_bounds(var: &Variable, re: Regex<char>, bounds: &[Bounds]) -> Option<bool> {
+        let mut instance = Instance::default();
+        instance.add_var(var.clone());
+
+        let alph = IndexSet::from_iter(re.alphabet().into_iter());
+        let constraint = RegularConstraint::new(re.clone(), Pattern::variable(&var));
+        let mut encoder = NFAEncoder::new(constraint).unwrap();
+        let mut dom_encoder = DomainEncoder::new(alph);
+        let mut solver: Solver = cadical::Solver::default();
+
+        let mut result = None;
+        for bound in bounds {
+            let mut res = EncodingResult::empty();
+            res.join(dom_encoder.encode(&bound, &instance));
+
+            res.join(encoder.encode(&bound, dom_encoder.encoding()).unwrap());
+
+            match res {
+                EncodingResult::Cnf(clauses, assms) => {
+                    for clause in clauses.into_iter() {
+                        solver.add_clause(clause);
+                    }
+                    result = solver.solve_with(assms.into_iter());
+                    if let Some(true) = result {
+                        let _model = get_substitutions(dom_encoder.encoding(), &instance, &solver);
+                        let var_model = _model.get(&var).unwrap();
+                        assert!(
+                            re.contains(&var_model),
+                            "Model {:?} does not match regex {:?}",
+                            var_model,
+                            re
+                        );
+
+                        return Some(true);
+                    }
+                }
+                _ => unreachable!(),
+            }
+        }
+        result
+    }
+
+    #[test]
+    fn var_in_epsi() {
+        let var = Variable::temp(Sort::String);
+        let re = Regex::epsilon();
+        let bounds = Bounds::with_defaults(IntDomain::Bounded(0, 0));
+
+        assert_eq!(solve_with_bounds(&var, re, &[bounds]), Some(true));
+    }
+
+    #[test]
+    fn var_in_none() {
+        let var = Variable::temp(Sort::String);
+        let re = Regex::none();
+        let bounds = Bounds::with_defaults(IntDomain::Bounded(0, 10));
+
+        assert_eq!(solve_with_bounds(&var, re, &[bounds]), Some(false));
+    }
+
+    #[test]
+    fn var_in_const() {
+        let var = Variable::temp(Sort::String);
+        let re = Regex::word("foo");
+        let bounds = Bounds::with_defaults(IntDomain::Bounded(0, 10));
+        let mut nfa = compile(&re).unwrap();
+        nfa.normalize().unwrap();
+
+        assert_eq!(solve_with_bounds(&var, re, &[bounds]), Some(true));
     }
 }
