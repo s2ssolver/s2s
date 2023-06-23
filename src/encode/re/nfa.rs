@@ -167,6 +167,7 @@ impl NFAEncoder {
                         }
                     }
                 }
+                res.add_clause(alo_clause);
             }
         }
 
