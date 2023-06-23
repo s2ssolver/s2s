@@ -10,10 +10,11 @@ use quickcheck::Arbitrary;
 
 use crate::{
     error::Error,
+    instance::Instance,
     model::{
         constraints::{Constraint, LinearArithFactor, LinearConstraint, LinearConstraintType},
         formula::{Atom, Formula},
-        Sort, VarManager, Variable,
+        Sort, Variable,
     },
 };
 
@@ -194,10 +195,10 @@ impl Bounds {
 
     /// Infers the bounds of all variables from the given formula.
     /// All solutions to the formula must satisfy the inferred bounds.
-    pub fn infer(formla: &Formula, var_manager: &VarManager) -> Result<Self, Error> {
+    pub fn infer(formla: &Formula, instance: &Instance) -> Result<Self, Error> {
         let mut bounds = Self::new();
-        for str_var in var_manager.of_sort(Sort::String) {
-            bounds.set(&str_var.len_var(), IntDomain::LowerBounded(0));
+        for str_var in instance.vars_of_sort(Sort::String) {
+            bounds.set(&str_var.len_var().unwrap(), IntDomain::LowerBounded(0));
         }
         let mut bound_prev = bounds.clone();
         let mut stop = false;
@@ -780,8 +781,7 @@ mod tests {
 
     #[quickcheck]
     fn bounds_set_get(domain: IntDomain) {
-        let mut vm = VarManager::new();
-        let var = vm.tmp_var(Sort::Int);
+        let var = Variable::temp(Sort::Int);
         let mut bounds = Bounds::new();
         bounds.set(&var, domain);
         assert_eq!(bounds.get(&var), domain);
@@ -790,16 +790,14 @@ mod tests {
     #[test]
     #[should_panic]
     fn bounds_set_non_int() {
-        let mut vm = VarManager::new();
-        let var = vm.tmp_var(Sort::String);
+        let var = Variable::temp(Sort::String);
         let mut bounds = Bounds::new();
         bounds.set(&var, IntDomain::bounded(5, 10));
     }
 
     #[test]
     fn bounds_get_lower() {
-        let mut vm = VarManager::new();
-        let var = vm.tmp_var(Sort::Int);
+        let var = Variable::temp(Sort::Int);
         let mut bounds = Bounds::new();
         assert_eq!(bounds.get_lower(&var), None);
         bounds.set(&var, IntDomain::bounded(5, 10));
@@ -809,7 +807,6 @@ mod tests {
     #[test]
     #[ignore = "Test not implemented"]
     fn bounds_infer_word_eq() {
-        let _vm = VarManager::new();
         let _bounds = Bounds::new();
         todo!()
     }
@@ -817,7 +814,6 @@ mod tests {
     #[test]
     #[ignore = "Test not implemented"]
     fn bounds_infer_lincon() {
-        let _vm = VarManager::new();
         let _bounds = Bounds::new();
         todo!()
     }

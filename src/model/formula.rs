@@ -2,7 +2,7 @@
 
 use std::fmt::Display;
 
-use indexmap::IndexSet;
+use indexmap::{indexset, IndexSet};
 use quickcheck::Arbitrary;
 
 use crate::model::Variable;
@@ -56,6 +56,21 @@ impl Predicate {
     pub fn equality(lhs: &Term, rhs: &Term) -> Self {
         Self::Equality(lhs.clone(), rhs.clone())
     }
+
+    pub fn vars(&self) -> IndexSet<&Variable> {
+        match self {
+            Predicate::Equality(lhs, rhs)
+            | Predicate::Leq(lhs, rhs)
+            | Predicate::Less(lhs, rhs)
+            | Predicate::Geq(lhs, rhs)
+            | Predicate::Greater(lhs, rhs)
+            | Predicate::In(lhs, rhs) => {
+                let mut vars = lhs.vars();
+                vars.extend(rhs.vars());
+                vars
+            }
+        }
+    }
 }
 
 /// The atomic formulas of first-order logic, which are either [Predicate]s, Boolean [Variable]s, or the constants `True` and `False`.
@@ -65,6 +80,17 @@ pub enum Atom {
     BoolVar(Variable),
     True,
     False,
+}
+
+impl Atom {
+    pub fn vars(&self) -> IndexSet<&Variable> {
+        match self {
+            Atom::Predicate(p) => p.vars(),
+            Atom::BoolVar(x) => indexset! {x},
+            Atom::True => indexset! {},
+            Atom::False => indexset! {},
+        }
+    }
 }
 
 /// A literal is an atom or the negation of an atom.
@@ -240,6 +266,18 @@ impl Formula {
             Formula::Atom(Atom::False) => Self::ttrue(),
             Formula::Not(f) => *f,
             f => Self::Not(Box::new(f)),
+        }
+    }
+
+    /// Returns the variables occurring in this formula.
+    pub fn vars(&self) -> IndexSet<&Variable> {
+        match self {
+            Formula::Atom(a) => a.vars(),
+            Formula::Or(fs) | Formula::And(fs) => fs.iter().fold(indexset!(), |mut s, f| {
+                s.extend(f.vars());
+                s.into_iter().collect()
+            }),
+            Formula::Not(f) => f.vars(),
         }
     }
 

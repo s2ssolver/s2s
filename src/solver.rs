@@ -13,14 +13,15 @@ use crate::encode::{
 
 use crate::error::Error;
 
+use crate::instance::Instance;
 use crate::model::constraints::{Symbol, WordEquation};
 use crate::model::formula::Alphabet;
 
+use crate::model::Sort;
 use crate::model::{Constraint, Substitution};
-use crate::model::{Sort, VarManager};
 
 use crate::encode::domain::{get_substitutions, DomainEncoder};
-use crate::parse::Instance;
+
 use crate::sat::{neg, to_cnf, Cnf};
 
 /// The result of a satisfiability check
@@ -140,15 +141,13 @@ impl AbstractionSolver {
                 .next()
                 .and_then(|d| d.get_pred().clone().try_into().ok())
             {
-                bounds = sharpen_bounds(&eq, &bounds, self.instance.get_var_manager())
+                bounds = sharpen_bounds(&eq, &bounds, &self.instance)
             }
         }
 
         // Encode the domain
         let ts = Instant::now();
-        let subs_cnf = self
-            .domain_encoder
-            .encode(&bounds, self.instance.get_var_manager());
+        let subs_cnf = self.domain_encoder.encode(&bounds, &self.instance);
         log::debug!(
             "Encoded domain for all variables with {} clauses ({} ms)",
             subs_cnf.clauses(),
@@ -159,12 +158,12 @@ impl AbstractionSolver {
 
         if self.instance.get_formula().is_conjunctive() {
             for (_, enc) in self.encoders.iter_mut() {
-                let res = enc.encode(&bounds, dom, self.instance.get_var_manager());
+                let res = enc.encode(&bounds, dom);
                 encoding.join(res);
             }
         } else {
             for (d, enc) in self.encoders.iter_mut() {
-                let mut res = enc.encode(&bounds, dom, self.instance.get_var_manager());
+                let mut res = enc.encode(&bounds, dom);
                 // Insert the negation of the definitional boolean var into all clauses
                 let def_pvar = self.domain_encoder.get_bools()[d.get_var()];
                 res.iter_clauses_mut().for_each(|c| c.push(neg(def_pvar)));
@@ -184,12 +183,11 @@ impl AbstractionSolver {
     }
 
     fn find_limit_upper_bound(&self) -> Result<Bounds, Error> {
-        let mut limit_bounds =
-            Bounds::infer(self.instance.get_formula(), self.instance.get_var_manager())?;
+        let mut limit_bounds = Bounds::infer(self.instance.get_formula(), &self.instance)?;
         // Make sure upper bounds for string variables are at least one, otherwise the encoding is not correct.
         // This will have negative effects on the performance of the solver, but avoids having to treat edge cases in the encoding(s).
-        for v in self.instance.get_var_manager().of_sort(Sort::Int) {
-            if self.instance.get_var_manager().is_lenght_var(v) {
+        for v in self.instance.vars_of_sort(Sort::Int) {
+            if v.is_len_var() {
                 if let Some(0) = limit_bounds.get(v).get_upper() {
                     log::trace!("Setting upper bound for {} from 0 to 1", v);
                     limit_bounds.set_upper(v, 1);
@@ -208,10 +206,10 @@ impl AbstractionSolver {
             Some(c) => c.clone(),
             None => {
                 let mut current_bounds = Bounds::new();
-                for v in self.instance.get_var_manager().of_sort(Sort::String) {
-                    let len_var = self.instance.get_var_manager().str_length_var(v).unwrap();
+                for v in self.instance.vars_of_sort(Sort::String) {
+                    let len_var = v.len_var().unwrap();
                     current_bounds.set(
-                        len_var,
+                        &len_var,
                         IntDomain::Bounded(0, self.instance.get_start_bound() as isize),
                     );
                 }
@@ -233,7 +231,7 @@ impl AbstractionSolver {
 
     /// Returns true if the current upper bounds are greater than the limit upper bounds.
     fn exeed_limit_bounds(&self, current_bounds: &Bounds, limit_bounds: &Bounds) -> bool {
-        for v in self.instance.get_var_manager().of_sort(Sort::Int) {
+        for v in self.instance.vars_of_sort(Sort::Int) {
             match (
                 current_bounds.get(v).get_upper(),
                 limit_bounds.get(v).get_upper(),
@@ -253,7 +251,7 @@ impl AbstractionSolver {
 
     /// Returns true if the current upper bounds are greater than the given threshold.
     fn bounds_exceed_threshold(&self, current_bounds: &Bounds, threshold: usize) -> bool {
-        for v in self.instance.get_var_manager().of_sort(Sort::Int) {
+        for v in self.instance.vars_of_sort(Sort::Int) {
             match current_bounds.get(v).get_upper() {
                 Some(c) => {
                     if c <= threshold as isize {
@@ -271,8 +269,7 @@ impl AbstractionSolver {
 impl Solver for AbstractionSolver {
     fn solve(&mut self) -> Result<SolverResult, Error> {
         // Encode the booleans
-        self.domain_encoder
-            .init_booleans(self.instance.get_var_manager());
+        self.domain_encoder.init_booleans(&self.instance);
         let limit_bounds = self.find_limit_upper_bound()?;
         log::info!("Found limit bounds: {}", limit_bounds);
 
@@ -295,10 +292,7 @@ impl Solver for AbstractionSolver {
         if !self.instance.get_formula().is_conjunctive() {
             // Convert the skeleton to cnf and add it to the solver
             let ts = Instant::now();
-            let cnf = to_cnf(
-                self.abstraction.get_skeleton(),
-                self.instance.get_var_manager_mut(),
-            )?;
+            let cnf = to_cnf(self.abstraction.get_skeleton(), &mut self.instance)?;
             log::info!(
                 "Converted Boolean skeleton into cnf ({} clauses) in {} ms",
                 cnf.len(),
@@ -355,7 +349,7 @@ impl Solver for AbstractionSolver {
                             Some(true) => {
                                 let mut model = Substitution::from(get_substitutions(
                                     self.domain_encoder.encoding(),
-                                    self.instance.get_var_manager(),
+                                    &self.instance,
                                     &cadical,
                                 ));
                                 // Map variables that were removed in preprocessing to their default value
@@ -417,7 +411,7 @@ impl Solver for AbstractionSolver {
     }
 }
 
-fn sharpen_bounds(eq: &WordEquation, bounds: &Bounds, vars: &VarManager) -> Bounds {
+fn sharpen_bounds(eq: &WordEquation, bounds: &Bounds, vars: &Instance) -> Bounds {
     let mut new_bounds = bounds.clone();
     // Todo: Cache this or do linearly
     let mut abs_consts: isize = 0;
@@ -427,28 +421,28 @@ fn sharpen_bounds(eq: &WordEquation, bounds: &Bounds, vars: &VarManager) -> Boun
         abs_consts += rhs_c - lhs_c;
     }
 
-    for var_k in vars.of_sort(Sort::String) {
-        let var_k_len = vars.str_length_var(var_k).unwrap();
+    for var_k in vars.vars_of_sort(Sort::String) {
+        let var_k_len = var_k.len_var().unwrap();
         let denominator = eq.lhs().count(&Symbol::Variable(var_k.clone())) as isize
             - eq.rhs().count(&Symbol::Variable(var_k.clone())) as isize;
         if denominator == 0 {
             continue;
         }
         let mut abs_k: isize = 0;
-        for var_j in vars.of_sort(Sort::String) {
+        for var_j in vars.vars_of_sort(Sort::String) {
             if var_j == var_k {
                 continue;
             }
-            let var_j_len = vars.str_length_var(var_j).unwrap();
+            let var_j_len = var_j.len_var().unwrap();
             let abs_j = eq.lhs().count(&Symbol::Variable(var_j.clone())) as isize
                 - eq.rhs().count(&Symbol::Variable(var_j.clone())) as isize;
             if abs_j * denominator < 0 {
-                abs_k += abs_j * bounds.get_upper(var_j_len).unwrap();
+                abs_k += abs_j * bounds.get_upper(&var_j_len).unwrap();
             }
         }
         let sharpened = std::cmp::max((abs_consts - abs_k) / denominator, 0);
-        if sharpened < bounds.get_upper(var_k_len).unwrap_or(isize::MAX) {
-            new_bounds.set_upper(&var_k.len_var(), max(sharpened, 1));
+        if sharpened < bounds.get_upper(&var_k_len).unwrap_or(isize::MAX) {
+            new_bounds.set_upper(&var_k_len, max(sharpened, 1));
         }
     }
     new_bounds

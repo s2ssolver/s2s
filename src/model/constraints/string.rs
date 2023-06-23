@@ -447,22 +447,23 @@ impl RegularConstraint {
         }
     }
 
-    /// Compiles the regular expression into an NFA and returns it.
-    /// If the NFA has already been computed, it is returned directly.
-    /// Otherwise, the regular expression is compiled.
+    /// Compiles the regular expression into an NFA and stores it in the constraint.
+    /// If the NFA has already been computed, this function does nothing.
     ///
     /// # Errors
     /// Returns an error if the regular expression cannot be compiled.
-    pub fn compile(&mut self) -> Result<&NFA<char>, Error> {
+    pub fn compile(&mut self) -> Result<(), Error> {
         if self.automaton.is_none() {
             match regulaer::nfa::compile(&self.re) {
                 Ok(nfa) => self.automaton = Some(nfa),
                 Err(_e) => {
-                    return Err(Error::Other(format!("Error compiling regular expression",)))
+                    return Err(Error::Other(
+                        "Error compiling regular expression".to_string(),
+                    ))
                 }
             }
         }
-        Ok(self.automaton.as_ref().unwrap())
+        Ok(())
     }
 
     /// Returns the pattern
@@ -599,16 +600,12 @@ impl TryFrom<ReTerm> for Regex<char> {
                 }
                 if p1.len() != 1 || p2.len() != 1 {
                     Ok(Regex::none())
+                } else if let (Symbol::Constant(c1), Symbol::Constant(c2)) =
+                    (p1.first().unwrap(), p2.first().unwrap())
+                {
+                    Ok(Regex::range(*c1, *c2))
                 } else {
-                    if let Symbol::Constant(c1) = p1.first().unwrap() {
-                        if let Symbol::Constant(c2) = p2.first().unwrap() {
-                            Ok(Regex::range(*c1, *c2))
-                        } else {
-                            unreachable!()
-                        }
-                    } else {
-                        unreachable!()
-                    }
+                    unreachable!()
                 }
             }
             ReTerm::Pow(r, exp) => Ok(Regex::pow((*r).try_into()?, exp)),

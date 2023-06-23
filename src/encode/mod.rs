@@ -4,7 +4,7 @@ use crate::{
     bounds::Bounds,
     model::{
         constraints::{Pattern, Symbol},
-        VarManager, Variable,
+        Variable,
     },
     sat::{Clause, Cnf, PLit},
 };
@@ -17,6 +17,9 @@ mod card;
 pub mod domain;
 /// Encoder for word equations
 mod equation;
+
+/// Encoder for regular constraints
+mod re;
 
 /// Encoder for linear constraints
 mod linear;
@@ -42,21 +45,19 @@ struct FilledPattern {
 }
 
 impl FilledPattern {
-    fn fill(pattern: &Pattern, bounds: &Bounds, var_manager: &VarManager) -> Self {
+    fn fill(pattern: &Pattern, bounds: &Bounds) -> Self {
         Self {
-            positions: Self::convert(pattern, bounds, var_manager),
+            positions: Self::convert(pattern, bounds),
         }
     }
 
-    fn convert(pattern: &Pattern, bounds: &Bounds, var_manager: &VarManager) -> Vec<FilledPos> {
+    fn convert(pattern: &Pattern, bounds: &Bounds) -> Vec<FilledPos> {
         let mut positions = vec![];
         for symbol in pattern.symbols() {
             match symbol {
                 Symbol::Constant(c) => positions.push(FilledPos::Const(*c)),
                 Symbol::Variable(v) => {
-                    let len_var = var_manager.str_length_var(v).unwrap_or_else(|| {
-                        panic!("Variable {} does not have a length variable", v)
-                    });
+                    let len_var = &v.len_var().unwrap();
                     let len = bounds.get_upper(len_var).unwrap() as usize;
                     for i in 0..len {
                         positions.push(FilledPos::FilledPos(v.clone(), i))
@@ -182,10 +183,5 @@ pub trait ConstraintEncoder {
     /// This has no effect on non-incremental encoders.
     fn reset(&mut self);
 
-    fn encode(
-        &mut self,
-        bounds: &Bounds,
-        substitution: &DomainEncoding,
-        var_manager: &VarManager,
-    ) -> EncodingResult;
+    fn encode(&mut self, bounds: &Bounds, substitution: &DomainEncoding) -> EncodingResult;
 }

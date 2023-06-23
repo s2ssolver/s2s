@@ -2,7 +2,10 @@ use std::{collections::HashMap, fmt::Display, sync::atomic::AtomicUsize};
 
 use indexmap::IndexMap;
 
-use crate::sat::{pvar, PVar};
+use crate::{
+    instance::Instance,
+    sat::{pvar, PVar},
+};
 
 use self::terms::{IntTerm, StringTerm, Term};
 
@@ -35,7 +38,7 @@ static VAR_COUNTER: AtomicUsize = AtomicUsize::new(1);
 
 /// A variable. Each variable has a name and a sort.
 /// Two variables are equal if they have the same name.
-/// Variables should not be created directly, but through a `VarManager`
+/// Variables should not be created directly, but through a `Instance`
 impl Variable {
     /// Creates a new variable with the given name and sort.
     pub fn new(name: String, sort: Sort) -> Self {
@@ -101,121 +104,19 @@ impl Variable {
     }
 
     /// Returns a variable representing the length of the this variable, if the variable is of sort string.
-    /// Panics if the variable is not of sort string
-    pub fn len_var(&self) -> Self {
+    /// Returns None otherwise.
+    pub fn len_var(&self) -> Option<Self> {
         let name = format!("{}$len", self.name());
         match self {
-            Variable::String { .. } => Variable::Int { name },
-            Variable::Int { .. } => panic!("Cannot get length of integer variable {}", self),
-            Variable::Bool { .. } => panic!("Cannot get length of boolean variable {}", self),
-        }
-    }
-}
-
-/// A manager for variables
-#[derive(Debug, Clone, Default)]
-pub struct VarManager {
-    /// The set of variables, indexed by name
-    vars: IndexMap<String, Variable>,
-}
-
-impl VarManager {
-    /// Creates a new variable manager that keeps track of the variables used in the problem
-    pub fn new() -> Self {
-        Self {
-            vars: IndexMap::new(),
+            Variable::String { .. } => Some(Variable::Int { name }),
+            Variable::Int { .. } => None,
+            Variable::Bool { .. } => None,
         }
     }
 
-    /// Creates a new temporal variable and returns a copy of it
-    /// Temporal variables are not declared in the input problem and are not printed in the output.
-    pub fn tmp_var(&mut self, sort: Sort) -> Variable {
-        let tmp = Variable::temp(sort);
-        self.add_var(tmp.clone());
-        tmp
-    }
-
-    /// Creates new variable and returns a copy of it.
-    /// Panics if a variable with the same name already exists.
-    pub fn new_var(&mut self, name: &str, sort: Sort) -> Variable {
-        assert!(!self.vars.contains_key(name));
-        let v = Variable::new(name.to_owned(), sort);
-        self.vars.insert(name.to_owned(), v.clone());
-        if sort == Sort::String {
-            // also insert a integer variable representing the length of the string
-            self.add_var(v.len_var());
-        }
-        self.by_name(name)
-            .expect("Variable should have been created")
-            .clone()
-    }
-
-    /// Adds an existing variable to the manager.
-    /// Prefer using `new_var` or `tmp_var` instead.
-    pub fn add_var(&mut self, var: Variable) {
-        assert!(!self.vars.contains_key(var.name()));
-        if var.sort() == Sort::String {
-            // also insert a integer variable representing the length of the string
-            self.add_var(var.len_var());
-        }
-        self.vars.insert(var.name().to_string(), var);
-    }
-
-    /// Returns an iterator over the variables of a certain sort.
-    /// If `with_temps` is true, the iterator includes temporal variables.
-    pub fn of_sort(&self, sort: Sort) -> impl Iterator<Item = &Variable> {
-        self.vars.values().filter(move |v| v.sort() == sort)
-    }
-
-    /// Returns an iterator over all variables.
-    pub fn iter_vars(&self) -> impl Iterator<Item = &Variable> {
-        self.vars.values()
-    }
-
-    /// Returns a variable by name, if it exists
-    pub fn by_name(&self, name: &str) -> Option<&Variable> {
-        self.vars.get(name)
-    }
-
-    /// Returns true if the variable is temporal, false otherwise.
-    /// Returns None if the variable does not exist within the scope of the manager.
-    pub fn is_temporal(&self, _var: &Variable) -> Option<bool> {
-        todo!()
-    }
-
-    /// Returns a variable representing the length of the given variable, if the string variable exists within the manager.
-    /// Returns None otherwise.
-    /// Panics if the variable is not of sort string
-    pub fn str_length_var(&self, var: &Variable) -> Option<&Variable> {
-        assert!(
-            var.sort() == Sort::String,
-            "Cannot get length of non-string variable {}",
-            var
-        );
-        let name = format!("{}$len", var.name());
-
-        self.by_name(&name)
-    }
-
-    pub fn length_str_var(&self, var: &Variable) -> Option<&Variable> {
-        assert!(
-            var.sort() == Sort::Int,
-            "Cannot get length of non-string variable {}",
-            var
-        );
-        let split = var.name().split('$').collect::<Vec<_>>();
-        assert_eq!(split.len(), 2);
-        assert_eq!(split[1], "len");
-        let name = split[0];
-        self.by_name(name)
-    }
-
-    /// Returns true iff the given variable represents the length of a string variable
-    pub fn is_lenght_var(&self, var: &Variable) -> bool {
-        self.vars
-            .get(var.name())
-            .map(|v| v.name().ends_with("$len"))
-            .unwrap_or(false)
+    /// Returns true if the variable represents the length of a string variable.
+    pub fn is_len_var(&self) -> bool {
+        self.name().ends_with("$len")
     }
 }
 
@@ -263,14 +164,14 @@ impl Substitution {
         if var.is_string() {
             if let Term::String(t) = term {
                 self.subs
-                    .insert(var.len_var(), Self::strterm_to_lem(&t).into());
+                    .insert(var.len_var().unwrap(), Self::strterm_to_lem(&t).into());
             }
         }
     }
 
     fn strterm_to_lem(t: &StringTerm) -> IntTerm {
         match t {
-            StringTerm::Variable(v) => IntTerm::Var(v.len_var()),
+            StringTerm::Variable(v) => IntTerm::Var(v.len_var().unwrap()),
             StringTerm::Constant(w) => IntTerm::Const(w.len() as isize),
             StringTerm::Concat(l, r) => {
                 IntTerm::plus(&Self::strterm_to_lem(l), &Self::strterm_to_lem(r))
@@ -300,7 +201,8 @@ impl Substitution {
         sub
     }
 
-    pub fn to_smt2(&self, _var_manager: &VarManager) -> String {
+    /// Returns the SMT-LIB representation of the substitution.
+    pub fn to_smt2(&self, _instance: &Instance) -> String {
         todo!()
     }
 }

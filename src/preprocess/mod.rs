@@ -3,11 +3,11 @@ mod int;
 mod string;
 
 use crate::{
+    instance::Instance,
     model::{
         formula::{Atom, Formula, Predicate},
         Substitutable, Substitution, Variable,
     },
-    parse::Instance,
     preprocess::{formula::ConjunctionSimplifier, int::ConstIntReducer},
 };
 

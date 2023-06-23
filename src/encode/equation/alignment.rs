@@ -7,8 +7,9 @@ use crate::bounds::Bounds;
 use crate::encode::card::{exactly_one, IncrementalAMO};
 use crate::encode::domain::DomainEncoding;
 use crate::encode::{ConstraintEncoder, EncodingResult, FilledPattern, LAMBDA};
+
 use crate::model::constraints::{Pattern, Symbol, WordEquation};
-use crate::model::{VarManager, Variable};
+use crate::model::Variable;
 use crate::sat::{as_lit, neg, pvar, Cnf, PVar};
 use indexmap::IndexMap;
 
@@ -196,7 +197,7 @@ impl AlignmentEncoder {
 
     fn get_var_bound(&self, var: &Variable, bounds: &Bounds) -> usize {
         bounds
-            .get_upper(&var.len_var())
+            .get_upper(&var.len_var().unwrap())
             .expect("Unbounded variable") as usize
     }
 
@@ -205,7 +206,7 @@ impl AlignmentEncoder {
     fn get_last_var_bound(&self, var: &Variable) -> Option<usize> {
         self.last_var_bounds
             .as_ref()
-            .map(|bounds| bounds.get_upper(&var.len_var()).unwrap() as usize)
+            .map(|bounds| bounds.get_upper(&var.len_var().unwrap()).unwrap() as usize)
     }
 
     /// Encodes the possible candidates for the solution word up to bound `self.bound`.
@@ -244,7 +245,6 @@ impl AlignmentEncoder {
         bounds: &Bounds,
         side: &EqSide,
         dom: &DomainEncoding,
-        _var_manager: &VarManager,
     ) -> EncodingResult {
         let mut res = EncodingResult::empty();
 
@@ -307,12 +307,16 @@ impl AlignmentEncoder {
                         let vbound = self.get_var_bound(v, bounds);
                         for len in 0..=vbound {
                             // Start position of next segment is i+len
-                            let len_var =
-                                dom.int()
-                                    .get(&v.len_var(), len as isize)
-                                    .unwrap_or_else(|| {
-                                        panic!("No length {} for variable {}", len, v.len_var())
-                                    });
+                            let len_var = dom
+                                .int()
+                                .get(&v.len_var().unwrap(), len as isize)
+                                .unwrap_or_else(|| {
+                                    panic!(
+                                        "No length {} for variable {}",
+                                        len,
+                                        v.len_var().unwrap()
+                                    )
+                                });
                             // S_i^p /\ len_var -> S_{i+1}^(p+len)
                             let svar = self.start_position(i, pos, side);
 
@@ -413,8 +417,8 @@ impl AlignmentEncoder {
         for (i, s) in segments.iter().enumerate() {
             match s {
                 PatternSegment::Variable(x) => {
-                    for l in 0..=bounds.get_upper(&x.len_var()).unwrap() as usize {
-                        let len_var = dom.int().get(&x.len_var(), l as isize).unwrap();
+                    for l in 0..=bounds.get_upper(&x.len_var().unwrap()).unwrap() as usize {
+                        let len_var = dom.int().get(&x.len_var().unwrap(), l as isize).unwrap();
                         for p in segments.prefix_min_len(i, bounds)..self.bound {
                             let start_var = self.start_position(i, p, side);
                             if p < last_bound
@@ -499,7 +503,7 @@ impl AlignmentEncoder {
                         }
                         // Next position in variable, if exists, is lambda
                         if self.get_last_var_bound(x).unwrap_or(0) <= l
-                            && l < bounds.get_upper(&x.len_var()).unwrap() as usize
+                            && l < bounds.get_upper(&x.len_var().unwrap()).unwrap() as usize
                         {
                             // If variable is assigned length l, then the position x[l] (and implicitly all following) must be lambda
                             let sub_lambda = subs.get(x, l, LAMBDA).unwrap();
@@ -552,7 +556,7 @@ impl AlignmentEncoder {
         match &segments.segments[last] {
             PatternSegment::Variable(x) => {
                 for p in 0..self.bound {
-                    for l in 0..=bounds.get_upper(&x.len_var()).unwrap() as usize {
+                    for l in 0..=bounds.get_upper(&x.len_var().unwrap()).unwrap() as usize {
                         // Filter out l,p pairs that have been encoded already, i.e. p+l < last_bound
                         if p < last_bound
                             && l < self.get_last_var_bound(x).unwrap_or(0)
@@ -562,7 +566,7 @@ impl AlignmentEncoder {
                         }
                         if p + l < self.bound {
                             let start_var = self.start_position(last, p, side);
-                            let len_var = dom.int().get(&x.len_var(), l as isize).unwrap();
+                            let len_var = dom.int().get(&x.len_var().unwrap(), l as isize).unwrap();
                             let cand_var = self.candidate_at(p + l, LAMBDA);
 
                             clauses.push(vec![neg(start_var), neg(len_var), as_lit(cand_var)]);
@@ -611,19 +615,14 @@ impl WordEquationEncoder for AlignmentEncoder {
 }
 
 impl ConstraintEncoder for AlignmentEncoder {
-    fn encode(
-        &mut self,
-        bounds: &Bounds,
-        substitution: &DomainEncoding,
-        var_manager: &VarManager,
-    ) -> EncodingResult {
+    fn encode(&mut self, bounds: &Bounds, substitution: &DomainEncoding) -> EncodingResult {
         self.round += 1;
         log::debug!("Encoding {}", self.equation);
         let mut res = EncodingResult::empty();
 
         let bound = max(
-            FilledPattern::fill(self.equation.lhs(), bounds, var_manager).length(),
-            FilledPattern::fill(self.equation.rhs(), bounds, var_manager).length(),
+            FilledPattern::fill(self.equation.lhs(), bounds).length(),
+            FilledPattern::fill(self.equation.rhs(), bounds).length(),
         );
         assert!(bound >= self.bound, "Bound cannot shrink");
 
@@ -658,7 +657,7 @@ impl ConstraintEncoder for AlignmentEncoder {
 
         // Encode alignment of segments with candidates LHS
         let ts = Instant::now();
-        let align_enc = self.encode_alignment(bounds, &EqSide::Lhs, substitution, var_manager);
+        let align_enc = self.encode_alignment(bounds, &EqSide::Lhs, substitution);
         log::debug!(
             "Clauses for alignments LHS: {} ({} ms)",
             align_enc.clauses(),
@@ -668,7 +667,7 @@ impl ConstraintEncoder for AlignmentEncoder {
 
         // Encode alignment of segments with candidates RHS
         let ts = Instant::now();
-        let align_enc = self.encode_alignment(bounds, &EqSide::Rhs, substitution, var_manager);
+        let align_enc = self.encode_alignment(bounds, &EqSide::Rhs, substitution);
         log::debug!(
             "Clauses for alignments RHS: {} ({} ms)",
             align_enc.clauses(),
@@ -747,7 +746,10 @@ impl Display for EqSide {
 
 #[cfg(test)]
 mod tests {
-    use crate::model::{Evaluable, Substitutable};
+    use crate::{
+        instance::Instance,
+        model::{Evaluable, Substitutable},
+    };
     use std::collections::HashSet;
 
     use super::*;
@@ -757,13 +759,12 @@ mod tests {
     use crate::{
         bounds::IntDomain,
         encode::domain::{get_substitutions, DomainEncoder},
-        model::{constraints::Pattern, Sort, Substitution, VarManager},
+        model::{constraints::Pattern, Sort, Substitution},
     };
 
     #[test]
     fn segment_single_var() {
-        let mut vm = VarManager::new();
-        let var = vm.tmp_var(Sort::String);
+        let var = Variable::temp(Sort::String);
         let p = Pattern::variable(&var);
         let segs = SegmentedPattern::new(&p);
         assert_eq!(segs.length(), 1);
@@ -791,9 +792,8 @@ mod tests {
 
     #[test]
     fn segment_vars_consts() {
-        let mut vm = VarManager::new();
-        let var1 = vm.tmp_var(Sort::String);
-        let var2 = vm.tmp_var(Sort::String);
+        let var1 = Variable::temp(Sort::String);
+        let var2 = Variable::temp(Sort::String);
         let mut p = Pattern::empty();
         p.append_var(&var1)
             .append_word("foo")
@@ -818,14 +818,16 @@ mod tests {
 
     fn solve_bindep(eq: &WordEquation, bounds: Bounds, alphabet: &IndexSet<char>) -> Option<bool> {
         let mut encoding = EncodingResult::empty();
-        let mut vm = VarManager::new();
-        eq.variables().iter().for_each(|v| vm.add_var(v.clone()));
+        let mut instance = Instance::default();
+        eq.variables()
+            .iter()
+            .for_each(|v| instance.add_var(v.clone()));
         let mut dom_encoder = DomainEncoder::new(alphabet.clone());
-        let subs_cnf = dom_encoder.encode(&bounds, &vm);
+        let subs_cnf = dom_encoder.encode(&bounds, &instance);
         encoding.join(subs_cnf);
 
         let mut encoder = AlignmentEncoder::new(eq.clone());
-        encoding.join(encoder.encode(&bounds, dom_encoder.encoding(), &vm));
+        encoding.join(encoder.encode(&bounds, dom_encoder.encoding()));
 
         let mut solver: Solver = Solver::default();
         let mut assumptions = HashSet::new();
@@ -841,7 +843,7 @@ mod tests {
         }
         let res = solver.solve_with(assumptions.into_iter());
         if let Some(true) = res {
-            let solution = get_substitutions(dom_encoder.encoding(), &vm, &solver);
+            let solution = get_substitutions(dom_encoder.encoding(), &instance, &solver);
             let solution = Substitution::from(solution);
             assert!(
                 eq.eval(&solution).unwrap(),
@@ -863,8 +865,10 @@ mod tests {
         let mut bounds = Bounds::with_defaults(IntDomain::Bounded(0, 1));
 
         let mut encoder = AlignmentEncoder::new(eq.clone());
-        let mut vm = VarManager::new();
-        eq.variables().iter().for_each(|v| vm.add_var(v.clone()));
+        let mut instance: Instance = Instance::default();
+        eq.variables()
+            .iter()
+            .for_each(|v| instance.add_var(v.clone()));
         let mut dom_encoder = DomainEncoder::new(alphabet.clone());
 
         let mut result = None;
@@ -874,8 +878,8 @@ mod tests {
         while !done {
             let mut encoding = EncodingResult::empty();
 
-            encoding.join(dom_encoder.encode(&bounds, &vm));
-            encoding.join(encoder.encode(&bounds, dom_encoder.encoding(), &vm));
+            encoding.join(dom_encoder.encode(&bounds, &instance));
+            encoding.join(encoder.encode(&bounds, dom_encoder.encoding()));
             result = match encoding {
                 EncodingResult::Cnf(cnf, assm) => {
                     for clause in cnf {
@@ -892,7 +896,7 @@ mod tests {
             bounds.clamp_uppers(limit as isize);
         }
         if let Some(true) = result {
-            let solution = get_substitutions(dom_encoder.encoding(), &vm, &solver);
+            let solution = get_substitutions(dom_encoder.encoding(), &instance, &solver);
             let solution = Substitution::from(solution);
             assert!(
                 eq.eval(&solution).unwrap(),
@@ -941,9 +945,8 @@ mod tests {
 
     #[test]
     fn bindep_trivial_sat_const_var() {
-        let mut vm = VarManager::new();
         let eq = WordEquation::new(
-            Pattern::variable(&vm.tmp_var(Sort::String)),
+            Pattern::variable(&Variable::temp(Sort::String)),
             Pattern::constant("bar"),
         );
 
@@ -955,8 +958,7 @@ mod tests {
 
     #[test]
     fn bindep_trivial_sat_vars() {
-        let mut vm = VarManager::new();
-        let var = Pattern::variable(&vm.tmp_var(Sort::String));
+        let var = Pattern::variable(&Variable::temp(Sort::String));
         let eq = WordEquation::new(var.clone(), var);
         let bounds = Bounds::with_defaults(IntDomain::Bounded(0, 10));
         let res = solve_bindep(&eq, bounds, &eq.alphabet());
@@ -965,10 +967,9 @@ mod tests {
 
     #[test]
     fn bindep_sat_commute() {
-        let mut vm = VarManager::new();
         // AB = BA
-        let var_a = vm.tmp_var(Sort::String);
-        let var_b = vm.tmp_var(Sort::String);
+        let var_a = Variable::temp(Sort::String);
+        let var_b = Variable::temp(Sort::String);
         let mut lhs = Pattern::empty();
         lhs.append_var(&var_a).append_var(&var_b);
         let mut rhs = Pattern::empty();
@@ -997,10 +998,9 @@ mod tests {
 
     #[test]
     fn bindep_trivial_unsat_const_var_too_small() {
-        let mut vm = VarManager::new();
         let eq = WordEquation::new(
             Pattern::constant("foo"),
-            Pattern::variable(&vm.tmp_var(Sort::String)),
+            Pattern::variable(&Variable::temp(Sort::String)),
         );
 
         let bounds = Bounds::with_defaults(IntDomain::Bounded(0, 1));

@@ -17,7 +17,6 @@ use crate::encode::domain::DomainEncoding;
 use crate::encode::{ConstraintEncoder, EncodingResult, FilledPattern, FilledPos, LAMBDA};
 
 use crate::model::constraints::WordEquation;
-use crate::model::VarManager;
 use crate::sat::{as_lit, neg, pvar, Clause, Cnf, PVar};
 
 use super::WordEquationEncoder;
@@ -107,16 +106,11 @@ impl ConstraintEncoder for WoorpjeEncoder {
     fn reset(&mut self) { // do nothing}
     }
 
-    fn encode(
-        &mut self,
-        bounds: &Bounds,
-        dom_enc: &DomainEncoding,
-        var_manager: &VarManager,
-    ) -> EncodingResult {
+    fn encode(&mut self, bounds: &Bounds, dom_enc: &DomainEncoding) -> EncodingResult {
         let mut cnf = Cnf::new();
         let subs = dom_enc.string();
-        let lhs = FilledPattern::fill(self.equation.lhs(), bounds, var_manager);
-        let rhs = FilledPattern::fill(self.equation.rhs(), bounds, var_manager);
+        let lhs = FilledPattern::fill(self.equation.lhs(), bounds);
+        let rhs = FilledPattern::fill(self.equation.rhs(), bounds);
         log::trace!(
             "Encoding {} ({} x {})",
             self.equation,
@@ -310,10 +304,8 @@ mod tests {
     use crate::{
         bounds::IntDomain,
         encode::domain::{get_substitutions, DomainEncoder},
-        model::{
-            constraints::Pattern, Evaluable, Sort, Substitutable, Substitution, VarManager,
-            Variable,
-        },
+        instance::Instance,
+        model::{constraints::Pattern, Evaluable, Sort, Substitutable, Substitution, Variable},
     };
 
     #[quickcheck]
@@ -321,60 +313,58 @@ mod tests {
         let bound = bound as isize;
         let pattern = Pattern::constant(&word);
         let bounds = Bounds::with_defaults(IntDomain::Bounded(0, bound));
-        let mut var_manager = VarManager::new();
+        let mut instance = Instance::default();
         for var in pattern.vars() {
-            var_manager.new_var(var.name(), Sort::String);
+            instance.add_var(var.clone());
         }
         assert_eq!(
-            FilledPattern::fill(&pattern, &bounds, &var_manager).length(),
+            FilledPattern::fill(&pattern, &bounds).length(),
             word.chars().count()
         );
     }
 
     #[quickcheck]
     fn length_single_var_pattern(prefix: String, bound: u8, suffix: String) {
-        let mut vm = VarManager::new();
         let bound = bound as isize;
-        let v = vm.tmp_var(Sort::String);
+        let v = Variable::temp(Sort::String);
         let mut pattern = Pattern::constant(&prefix);
         pattern.append_var(&v).append_word(&suffix);
 
         let mut bounds = Bounds::with_defaults(IntDomain::Bounded(0, 1));
-        bounds.set(&v.len_var(), IntDomain::Bounded(0, bound));
-        let mut var_manager = VarManager::new();
+        bounds.set(&v.len_var().unwrap(), IntDomain::Bounded(0, bound));
+        let mut instance = Instance::default();
         for var in pattern.vars() {
-            var_manager.new_var(var.name(), Sort::String);
+            instance.add_var(var.clone());
         }
         assert_eq!(
-            FilledPattern::fill(&pattern, &bounds, &var_manager).length(),
+            FilledPattern::fill(&pattern, &bounds).length(),
             bound as usize + prefix.chars().count() + suffix.chars().count()
         );
     }
 
     #[quickcheck]
     fn length_default_bound(prefix: String, default_bound: u8, suffix: String) {
-        let mut vm = VarManager::new();
         let default_bounds = IntDomain::Bounded(0, default_bound as isize);
-        let v = vm.tmp_var(Sort::String);
-        let y = vm.tmp_var(Sort::String);
+        let v = Variable::temp(Sort::String);
+        let y = Variable::temp(Sort::String);
         let mut pattern = Pattern::constant(&prefix);
         pattern.append_var(&v).append_var(&y).append_word(&suffix);
 
         let mut bounds = Bounds::with_defaults(default_bounds);
-        bounds.set(&v.len_var(), IntDomain::Bounded(0, 1));
-        let mut var_manager = VarManager::new();
+        bounds.set(&v.len_var().unwrap(), IntDomain::Bounded(0, 1));
+        let mut instance = Instance::default();
         for var in pattern.vars() {
-            var_manager.new_var(var.name(), Sort::String);
+            instance.add_var(var.clone());
         }
         assert_eq!(
-            FilledPattern::fill(&pattern, &bounds, &var_manager).length(),
+            FilledPattern::fill(&pattern, &bounds).length(),
             1 + prefix.chars().count() + suffix.chars().count() + default_bound as usize
         );
     }
 
     fn solve_woorpje(eq: &WordEquation, bounds: Bounds, alphabet: &IndexSet<char>) -> Option<bool> {
         let mut encoding = EncodingResult::empty();
-        let mut vm = VarManager::new();
+        let mut vm = Instance::default();
         eq.variables().iter().for_each(|v| {
             vm.add_var(v.clone());
         });
@@ -384,7 +374,7 @@ mod tests {
         encoding.join(subs_cnf);
 
         let mut encoder = WoorpjeEncoder::new(eq.clone());
-        encoding.join(encoder.encode(&bounds, dom_encoder.encoding(), &vm));
+        encoding.join(encoder.encode(&bounds, dom_encoder.encoding()));
 
         let mut solver: Solver = Solver::default();
         match encoding {
@@ -458,10 +448,9 @@ mod tests {
 
     #[test]
     fn woorpje_trivial_sat_const_var() {
-        let mut vm = VarManager::new();
         let eq = WordEquation::new(
             Pattern::constant("bar"),
-            Pattern::variable(&vm.tmp_var(Sort::String)),
+            Pattern::variable(&Variable::temp(Sort::String)),
         );
 
         let bounds = Bounds::with_defaults(IntDomain::Bounded(0, 19));
@@ -472,8 +461,7 @@ mod tests {
 
     #[test]
     fn woorpje_trivial_sat_vars() {
-        let mut vm = VarManager::new();
-        let var = Pattern::variable(&vm.tmp_var(Sort::String));
+        let var = Pattern::variable(&Variable::temp(Sort::String));
         let eq = WordEquation::new(var.clone(), var);
         let bounds = Bounds::with_defaults(IntDomain::Bounded(0, 10));
         let res = solve_woorpje(&eq, bounds, &eq.alphabet());
@@ -483,9 +471,9 @@ mod tests {
     #[test]
     fn woorpje_sat_commute() {
         // AB = BA
-        let mut vm = VarManager::new();
-        let var_a = vm.tmp_var(Sort::String);
-        let var_b = vm.tmp_var(Sort::String);
+
+        let var_a = Variable::temp(Sort::String);
+        let var_b = Variable::temp(Sort::String);
         let mut lhs = Pattern::empty();
         lhs.append_var(&var_a).append_var(&var_b);
         let mut rhs = Pattern::empty();
@@ -498,8 +486,7 @@ mod tests {
 
     #[test]
     fn woorpje_sat_pattern_const() {
-        let mut vm = VarManager::new();
-        let var_a = vm.tmp_var(Sort::String);
+        let var_a = Variable::temp(Sort::String);
 
         let mut lhs = Pattern::empty();
         lhs.append_word("a").append_var(&var_a).append_word("c");
@@ -512,10 +499,9 @@ mod tests {
 
     #[test]
     fn woorpje_trivial_unsat_const_var_too_small() {
-        let mut vm = VarManager::new();
         let eq = WordEquation::new(
             Pattern::constant("foo"),
-            Pattern::variable(&vm.tmp_var(Sort::String)),
+            Pattern::variable(&Variable::temp(Sort::String)),
         );
 
         let bounds = Bounds::with_defaults(IntDomain::Bounded(0, 1));
@@ -528,12 +514,12 @@ mod tests {
     fn woorpje_sat_t1i2() {
         // Track1, Instance 2
         //BabbabbadeeadAacbacaHaebHedbAcAcHebabccEcbcHH = AbbHabbAbbaHeFcadEbdeHbAcacdebabccAecbcdH
-        let mut vm = VarManager::new();
-        let var_a = vm.new_var("A", Sort::String);
-        let var_b = vm.new_var("B", Sort::String);
-        let var_h = vm.new_var("H", Sort::String);
-        let var_f = vm.new_var("F", Sort::String);
-        let var_e = vm.new_var("E", Sort::String);
+
+        let var_a = Variable::new("A".to_owned(), Sort::String);
+        let var_b = Variable::new("B".to_owned(), Sort::String);
+        let var_h = Variable::new("H".to_owned(), Sort::String);
+        let var_f = Variable::new("F".to_owned(), Sort::String);
+        let var_e = Variable::new("E".to_owned(), Sort::String);
 
         // B abbabbadeead A acbaca H aeb H edb A c A c H ebabcc E cbc HH
         let mut lhs = Pattern::empty();

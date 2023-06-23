@@ -6,7 +6,6 @@ use crate::encode::domain::DomainEncoding;
 use crate::encode::{ConstraintEncoder, EncodingResult, FilledPattern, FilledPos, LAMBDA};
 
 use crate::model::constraints::WordEquation;
-use crate::model::VarManager;
 use crate::sat::{as_lit, neg, pvar, Cnf, PVar};
 use indexmap::IndexSet;
 
@@ -543,20 +542,15 @@ impl WordEquationEncoder for IWoorpjeEncoder {
 }
 
 impl ConstraintEncoder for IWoorpjeEncoder {
-    fn encode(
-        &mut self,
-        bounds: &Bounds,
-        dom: &DomainEncoding,
-        var_manager: &VarManager,
-    ) -> EncodingResult {
+    fn encode(&mut self, bounds: &Bounds, dom: &DomainEncoding) -> EncodingResult {
         self.round += 1;
         let mut res = if let Some(old_selector) = self.selector {
             EncodingResult::assumption(neg(old_selector))
         } else {
             EncodingResult::empty()
         };
-        let lhs = FilledPattern::fill(self.equation.lhs(), bounds, var_manager);
-        let rhs = FilledPattern::fill(self.equation.rhs(), bounds, var_manager);
+        let lhs = FilledPattern::fill(self.equation.lhs(), bounds);
+        let rhs = FilledPattern::fill(self.equation.rhs(), bounds);
         let prev = self.filled_equation.take();
         self.previous_filled_equation = prev;
         self.filled_equation = Some((lhs, rhs));
@@ -602,7 +596,8 @@ mod tests {
     use crate::{
         bounds::IntDomain,
         encode::domain::{get_substitutions, DomainEncoder},
-        model::{constraints::Pattern, Evaluable, Sort, Substitutable, Substitution, VarManager},
+        instance::Instance,
+        model::{constraints::Pattern, Evaluable, Sort, Substitutable, Substitution, Variable},
     };
 
     fn solve_iwoorpje(
@@ -611,17 +606,17 @@ mod tests {
         alphabet: &IndexSet<char>,
     ) -> Option<bool> {
         let mut encoding = EncodingResult::empty();
-        let mut vm = VarManager::new();
+        let mut instance = Instance::default();
         eq.variables().iter().for_each(|v| {
-            vm.add_var(v.clone());
+            instance.add_var(v.clone());
         });
         let mut dom_encoder = DomainEncoder::new(alphabet.clone());
 
-        let subs_cnf = dom_encoder.encode(&bounds, &vm);
+        let subs_cnf = dom_encoder.encode(&bounds, &instance);
 
         encoding.join(subs_cnf);
         let mut encoder = IWoorpjeEncoder::new(eq.clone());
-        encoding.join(encoder.encode(&bounds, dom_encoder.encoding(), &vm));
+        encoding.join(encoder.encode(&bounds, dom_encoder.encoding()));
 
         let mut solver: Solver = Solver::default();
         let mut assumptions = HashSet::new();
@@ -637,7 +632,7 @@ mod tests {
         }
         let res = solver.solve_with(assumptions.into_iter());
         if let Some(true) = res {
-            let solution = get_substitutions(dom_encoder.encoding(), &vm, &solver);
+            let solution = get_substitutions(dom_encoder.encoding(), &instance, &solver);
             let solution = Substitution::from(solution);
             assert!(
                 eq.eval(&solution).unwrap(),
@@ -658,9 +653,9 @@ mod tests {
         let mut bounds = Bounds::with_defaults(IntDomain::Bounded(0, 1));
 
         let mut encoder = IWoorpjeEncoder::new(eq.clone());
-        let mut vm = VarManager::new();
+        let mut instance = Instance::default();
         eq.variables().iter().for_each(|v| {
-            vm.new_var(v.name(), Sort::String);
+            instance.add_var(v.clone());
         });
         let mut dom_encoder = DomainEncoder::new(alphabet.clone());
 
@@ -670,8 +665,8 @@ mod tests {
         while !done {
             let mut encoding = EncodingResult::empty();
 
-            encoding.join(dom_encoder.encode(&bounds, &vm));
-            encoding.join(encoder.encode(&bounds, dom_encoder.encoding(), &vm));
+            encoding.join(dom_encoder.encode(&bounds, &instance));
+            encoding.join(encoder.encode(&bounds, dom_encoder.encoding()));
             result = match encoding {
                 EncodingResult::Cnf(cnf, assm) => {
                     for clause in cnf {
@@ -689,7 +684,7 @@ mod tests {
         }
         match result {
             Some(true) => {
-                let sol = get_substitutions(dom_encoder.encoding(), &vm, &solver);
+                let sol = get_substitutions(dom_encoder.encoding(), &instance, &solver);
                 let solution = Substitution::from(sol);
 
                 assert!(
@@ -750,8 +745,7 @@ mod tests {
 
     #[test]
     fn iwoorpje_trivial_sat_vars() {
-        let mut vm = VarManager::new();
-        let var = Pattern::variable(&vm.tmp_var(Sort::String));
+        let var = Pattern::variable(&Variable::temp(Sort::String));
         let eq = WordEquation::new(var.clone(), var);
         let bounds = Bounds::with_defaults(IntDomain::Bounded(0, 10));
         let res = solve_iwoorpje(&eq, bounds, &eq.alphabet());
@@ -760,10 +754,9 @@ mod tests {
 
     #[test]
     fn iwoorpje_sat_commute() {
-        let mut vm = VarManager::new();
         // AB = BA
-        let var_a = vm.tmp_var(Sort::String);
-        let var_b = vm.tmp_var(Sort::String);
+        let var_a = Variable::temp(Sort::String);
+        let var_b = Variable::temp(Sort::String);
         let mut lhs = Pattern::empty();
         lhs.append_var(&var_a).append_var(&var_b);
         let mut rhs = Pattern::empty();
@@ -792,10 +785,9 @@ mod tests {
 
     #[test]
     fn iwoorpje_trivial_unsat_const_var_too_small() {
-        let mut vm = VarManager::new();
         let eq = WordEquation::new(
             Pattern::constant("foo"),
-            Pattern::variable(&vm.tmp_var(Sort::String)),
+            Pattern::variable(&Variable::temp(Sort::String)),
         );
 
         let bounds = Bounds::with_defaults(IntDomain::Bounded(0, 1));

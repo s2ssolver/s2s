@@ -11,6 +11,7 @@ mod abstr;
 mod bounds;
 mod encode;
 pub mod error;
+mod instance;
 pub mod model;
 mod parse;
 mod preprocess;

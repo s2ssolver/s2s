@@ -51,7 +51,7 @@ impl MddEncoder {
 
     fn last_bound(&self, var: &Variable) -> isize {
         let v = if var.sort() == Sort::String {
-            var.len_var()
+            var.len_var().unwrap()
         } else {
             var.clone()
         };
@@ -75,7 +75,6 @@ impl ConstraintEncoder for MddEncoder {
         &mut self,
         bounds: &Bounds,
         dom: &super::domain::DomainEncoding,
-        _var_manager: &crate::model::VarManager,
     ) -> super::EncodingResult {
         self.round += 1;
         let mut res = EncodingResult::empty();

@@ -564,7 +564,7 @@ mod tests {
     use quickcheck::TestResult;
     use quickcheck_macros::quickcheck;
 
-    use crate::model::{Sort, VarManager};
+    use crate::model::Sort;
 
     use super::*;
 
@@ -690,8 +690,7 @@ mod tests {
 
     #[test]
     fn derive_prefix_sub_trivial_eq() {
-        let mut vm = VarManager::new();
-        let x = vm.tmp_var(Sort::String);
+        let x = Variable::temp(Sort::String);
         let lhs = Pattern::variable(&x);
         let rhs = Pattern::constant("foo");
         let eq = WordEquation::new(lhs, rhs);
@@ -704,8 +703,7 @@ mod tests {
 
     #[test]
     fn derive_suffix_sub_trivial_eq() {
-        let mut vm = VarManager::new();
-        let x = vm.tmp_var(Sort::String);
+        let x = Variable::temp(Sort::String);
         let lhs = Pattern::variable(&x);
         let rhs = Pattern::constant("foo");
         let eq = WordEquation::new(lhs, rhs);
@@ -718,9 +716,9 @@ mod tests {
     #[test]
     fn derive_prefix_sub_const_none() {
         // Cannot ifer that X starts with 'ab' as it could be empty
-        let mut vm = VarManager::new();
-        let x = vm.tmp_var(Sort::String);
-        let y = vm.tmp_var(Sort::String);
+
+        let x = Variable::temp(Sort::String);
+        let y = Variable::temp(Sort::String);
         let lhs = Pattern::variable(&x).append_word("ab").clone();
         let rhs = Pattern::constant("ab").append_var(&y).clone();
         let eq = WordEquation::new(lhs, rhs);
@@ -734,9 +732,9 @@ mod tests {
     #[test]
     fn derive_suffix_sub_const_none() {
         // Cannot ifer that Y ends with 'ab' as it could be empty
-        let mut vm = VarManager::new();
-        let x = vm.tmp_var(Sort::String);
-        let y = vm.tmp_var(Sort::String);
+
+        let x = Variable::temp(Sort::String);
+        let y = Variable::temp(Sort::String);
         let lhs = Pattern::variable(&x).append_word("ab").clone();
         let rhs = Pattern::constant("ab").append_var(&y).clone();
         let eq = WordEquation::new(lhs, rhs);
@@ -750,9 +748,9 @@ mod tests {
     #[test]
     fn derive_prefix_sub_const_word() {
         // Infer that x must start with 'foo'
-        let mut vm = VarManager::new();
-        let x = vm.tmp_var(Sort::String);
-        let y = vm.tmp_var(Sort::String);
+
+        let x = Variable::temp(Sort::String);
+        let y = Variable::temp(Sort::String);
         let lhs = Pattern::variable(&x).append_word("ab").clone();
         let rhs = Pattern::constant("fooab").append_var(&y).clone();
         let eq = WordEquation::new(lhs, rhs);
@@ -766,9 +764,9 @@ mod tests {
     #[test]
     fn derive_suffix_sub_const_word() {
         // Infer that y must end with 'foo'
-        let mut vm = VarManager::new();
-        let x = vm.tmp_var(Sort::String);
-        let y = vm.tmp_var(Sort::String);
+
+        let x = Variable::temp(Sort::String);
+        let y = Variable::temp(Sort::String);
         let lhs = Pattern::variable(&x).append_word("abfoo").clone();
         let rhs = Pattern::constant("ab").append_var(&y).clone();
         let eq = WordEquation::new(lhs, rhs);
@@ -781,9 +779,9 @@ mod tests {
     #[test]
     fn derive_prefix_none() {
         //aaX = XY:
-        let mut vm = VarManager::new();
-        let x = vm.tmp_var(Sort::String);
-        let y = vm.tmp_var(Sort::String);
+
+        let x = Variable::temp(Sort::String);
+        let y = Variable::temp(Sort::String);
         let lhs = Pattern::constant("aa").append_var(&x).clone();
         let rhs = Pattern::variable(&x).append_var(&y).clone();
         let eq = WordEquation::new(lhs, rhs);

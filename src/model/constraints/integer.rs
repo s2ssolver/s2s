@@ -208,7 +208,7 @@ impl LinearConstraint {
         for x in eq.variables() {
             let xs = &Symbol::Variable(x.clone());
             let coeff = eq.lhs().count(xs) as isize - eq.rhs().count(xs) as isize;
-            lhs.add_var_coeff(&x.len_var(), coeff);
+            lhs.add_var_coeff(&x.len_var().unwrap(), coeff);
         }
         for c in eq.alphabet() {
             let c = &Symbol::Constant(c);

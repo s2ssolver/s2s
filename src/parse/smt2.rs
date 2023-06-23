@@ -12,7 +12,7 @@ use crate::{
     model::formula::{Formula, Predicate},
     model::{
         terms::{IntTerm, ReTerm, StringTerm},
-        Sort as NSort, VarManager,
+        Sort as NSort, Variable,
     },
 };
 
@@ -21,13 +21,14 @@ use super::{Instance, ParseError};
 pub fn parse_smt<R: BufRead>(smt: R) -> Result<Instance, ParseError> {
     let script = Script::<Term>::parse(smt)
         .map_err(|e| ParseError::Other(format!("Error parsing SMT-LIB script: {}", e), None))?;
-    let mut var_manager = VarManager::new();
+    let mut instance = Instance::default();
+
     let mut asserts = vec![];
     for command in script {
         match command {
             Command::Assert { term } => {
                 let mut visitor = FormulaBuilder {
-                    var_manager: &var_manager,
+                    instance: &instance,
                     context: Ctx::default(),
                 };
                 match term.visit_with(&mut visitor) {
@@ -36,7 +37,7 @@ pub fn parse_smt<R: BufRead>(smt: R) -> Result<Instance, ParseError> {
                 }
             }
             Command::DeclareConst { symbol, sort } => {
-                let _v = var_manager.new_var(&symbol.0, isort2sort(&sort)?);
+                instance.add_var(Variable::new(symbol.0.clone(), isort2sort(&sort)?));
             }
             Command::DeclareFun {
                 symbol,
@@ -45,7 +46,7 @@ pub fn parse_smt<R: BufRead>(smt: R) -> Result<Instance, ParseError> {
             } => {
                 if parameters.is_empty() {
                     // This is a constant function, i.e., a variable
-                    var_manager.new_var(&symbol.0, isort2sort(&sort)?);
+                    instance.add_var(Variable::new(symbol.0.clone(), isort2sort(&sort)?));
                 } else {
                     return Err(ParseError::Unsupported(
                         "Non-constant function declaration".to_string(),
@@ -88,11 +89,12 @@ pub fn parse_smt<R: BufRead>(smt: R) -> Result<Instance, ParseError> {
         1 => asserts.pop().unwrap(),
         _ => Formula::and(asserts),
     };
-    Ok(Instance::new(fm, var_manager))
+    instance.set_formula(fm);
+    Ok(instance)
 }
 
 struct FormulaBuilder<'a> {
-    var_manager: &'a VarManager,
+    instance: &'a Instance,
     context: Ctx,
 }
 
@@ -169,11 +171,11 @@ impl<'a> Visitor<ALL> for FormulaBuilder<'a> {
                     let sort_rhs = sorts[1];
                     match (sort_lhs, sort_rhs) {
                         (NSort::String, NSort::String) => {
-                            let pat_lhs = match build_string_term(lhs, self.var_manager) {
+                            let pat_lhs = match build_string_term(lhs, self.instance) {
                                 Ok(p) => p,
                                 Err(e) => return ControlFlow::Break(Err(e)),
                             };
-                            let pat_rhs = match build_string_term(rhs, self.var_manager) {
+                            let pat_rhs = match build_string_term(rhs, self.instance) {
                                 Ok(p) => p,
                                 Err(e) => return ControlFlow::Break(Err(e)),
                             };
@@ -182,11 +184,11 @@ impl<'a> Visitor<ALL> for FormulaBuilder<'a> {
                             ControlFlow::Break(Ok(eq_atom))
                         }
                         (NSort::Int, NSort::Int) => {
-                            let term_lhs = match build_int_term(lhs, self.var_manager) {
+                            let term_lhs = match build_int_term(lhs, self.instance) {
                                 Ok(p) => p,
                                 Err(e) => return ControlFlow::Break(Err(e)),
                             };
-                            let term_rhs = match build_int_term(rhs, self.var_manager) {
+                            let term_rhs = match build_int_term(rhs, self.instance) {
                                 Ok(p) => p,
                                 Err(e) => return ControlFlow::Break(Err(e)),
                             };
@@ -235,11 +237,11 @@ impl<'a> Visitor<ALL> for FormulaBuilder<'a> {
                                 ParseError::Unsupported("Lexicographic order".to_string()),
                             )),
                             (NSort::Int, NSort::Int) => {
-                                let term_lhs = match build_int_term(lhs, self.var_manager) {
+                                let term_lhs = match build_int_term(lhs, self.instance) {
                                     Ok(p) => p,
                                     Err(e) => return ControlFlow::Break(Err(e)),
                                 };
-                                let term_rhs = match build_int_term(rhs, self.var_manager) {
+                                let term_rhs = match build_int_term(rhs, self.instance) {
                                     Ok(p) => p,
                                     Err(e) => return ControlFlow::Break(Err(e)),
                                 };
@@ -281,11 +283,11 @@ impl<'a> Visitor<ALL> for FormulaBuilder<'a> {
                 Op::Set(_) => todo!(),
                 Op::String(string_op) => match string_op {
                     StringOp::InRe(t, r) => {
-                        let pat = match build_string_term(t, self.var_manager) {
+                        let pat = match build_string_term(t, self.instance) {
                             Ok(p) => p,
                             Err(e) => return ControlFlow::Break(Err(e)),
                         };
-                        let re = match build_re_term(r, self.var_manager) {
+                        let re = match build_re_term(r, self.instance) {
                             Ok(p) => p,
                             Err(e) => return ControlFlow::Break(Err(e)),
                         };
@@ -330,8 +332,8 @@ impl<'a> Visitor<ALL> for FormulaBuilder<'a> {
     }
 }
 
-fn build_string_term(t: &Term, var_manager: &VarManager) -> Result<StringTerm, ParseError> {
-    let mut builder = StringTermBuilder { var_manager };
+fn build_string_term(t: &Term, instance: &Instance) -> Result<StringTerm, ParseError> {
+    let mut builder = StringTermBuilder { instance };
     let res = {
         match t.visit_with(&mut builder) {
             ControlFlow::Continue(_) => unreachable!(),
@@ -342,8 +344,8 @@ fn build_string_term(t: &Term, var_manager: &VarManager) -> Result<StringTerm, P
     Ok(res)
 }
 
-fn build_int_term(t: &Term, var_manager: &VarManager) -> Result<IntTerm, ParseError> {
-    let mut builder = IntArithTermBuilder { var_manager };
+fn build_int_term(t: &Term, instance: &Instance) -> Result<IntTerm, ParseError> {
+    let mut builder = IntArithTermBuilder { instance };
     let res = {
         match t.visit_with(&mut builder) {
             ControlFlow::Continue(_) => unreachable!(),
@@ -354,8 +356,8 @@ fn build_int_term(t: &Term, var_manager: &VarManager) -> Result<IntTerm, ParseEr
     Ok(res)
 }
 
-fn build_re_term(t: &Term, var_manager: &VarManager) -> Result<ReTerm, ParseError> {
-    let mut builder = ReTermBuilder { var_manager };
+fn build_re_term(t: &Term, instance: &Instance) -> Result<ReTerm, ParseError> {
+    let mut builder = ReTermBuilder { instance };
     let res = {
         match t.visit_with(&mut builder) {
             ControlFlow::Continue(_) => unreachable!(),
@@ -367,7 +369,7 @@ fn build_re_term(t: &Term, var_manager: &VarManager) -> Result<ReTerm, ParseErro
 }
 
 struct StringTermBuilder<'a> {
-    var_manager: &'a VarManager,
+    instance: &'a Instance,
 }
 
 impl<'a> Visitor<ALL> for StringTermBuilder<'a> {
@@ -455,7 +457,7 @@ impl<'a> Visitor<ALL> for StringTermBuilder<'a> {
 
     fn visit_var(&mut self, var: &IVar<<ALL as Logic>::Var>) -> ControlFlow<Self::BreakTy> {
         let name = var.as_ref().sym_str();
-        if let Some(vvar) = self.var_manager.by_name(name) {
+        if let Some(vvar) = self.instance.var_by_name(name) {
             if vvar.sort() != NSort::String {
                 return ControlFlow::Break(Err(ParseError::SyntaxError(
                     format!("Expected string variable but found {} ", vvar.sort()),
@@ -470,7 +472,7 @@ impl<'a> Visitor<ALL> for StringTermBuilder<'a> {
 }
 
 struct ReTermBuilder<'a> {
-    var_manager: &'a VarManager,
+    instance: &'a Instance,
 }
 
 impl<'a> Visitor<ALL> for ReTermBuilder<'a> {
@@ -483,7 +485,7 @@ impl<'a> Visitor<ALL> for ReTermBuilder<'a> {
 
             Term::OtherOp(s) => match s.as_ref() {
                 Op::String(sop) => match sop {
-                    StringOp::ToRe(t) => match build_string_term(t, self.var_manager) {
+                    StringOp::ToRe(t) => match build_string_term(t, self.instance) {
                         Ok(p) => ControlFlow::Break(Ok(ReTerm::String(p))),
                         Err(e) => ControlFlow::Break(Err(e)),
                     },
@@ -571,11 +573,11 @@ impl<'a> Visitor<ALL> for ReTermBuilder<'a> {
                         ControlFlow::Break(Err(e)) => ControlFlow::Break(Err(e)),
                     },
                     StringOp::ReRange(l, u) => {
-                        let lterm = match build_string_term(l, self.var_manager) {
+                        let lterm = match build_string_term(l, self.instance) {
                             Ok(p) => p,
                             Err(e) => return ControlFlow::Break(Err(e)),
                         };
-                        let uterm = match build_string_term(u, self.var_manager) {
+                        let uterm = match build_string_term(u, self.instance) {
                             Ok(p) => p,
                             Err(e) => return ControlFlow::Break(Err(e)),
                         };
@@ -683,7 +685,7 @@ fn biguint2isize(n: &BigUint) -> Result<isize, ParseError> {
 }
 
 struct IntArithTermBuilder<'a> {
-    var_manager: &'a VarManager,
+    instance: &'a Instance,
 }
 
 impl<'a> Visitor<ALL> for IntArithTermBuilder<'a> {
@@ -787,7 +789,7 @@ impl<'a> Visitor<ALL> for IntArithTermBuilder<'a> {
                 },
                 Op::String(StringOp::Len(ts)) => {
                     let mut builder = StringLenToArithBuilder {
-                        var_manager: self.var_manager,
+                        instance: self.instance,
                     };
                     match ts.visit_with(&mut builder) {
                         ControlFlow::Continue(_) => unreachable!(),
@@ -831,7 +833,7 @@ impl<'a> Visitor<ALL> for IntArithTermBuilder<'a> {
 
     fn visit_var(&mut self, var: &IVar<<ALL as Logic>::Var>) -> ControlFlow<Self::BreakTy> {
         let name = var.as_ref().sym_str();
-        if let Some(vvar) = self.var_manager.by_name(name) {
+        if let Some(vvar) = self.instance.var_by_name(name) {
             if vvar.sort() != NSort::Int {
                 return ControlFlow::Break(Err(ParseError::SyntaxError(
                     format!("Expected int variable but found {} ", vvar.sort()),
@@ -846,7 +848,7 @@ impl<'a> Visitor<ALL> for IntArithTermBuilder<'a> {
 }
 
 pub struct StringLenToArithBuilder<'a> {
-    var_manager: &'a VarManager,
+    instance: &'a Instance,
 }
 
 impl<'a> Visitor<ALL> for StringLenToArithBuilder<'a> {
@@ -946,16 +948,14 @@ impl<'a> Visitor<ALL> for StringLenToArithBuilder<'a> {
 
     fn visit_var(&mut self, var: &IVar<<ALL as Logic>::Var>) -> ControlFlow<Self::BreakTy> {
         let name = var.as_ref().sym_str();
-        if let Some(vvar) = self.var_manager.by_name(name) {
+        if let Some(vvar) = self.instance.var_by_name(name) {
             if vvar.sort() != NSort::String {
                 return ControlFlow::Break(Err(ParseError::SyntaxError(
                     format!("Expected string variable but found {} ", vvar.sort()),
                     None,
                 )));
             }
-            ControlFlow::Break(Ok(IntTerm::Var(
-                self.var_manager.str_length_var(vvar).unwrap().clone(),
-            )))
+            ControlFlow::Break(Ok(IntTerm::Var(vvar.len_var().unwrap())))
         } else {
             ControlFlow::Break(Err(ParseError::UnknownIdentifier(name.to_string())))
         }

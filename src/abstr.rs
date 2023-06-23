@@ -4,11 +4,11 @@ use indexmap::IndexMap;
 
 use crate::{
     error::Error,
+    instance::Instance,
     model::{
         formula::{Atom, Formula, Predicate},
-        Sort, VarManager, Variable,
+        Sort, Variable,
     },
-    parse::Instance,
 };
 
 /// The type of a definition.
@@ -138,17 +138,14 @@ impl Abstraction {
     ///
     /// # Panics
     /// Panics if the formula is not in NNF.
-    fn abstract_fm(
-        formula: Formula,
-        defs: &mut Definitions,
-        var_manager: &mut VarManager,
-    ) -> Formula {
+    fn abstract_fm(formula: Formula, defs: &mut Definitions, instance: &mut Instance) -> Formula {
         let res = match formula {
             Formula::Atom(Atom::Predicate(p)) => {
                 let dvar = match defs.get_def_var(&p) {
                     Some(v) => v.get_var().clone(),
                     None => {
-                        let v = var_manager.tmp_var(Sort::Bool);
+                        let v = Variable::temp(Sort::Bool);
+                        instance.add_var(v.clone());
                         defs.add_definition(Definition::new(
                             v.clone(),
                             p.clone(),
@@ -163,7 +160,7 @@ impl Abstraction {
             Formula::Or(fs) => {
                 let fs = fs
                     .into_iter()
-                    .map(|f| Self::abstract_fm(f, defs, var_manager))
+                    .map(|f| Self::abstract_fm(f, defs, instance))
                     .collect::<Vec<_>>();
                 Formula::or(fs)
             }
@@ -171,7 +168,7 @@ impl Abstraction {
             Formula::And(fs) => {
                 let fs = fs
                     .into_iter()
-                    .map(|f| Self::abstract_fm(f, defs, var_manager))
+                    .map(|f| Self::abstract_fm(f, defs, instance))
                     .collect::<Vec<_>>();
                 Formula::and(fs)
             }
@@ -183,7 +180,8 @@ impl Abstraction {
                     let dvar = match defs.get_def_var(p) {
                         Some(v) => v.get_var().clone(),
                         None => {
-                            let v = var_manager.tmp_var(Sort::Bool);
+                            let v = Variable::temp(Sort::Bool);
+                            instance.add_var(v.clone());
                             defs.add_definition(Definition::new(
                                 v.clone(),
                                 p.clone(),
@@ -204,11 +202,7 @@ impl Abstraction {
     pub fn create(instance: &mut Instance) -> Result<Self, Error> {
         let mut definitions = Definitions::default();
         let skeleton = Formula::ttrue();
-        Self::abstract_fm(
-            instance.get_formula().clone(),
-            &mut definitions,
-            instance.get_var_manager_mut(),
-        );
+        Self::abstract_fm(instance.get_formula().clone(), &mut definitions, instance);
         Ok(Self::new(skeleton, definitions))
     }
 }
@@ -222,8 +216,9 @@ mod test {
 
     #[quickcheck]
     fn defintion_pos_neg_equals_equiv(p: Predicate) {
-        let mut vm = VarManager::new();
-        let v1 = vm.tmp_var(Sort::Bool);
+        let mut instance = Instance::default();
+        let v1 = Variable::temp(Sort::Bool);
+        instance.add_var(v1.clone());
 
         let mut defs = Definitions::default();
         defs.add_definition(Definition::new(
@@ -260,7 +255,7 @@ mod test {
     #[quickcheck]
     fn abstraction_is_bool(fm: Formula) {
         let fm = fm.to_nnf();
-        let mut instance = Instance::new(fm, VarManager::new());
+        let mut instance = Instance::new(fm.to_nnf());
         let abstr = Abstraction::create(&mut instance);
 
         assert!(abstr.is_ok());
@@ -271,7 +266,7 @@ mod test {
     #[quickcheck]
     fn abstraction_all_preds_defined_correctly(fm: Formula) {
         let fm = fm.to_nnf();
-        let mut instance = Instance::new(fm.clone(), VarManager::new());
+        let mut instance = Instance::new(fm.clone());
         let abstr = Abstraction::create(&mut instance);
 
         assert!(abstr.is_ok());

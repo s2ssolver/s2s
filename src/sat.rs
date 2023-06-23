@@ -6,9 +6,10 @@ use indexmap::IndexMap;
 
 use crate::{
     error::Error,
+    instance::Instance,
     model::{
         formula::{Atom, Formula},
-        Sort, VarManager, Variable,
+        Sort, Variable,
     },
 };
 
@@ -58,20 +59,20 @@ pub fn pvar() -> PVar {
 /// - the formula contains a variable that is mapped to a propositional variable of a different sort
 /// - the formula is not propositional
 /// - the formula is not in negation normal form
-pub fn to_cnf(formula: &Formula, var_manager: &mut VarManager) -> Result<Cnf, Error> {
+pub fn to_cnf(formula: &Formula, instance: &mut Instance) -> Result<Cnf, Error> {
     fn maincnf(
         fm: &Formula,
         defs: &mut IndexMap<Formula, Variable>,
-        var_manager: &mut VarManager,
+        instance: &mut Instance,
     ) -> Result<Formula, Error> {
         match fm {
             Formula::And(fs) | Formula::Or(fs) => {
                 if fs.is_empty() {
                     Ok(Formula::ffalse())
                 } else if fs.len() == 1 {
-                    maincnf(&fs[0], defs, var_manager)
+                    maincnf(&fs[0], defs, instance)
                 } else {
-                    defstep(fm, defs, var_manager)
+                    defstep(fm, defs, instance)
                 }
             }
             Formula::Not(nf) => match nf.as_ref() {
@@ -91,13 +92,13 @@ pub fn to_cnf(formula: &Formula, var_manager: &mut VarManager) -> Result<Cnf, Er
     fn defstep(
         fm: &Formula,
         defs: &mut IndexMap<Formula, Variable>,
-        var_manager: &mut VarManager,
+        instance: &mut Instance,
     ) -> Result<Formula, Error> {
         match fm {
             Formula::And(fs) | Formula::Or(fs) => {
                 let mut res = Vec::with_capacity(fs.len());
                 for f in fs {
-                    res.push(maincnf(f, defs, var_manager)?);
+                    res.push(maincnf(f, defs, instance)?);
                 }
                 let res_fm = if matches!(fm, Formula::And(_)) {
                     Formula::and(res)
@@ -109,7 +110,8 @@ pub fn to_cnf(formula: &Formula, var_manager: &mut VarManager) -> Result<Cnf, Er
                 match defs.get(&res_fm) {
                     Some(v) => Ok(Formula::boolvar(v.clone())),
                     None => {
-                        let v = var_manager.tmp_var(Sort::Bool);
+                        let v = Variable::temp(Sort::Bool);
+                        instance.add_var(v.clone());
                         defs.insert(res_fm, v.clone());
                         Ok(Formula::boolvar(v))
                     }
@@ -121,7 +123,7 @@ pub fn to_cnf(formula: &Formula, var_manager: &mut VarManager) -> Result<Cnf, Er
 
     let mut defs = IndexMap::new();
 
-    let res: Formula = maincnf(formula, &mut defs, var_manager)?;
+    let res: Formula = maincnf(formula, &mut defs, instance)?;
     let mut cnf = Cnf::new();
     // TODO: Move to function `cnf_to_clauses(fm: &Formula) -> Result<Cnf, Error>`
     match res {

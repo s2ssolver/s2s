@@ -26,6 +26,15 @@ impl Term {
             Term::Bool(f) => f.is_ground(),
         }
     }
+
+    pub fn vars(&self) -> IndexSet<&Variable> {
+        match self {
+            Term::String(s) => s.vars(),
+            Term::Int(i) => i.vars(),
+            Term::Regular(_) => todo!(),
+            Term::Bool(f) => f.as_ref().vars(),
+        }
+    }
 }
 
 impl Substitutable for Term {
@@ -91,6 +100,18 @@ impl StringTerm {
 
     pub fn variable(var: &Variable) -> Self {
         Self::Variable(var.clone())
+    }
+
+    pub fn vars(&self) -> IndexSet<&Variable> {
+        match self {
+            StringTerm::Variable(var) => {
+                let mut vars = IndexSet::new();
+                vars.insert(var);
+                vars
+            }
+            StringTerm::Constant(_) => IndexSet::new(),
+            StringTerm::Concat(lhs, rhs) => lhs.vars().union(&rhs.vars()).cloned().collect(),
+        }
     }
 
     pub fn concat(lhs: Self, rhs: Self) -> Self {
@@ -277,6 +298,19 @@ impl IntTerm {
             IntTerm::Const(c) => IntTerm::constant(-c),
             IntTerm::Plus(x, y) => IntTerm::plus(&x.neg(), &y.neg()),
             IntTerm::Times(x, y) => IntTerm::times(&x.neg(), y),
+        }
+    }
+
+    pub fn vars(&self) -> IndexSet<&Variable> {
+        match self {
+            IntTerm::Var(x) => {
+                let mut vars = IndexSet::new();
+                vars.insert(x);
+                vars
+            }
+            IntTerm::Const(_) => IndexSet::new(),
+            IntTerm::Plus(x, y) => x.vars().union(&y.vars()).cloned().collect(),
+            IntTerm::Times(x, y) => x.vars().union(&y.vars()).cloned().collect(),
         }
     }
 
