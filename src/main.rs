@@ -58,7 +58,7 @@ fn main() {
             let ext = cli.file.split('.').last();
             match ext {
                 Some("eq") => Parser::WoorpjeParser,
-                Some("smt2") | Some("smt") => Parser::Smt2Parser,
+                Some("smt2") | Some("smt") | Some("smt25") | Some("smt26") => Parser::Smt2Parser,
                 Some(other) => {
                     log::error!(
                         "Format set to 'auto', but the file extension is no supported: {}",
