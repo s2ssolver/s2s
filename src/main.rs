@@ -19,9 +19,9 @@ struct Options {
     #[arg(long)]
     skip_preprocess: bool,
 
-    /// Skip the verification of the solution. If this is set to true, the solver will not check if the model is correct.
+    /// If this is set to true, the solver will double-check that the found model is correct.
     #[arg(long)]
-    skip_verify: bool,
+    verify_model: bool,
 
     /// The maximum variable bound to check before returning `unsat`
     #[arg(short = 'b', long, value_enum, default_value = None)]
@@ -141,7 +141,7 @@ fn main() {
                 satstr::SolverResult::Sat(m) => {
                     let mut model = subs.compose(&m);
                     model.use_defaults();
-                    if !cli.skip_verify {
+                    if cli.verify_model {
                         match original_formula.eval(&model) {
                             Some(true) => {}
                             Some(false) => panic!("Model is incorrect ({})", model),
