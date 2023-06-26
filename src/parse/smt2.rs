@@ -53,8 +53,16 @@ pub fn parse_smt<R: BufRead>(smt: R) -> Result<Instance, ParseError> {
                     ));
                 }
             }
-            Command::CheckSat | Command::SetLogic { .. } | Command::GetModel => {}
-
+            Command::CheckSat
+            | Command::SetLogic { .. }
+            | Command::GetModel
+            | Command::GetOption { .. }
+            | Command::SetOption { .. }
+            | Command::SetInfo { .. }
+            | Command::Exit => {
+                // Ignore
+                log::debug!("Ignoring command: {:?}", command)
+            }
             Command::CheckSatAssuming { .. }
             | Command::DeclareDatatype { .. }
             | Command::DeclareDatatypes { .. }
@@ -64,11 +72,9 @@ pub fn parse_smt<R: BufRead>(smt: R) -> Result<Instance, ParseError> {
             | Command::DefineFunsRec { .. }
             | Command::DefineSort { .. }
             | Command::Echo { .. }
-            | Command::Exit
             | Command::GetAssertions
             | Command::GetAssignment
             | Command::GetInfo { .. }
-            | Command::GetOption { .. }
             | Command::GetProof
             | Command::GetUnsatAssumptions
             | Command::GetUnsatCore
@@ -76,11 +82,7 @@ pub fn parse_smt<R: BufRead>(smt: R) -> Result<Instance, ParseError> {
             | Command::Pop { .. }
             | Command::Push { .. }
             | Command::Reset
-            | Command::ResetAssertions
-            | Command::SetInfo { .. }
-            | Command::SetOption { .. } => {
-                return Err(ParseError::Unsupported(command.to_string()))
-            }
+            | Command::ResetAssertions => return Err(ParseError::Unsupported(command.to_string())),
         }
     }
 
