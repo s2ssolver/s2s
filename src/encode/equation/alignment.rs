@@ -75,7 +75,9 @@ impl SegmentedPattern {
         let mut pos = 0;
         for j in 0..i {
             match self.get(j) {
-                PatternSegment::Variable(v) => pos += bounds.get_lower(v).unwrap_or(0) as usize,
+                PatternSegment::Variable(v) => {
+                    pos += bounds.get_lower(&v.len_var().unwrap()).unwrap_or(0) as usize
+                }
                 PatternSegment::Word(w) => pos += w.len(),
             }
         }
@@ -88,7 +90,9 @@ impl SegmentedPattern {
         let mut f = 0;
         for j in i + 1..self.length() {
             match self.get(j) {
-                PatternSegment::Variable(v) => f += bounds.get_lower(v).unwrap_or(0) as usize,
+                PatternSegment::Variable(v) => {
+                    f += bounds.get_lower(&v.len_var().unwrap()).unwrap_or(0) as usize
+                }
                 PatternSegment::Word(w) => f += w.len(),
             }
         }

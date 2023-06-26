@@ -171,6 +171,11 @@ impl Bounds {
 
     /// Gets the domain of a variable.
     pub fn get(&self, var: &Variable) -> IntDomain {
+        debug_assert!(
+            var.is_int(),
+            "Cannot get bounds for non-integer variable {}.",
+            var
+        );
         self.domains.get(var).map_or(self.default, |d| *d)
     }
 

@@ -8,7 +8,10 @@
 //! > TODO: Add CAV paper reference
 
 use indexmap::IndexMap;
-use regulaer::nfa::{NfaError, State, TransitionType, NFA};
+use regulaer::{
+    nfa::{NfaError, State, TransitionType, NFA},
+    re::Regex,
+};
 
 use crate::{
     bounds::Bounds,
@@ -31,6 +34,7 @@ const NFA_NOT_EPSILON_FREE_MSG: &str = "NFA must be epsilon-free";
 pub struct NFAEncoder {
     var: Variable,
     nfa: NFA<char>,
+    regex: Regex<char>,
 
     /// The bounds of the variable in the previous round.
     /// If `None`, the variable was not yet encoded, i.e., prior to the first encoding.
@@ -220,8 +224,14 @@ impl ConstraintEncoder for NFAEncoder {
         bounds: &Bounds,
         substitution: &DomainEncoding,
     ) -> Result<EncodingResult, Error> {
-        let bound = bounds.get(&self.var).get_upper().unwrap_or(0) as usize;
+        log::debug!("Encoding `{} in {}` ", self.var, self.regex,);
+        let bound = bounds
+            .get(&self.var.len_var().unwrap())
+            .get_upper()
+            .unwrap_or(0) as usize;
+        log::debug!("Bound: {}", bound);
         if Some(bound) == self.last_bound {
+            log::debug!("Upper bound did not change, skipping encoding");
             if let Some(s) = self.bound_selector {
                 return Ok(EncodingResult::assumption(as_lit(s)));
             } else {
@@ -237,10 +247,21 @@ impl ConstraintEncoder for NFAEncoder {
         // Create reachability vars for this bound
         self.create_reach_vars(bound);
 
-        res.join(self.encode_intial());
-        res.join(self.encode_transitions(bound, substitution)?);
-        res.join(self.encode_predecessor(bound, substitution)?);
-        res.join(self.encode_final(bound));
+        let e_init = self.encode_intial();
+        log::debug!("Encoded initial state: {} clauses", e_init.clauses());
+        res.join(e_init);
+
+        let e_transition = self.encode_transitions(bound, substitution)?;
+        log::debug!("Encoded transitions: {} clauses", e_transition.clauses());
+        res.join(e_transition);
+
+        let e_predecessor = self.encode_predecessor(bound, substitution)?;
+        log::debug!("Encoded predecessors: {} clauses", e_predecessor.clauses());
+        res.join(e_predecessor);
+
+        let e_final = self.encode_final(bound);
+        log::debug!("Encoded final state: {} clauses", e_final.clauses());
+        res.join(e_final);
 
         Ok(res)
     }
@@ -270,6 +291,7 @@ impl RegularConstraintEncoder for NFAEncoder {
         Ok(Self {
             var,
             nfa,
+            regex: re_constraint.get_re().clone(),
             last_bound: None,
             reach_vars: IndexMap::new(),
             bound_selector: None,
@@ -371,6 +393,17 @@ mod test {
     fn var_in_const() {
         let var = Variable::temp(Sort::String);
         let re = Regex::word("foo");
+        let bounds = Bounds::with_defaults(IntDomain::Bounded(0, 10));
+        let mut nfa = compile(&re).unwrap();
+        nfa.normalize().unwrap();
+
+        assert_eq!(solve_with_bounds(&var, re, &[bounds]), Some(true));
+    }
+
+    #[test]
+    fn var_in_const_concat() {
+        let var = Variable::temp(Sort::String);
+        let re = Regex::concat(vec![Regex::word("foo"), Regex::word("bar")]);
         let bounds = Bounds::with_defaults(IntDomain::Bounded(0, 10));
         let mut nfa = compile(&re).unwrap();
         nfa.normalize().unwrap();
