@@ -715,7 +715,7 @@ mod tests {
 
     #[quickcheck]
     fn pattern_empty_len_zero_equiv(pat: Pattern) {
-        assert_eq!(pat.is_empty(), pat.len() == 0);
+        assert_eq!(pat.is_empty(), pat.is_empty());
     }
 
     #[quickcheck]

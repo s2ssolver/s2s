@@ -334,7 +334,7 @@ mod test {
         let mut alph = IndexSet::from_iter(re.alphabet().into_iter());
         alph.insert('a');
 
-        let constraint = RegularConstraint::new(re.clone(), Pattern::variable(&var));
+        let constraint = RegularConstraint::new(re.clone(), Pattern::variable(var));
         let mut encoder = NFAEncoder::new(constraint).unwrap();
         let mut dom_encoder = DomainEncoder::new(alph);
         let mut solver: Solver = cadical::Solver::default();
@@ -342,9 +342,9 @@ mod test {
         let mut result = None;
         for bound in bounds {
             let mut res = EncodingResult::empty();
-            res.join(dom_encoder.encode(&bound, &instance));
+            res.join(dom_encoder.encode(bound, &instance));
 
-            res.join(encoder.encode(&bound, dom_encoder.encoding()).unwrap());
+            res.join(encoder.encode(bound, dom_encoder.encoding()).unwrap());
 
             match res {
                 EncodingResult::Cnf(clauses, assms) => {
@@ -354,9 +354,9 @@ mod test {
                     result = solver.solve_with(assms.into_iter());
                     if let Some(true) = result {
                         let _model = get_substitutions(dom_encoder.encoding(), &instance, &solver);
-                        let var_model = _model.get(&var).unwrap();
+                        let var_model = _model.get(var).unwrap();
                         assert!(
-                            re.contains(&var_model),
+                            re.contains(var_model),
                             "Model {:?} does not match regex {:?}",
                             var_model,
                             re

@@ -245,7 +245,7 @@ impl ReTerm {
             ReTerm::All => IndexSet::new(),
             ReTerm::String(p) => p.alphabet(),
             ReTerm::Union(v) | ReTerm::Concat(v) | ReTerm::Inter(v) => {
-                v.iter().map(|r| r.alphabet()).flatten().collect()
+                v.iter().flat_map(|r| r.alphabet()).collect()
             }
             ReTerm::Star(r)
             | ReTerm::Plus(r)
@@ -284,7 +284,7 @@ impl ReTerm {
         match self {
             ReTerm::String(p) => p.vars(),
             ReTerm::Union(v) | ReTerm::Concat(v) | ReTerm::Inter(v) => {
-                v.iter().map(|r| r.vars()).flatten().collect()
+                v.iter().flat_map(|r| r.vars()).collect()
             }
             ReTerm::Star(r)
             | ReTerm::Plus(r)

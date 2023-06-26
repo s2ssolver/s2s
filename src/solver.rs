@@ -198,12 +198,10 @@ impl AbstractionSolver {
         if self.encoders.len() == 1 {
             // Check if the only constraint is a single (positive) word equation
             if let Some((Constraint::WordEquation(eq, _), true)) =
-                self.encoders.keys().next().and_then(|d| {
-                    Some((
+                self.encoders.keys().next().map(|d| (
                         d.get_pred().clone().try_into().unwrap(),
                         *d.get_def_type() == DefinitionType::Positive,
                     ))
-                })
             {
                 bounds = sharpen_bounds(&eq, &bounds, &self.instance)
             }
