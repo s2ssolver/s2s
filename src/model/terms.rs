@@ -42,7 +42,13 @@ impl Substitutable for Term {
         match self {
             Term::String(s) => Term::String(s.apply_substitution(subs)),
             Term::Int(i) => Term::Int(i.apply_substitution(subs)),
-            Term::Regular(_r) => todo!("Regular terms not implemented yet"),
+            Term::Regular(_r) => {
+                if _r.is_grounded() {
+                    self.clone()
+                } else {
+                    panic!("Ungrounded regular terms are not supported");
+                }
+            }
             Term::Bool(f) => Term::Bool(Box::new(f.apply_substitution(subs))),
         }
     }
@@ -268,7 +274,9 @@ impl ReTerm {
             | ReTerm::Loop(r, _, _) => r.is_grounded(),
             ReTerm::Diff(r1, r2) => r1.is_grounded() && r2.is_grounded(),
             ReTerm::Range(p1, p2) => p1.is_const().is_some() && p2.is_const().is_some(),
-            _ => false,
+            ReTerm::None => true,
+            ReTerm::Any => true,
+            ReTerm::All => true,
         }
     }
 
