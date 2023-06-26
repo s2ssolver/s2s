@@ -4,6 +4,7 @@ use std::fmt::Display;
 
 use indexmap::{indexset, IndexSet};
 use quickcheck::Arbitrary;
+use regulaer::{re::Regex, RegLang};
 
 use crate::model::Variable;
 
@@ -467,13 +468,34 @@ impl Alphabet for Formula {
 
 impl Alphabet for Atom {
     fn alphabet(&self) -> IndexSet<char> {
-        todo!()
+        match self {
+            Atom::Predicate(p) => p.alphabet(),
+            Atom::BoolVar(_) => indexset! {},
+            Atom::True => indexset! {},
+            Atom::False => indexset! {},
+        }
     }
 }
 
 impl Alphabet for Predicate {
     fn alphabet(&self) -> IndexSet<char> {
-        todo!()
+        match self {
+            Predicate::Equality(Term::String(lhs), Term::String(rhs))
+            | Predicate::Geq(Term::String(lhs), Term::String(rhs))
+            | Predicate::Greater(Term::String(lhs), Term::String(rhs))
+            | Predicate::Leq(Term::String(lhs), Term::String(rhs))
+            | Predicate::Less(Term::String(lhs), Term::String(rhs)) => {
+                let mut alphabet = lhs.alphabet();
+                alphabet.extend(rhs.alphabet());
+                alphabet
+            }
+            Predicate::In(Term::String(lhs), Term::Regular(rhs)) => {
+                let mut alphabet = lhs.alphabet();
+                alphabet.extend(rhs.alphabet());
+                alphabet
+            }
+            _ => indexset! {},
+        }
     }
 }
 
@@ -621,7 +643,27 @@ impl Evaluable for Predicate {
             Predicate::Greater(l, r) => {
                 panic!("> unsupported for sorts {} and {}", l.sort(), r.sort())
             }
-            Predicate::In(_, _) => todo!(),
+            Predicate::In(Term::String(p), Term::Regular(re)) => {
+                if let Some(v) = p.apply_substitution(sub).is_const() {
+                    let regex = match Regex::<char>::try_from(re.clone()) {
+                        Ok(r) => r,
+                        Err(e) => {
+                            log::error!("Error while parsing regex: {}", e);
+                            return None;
+                        }
+                    };
+                    regex.contains(&v)
+                } else {
+                    return None;
+                }
+            }
+            Predicate::In(_, _) => {
+                panic!(
+                    "`in` unsupported for sorts {} and {}",
+                    self.signature()[0],
+                    self.signature()[1]
+                )
+            }
         };
 
         Some(res)

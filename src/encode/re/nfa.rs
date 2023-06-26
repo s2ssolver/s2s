@@ -287,6 +287,7 @@ impl From<NfaError> for Error {
 mod test {
     use cadical::Solver;
     use indexmap::IndexSet;
+
     use regulaer::{nfa::compile, re::Regex, RegLang};
 
     use super::*;
@@ -308,7 +309,9 @@ mod test {
         let mut instance = Instance::default();
         instance.add_var(var.clone());
 
-        let alph = IndexSet::from_iter(re.alphabet().into_iter());
+        let mut alph = IndexSet::from_iter(re.alphabet().into_iter());
+        alph.insert('a');
+
         let constraint = RegularConstraint::new(re.clone(), Pattern::variable(&var));
         let mut encoder = NFAEncoder::new(constraint).unwrap();
         let mut dom_encoder = DomainEncoder::new(alph);

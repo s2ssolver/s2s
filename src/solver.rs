@@ -8,7 +8,8 @@ use std::time::Instant;
 use crate::abstr::{Abstraction, Definition};
 use crate::bounds::{Bounds, IntDomain};
 use crate::encode::{
-    AlignmentEncoder, ConstraintEncoder, EncodingResult, MddEncoder, WordEquationEncoder,
+    AlignmentEncoder, ConstraintEncoder, EncodingResult, MddEncoder, NFAEncoder,
+    RegularConstraintEncoder, WordEquationEncoder,
 };
 
 use crate::error::Error;
@@ -88,11 +89,11 @@ struct AbstractionSolver {
 
 impl AbstractionSolver {
     /// Instatiates a new encoder for the given constraint.
-    fn encoder_for_constraint(con: &Constraint) -> Box<dyn ConstraintEncoder> {
+    fn encoder_for_constraint(con: &Constraint) -> Result<Box<dyn ConstraintEncoder>, Error> {
         match con {
-            Constraint::WordEquation(eq) => Box::new(AlignmentEncoder::new(eq.clone())),
-            Constraint::LinearConstraint(lc) => Box::new(MddEncoder::new(lc.clone())),
-            Constraint::RegularConstraint(_) => todo!("Regular constraints are not supported"),
+            Constraint::WordEquation(eq) => Ok(Box::new(AlignmentEncoder::new(eq.clone()))),
+            Constraint::LinearConstraint(lc) => Ok(Box::new(MddEncoder::new(lc.clone()))),
+            Constraint::RegularConstraint(rc) => Ok(Box::new(NFAEncoder::new(rc.clone())?)),
         }
     }
 
@@ -111,7 +112,7 @@ impl AbstractionSolver {
         let mut encoders = HashMap::new();
         for d in abstraction.get_definitions().iter() {
             let constraint = Constraint::try_from(d.get_pred().clone())?;
-            let encoder = Self::encoder_for_constraint(&constraint);
+            let encoder = Self::encoder_for_constraint(&constraint)?;
             encoders.insert(d.clone(), encoder);
         }
 
@@ -200,7 +201,6 @@ impl AbstractionSolver {
     /// Returns the next bounds to be used in the next round, based on the current bounds and the limit bounds.
     /// If current bounds are None, the next bounds will be the first bounds to be used.
     /// If the instance has an upper threshold, the upper bounds are clamped to the threshold.
-    /// If the current bounds are equal to or greater than the limit bounds, None is returned.
     fn next_bounds(&self, current_bounds: Option<&Bounds>, limit_bounds: &Bounds) -> Bounds {
         let mut next_bounds = match current_bounds {
             Some(c) => c.clone(),

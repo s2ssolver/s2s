@@ -31,7 +31,7 @@ impl Term {
         match self {
             Term::String(s) => s.vars(),
             Term::Int(i) => i.vars(),
-            Term::Regular(_) => todo!(),
+            Term::Regular(r) => r.vars(),
             Term::Bool(f) => f.as_ref().vars(),
         }
     }
@@ -229,6 +229,29 @@ pub enum ReTerm {
 }
 
 impl ReTerm {
+    /// Returns the alphabet of constants used to construct the term.
+    /// Note that the alphabet of an ReTerm is not necessarily the same as the alphabet of the language denoted by it.
+    /// For example, the rterm `ReTerm::All` denotes the language `T^*` over some alphabet T, but its alphabet of constants is empty.
+    pub fn alphabet(&self) -> IndexSet<char> {
+        match self {
+            ReTerm::None => IndexSet::new(),
+            ReTerm::Any => IndexSet::new(),
+            ReTerm::All => IndexSet::new(),
+            ReTerm::String(p) => p.alphabet(),
+            ReTerm::Union(v) | ReTerm::Concat(v) | ReTerm::Inter(v) => {
+                v.iter().map(|r| r.alphabet()).flatten().collect()
+            }
+            ReTerm::Star(r)
+            | ReTerm::Plus(r)
+            | ReTerm::Optional(r)
+            | ReTerm::Comp(r)
+            | ReTerm::Pow(r, _)
+            | ReTerm::Loop(r, _, _) => r.alphabet(),
+            ReTerm::Diff(r1, r2) => r1.alphabet().union(&r2.alphabet()).cloned().collect(),
+            ReTerm::Range(p1, p2) => p1.alphabet().union(&p2.alphabet()).cloned().collect(),
+        }
+    }
+
     /// Checks whether the expression is grounded.
     /// Returns true if it does not contain variable symbols and false otherwise.
     pub fn is_grounded(&self) -> bool {
@@ -245,6 +268,58 @@ impl ReTerm {
             | ReTerm::Loop(r, _, _) => r.is_grounded(),
             ReTerm::Diff(r1, r2) => r1.is_grounded() && r2.is_grounded(),
             ReTerm::Range(p1, p2) => p1.is_const().is_some() && p2.is_const().is_some(),
+            _ => false,
+        }
+    }
+
+    pub fn vars(&self) -> IndexSet<&Variable> {
+        match self {
+            ReTerm::String(p) => p.vars(),
+            ReTerm::Union(v) | ReTerm::Concat(v) | ReTerm::Inter(v) => {
+                v.iter().map(|r| r.vars()).flatten().collect()
+            }
+            ReTerm::Star(r)
+            | ReTerm::Plus(r)
+            | ReTerm::Optional(r)
+            | ReTerm::Comp(r)
+            | ReTerm::Pow(r, _)
+            | ReTerm::Loop(r, _, _) => r.vars(),
+            ReTerm::Diff(r1, r2) => r1.vars().union(&r2.vars()).cloned().collect(),
+            ReTerm::Range(p1, p2) => p1.vars().union(&p2.vars()).cloned().collect(),
+            _ => IndexSet::new(),
+        }
+    }
+
+    /// Return true if the expression contains a loop.
+    pub fn contains_loop(&self) -> bool {
+        match self {
+            ReTerm::Loop(_, _, _) => true,
+            ReTerm::Union(v) | ReTerm::Concat(v) | ReTerm::Inter(v) => {
+                v.iter().any(Self::contains_loop)
+            }
+            ReTerm::Star(r)
+            | ReTerm::Plus(r)
+            | ReTerm::Optional(r)
+            | ReTerm::Comp(r)
+            | ReTerm::Pow(r, _) => r.contains_loop(),
+            ReTerm::Diff(r1, r2) => r1.contains_loop() || r2.contains_loop(),
+            ReTerm::Range(_, _) => false,
+            _ => false,
+        }
+    }
+
+    /// Return true if the expression contains an intersection.
+    pub fn contains_inter(&self) -> bool {
+        match self {
+            ReTerm::Inter(_) => true,
+            ReTerm::Union(v) | ReTerm::Concat(v) => v.iter().any(Self::contains_inter),
+            ReTerm::Star(r)
+            | ReTerm::Plus(r)
+            | ReTerm::Optional(r)
+            | ReTerm::Comp(r)
+            | ReTerm::Pow(r, _)
+            | ReTerm::Loop(r, _, _) => r.contains_inter(),
+            ReTerm::Diff(r1, r2) => r1.contains_inter() || r2.contains_inter(),
             _ => false,
         }
     }
@@ -362,13 +437,56 @@ impl Display for IntTerm {
     }
 }
 
+impl Display for ReTerm {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ReTerm::None => write!(f, "∅"),
+            ReTerm::Any => write!(f, "?"),
+            ReTerm::All => write!(f, "?*"),
+            ReTerm::String(w) => write!(f, "{}", w),
+            ReTerm::Union(rs) => write!(
+                f,
+                "({})",
+                rs.iter()
+                    .map(|r| format!("{}", r))
+                    .collect::<Vec<String>>()
+                    .join(" | ")
+            ),
+            ReTerm::Concat(rs) => write!(
+                f,
+                "{}",
+                rs.iter()
+                    .map(|r| format!("{}", r))
+                    .collect::<Vec<String>>()
+                    .join(" · ")
+            ),
+            ReTerm::Star(r) => write!(f, "{}*", r),
+            ReTerm::Plus(r) => write!(f, "{}+", r),
+            ReTerm::Optional(r) => write!(f, "({}?)", r),
+            ReTerm::Inter(rs) => write!(
+                f,
+                "({})",
+                rs.iter()
+                    .map(|r| format!("{}", r))
+                    .collect::<Vec<String>>()
+                    .join(" ∩ ")
+            ),
+            ReTerm::Diff(r1, r2) => write!(f, r"({} \ {})", r1, r2),
+            ReTerm::Comp(r) => write!(f, "{}'", r),
+            ReTerm::Range(rl, ru) => write!(f, "[{}, {}]", rl, ru),
+            ReTerm::Pow(r, e) => write!(f, "({}^{})", r, e),
+            ReTerm::Loop(r, l, u) => write!(f, "({}^({}..{}))", r, l, u),
+        }
+    }
+}
+
 impl Display for Term {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Term::String(t) => write!(f, "{}", t),
             Term::Int(t) => write!(f, "{}", t),
             Term::Bool(t) => write!(f, "{}", t),
-            Term::Regular(_r) => todo!(),
+            Term::Regular(r) => write!(f, "{}", r),
         }
     }
 }
@@ -422,6 +540,58 @@ impl Arbitrary for IntTerm {
             Some(3) => IntTerm::Times(
                 Box::new(IntTerm::arbitrary(&mut new_gen)),
                 Box::new(IntTerm::arbitrary(&mut new_gen)),
+            ),
+            _ => unreachable!(),
+        }
+    }
+}
+
+impl Arbitrary for ReTerm {
+    fn arbitrary(g: &mut Gen) -> Self {
+        let mut gen_log = Gen::new(g.size().saturating_div(2));
+        let mut gen_dec = Gen::new(g.size().saturating_sub(1));
+        let range = if g.size() <= 1 {
+            vec![0, 1, 2, 3]
+        } else {
+            vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]
+        };
+        match g.choose(&range).unwrap() {
+            0 => ReTerm::All,
+            1 => ReTerm::Any,
+            2 => ReTerm::None,
+            3 => ReTerm::String(StringTerm::arbitrary(&mut gen_dec)),
+            4 => ReTerm::Union(vec![
+                ReTerm::arbitrary(&mut gen_log),
+                ReTerm::arbitrary(&mut gen_log),
+            ]),
+            5 => ReTerm::Concat(vec![
+                ReTerm::arbitrary(&mut gen_log),
+                ReTerm::arbitrary(&mut gen_log),
+            ]),
+            6 => ReTerm::Star(Box::new(ReTerm::arbitrary(&mut gen_dec))),
+            7 => ReTerm::Plus(Box::new(ReTerm::arbitrary(&mut gen_dec))),
+            8 => ReTerm::Optional(Box::new(ReTerm::arbitrary(&mut gen_dec))),
+            9 => ReTerm::Inter(vec![
+                ReTerm::arbitrary(&mut gen_log),
+                ReTerm::arbitrary(&mut gen_log),
+            ]),
+            10 => ReTerm::Diff(
+                Box::new(ReTerm::arbitrary(&mut gen_log)),
+                Box::new(ReTerm::arbitrary(&mut gen_log)),
+            ),
+            11 => ReTerm::Comp(Box::new(ReTerm::arbitrary(&mut gen_dec))),
+            12 => ReTerm::Range(
+                StringTerm::arbitrary(&mut gen_log),
+                StringTerm::arbitrary(&mut gen_log),
+            ),
+            13 => ReTerm::Pow(
+                Box::new(ReTerm::arbitrary(&mut gen_dec)),
+                usize::arbitrary(g),
+            ),
+            14 => ReTerm::Loop(
+                Box::new(ReTerm::arbitrary(&mut gen_dec)),
+                usize::arbitrary(g),
+                usize::arbitrary(g),
             ),
             _ => unreachable!(),
         }

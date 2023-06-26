@@ -64,6 +64,10 @@ impl TryFrom<Predicate> for Constraint {
                 let con = LinearConstraint::from((lin_lhs, lin_rhs, LinearConstraintType::Greater));
                 Ok(Constraint::LinearConstraint(con))
             }
+            Predicate::In(Term::String(pat), Term::Regular(re)) => {
+                let con = RegularConstraint::new(re.try_into()?, pat.into());
+                Ok(Constraint::RegularConstraint(con))
+            }
             // Unsupported
             Predicate::Leq(Term::String(_), Term::String(_))
             | Predicate::Less(Term::String(_), Term::String(_))
@@ -71,7 +75,7 @@ impl TryFrom<Predicate> for Constraint {
             | Predicate::Greater(Term::String(_), Term::String(_)) => {
                 Err(Error::unsupported("Lexicographic order"))
             }
-            Predicate::In(_, _) => Err(Error::unsupported("Membership constraints")),
+
             // Undefined
             _ => Err(Error::SolverError(format!("Undefined predicate {}", value))),
         }

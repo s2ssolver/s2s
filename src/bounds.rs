@@ -219,7 +219,9 @@ impl Bounds {
                             bounds = bounds.intersect(&newbounds);
                             log::trace!("\tResult: {}", bounds);
                         }
-                        Constraint::RegularConstraint(_) => todo!(),
+                        Constraint::RegularConstraint(_) => {
+                            log::warn!("Bounds inference does not support regular constraints yet. Skipping.")
+                        }
                     },
 
                     Atom::False | Atom::True | Atom::BoolVar(_) => {}
