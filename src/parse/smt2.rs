@@ -103,14 +103,26 @@ impl<'a> FormulaBuilder<'a> {
         let mut sorts = Vec::with_capacity(ts.len());
 
         for t in ts {
-            let sort = match t.sort(&mut self.context) {
-                Ok(s) => match isort2sort(&s) {
-                    Ok(s) => s,
-                    Err(s) => return Err(s),
-                },
-                Err(s) => return Err(ParseError::Unsupported(format!("{}", s.0))),
-            };
-            sorts.push(sort);
+            if let Term::Variable(v) = t {
+                match v.as_ref() {
+                    aws_smt_ir::QualIdentifier::Simple { identifier }
+                    | aws_smt_ir::QualIdentifier::Sorted { identifier, .. } => {
+                        match self.instance.var_by_name(&identifier.to_string()) {
+                            Some(vv) => sorts.push(vv.sort()),
+                            None => todo!(),
+                        }
+                    }
+                }
+            } else {
+                let sort = match t.sort(&mut self.context) {
+                    Ok(s) => match isort2sort(&s) {
+                        Ok(s) => s,
+                        Err(s) => return Err(s),
+                    },
+                    Err(s) => return Err(ParseError::Other(format!("{}", s), None)),
+                };
+                sorts.push(sort);
+            }
         }
         Ok(sorts)
     }

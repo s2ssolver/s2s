@@ -123,6 +123,7 @@ impl AbstractionSolver {
         let mut alphabet = instance.get_formula().alphabet();
         // Make sure the alphabet contains at least one character
         alphabet.insert('a');
+        log::debug!("Alphabet: {:?}", alphabet);
 
         // Instantiate the Domain encoder
         let dom_encoder = DomainEncoder::new(alphabet.clone());
