@@ -211,7 +211,7 @@ impl Bounds {
             for atom in formla.asserted_atoms() {
                 match atom {
                     Atom::Predicate(p) => match Constraint::try_from(p)? {
-                        Constraint::WordEquation(eq) => {
+                        Constraint::WordEquation(eq, true) => {
                             let lincon = LinearConstraint::from_word_equation(&eq);
                             let newbounds = lincon_upper_bound(&lincon, &bounds);
                             log::trace!("Intersecting bounds: {} and {}", bounds, newbounds);
@@ -224,9 +224,11 @@ impl Bounds {
                             bounds = bounds.intersect(&newbounds);
                             log::trace!("\tResult: {}", bounds);
                         }
-                        Constraint::RegularConstraint(_) => {
+                        Constraint::RegularConstraint(_, true) => {
                             log::warn!("Bounds inference does not support regular constraints yet. Skipping.")
                         }
+                        Constraint::RegularConstraint(_, false)
+                        | Constraint::WordEquation(_, false) => unreachable!(),
                     },
 
                     Atom::False | Atom::True | Atom::BoolVar(_) => {}
@@ -549,6 +551,7 @@ fn lincon_upper_bound(lincon: &LinearConstraint, bounds: &Bounds) -> Bounds {
                 }
             }
         }
+        LinearConstraintType::Ineq => { /* Can'f infer anything */ }
     }
 
     new_bounds

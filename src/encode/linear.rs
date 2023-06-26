@@ -125,6 +125,13 @@ impl ConstraintEncoder for MddEncoder {
                                         self.mdd_false
                                     }
                                 }
+                                LinearConstraintType::Ineq => {
+                                    if new_value != self.linear.rhs {
+                                        self.mdd_true
+                                    } else {
+                                        self.mdd_false
+                                    }
+                                }
                                 LinearConstraintType::Leq => {
                                     if new_value <= self.linear.rhs {
                                         self.mdd_true

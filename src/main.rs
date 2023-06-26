@@ -125,7 +125,14 @@ fn main() {
             println!("unsat");
         }
         None => {
-            let mut solver = get_solver(instance.clone()).unwrap();
+            let mut solver = match get_solver(instance.clone()) {
+                Ok(s) => s,
+                Err(e) => {
+                    log::error!("{}", e);
+                    println!("error");
+                    exit(-1);
+                }
+            };
 
             let res = match solver.solve() {
                 Ok(res) => res,

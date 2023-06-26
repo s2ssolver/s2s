@@ -5,7 +5,7 @@ use indexmap::IndexSet;
 
 use std::time::Instant;
 
-use crate::abstr::{Abstraction, Definition};
+use crate::abstr::{Abstraction, Definition, DefinitionType};
 use crate::bounds::{Bounds, IntDomain};
 use crate::encode::{
     AlignmentEncoder, ConstraintEncoder, EncodingResult, MddEncoder, NFAEncoder,
@@ -16,7 +16,7 @@ use crate::error::Error;
 
 use crate::instance::Instance;
 use crate::model::constraints::{Symbol, WordEquation};
-use crate::model::formula::Alphabet;
+use crate::model::formula::{Alphabet, Atom, Literal};
 
 use crate::model::Sort;
 use crate::model::{Constraint, Substitution};
@@ -113,9 +113,23 @@ impl AbstractionSolver {
     /// Instatiates a new encoder for the given constraint.
     fn encoder_for_constraint(con: &Constraint) -> Result<Box<dyn ConstraintEncoder>, Error> {
         match con {
-            Constraint::WordEquation(eq) => Ok(Box::new(AlignmentEncoder::new(eq.clone()))),
+            Constraint::WordEquation(eq, sign) => {
+                if *sign {
+                    Ok(Box::new(AlignmentEncoder::new(eq.clone())))
+                } else {
+                    Err(Error::Unsupported("Word inequations".to_string()))
+                }
+            }
             Constraint::LinearConstraint(lc) => Ok(Box::new(MddEncoder::new(lc.clone()))),
-            Constraint::RegularConstraint(rc) => Ok(Box::new(NFAEncoder::new(rc.clone())?)),
+            Constraint::RegularConstraint(rc, sign) => {
+                if *sign {
+                    Ok(Box::new(NFAEncoder::new(rc.clone())?))
+                } else {
+                    Err(Error::Unsupported(
+                        "Negated regular constraints".to_string(),
+                    ))
+                }
+            }
         }
     }
 
@@ -134,9 +148,33 @@ impl AbstractionSolver {
         // Instantiate the encoders
         let mut encoders = HashMap::new();
         for d in abstraction.get_definitions().iter() {
-            let constraint = Constraint::try_from(d.get_pred().clone())?;
-            let encoder = Self::encoder_for_constraint(&constraint)?;
-            encoders.insert(d.clone(), encoder);
+            match d.get_def_type() {
+                DefinitionType::Positive => {
+                    // Create encoder for positive
+                    let constraint =
+                        Constraint::try_from(Literal::Pos(Atom::Predicate(d.get_pred().clone())))?;
+                    let encoder = Self::encoder_for_constraint(&constraint)?;
+                    encoders.insert(d.clone(), encoder);
+                }
+                DefinitionType::Negative => {
+                    // Create encoder for positive
+                    let constraint =
+                        Constraint::try_from(Literal::Neg(Atom::Predicate(d.get_pred().clone())))?;
+                    let encoder = Self::encoder_for_constraint(&constraint)?;
+                    encoders.insert(d.clone(), encoder);
+                }
+                DefinitionType::Equivalence => {
+                    // Create encoder for positive and negative
+                    let constraint_pos =
+                        Constraint::try_from(Literal::Pos(Atom::Predicate(d.get_pred().clone())))?;
+                    let encoder = Self::encoder_for_constraint(&constraint_pos)?;
+                    encoders.insert(d.clone(), encoder);
+                    let constraint_neg =
+                        Constraint::try_from(Literal::Neg(Atom::Predicate(d.get_pred().clone())))?;
+                    let encoder = Self::encoder_for_constraint(&constraint_neg)?;
+                    encoders.insert(d.clone(), encoder);
+                }
+            }
         }
 
         Ok(Self {
@@ -158,12 +196,14 @@ impl AbstractionSolver {
 
         let mut bounds = bounds.clone();
         if self.encoders.len() == 1 {
-            // Check if the only constraint is a word equation
-            if let Some(Constraint::WordEquation(eq)) = self
-                .encoders
-                .keys()
-                .next()
-                .and_then(|d| d.get_pred().clone().try_into().ok())
+            // Check if the only constraint is a single (positive) word equation
+            if let Some((Constraint::WordEquation(eq, _), true)) =
+                self.encoders.keys().next().and_then(|d| {
+                    Some((
+                        d.get_pred().clone().try_into().unwrap(),
+                        *d.get_def_type() == DefinitionType::Positive,
+                    ))
+                })
             {
                 bounds = sharpen_bounds(&eq, &bounds, &self.instance)
             }

@@ -101,6 +101,28 @@ pub enum Literal {
     Neg(Atom),
 }
 
+impl Literal {
+    /// Returns `true` iff this literal is a positive atom.
+    pub fn is_pos(&self) -> bool {
+        match self {
+            Literal::Pos(_) => true,
+            Literal::Neg(_) => false,
+        }
+    }
+
+    /// Returns `true` iff this literal is a negative atom.
+    pub fn is_neg(&self) -> bool {
+        !self.is_pos()
+    }
+
+    /// Returns the atom of this literal.
+    pub fn atom(&self) -> &Atom {
+        match self {
+            Literal::Pos(a) | Literal::Neg(a) => a,
+        }
+    }
+}
+
 /// A first-order formula without quantifiers.
 /// A formula is inductive defined as follows:
 /// - An [Atom] is a formula
@@ -679,6 +701,15 @@ impl Display for Atom {
             Atom::BoolVar(v) => write!(f, "{}", v),
             Atom::True => write!(f, "true"),
             Atom::False => write!(f, "false"),
+        }
+    }
+}
+
+impl Display for Literal {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Literal::Pos(a) => write!(f, "{}", a),
+            Literal::Neg(a) => write!(f, "¬({})", a),
         }
     }
 }
