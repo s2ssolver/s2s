@@ -45,6 +45,9 @@ pub struct NFAEncoder {
 
     /// A selector variable that is added to the assumptions for the current bound
     bound_selector: Option<PVar>,
+
+    /// Whether the constraint is positive or negative
+    sign: bool,
 }
 
 impl NFAEncoder {
@@ -195,6 +198,14 @@ impl NFAEncoder {
     }
 
     fn encode_final(&self, bound: usize) -> EncodingResult {
+        if self.sign {
+            self.encode_final_positive(bound)
+        } else {
+            self.encode_final_negative(bound)
+        }
+    }
+
+    fn encode_final_positive(&self, bound: usize) -> EncodingResult {
         let mut res = EncodingResult::empty();
         let selector = self.bound_selector.unwrap();
 
@@ -204,6 +215,18 @@ impl NFAEncoder {
             clause.push(as_lit(reach_var));
         }
         res.add_clause(clause);
+        res
+    }
+
+    fn encode_final_negative(&self, bound: usize) -> EncodingResult {
+        let mut res = EncodingResult::empty();
+        let selector = self.bound_selector.unwrap();
+
+        for qf in self.nfa.finals() {
+            let reach_var = self.reach_vars[&(*qf, bound)];
+            res.add_clause(vec![neg(selector), neg(reach_var)]);
+        }
+
         res
     }
 }
@@ -268,7 +291,7 @@ impl ConstraintEncoder for NFAEncoder {
 }
 
 impl RegularConstraintEncoder for NFAEncoder {
-    fn new(mut re_constraint: RegularConstraint) -> Result<Self, Error> {
+    fn new(mut re_constraint: RegularConstraint, sign: bool) -> Result<Self, Error> {
         let illegal_pattern_msg = format!(
             "NFA encode can only handle single variables as LHS, but got {}",
             re_constraint.get_pattern()
@@ -291,6 +314,7 @@ impl RegularConstraintEncoder for NFAEncoder {
         Ok(Self {
             var,
             nfa,
+            sign,
             regex: re_constraint.get_re().clone(),
             last_bound: None,
             reach_vars: IndexMap::new(),
@@ -335,7 +359,7 @@ mod test {
         alph.insert('a');
 
         let constraint = RegularConstraint::new(re.clone(), Pattern::variable(var));
-        let mut encoder = NFAEncoder::new(constraint).unwrap();
+        let mut encoder = NFAEncoder::new(constraint, true).unwrap();
         let mut dom_encoder = DomainEncoder::new(alph);
         let mut solver: Solver = cadical::Solver::default();
 

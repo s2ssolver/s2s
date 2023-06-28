@@ -7,7 +7,7 @@ mod nfa;
 pub use nfa::NFAEncoder;
 
 pub trait RegularConstraintEncoder: ConstraintEncoder {
-    fn new(re_constraint: RegularConstraint) -> Result<Self, Error>
+    fn new(re_constraint: RegularConstraint, sign: bool) -> Result<Self, Error>
     where
         Self: Sized;
 }

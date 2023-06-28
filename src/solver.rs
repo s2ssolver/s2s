@@ -122,13 +122,7 @@ impl AbstractionSolver {
             }
             Constraint::LinearConstraint(lc) => Ok(Box::new(MddEncoder::new(lc.clone()))),
             Constraint::RegularConstraint(rc, sign) => {
-                if *sign {
-                    Ok(Box::new(NFAEncoder::new(rc.clone())?))
-                } else {
-                    Err(Error::Unsupported(
-                        "Negated regular constraints".to_string(),
-                    ))
-                }
+                Ok(Box::new(NFAEncoder::new(rc.clone(), *sign)?))
             }
         }
     }
@@ -198,10 +192,12 @@ impl AbstractionSolver {
         if self.encoders.len() == 1 {
             // Check if the only constraint is a single (positive) word equation
             if let Some((Constraint::WordEquation(eq, _), true)) =
-                self.encoders.keys().next().map(|d| (
+                self.encoders.keys().next().map(|d| {
+                    (
                         d.get_pred().clone().try_into().unwrap(),
                         *d.get_def_type() == DefinitionType::Positive,
-                    ))
+                    )
+                })
             {
                 bounds = sharpen_bounds(&eq, &bounds, &self.instance)
             }
