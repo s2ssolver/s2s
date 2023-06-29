@@ -6,6 +6,7 @@ use aws_smt_ir::{
     Constant, CoreOp, Ctx, IConst, ISort, IVar, Identifier, Logic, Script, Sort, Sorted, Term,
 };
 use num_bigint::BigUint;
+use smallvec::smallvec;
 use smt2parser::concrete::Command;
 
 use crate::{
@@ -136,7 +137,7 @@ impl<'a> Visitor<ALL> for FormulaBuilder<'a> {
     fn visit_term(&mut self, term: &Term<ALL>) -> ControlFlow<Self::BreakTy> {
         match term {
             Term::Constant(_) => todo!(),
-            Term::Variable(_) => todo!(),
+            Term::Variable(v) => v.visit_with(self),
             Term::CoreOp(op) => match op.as_ref() {
                 CoreOp::True => ControlFlow::Break(Ok(Formula::ttrue())),
                 CoreOp::False => ControlFlow::Break(Ok(Formula::ffalse())),
@@ -266,7 +267,20 @@ impl<'a> Visitor<ALL> for FormulaBuilder<'a> {
                     }
                 }
                 CoreOp::Distinct(_) => todo!(),
-                CoreOp::Ite(_, _, _) => todo!(),
+                CoreOp::Ite(p, t, f) => {
+                    // Rewrite as (p -> t) /\ (-p -> f)
+                    let imp1 = Term::CoreOp(CoreOp::Imp(smallvec![p.clone(), t.clone()]).into());
+                    let imp2 = Term::CoreOp(
+                        CoreOp::Imp(smallvec![
+                            Term::CoreOp(CoreOp::Not(p.clone()).into()),
+                            f.clone()
+                        ])
+                        .into(),
+                    );
+                    let conj = Term::CoreOp(CoreOp::And(smallvec![imp1, imp2]).into());
+
+                    conj.visit_with(self)
+                }
             },
             Term::OtherOp(op) => match op.as_ref() {
                 Op::Arith(arith_op) => match arith_op {
@@ -382,6 +396,21 @@ impl<'a> Visitor<ALL> for FormulaBuilder<'a> {
             Term::Let(_) => todo!(),
             Term::Match(_) => todo!(),
             Term::Quantifier(_) => todo!(),
+        }
+    }
+
+    fn visit_var(&mut self, var: &IVar<<ALL as Logic>::Var>) -> ControlFlow<Self::BreakTy> {
+        let name = var.as_ref().sym_str();
+        if let Some(vvar) = self.instance.var_by_name(name) {
+            if vvar.sort() != NSort::Bool {
+                return ControlFlow::Break(Err(ParseError::SyntaxError(
+                    format!("Expected Boolean variable but found {} ", vvar.sort()),
+                    None,
+                )));
+            }
+            ControlFlow::Break(Ok(Formula::boolvar(vvar.clone())))
+        } else {
+            ControlFlow::Break(Err(ParseError::UnknownIdentifier(name.to_string())))
         }
     }
 

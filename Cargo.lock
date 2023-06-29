@@ -991,6 +991,7 @@ dependencies = [
  "quickcheck_macros",
  "regulaer",
  "serial_test",
+ "smallvec",
  "smt2parser",
  "test-generator",
 ]
