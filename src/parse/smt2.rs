@@ -167,7 +167,39 @@ impl<'a> Visitor<ALL> for FormulaBuilder<'a> {
                     ControlFlow::Break(Ok(Formula::Or(fms)))
                 }
                 CoreOp::Xor(_) => todo!(),
-                CoreOp::Imp(_) => todo!(),
+                CoreOp::Imp(ts) => {
+                    if ts.len() != 2 {
+                        return ControlFlow::Break(Err(ParseError::SyntaxError(
+                            "= needs exactly arguments".to_string(),
+                            None,
+                        )));
+                    }
+                    let sorts = match self.get_sorts(ts) {
+                        Ok(s) => s,
+                        Err(e) => return ControlFlow::Break(Err(e)),
+                    };
+                    if sorts[0] != NSort::Bool || sorts[1] != NSort::Bool {
+                        return ControlFlow::Break(Err(ParseError::SyntaxError(
+                            "Invalid arguments for '=>': expected bool and bool".to_string(),
+                            None,
+                        )));
+                    }
+                    // Rewrite as -lhs \/ rhs
+                    let lhs = &ts[0];
+                    let rhs = &ts[1];
+                    let lhs = match lhs.visit_with(self) {
+                        ControlFlow::Continue(_) => unreachable!(),
+                        ControlFlow::Break(Ok(t)) => t,
+                        ControlFlow::Break(Err(e)) => return ControlFlow::Break(Err(e)),
+                    };
+                    let rhs = match rhs.visit_with(self) {
+                        ControlFlow::Continue(_) => unreachable!(),
+                        ControlFlow::Break(Ok(t)) => t,
+                        ControlFlow::Break(Err(e)) => return ControlFlow::Break(Err(e)),
+                    };
+                    let imp_ltr = Formula::or(vec![Formula::not(lhs.clone()), rhs.clone()]);
+                    ControlFlow::Break(Ok(imp_ltr))
+                }
                 CoreOp::Eq(ts) => {
                     if ts.len() != 2 {
                         return ControlFlow::Break(Err(ParseError::SyntaxError(
@@ -210,7 +242,23 @@ impl<'a> Visitor<ALL> for FormulaBuilder<'a> {
                             let equation = Predicate::Equality(term_lhs.into(), term_rhs.into());
                             ControlFlow::Break(Ok(Formula::predicate(equation)))
                         }
-                        (NSort::Bool, NSort::Bool) => todo!("Parse boolean equivalence"),
+                        (NSort::Bool, NSort::Bool) => {
+                            // Rewrite as dual implication
+                            // (-lhs \/ rhs) /\ (lhs \/ -rhs)
+                            let lhs = match lhs.visit_with(self) {
+                                ControlFlow::Continue(_) => unreachable!(),
+                                ControlFlow::Break(Ok(t)) => t,
+                                ControlFlow::Break(Err(e)) => return ControlFlow::Break(Err(e)),
+                            };
+                            let rhs = match rhs.visit_with(self) {
+                                ControlFlow::Continue(_) => unreachable!(),
+                                ControlFlow::Break(Ok(t)) => t,
+                                ControlFlow::Break(Err(e)) => return ControlFlow::Break(Err(e)),
+                            };
+                            let imp_ltr = Formula::or(vec![Formula::not(lhs.clone()), rhs.clone()]);
+                            let imp_rtl = Formula::or(vec![lhs, Formula::not(rhs)]);
+                            ControlFlow::Break(Ok(Formula::and(vec![imp_ltr, imp_rtl])))
+                        }
                         (_, _) => ControlFlow::Break(Err(ParseError::SyntaxError(
                             format!("Sorts for '=' mismatch: {} and {}", sort_lhs, sort_rhs),
                             None,
