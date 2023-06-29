@@ -72,7 +72,7 @@ trait Preprocessor {
                 let mut changed = false;
                 let mut new_fs = Vec::new();
                 for f in fs {
-                    match self.apply_fm(f, is_asserted) {
+                    match self.apply_fm(f, false) {
                         PreprocessingResult::Unchanged(f) => new_fs.push(f),
                         PreprocessingResult::Changed(f) => {
                             changed = true;
@@ -106,7 +106,7 @@ trait Preprocessor {
                     PreprocessingResult::Unchanged(new_fm)
                 }
             }
-            Formula::Not(f) => match self.apply_fm(*f, !is_asserted) {
+            Formula::Not(f) => match self.apply_fm(*f, false) {
                 PreprocessingResult::Unchanged(f) => {
                     PreprocessingResult::Unchanged(Formula::not(f))
                 }
