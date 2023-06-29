@@ -4,7 +4,7 @@ use std::fmt::Display;
 use std::time::Instant;
 
 use crate::bounds::Bounds;
-use crate::encode::card::{exactly_one, IncrementalAMO};
+use crate::encode::card::{exactly_one, IncrementalALO, IncrementalAMO};
 use crate::encode::domain::DomainEncoding;
 use crate::encode::{ConstraintEncoder, EncodingResult, FilledPattern, LAMBDA};
 
@@ -273,6 +273,8 @@ pub struct AlignmentEncoder {
     var_matches: IndexMap<(Variable, usize, usize), PVar>,
 
     var_cand_match_cache: IndexMap<(Variable, usize, usize), PVar>,
+
+    mismatch_alo: IncrementalALO,
 }
 
 impl AlignmentEncoder {
@@ -667,6 +669,29 @@ impl AlignmentEncoder {
         }
         EncodingResult::cnf(clauses)
     }
+
+    fn encode_mismatch(&mut self, dom: &DomainEncoding) -> EncodingResult {
+        let mut result = EncodingResult::empty();
+        let last_bound = self.last_bound.unwrap_or(0);
+        let lhs = self.eq_type.lhs_encoder();
+        let rhs = self.eq_type.rhs_encoder();
+        let mut new_mismatch_selectors = vec![];
+
+        for b in last_bound..self.bound {
+            let v = pvar();
+            new_mismatch_selectors.push(v);
+            // If v is true, then there is a mismatch at position b
+            for c in dom.alphabet() {
+                let lhs_c = lhs.char_at(b, *c);
+                let rhs_c = rhs.char_at(b, *c);
+                result.add_clause(vec![neg(v), neg(lhs_c), neg(rhs_c)]);
+            }
+        }
+
+        result.join(self.mismatch_alo.add(&new_mismatch_selectors));
+
+        result
+    }
 }
 
 impl WordEquationEncoder for AlignmentEncoder {
@@ -694,7 +719,7 @@ impl WordEquationEncoder for AlignmentEncoder {
             segments_lsh: lhs_segs,
             segments_rhs: rhs_segs,
             var_cand_match_cache: IndexMap::new(),
-
+            mismatch_alo: IncrementalALO::new(),
             var_matches: IndexMap::new(),
         }
     }
@@ -707,7 +732,12 @@ impl ConstraintEncoder for AlignmentEncoder {
         substitution: &DomainEncoding,
     ) -> Result<EncodingResult, Error> {
         self.round += 1;
-        log::debug!("Encoding {}", self.equation);
+
+        if self.eq_type.is_equality() {
+            log::debug!("Encoding {}", self.equation);
+        } else {
+            log::debug!("Encoding not {}", self.equation);
+        }
         let mut res = EncodingResult::empty();
 
         let bound = max(
@@ -798,9 +828,8 @@ impl ConstraintEncoder for AlignmentEncoder {
         );
         res.join(suffix_enc_rhs);
 
-        if let SolutionWord::Inequality(_lhs, _rhs) = &self.eq_type {
-            // Encode that lhs and rhs mismatch
-            todo!("Not implemented")
+        if !self.eq_type.is_equality() {
+            res.join(self.encode_mismatch(substitution));
         }
 
         // Store variable bounds for next round
