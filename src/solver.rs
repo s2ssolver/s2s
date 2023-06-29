@@ -23,7 +23,7 @@ use crate::model::{Constraint, Substitution};
 
 use crate::encode::domain::{get_substitutions, DomainEncoder};
 
-use crate::sat::{neg, to_cnf, Cnf};
+use crate::sat::{as_lit, neg, to_cnf, Cnf};
 
 /// The result of a satisfiability check
 pub enum SolverResult {
@@ -104,7 +104,7 @@ impl BoundUpdate {
 struct AbstractionSolver {
     instance: Instance,
     alphabet: IndexSet<char>,
-    encoders: HashMap<Definition, Box<dyn ConstraintEncoder>>,
+    encoders: HashMap<Definition, HashMap<bool, Box<dyn ConstraintEncoder>>>,
     abstraction: Abstraction,
     domain_encoder: DomainEncoder,
 }
@@ -145,28 +145,35 @@ impl AbstractionSolver {
             match d.get_def_type() {
                 DefinitionType::Positive => {
                     // Create encoder for positive
+                    let mut map = HashMap::new();
                     let constraint =
                         Constraint::try_from(Literal::Pos(Atom::Predicate(d.get_pred().clone())))?;
                     let encoder = Self::encoder_for_constraint(&constraint)?;
-                    encoders.insert(d.clone(), encoder);
+                    map.insert(true, encoder);
+                    encoders.insert(d.clone(), map);
                 }
                 DefinitionType::Negative => {
                     // Create encoder for positive
+                    let mut map = HashMap::new();
                     let constraint =
                         Constraint::try_from(Literal::Neg(Atom::Predicate(d.get_pred().clone())))?;
                     let encoder = Self::encoder_for_constraint(&constraint)?;
-                    encoders.insert(d.clone(), encoder);
+                    map.insert(false, encoder);
+                    encoders.insert(d.clone(), map);
                 }
                 DefinitionType::Equivalence => {
                     // Create encoder for positive and negative
+                    let mut map = HashMap::new();
                     let constraint_pos =
                         Constraint::try_from(Literal::Pos(Atom::Predicate(d.get_pred().clone())))?;
                     let encoder = Self::encoder_for_constraint(&constraint_pos)?;
-                    encoders.insert(d.clone(), encoder);
+                    map.insert(true, encoder);
+
                     let constraint_neg =
                         Constraint::try_from(Literal::Neg(Atom::Predicate(d.get_pred().clone())))?;
                     let encoder = Self::encoder_for_constraint(&constraint_neg)?;
-                    encoders.insert(d.clone(), encoder);
+                    map.insert(false, encoder);
+                    encoders.insert(d.clone(), map);
                 }
             }
         }
@@ -215,17 +222,30 @@ impl AbstractionSolver {
         let dom = self.domain_encoder.encoding();
 
         if self.instance.get_formula().is_conjunctive() {
-            for (_, enc) in self.encoders.iter_mut() {
-                let res = enc.encode(&bounds, dom)?;
-                encoding.join(res);
+            for (_, encs) in self.encoders.iter_mut() {
+                for enc in encs.values_mut() {
+                    let res = enc.encode(&bounds, dom)?;
+                    encoding.join(res);
+                }
             }
         } else {
-            for (d, enc) in self.encoders.iter_mut() {
-                let mut res = enc.encode(&bounds, dom)?;
-                // Insert the negation of the definitional boolean var into all clauses
+            for (d, encs) in self.encoders.iter_mut() {
                 let def_pvar = self.domain_encoder.get_bools()[d.get_var()];
-                res.iter_clauses_mut().for_each(|c| c.push(neg(def_pvar)));
-                encoding.join(res);
+                if let Some(enc) = encs.get_mut(&true) {
+                    let mut res = enc.encode(&bounds, dom)?;
+                    // devar -> encoding
+                    // Insert the negation of the definitional boolean var into all clauses
+                    res.iter_clauses_mut().for_each(|c| c.push(neg(def_pvar)));
+                    encoding.join(res);
+                }
+                if let Some(enc) = encs.get_mut(&false) {
+                    let mut res = enc.encode(&bounds, dom)?;
+                    // -devar -> negation_encoding
+                    // Insert the the definitional boolean var into all clauses
+                    res.iter_clauses_mut()
+                        .for_each(|c| c.push(as_lit(def_pvar)));
+                    encoding.join(res);
+                }
             }
         }
 
@@ -235,8 +255,10 @@ impl AbstractionSolver {
     // Reset all states
     fn reset(&mut self) {
         self.domain_encoder = DomainEncoder::new(self.alphabet.clone());
-        for (_, encoder) in self.encoders.iter_mut() {
-            encoder.reset();
+        for (_, encoders) in self.encoders.iter_mut() {
+            for (_, encoder) in encoders.iter_mut() {
+                encoder.reset();
+            }
         }
     }
 
@@ -470,7 +492,13 @@ impl Solver for AbstractionSolver {
                 }
             };
 
-            if self.encoders.values().any(|enc| !enc.is_incremental()) {
+            if self
+                .encoders
+                .values()
+                .map(|f| f.values())
+                .flatten()
+                .any(|enc| !enc.is_incremental())
+            {
                 // reset states if at least one solver is not incremental
                 self.reset();
                 cadical = cadical::Solver::new();

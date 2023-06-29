@@ -146,14 +146,15 @@ impl Abstraction {
                     None => {
                         let v = Variable::temp(Sort::Bool);
                         instance.add_var(v.clone());
-                        defs.add_definition(Definition::new(
-                            v.clone(),
-                            p.clone(),
-                            DefinitionType::Positive,
-                        ));
+
                         v
                     }
                 };
+                defs.add_definition(Definition::new(
+                    dvar.clone(),
+                    p.clone(),
+                    DefinitionType::Positive,
+                ));
                 Formula::boolvar(dvar)
             }
             Formula::Atom(_) => formula.clone(),
@@ -182,14 +183,14 @@ impl Abstraction {
                         None => {
                             let v = Variable::temp(Sort::Bool);
                             instance.add_var(v.clone());
-                            defs.add_definition(Definition::new(
-                                v.clone(),
-                                p.clone(),
-                                DefinitionType::Negative,
-                            ));
                             v
                         }
                     };
+                    defs.add_definition(Definition::new(
+                        dvar.clone(),
+                        p.clone(),
+                        DefinitionType::Negative,
+                    ));
                     Formula::boolvar(dvar)
                 }
                 _ => unreachable!("Formula not in NNF"),
