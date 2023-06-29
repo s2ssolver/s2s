@@ -8,7 +8,10 @@ use crate::{
         formula::{Atom, Formula, Predicate},
         Substitutable, Substitution, Variable,
     },
-    preprocess::{formula::ConjunctionSimplifier, int::ConstIntReducer},
+    preprocess::{
+        formula::ConjunctionSimplifier,
+        int::{ConstIntReducer, IntSubstitutions},
+    },
 };
 
 use self::string::{
@@ -146,6 +149,7 @@ pub fn preprocess(instance: &Instance) -> (PreprocessingResult, Substitution) {
             Box::new(WordEquationSubstitutions::new()),
             Box::new(ConstIntReducer::new()),
             Box::new(ConjunctionSimplifier::new()),
+            Box::new(IntSubstitutions::new()),
         ];
 
         log::trace!("Preprocessing round {}", r);

@@ -3,14 +3,14 @@
 use crate::{
     model::{
         formula::{Formula, Predicate},
-        terms::Term,
+        terms::{IntTerm, Term},
         Substitution,
     },
     preprocess::Preprocessor,
     PreprocessingResult,
 };
 
-/// Reduces constant integer expressions.
+/// Reduces constant integer predicates to `true` or `false`
 #[derive(Debug, Default)]
 pub struct ConstIntReducer {}
 
@@ -109,5 +109,45 @@ impl Preprocessor for ConstIntReducer {
             }
             _ => PreprocessingResult::Unchanged(Formula::predicate(predicate)),
         }
+    }
+}
+
+/// Infers integer substitutions from integer equalities with a single variable on one side.
+pub struct IntSubstitutions {
+    substitutions: Substitution,
+}
+
+impl Preprocessor for IntSubstitutions {
+    fn get_substitution(&self) -> Option<Substitution> {
+        Some(self.substitutions.clone())
+    }
+
+    fn get_name(&self) -> String {
+        String::from("Integer substitutions")
+    }
+
+    fn new() -> Self
+    where
+        Self: Sized,
+    {
+        Self {
+            substitutions: Substitution::new(),
+        }
+    }
+
+    fn apply_predicate(&mut self, predicate: Predicate, is_asserted: bool) -> PreprocessingResult {
+        if is_asserted {
+            match &predicate {
+                Predicate::Equality(Term::Int(lhs), Term::Int(rhs)) => {
+                    if let IntTerm::Var(v) = lhs {
+                        self.substitutions.set(&v, Term::Int(rhs.clone()));
+                    } else if let IntTerm::Var(v) = rhs {
+                        self.substitutions.set(&v, Term::Int(lhs.clone()));
+                    }
+                }
+                _ => (),
+            }
+        }
+        PreprocessingResult::Unchanged(Formula::predicate(predicate))
     }
 }
