@@ -293,7 +293,10 @@ impl ConstraintEncoder for WoorpjeEncoder {
 }
 
 impl WordEquationEncoder for WoorpjeEncoder {
-    fn new(equation: WordEquation) -> Self {
+    fn new(equation: WordEquation, sign: bool) -> Self {
+        if !sign {
+            panic!("WoorpjeEncoder does not support inequalities")
+        }
         Self {
             equation,
             state_vars: None,
@@ -382,7 +385,7 @@ mod tests {
         let subs_cnf = dom_encoder.encode(&bounds, &vm);
         encoding.join(subs_cnf);
 
-        let mut encoder = WoorpjeEncoder::new(eq.clone());
+        let mut encoder = WoorpjeEncoder::new(eq.clone(), true);
         encoding.join(encoder.encode(&bounds, dom_encoder.encoding()).unwrap());
 
         let mut solver: Solver = Solver::default();

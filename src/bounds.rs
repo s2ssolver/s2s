@@ -230,7 +230,7 @@ impl Bounds {
                         Constraint::RegularConstraint(mut r, true) => {
                             // If the automaton is finite, the pattern is bounded by the number of states (tighter bound: longest path to final state)
                             r.compile()?;
-                            if let Some(true) = r.get_automaton().and_then(|n| Some(n.acyclic())) {
+                            if let Some(true) = r.get_automaton().map(|n| n.acyclic()) {
                                 // Is finite, every variable in the pattern is bounded by number of states minus length of constant part in pattern
                                 let mut new_bounds = Bounds::new();
                                 let mut const_len = 0;

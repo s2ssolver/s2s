@@ -111,11 +111,133 @@ enum EqSide {
     Rhs,
 }
 
+/// Encoder for constant words with an upper bound.
+/// Uses an encoding that is incremental, i.e., the encoding for a bound `n` is a subset of the encoding for a bound `m` with `n < m`.
+struct WordEncoder {
+    /// The last bound that was used, is `0` prior to the first round.
+    last_bound: usize,
+
+    /// The Boolean variables that encode the word
+    /// Maps pairs of positions and characters to a propositional variable that is true if the character is at the position.
+    encoding: IndexMap<(usize, char), PVar>,
+}
+
+impl WordEncoder {
+    /// Creates a new word encoding.
+    fn new() -> Self {
+        Self {
+            last_bound: 0,
+            encoding: IndexMap::new(),
+        }
+    }
+
+    /// Returns the Boolean variable that is true if the character is at the position in the candidate solution word.
+    pub fn char_at(&self, pos: usize, c: char) -> PVar {
+        debug_assert!(
+            self.encoding.contains_key(&(pos, c)),
+            "No candidate at position {} with character {}",
+            pos,
+            c
+        );
+        self.encoding[&(pos, c)]
+    }
+
+    /// Sets the Boolean variable that is true if the character is at the position in the candidate solution word.
+    /// Panics if the variable was already set.
+    fn define_char_at(&mut self, pos: usize, c: char, var: PVar) {
+        let res = self.encoding.insert((pos, c), var);
+        assert!(res.is_none());
+    }
+
+    /// Encodes the possible candidates for the solution word up to bound `self.bound`.
+    pub fn encode(&mut self, dom: &DomainEncoding, bound: usize) -> EncodingResult {
+        assert!(bound >= self.last_bound, "Bound cannot shrink");
+        let mut res = EncodingResult::empty();
+        let last_bound = self.last_bound;
+        for pos in last_bound..bound {
+            let mut p_choices = vec![];
+            for c in dom.alphabet() {
+                let v = pvar();
+                p_choices.push(v);
+                self.define_char_at(pos, *c, v);
+            }
+            let v_lambda = pvar();
+            p_choices.push(v_lambda);
+            self.define_char_at(pos, LAMBDA, v_lambda);
+
+            let cnf = exactly_one(&p_choices);
+            res.join(EncodingResult::cnf(cnf));
+
+            // Symmetry breaking: If a position is lambda, then only lambda may follow
+            if pos > 0 {
+                let last_lambda = self.char_at(pos - 1, LAMBDA);
+                res.join(EncodingResult::cnf(vec![vec![
+                    neg(last_lambda),
+                    as_lit(v_lambda),
+                ]]));
+            }
+        }
+        self.last_bound = bound;
+        res
+    }
+}
+
+enum SolutionWord {
+    Equality(WordEncoder),
+    Inequality(WordEncoder, WordEncoder),
+}
+
+impl SolutionWord {
+    fn encode(&mut self, bound: usize, dom: &DomainEncoding) -> EncodingResult {
+        match self {
+            SolutionWord::Equality(w) => w.encode(dom, bound),
+            SolutionWord::Inequality(w1, w2) => {
+                let mut res = w1.encode(dom, bound);
+                res.join(w2.encode(dom, bound));
+                res
+            }
+        }
+    }
+
+    fn lhs_encoder(&self) -> &WordEncoder {
+        match self {
+            SolutionWord::Equality(w) => w,
+            SolutionWord::Inequality(w, _) => w,
+        }
+    }
+
+    fn is_equality(&self) -> bool {
+        match self {
+            SolutionWord::Equality(_) => true,
+            SolutionWord::Inequality(_, _) => false,
+        }
+    }
+
+    fn rhs_encoder(&self) -> &WordEncoder {
+        match self {
+            SolutionWord::Equality(w) => w,
+            SolutionWord::Inequality(_, w) => w,
+        }
+    }
+
+    fn encoder_for(&self, side: &EqSide) -> &WordEncoder {
+        match side {
+            EqSide::Lhs => self.lhs_encoder(),
+            EqSide::Rhs => self.rhs_encoder(),
+        }
+    }
+}
+
 /// The alignment-based encoder for word equations.
 /// This encoder is based on the following idea that segments of the LHS and RHS need to be aligned with a solution word.
 pub struct AlignmentEncoder {
     /// The original word equation
     equation: WordEquation,
+
+    /// The type of the equation, i.e., equality or inequality.
+    /// If the equation is an inequality, then the first word encoding is for the LHS and the second for the RHS.
+    /// If the equation is an equality, then one word encoding (= the solution word) is used for both sides.
+    eq_type: SolutionWord,
 
     /// Upper bound for the solution word, is 0 prior to first round.
     bound: usize,
@@ -144,9 +266,6 @@ pub struct AlignmentEncoder {
     /// Boolean variables that are true if the segment of the RHS starts at the position.
     starts_rhs: IndexMap<(usize, usize), PVar>,
 
-    /// The encoding of the candidate solution word. Maps pairs of positions and characters to a propositional variable that is true if the character is at the position.
-    cand_positions: IndexMap<(usize, char), PVar>,
-
     /// Maps each segment index to and incremental at-most-one encoder that is used to encode the possible start positions of the segment.
     segs_starts_amo: IndexMap<(EqSide, usize), IncrementalAMO>,
 
@@ -157,29 +276,11 @@ pub struct AlignmentEncoder {
 }
 
 impl AlignmentEncoder {
-    /// Returns the Boolean variable that is true if the character is at the position in the candidate solution word.
-    fn candidate_at(&self, pos: usize, c: char) -> PVar {
-        debug_assert!(
-            self.cand_positions.contains_key(&(pos, c)),
-            "No candidate at position {} with character {}",
-            pos,
-            c
-        );
-        self.cand_positions[&(pos, c)]
-    }
-
     fn segments(&self, side: &EqSide) -> &SegmentedPattern {
         match side {
             EqSide::Lhs => &self.segments_lsh,
             EqSide::Rhs => &self.segments_rhs,
         }
-    }
-
-    /// Sets the Boolean variable that is true if the character is at the position in the candidate solution word.
-    /// Panics if the variable was already set.
-    fn set_candidate_at(&mut self, pos: usize, c: char, var: PVar) {
-        let res = self.cand_positions.insert((pos, c), var);
-        assert!(res.is_none());
     }
 
     /// Returns the Boolean variable that is true if the segment of the given side starts at the given position.
@@ -200,6 +301,7 @@ impl AlignmentEncoder {
         assert!(res.is_none());
     }
 
+    /// Returns the upper bound of the given variable.
     fn get_var_bound(&self, var: &Variable, bounds: &Bounds) -> usize {
         bounds
             .get_upper(&var.len_var().unwrap())
@@ -212,36 +314,6 @@ impl AlignmentEncoder {
         self.last_var_bounds
             .as_ref()
             .map(|bounds| bounds.get_upper(&var.len_var().unwrap()).unwrap() as usize)
-    }
-
-    /// Encodes the possible candidates for the solution word up to bound `self.bound`.
-    fn encode_candidates(&mut self, dom: &DomainEncoding) -> EncodingResult {
-        let mut res = EncodingResult::empty();
-        let last_bound = self.last_bound.unwrap_or(0);
-        for pos in last_bound..self.bound {
-            let mut p_choices = vec![];
-            for c in dom.alphabet() {
-                let v = pvar();
-                p_choices.push(v);
-                self.set_candidate_at(pos, *c, v);
-            }
-            let v_lambda = pvar();
-            p_choices.push(v_lambda);
-            self.set_candidate_at(pos, LAMBDA, v_lambda);
-
-            let cnf = exactly_one(&p_choices);
-            res.join(EncodingResult::cnf(cnf));
-
-            // If a position is lambda, then only lambda may follow
-            if pos > 0 {
-                let last_lambda = self.candidate_at(pos - 1, LAMBDA);
-                res.join(EncodingResult::cnf(vec![vec![
-                    neg(last_lambda),
-                    as_lit(v_lambda),
-                ]]));
-            }
-        }
-        res
     }
 
     /// Encodes the alignment of a segmented pattern with the solution word by matching the respective lengths.
@@ -419,6 +491,7 @@ impl AlignmentEncoder {
         let segments = self.segments(side).clone();
         let subs = dom.string();
         let last_bound = self.last_bound.unwrap_or(0);
+        let word = self.eq_type.encoder_for(side);
         for (i, s) in segments.iter().enumerate() {
             match s {
                 PatternSegment::Variable(x) => {
@@ -441,7 +514,7 @@ impl AlignmentEncoder {
                                         let m_var: u32 = pvar();
                                         self.var_matches.insert((x.clone(), p, l), m_var);
                                         for c in dom.alphabet() {
-                                            let cand_c = self.candidate_at(p, *c);
+                                            let cand_c = word.char_at(p, *c);
                                             let sub_c = subs.get(x, 0, *c).unwrap();
                                             clauses.push(vec![
                                                 neg(m_var),
@@ -476,7 +549,7 @@ impl AlignmentEncoder {
                                             None => {
                                                 let mv = pvar();
                                                 for c in dom.alphabet() {
-                                                    let cand_c = self.candidate_at(p + (l - 1), *c);
+                                                    let cand_c = word.char_at(p + (l - 1), *c);
                                                     let sub_c = subs.get(x, l - 1, *c).unwrap();
                                                     clauses.push(vec![
                                                         neg(mv),
@@ -533,7 +606,7 @@ impl AlignmentEncoder {
                         // S_i^p  -> /\{k=0...|w|} c_{p+j} = w[k]
 
                         for (k, c) in w.iter().enumerate() {
-                            let cand_var = self.candidate_at(p + k, *c);
+                            let cand_var = word.char_at(p + k, *c);
                             clauses.push(vec![neg(start_var), as_lit(cand_var)]);
                         }
                     }
@@ -543,13 +616,14 @@ impl AlignmentEncoder {
         EncodingResult::cnf(clauses)
     }
 
-    /// Encodes that the last segment of a pattern must no extend over the bound of the bound of the solution word.
+    /// Encodes that after the last segment, the solution word must be lambda.
     fn lambda_suffix(
         &self,
         bounds: &Bounds,
         side: &EqSide,
         dom: &DomainEncoding,
     ) -> EncodingResult {
+        let word = self.eq_type.encoder_for(side);
         let segments = self.segments(side);
         if segments.length() == 0 {
             return EncodingResult::Trivial(true);
@@ -572,7 +646,7 @@ impl AlignmentEncoder {
                         if p + l < self.bound {
                             let start_var = self.start_position(last, p, side);
                             let len_var = dom.int().get(&x.len_var().unwrap(), l as isize).unwrap();
-                            let cand_var = self.candidate_at(p + l, LAMBDA);
+                            let cand_var = word.char_at(p + l, LAMBDA);
 
                             clauses.push(vec![neg(start_var), neg(len_var), as_lit(cand_var)]);
                         }
@@ -585,7 +659,7 @@ impl AlignmentEncoder {
 
                     if p + w.len() >= last_bound && p + w.len() < self.bound {
                         let start_var = self.start_position(last, p, side);
-                        let cand_var = self.candidate_at(p + w.len(), LAMBDA);
+                        let cand_var = word.char_at(p + w.len(), LAMBDA);
                         clauses.push(vec![neg(start_var), as_lit(cand_var)]);
                     }
                 }
@@ -596,15 +670,22 @@ impl AlignmentEncoder {
 }
 
 impl WordEquationEncoder for AlignmentEncoder {
-    fn new(equation: WordEquation) -> Self {
+    fn new(equation: WordEquation, sign: bool) -> Self {
         let lhs_segs = SegmentedPattern::new(equation.lhs());
         let rhs_segs = SegmentedPattern::new(equation.rhs());
+
+        let eq_type = if sign {
+            SolutionWord::Equality(WordEncoder::new())
+        } else {
+            SolutionWord::Inequality(WordEncoder::new(), WordEncoder::new())
+        };
 
         Self {
             equation,
             bound_selector: None,
             round: 0,
             bound: 0,
+            eq_type,
             last_bound: None,
             last_var_bounds: None,
             starts_lhs: IndexMap::new(),
@@ -613,7 +694,7 @@ impl WordEquationEncoder for AlignmentEncoder {
             segments_lsh: lhs_segs,
             segments_rhs: rhs_segs,
             var_cand_match_cache: IndexMap::new(),
-            cand_positions: IndexMap::new(),
+
             var_matches: IndexMap::new(),
         }
     }
@@ -660,7 +741,7 @@ impl ConstraintEncoder for AlignmentEncoder {
         self.bound_selector = Some(pvar());
 
         // Encode the candidates
-        let cand_enc = self.encode_candidates(substitution);
+        let cand_enc = self.eq_type.encode(bound, substitution);
         log::debug!("Clauses for candidates: {}", cand_enc.clauses());
         res.join(cand_enc);
 
@@ -686,6 +767,7 @@ impl ConstraintEncoder for AlignmentEncoder {
 
         let ts = Instant::now();
         let vars_match_lhs_enc = self.match_candidate(substitution, bounds, &EqSide::Lhs);
+
         log::debug!(
             "Clauses for variable matching LHS: {} ({} ms)",
             vars_match_lhs_enc.clauses(),
@@ -716,6 +798,11 @@ impl ConstraintEncoder for AlignmentEncoder {
         );
         res.join(suffix_enc_rhs);
 
+        if let SolutionWord::Inequality(_lhs, _rhs) = &self.eq_type {
+            // Encode that lhs and rhs mismatch
+            todo!("Not implemented")
+        }
+
         // Store variable bounds for next round
         self.last_var_bounds = Some(bounds.clone());
         self.last_bound = Some(self.bound);
@@ -727,7 +814,7 @@ impl ConstraintEncoder for AlignmentEncoder {
     }
 
     fn reset(&mut self) {
-        let new = Self::new(self.equation.clone());
+        let new = Self::new(self.equation.clone(), self.eq_type.is_equality());
         // Reset everything except the equation
         *self = new;
     }
@@ -835,7 +922,7 @@ mod tests {
         let subs_cnf = dom_encoder.encode(&bounds, &instance);
         encoding.join(subs_cnf);
 
-        let mut encoder = AlignmentEncoder::new(eq.clone());
+        let mut encoder = AlignmentEncoder::new(eq.clone(), true);
         encoding.join(encoder.encode(&bounds, dom_encoder.encoding()).unwrap());
 
         let mut solver: Solver = Solver::default();
@@ -873,7 +960,7 @@ mod tests {
     ) -> Option<bool> {
         let mut bounds = Bounds::with_defaults(IntDomain::Bounded(0, 1));
 
-        let mut encoder = AlignmentEncoder::new(eq.clone());
+        let mut encoder = AlignmentEncoder::new(eq.clone(), true);
         let mut instance: Instance = Instance::default();
         eq.variables()
             .iter()

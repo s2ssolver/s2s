@@ -528,7 +528,10 @@ impl IWoorpjeEncoder {
 }
 
 impl WordEquationEncoder for IWoorpjeEncoder {
-    fn new(equation: WordEquation) -> Self {
+    fn new(equation: WordEquation, sing: bool) -> Self {
+        if !sing {
+            panic!("IWoorpjeEncoder does not support inequalities")
+        }
         Self {
             state_vars: Vec::new(),
             equation,
@@ -581,7 +584,7 @@ impl ConstraintEncoder for IWoorpjeEncoder {
     }
 
     fn reset(&mut self) {
-        let new = Self::new(self.equation.clone());
+        let new = Self::new(self.equation.clone(), true);
         // Reset everything except the equation
         *self = new;
     }
@@ -616,7 +619,7 @@ mod tests {
         let subs_cnf = dom_encoder.encode(&bounds, &instance);
 
         encoding.join(subs_cnf);
-        let mut encoder = IWoorpjeEncoder::new(eq.clone());
+        let mut encoder = IWoorpjeEncoder::new(eq.clone(), true);
         encoding.join(encoder.encode(&bounds, dom_encoder.encoding()).unwrap());
 
         let mut solver: Solver = Solver::default();
@@ -653,7 +656,7 @@ mod tests {
     ) -> Option<bool> {
         let mut bounds = Bounds::with_defaults(IntDomain::Bounded(0, 1));
 
-        let mut encoder = IWoorpjeEncoder::new(eq.clone());
+        let mut encoder = IWoorpjeEncoder::new(eq.clone(), true);
         let mut instance = Instance::default();
         eq.variables().iter().for_each(|v| {
             instance.add_var(v.clone());
