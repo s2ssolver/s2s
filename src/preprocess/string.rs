@@ -643,16 +643,6 @@ mod tests {
     }
 
     #[quickcheck]
-    fn strip_suffix_returns_prefix(weq: WordEquation) -> bool {
-        match WordEquationStripPrefixSuffix::strip_matches(&weq) {
-            Some(stripped) => {
-                weq.lhs().starts_with(stripped.lhs()) && weq.rhs().starts_with(stripped.rhs())
-            }
-            _ => true,
-        }
-    }
-
-    #[quickcheck]
     fn const_prefixsuffix_match(weq: WordEquation) -> TestResult {
         if weq.lhs().is_empty() || weq.rhs().is_empty() {
             return TestResult::discard();

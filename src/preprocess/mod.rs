@@ -103,7 +103,7 @@ trait Preprocessor {
                     PreprocessingResult::Unchanged(new_fm)
                 }
             }
-            Formula::Not(f) => match self.apply_fm(*f, is_asserted) {
+            Formula::Not(f) => match self.apply_fm(*f, !is_asserted) {
                 PreprocessingResult::Unchanged(f) => {
                     PreprocessingResult::Unchanged(Formula::not(f))
                 }

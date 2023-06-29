@@ -53,8 +53,16 @@ pub fn parse_smt<R: BufRead>(smt: R) -> Result<Instance, ParseError> {
                     ));
                 }
             }
-            Command::CheckSat | Command::SetLogic { .. } | Command::GetModel => {}
-
+            Command::CheckSat
+            | Command::SetLogic { .. }
+            | Command::GetModel
+            | Command::GetOption { .. }
+            | Command::SetOption { .. }
+            | Command::SetInfo { .. }
+            | Command::Exit => {
+                // Ignore
+                log::debug!("Ignoring command: {:?}", command)
+            }
             Command::CheckSatAssuming { .. }
             | Command::DeclareDatatype { .. }
             | Command::DeclareDatatypes { .. }
@@ -64,11 +72,9 @@ pub fn parse_smt<R: BufRead>(smt: R) -> Result<Instance, ParseError> {
             | Command::DefineFunsRec { .. }
             | Command::DefineSort { .. }
             | Command::Echo { .. }
-            | Command::Exit
             | Command::GetAssertions
             | Command::GetAssignment
             | Command::GetInfo { .. }
-            | Command::GetOption { .. }
             | Command::GetProof
             | Command::GetUnsatAssumptions
             | Command::GetUnsatCore
@@ -76,11 +82,7 @@ pub fn parse_smt<R: BufRead>(smt: R) -> Result<Instance, ParseError> {
             | Command::Pop { .. }
             | Command::Push { .. }
             | Command::Reset
-            | Command::ResetAssertions
-            | Command::SetInfo { .. }
-            | Command::SetOption { .. } => {
-                return Err(ParseError::Unsupported(command.to_string()))
-            }
+            | Command::ResetAssertions => return Err(ParseError::Unsupported(command.to_string())),
         }
     }
 
@@ -103,14 +105,26 @@ impl<'a> FormulaBuilder<'a> {
         let mut sorts = Vec::with_capacity(ts.len());
 
         for t in ts {
-            let sort = match t.sort(&mut self.context) {
-                Ok(s) => match isort2sort(&s) {
-                    Ok(s) => s,
-                    Err(s) => return Err(s),
-                },
-                Err(s) => return Err(ParseError::Unsupported(format!("{}", s.0))),
-            };
-            sorts.push(sort);
+            if let Term::Variable(v) = t {
+                match v.as_ref() {
+                    aws_smt_ir::QualIdentifier::Simple { identifier }
+                    | aws_smt_ir::QualIdentifier::Sorted { identifier, .. } => {
+                        match self.instance.var_by_name(&identifier.to_string()) {
+                            Some(vv) => sorts.push(vv.sort()),
+                            None => todo!(),
+                        }
+                    }
+                }
+            } else {
+                let sort = match t.sort(&mut self.context) {
+                    Ok(s) => match isort2sort(&s) {
+                        Ok(s) => s,
+                        Err(s) => return Err(s),
+                    },
+                    Err(s) => return Err(ParseError::Other(format!("{}", s), None)),
+                };
+                sorts.push(sort);
+            }
         }
         Ok(sorts)
     }

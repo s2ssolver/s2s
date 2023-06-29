@@ -186,6 +186,7 @@ impl From<IntTerm> for LinearArithTerm {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum LinearConstraintType {
     Eq,
+    Ineq,
     Leq,
     Less,
     Geq,
@@ -320,6 +321,7 @@ impl Evaluable for LinearConstraint {
             LinearConstraintType::Less => Some(lhs < rhs),
             LinearConstraintType::Geq => Some(lhs >= rhs),
             LinearConstraintType::Greater => Some(lhs > rhs),
+            LinearConstraintType::Ineq => Some(lhs != rhs),
         }
     }
 }
@@ -344,6 +346,7 @@ impl Display for LinearConstraintType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             LinearConstraintType::Eq => write!(f, "="),
+            LinearConstraintType::Ineq => write!(f, "!="),
             LinearConstraintType::Leq => write!(f, "<="),
             LinearConstraintType::Less => write!(f, "<"),
             LinearConstraintType::Geq => write!(f, ">="),

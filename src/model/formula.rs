@@ -4,6 +4,7 @@ use std::fmt::Display;
 
 use indexmap::{indexset, IndexSet};
 use quickcheck::Arbitrary;
+use regulaer::{re::Regex, RegLang};
 
 use crate::model::Variable;
 
@@ -98,6 +99,28 @@ impl Atom {
 pub enum Literal {
     Pos(Atom),
     Neg(Atom),
+}
+
+impl Literal {
+    /// Returns `true` iff this literal is a positive atom.
+    pub fn is_pos(&self) -> bool {
+        match self {
+            Literal::Pos(_) => true,
+            Literal::Neg(_) => false,
+        }
+    }
+
+    /// Returns `true` iff this literal is a negative atom.
+    pub fn is_neg(&self) -> bool {
+        !self.is_pos()
+    }
+
+    /// Returns the atom of this literal.
+    pub fn atom(&self) -> &Atom {
+        match self {
+            Literal::Pos(a) | Literal::Neg(a) => a,
+        }
+    }
 }
 
 /// A first-order formula without quantifiers.
@@ -467,13 +490,34 @@ impl Alphabet for Formula {
 
 impl Alphabet for Atom {
     fn alphabet(&self) -> IndexSet<char> {
-        todo!()
+        match self {
+            Atom::Predicate(p) => p.alphabet(),
+            Atom::BoolVar(_) => indexset! {},
+            Atom::True => indexset! {},
+            Atom::False => indexset! {},
+        }
     }
 }
 
 impl Alphabet for Predicate {
     fn alphabet(&self) -> IndexSet<char> {
-        todo!()
+        match self {
+            Predicate::Equality(Term::String(lhs), Term::String(rhs))
+            | Predicate::Geq(Term::String(lhs), Term::String(rhs))
+            | Predicate::Greater(Term::String(lhs), Term::String(rhs))
+            | Predicate::Leq(Term::String(lhs), Term::String(rhs))
+            | Predicate::Less(Term::String(lhs), Term::String(rhs)) => {
+                let mut alphabet = lhs.alphabet();
+                alphabet.extend(rhs.alphabet());
+                alphabet
+            }
+            Predicate::In(Term::String(lhs), Term::Regular(rhs)) => {
+                let mut alphabet = lhs.alphabet();
+                alphabet.extend(rhs.alphabet());
+                alphabet
+            }
+            _ => indexset! {},
+        }
     }
 }
 
@@ -621,7 +665,27 @@ impl Evaluable for Predicate {
             Predicate::Greater(l, r) => {
                 panic!("> unsupported for sorts {} and {}", l.sort(), r.sort())
             }
-            Predicate::In(_, _) => todo!(),
+            Predicate::In(Term::String(p), Term::Regular(re)) => {
+                if let Some(v) = p.apply_substitution(sub).is_const() {
+                    let regex = match Regex::<char>::try_from(re.clone()) {
+                        Ok(r) => r,
+                        Err(e) => {
+                            log::error!("Error while parsing regex: {}", e);
+                            return None;
+                        }
+                    };
+                    regex.contains(&v)
+                } else {
+                    return None;
+                }
+            }
+            Predicate::In(_, _) => {
+                panic!(
+                    "`in` unsupported for sorts {} and {}",
+                    self.signature()[0],
+                    self.signature()[1]
+                )
+            }
         };
 
         Some(res)
@@ -637,6 +701,15 @@ impl Display for Atom {
             Atom::BoolVar(v) => write!(f, "{}", v),
             Atom::True => write!(f, "true"),
             Atom::False => write!(f, "false"),
+        }
+    }
+}
+
+impl Display for Literal {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Literal::Pos(a) => write!(f, "{}", a),
+            Literal::Neg(a) => write!(f, "¬({})", a),
         }
     }
 }

@@ -9,7 +9,7 @@ pub use string::*;
 use crate::error::Error;
 
 use super::{
-    formula::{Formula, Predicate},
+    formula::{Atom, Formula, Literal, Predicate},
     terms::{StringTerm, Term},
 };
 
@@ -19,12 +19,58 @@ use super::{
 /// It can be a [WordEquation], a [LinearConstraint], or a [RegularConstraint].
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum Constraint {
-    WordEquation(WordEquation),
+    /// A word equation is a constraint of the form `a = b`, where `a` and `b` are [Pattern].
+    /// If the second argument is `true`, the equation is interpreted as a disequation, i.e., `a != b`.
+    WordEquation(WordEquation, bool),
+    /// A linear arithmetic constraint is a constraint of the form `a # b`, where `a` and `b` are [LinearArithTerm] and `#` is a variant of [LinearConstraintType] .
     LinearConstraint(LinearConstraint),
-    RegularConstraint(RegularConstraint),
+    /// A regular constraint is a constraint of the form `a in b`, where `a` is a [Pattern] and `b` is a [RegularConstraint].
+    /// If the second argument is `true`, the constraint is interpreted as `a not in b`.
+    RegularConstraint(RegularConstraint, bool),
 }
 
 /* Conversions between constraints and predicates */
+
+impl TryFrom<Literal> for Constraint {
+    type Error = Error;
+
+    fn try_from(value: Literal) -> Result<Self, Self::Error> {
+        match value {
+            Literal::Pos(Atom::Predicate(predicate)) => Constraint::try_from(predicate),
+            Literal::Neg(Atom::Predicate(predicate)) => match Constraint::try_from(predicate)? {
+                Constraint::WordEquation(eq, _) => Ok(Constraint::WordEquation(eq, false)),
+                Constraint::LinearConstraint(mut l) => match l.typ {
+                    LinearConstraintType::Eq => {
+                        l.typ = LinearConstraintType::Ineq;
+                        Ok(Constraint::LinearConstraint(l))
+                    }
+                    LinearConstraintType::Ineq => {
+                        l.typ = LinearConstraintType::Eq;
+                        Ok(Constraint::LinearConstraint(l))
+                    }
+                    LinearConstraintType::Leq => {
+                        l.typ = LinearConstraintType::Greater;
+                        Ok(Constraint::LinearConstraint(l))
+                    }
+                    LinearConstraintType::Less => {
+                        l.typ = LinearConstraintType::Geq;
+                        Ok(Constraint::LinearConstraint(l))
+                    }
+                    LinearConstraintType::Geq => {
+                        l.typ = LinearConstraintType::Less;
+                        Ok(Constraint::LinearConstraint(l))
+                    }
+                    LinearConstraintType::Greater => {
+                        l.typ = LinearConstraintType::Leq;
+                        Ok(Constraint::LinearConstraint(l))
+                    }
+                },
+                Constraint::RegularConstraint(r, _) => Ok(Constraint::RegularConstraint(r, false)),
+            },
+            _ => Err(Error::SolverError(format!("Not a constrait {}", value))),
+        }
+    }
+}
 
 impl TryFrom<Predicate> for Constraint {
     type Error = Error;
@@ -32,7 +78,7 @@ impl TryFrom<Predicate> for Constraint {
     fn try_from(value: Predicate) -> Result<Self, Self::Error> {
         match value {
             Predicate::Equality(Term::String(lhs), Term::String(rhs)) => Ok(
-                Constraint::WordEquation(WordEquation::new(lhs.into(), rhs.into())),
+                Constraint::WordEquation(WordEquation::new(lhs.into(), rhs.into()), true),
             ),
             Predicate::Equality(Term::Int(lhs), Term::Int(rhs)) => {
                 let lin_lhs = LinearArithTerm::from(lhs);
@@ -64,6 +110,10 @@ impl TryFrom<Predicate> for Constraint {
                 let con = LinearConstraint::from((lin_lhs, lin_rhs, LinearConstraintType::Greater));
                 Ok(Constraint::LinearConstraint(con))
             }
+            Predicate::In(Term::String(pat), Term::Regular(re)) => {
+                let con = RegularConstraint::new(re.try_into()?, pat.into());
+                Ok(Constraint::RegularConstraint(con, true))
+            }
             // Unsupported
             Predicate::Leq(Term::String(_), Term::String(_))
             | Predicate::Less(Term::String(_), Term::String(_))
@@ -71,7 +121,6 @@ impl TryFrom<Predicate> for Constraint {
             | Predicate::Greater(Term::String(_), Term::String(_)) => {
                 Err(Error::unsupported("Lexicographic order"))
             }
-            Predicate::In(_, _) => Err(Error::unsupported("Membership constraints")),
             // Undefined
             _ => Err(Error::SolverError(format!("Undefined predicate {}", value))),
         }

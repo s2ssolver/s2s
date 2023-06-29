@@ -4,6 +4,7 @@ use indexmap::IndexMap;
 
 use crate::{
     bounds::Bounds,
+    error::Error,
     model::{
         constraints::{LinearArithFactor, LinearConstraint, LinearConstraintType},
         Evaluable, Sort, Substitution, Variable,
@@ -11,7 +12,7 @@ use crate::{
     sat::{as_lit, neg, pvar, PVar},
 };
 
-use super::{ConstraintEncoder, EncodingResult};
+use super::{domain::DomainEncoding, ConstraintEncoder, EncodingResult};
 
 /// Encodes linear constraints by using multi-valued decision diagrams.
 pub struct MddEncoder {
@@ -71,20 +72,16 @@ impl ConstraintEncoder for MddEncoder {
         todo!()
     }
 
-    fn encode(
-        &mut self,
-        bounds: &Bounds,
-        dom: &super::domain::DomainEncoding,
-    ) -> super::EncodingResult {
+    fn encode(&mut self, bounds: &Bounds, dom: &DomainEncoding) -> Result<EncodingResult, Error> {
         self.round += 1;
         let mut res = EncodingResult::empty();
 
         // Check if trivial
         match self.linear.eval(&Substitution::new()) {
-            Some(true) => return res,
+            Some(true) => return Ok(res),
             Some(false) => {
                 res.add_clause(vec![neg(self.mdd_root), as_lit(self.mdd_false)]);
-                return res;
+                return Ok(res);
             }
             None => {}
         }
@@ -123,6 +120,13 @@ impl ConstraintEncoder for MddEncoder {
                             let node = match self.linear.typ {
                                 LinearConstraintType::Eq => {
                                     if new_value == self.linear.rhs {
+                                        self.mdd_true
+                                    } else {
+                                        self.mdd_false
+                                    }
+                                }
+                                LinearConstraintType::Ineq => {
+                                    if new_value != self.linear.rhs {
                                         self.mdd_true
                                     } else {
                                         self.mdd_false
@@ -170,6 +174,8 @@ impl ConstraintEncoder for MddEncoder {
             res.add_clause(vec![as_lit(self.mdd_root)]);
             res.add_clause(vec![neg(self.mdd_false)]);
         }
-        res
+        Ok(res)
     }
 }
+
+// TODO: Needs to be tested

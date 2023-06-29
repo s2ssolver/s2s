@@ -2,6 +2,7 @@ use std::{ops::Index, slice::Iter};
 
 use crate::{
     bounds::Bounds,
+    error::Error,
     model::{
         constraints::{Pattern, Symbol},
         Variable,
@@ -27,6 +28,7 @@ mod linear;
 pub use equation::{AlignmentEncoder, IWoorpjeEncoder, WoorpjeEncoder, WordEquationEncoder};
 use indexmap::IndexSet;
 pub use linear::MddEncoder;
+pub use re::{NFAEncoder, RegularConstraintEncoder};
 
 /// The character used to represent unused positions
 const LAMBDA: char = char::REPLACEMENT_CHARACTER;
@@ -183,5 +185,9 @@ pub trait ConstraintEncoder {
     /// This has no effect on non-incremental encoders.
     fn reset(&mut self);
 
-    fn encode(&mut self, bounds: &Bounds, substitution: &DomainEncoding) -> EncodingResult;
+    fn encode(
+        &mut self,
+        bounds: &Bounds,
+        substitution: &DomainEncoding,
+    ) -> Result<EncodingResult, Error>;
 }

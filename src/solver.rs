@@ -5,17 +5,18 @@ use indexmap::IndexSet;
 
 use std::time::Instant;
 
-use crate::abstr::{Abstraction, Definition};
+use crate::abstr::{Abstraction, Definition, DefinitionType};
 use crate::bounds::{Bounds, IntDomain};
 use crate::encode::{
-    AlignmentEncoder, ConstraintEncoder, EncodingResult, MddEncoder, WordEquationEncoder,
+    AlignmentEncoder, ConstraintEncoder, EncodingResult, MddEncoder, NFAEncoder,
+    RegularConstraintEncoder, WordEquationEncoder,
 };
 
 use crate::error::Error;
 
 use crate::instance::Instance;
 use crate::model::constraints::{Symbol, WordEquation};
-use crate::model::formula::Alphabet;
+use crate::model::formula::{Alphabet, Atom, Literal};
 
 use crate::model::Sort;
 use crate::model::{Constraint, Substitution};
@@ -78,6 +79,28 @@ pub fn get_solver(inst: Instance) -> Result<Box<dyn Solver>, Error> {
     AbstractionSolver::new(inst).map(|s| Box::new(s) as Box<dyn Solver>)
 }
 
+/// The result of increasing the bounds used for solving.
+enum BoundUpdate {
+    /// The next bounds to be used
+    Next(Bounds),
+    /// The current bounds are sufficient, if the instance is satisfiable
+    LimitReached,
+    /// User-imposed threshold reached, cannot increase bounds further
+    ThresholdReached,
+}
+
+impl BoundUpdate {
+    fn unwrap(self) -> Bounds {
+        match self {
+            BoundUpdate::Next(b) => b,
+            BoundUpdate::LimitReached => panic!("Called unwarp on BoundUpdate::LimitReached"),
+            BoundUpdate::ThresholdReached => {
+                panic!("Called unwarp on BoundUpdate::ThresholdReached")
+            }
+        }
+    }
+}
+
 struct AbstractionSolver {
     instance: Instance,
     alphabet: IndexSet<char>,
@@ -88,11 +111,19 @@ struct AbstractionSolver {
 
 impl AbstractionSolver {
     /// Instatiates a new encoder for the given constraint.
-    fn encoder_for_constraint(con: &Constraint) -> Box<dyn ConstraintEncoder> {
+    fn encoder_for_constraint(con: &Constraint) -> Result<Box<dyn ConstraintEncoder>, Error> {
         match con {
-            Constraint::WordEquation(eq) => Box::new(AlignmentEncoder::new(eq.clone())),
-            Constraint::LinearConstraint(lc) => Box::new(MddEncoder::new(lc.clone())),
-            Constraint::RegularConstraint(_) => todo!("Regular constraints are not supported"),
+            Constraint::WordEquation(eq, sign) => {
+                if *sign {
+                    Ok(Box::new(AlignmentEncoder::new(eq.clone())))
+                } else {
+                    Err(Error::Unsupported("Word inequations".to_string()))
+                }
+            }
+            Constraint::LinearConstraint(lc) => Ok(Box::new(MddEncoder::new(lc.clone()))),
+            Constraint::RegularConstraint(rc, sign) => {
+                Ok(Box::new(NFAEncoder::new(rc.clone(), *sign)?))
+            }
         }
     }
 
@@ -100,6 +131,7 @@ impl AbstractionSolver {
         let mut alphabet = instance.get_formula().alphabet();
         // Make sure the alphabet contains at least one character
         alphabet.insert('a');
+        log::debug!("Alphabet: {:?}", alphabet);
 
         // Instantiate the Domain encoder
         let dom_encoder = DomainEncoder::new(alphabet.clone());
@@ -110,9 +142,33 @@ impl AbstractionSolver {
         // Instantiate the encoders
         let mut encoders = HashMap::new();
         for d in abstraction.get_definitions().iter() {
-            let constraint = Constraint::try_from(d.get_pred().clone())?;
-            let encoder = Self::encoder_for_constraint(&constraint);
-            encoders.insert(d.clone(), encoder);
+            match d.get_def_type() {
+                DefinitionType::Positive => {
+                    // Create encoder for positive
+                    let constraint =
+                        Constraint::try_from(Literal::Pos(Atom::Predicate(d.get_pred().clone())))?;
+                    let encoder = Self::encoder_for_constraint(&constraint)?;
+                    encoders.insert(d.clone(), encoder);
+                }
+                DefinitionType::Negative => {
+                    // Create encoder for positive
+                    let constraint =
+                        Constraint::try_from(Literal::Neg(Atom::Predicate(d.get_pred().clone())))?;
+                    let encoder = Self::encoder_for_constraint(&constraint)?;
+                    encoders.insert(d.clone(), encoder);
+                }
+                DefinitionType::Equivalence => {
+                    // Create encoder for positive and negative
+                    let constraint_pos =
+                        Constraint::try_from(Literal::Pos(Atom::Predicate(d.get_pred().clone())))?;
+                    let encoder = Self::encoder_for_constraint(&constraint_pos)?;
+                    encoders.insert(d.clone(), encoder);
+                    let constraint_neg =
+                        Constraint::try_from(Literal::Neg(Atom::Predicate(d.get_pred().clone())))?;
+                    let encoder = Self::encoder_for_constraint(&constraint_neg)?;
+                    encoders.insert(d.clone(), encoder);
+                }
+            }
         }
 
         Ok(Self {
@@ -134,12 +190,14 @@ impl AbstractionSolver {
 
         let mut bounds = bounds.clone();
         if self.encoders.len() == 1 {
-            // Check if the only constraint is a word equation
-            if let Some(Constraint::WordEquation(eq)) = self
-                .encoders
-                .keys()
-                .next()
-                .and_then(|d| d.get_pred().clone().try_into().ok())
+            // Check if the only constraint is a single (positive) word equation
+            if let Some((Constraint::WordEquation(eq, _), true)) =
+                self.encoders.keys().next().map(|d| {
+                    (
+                        d.get_pred().clone().try_into().unwrap(),
+                        *d.get_def_type() == DefinitionType::Positive,
+                    )
+                })
             {
                 bounds = sharpen_bounds(&eq, &bounds, &self.instance)
             }
@@ -158,12 +216,12 @@ impl AbstractionSolver {
 
         if self.instance.get_formula().is_conjunctive() {
             for (_, enc) in self.encoders.iter_mut() {
-                let res = enc.encode(&bounds, dom);
+                let res = enc.encode(&bounds, dom)?;
                 encoding.join(res);
             }
         } else {
             for (d, enc) in self.encoders.iter_mut() {
-                let mut res = enc.encode(&bounds, dom);
+                let mut res = enc.encode(&bounds, dom)?;
                 // Insert the negation of the definitional boolean var into all clauses
                 let def_pvar = self.domain_encoder.get_bools()[d.get_var()];
                 res.iter_clauses_mut().for_each(|c| c.push(neg(def_pvar)));
@@ -200,11 +258,21 @@ impl AbstractionSolver {
     /// Returns the next bounds to be used in the next round, based on the current bounds and the limit bounds.
     /// If current bounds are None, the next bounds will be the first bounds to be used.
     /// If the instance has an upper threshold, the upper bounds are clamped to the threshold.
-    /// If the current bounds are equal to or greater than the limit bounds, None is returned.
-    fn next_bounds(&self, current_bounds: Option<&Bounds>, limit_bounds: &Bounds) -> Bounds {
+    fn next_bounds(&self, current_bounds: Option<&Bounds>, limit_bounds: &Bounds) -> BoundUpdate {
         let mut next_bounds = match current_bounds {
-            Some(c) => c.clone(),
+            Some(c) => {
+                if self.bounds_reach_threshold(c) {
+                    // No need to go further, we reached the threshold
+                    return BoundUpdate::ThresholdReached;
+                }
+                if self.bounds_reach_limit(c, limit_bounds) {
+                    // No need to go further, we reached the limit
+                    return BoundUpdate::LimitReached;
+                }
+                c.clone()
+            }
             None => {
+                // Initialize
                 let mut current_bounds = Bounds::new();
                 for v in self.instance.vars_of_sort(Sort::String) {
                     let len_var = v.len_var().unwrap();
@@ -218,26 +286,27 @@ impl AbstractionSolver {
         };
         next_bounds.next_square_uppers();
 
-        while next_bounds.any_empty() && !self.exeed_limit_bounds(&next_bounds, limit_bounds) {
+        while next_bounds.any_empty() && !self.bounds_reach_limit(&next_bounds, limit_bounds) {
             next_bounds.next_square_uppers();
             next_bounds = next_bounds.intersect(limit_bounds);
         }
 
+        // Clamp upper bounds to threshold
         if let Some(upper) = self.instance.get_upper_threshold() {
             next_bounds.clamp_uppers(upper as isize);
         }
-        next_bounds
+        BoundUpdate::Next(next_bounds)
     }
 
-    /// Returns true if the current upper bounds are greater than the limit upper bounds.
-    fn exeed_limit_bounds(&self, current_bounds: &Bounds, limit_bounds: &Bounds) -> bool {
+    /// Returns true if the current upper bounds are equal to or greater than the limit upper bounds.
+    fn bounds_reach_limit(&self, current_bounds: &Bounds, limit_bounds: &Bounds) -> bool {
         for v in self.instance.vars_of_sort(Sort::Int) {
             match (
                 current_bounds.get(v).get_upper(),
                 limit_bounds.get(v).get_upper(),
             ) {
                 (Some(c), Some(l)) => {
-                    if c <= l {
+                    if c < l {
                         return false;
                     }
                 }
@@ -249,20 +318,23 @@ impl AbstractionSolver {
         true
     }
 
-    /// Returns true if the current upper bounds are greater than the given threshold.
-    fn bounds_exceed_threshold(&self, current_bounds: &Bounds, threshold: usize) -> bool {
-        for v in self.instance.vars_of_sort(Sort::Int) {
-            match current_bounds.get(v).get_upper() {
-                Some(c) => {
-                    if c <= threshold as isize {
-                        return false;
+    /// Returns true if the current upper bounds are greater than or equal to the threshold given in the instance.
+    fn bounds_reach_threshold(&self, current_bounds: &Bounds) -> bool {
+        if let Some(threshold) = self.instance.get_upper_threshold() {
+            for v in self.instance.vars_of_sort(Sort::Int) {
+                match current_bounds.get(v).get_upper() {
+                    Some(c) => {
+                        if c < threshold as isize {
+                            return false;
+                        }
                     }
+                    None => return false,
                 }
-                None => return false,
             }
+            true
+        } else {
+            false
         }
-
-        true
     }
 }
 
@@ -278,7 +350,8 @@ impl Solver for AbstractionSolver {
             return Ok(SolverResult::Unsat);
         }
 
-        let mut current_bounds = self.next_bounds(None, &limit_bounds);
+        // First call guarantees to returns some bounds
+        let mut current_bounds = self.next_bounds(None, &limit_bounds).unwrap();
 
         log::info!(
             "Started solving loop for system of {} equations, alphabet size {}",
@@ -363,21 +436,7 @@ impl Solver for AbstractionSolver {
                                 return Ok(SolverResult::Sat(model));
                             }
                             Some(false) => {
-                                if self.exeed_limit_bounds(&current_bounds, &limit_bounds) {
-                                    // We reached the limit bounds, but did not find a solution.
-                                    // This means no solution exists.
-                                    // Return unsat
-                                    log::info!("Reached limit bounds");
-                                    return Ok(SolverResult::Unsat);
-                                }
-                                if let Some(threshold) = self.instance.get_upper_threshold() {
-                                    if self.bounds_exceed_threshold(&current_bounds, threshold) {
-                                        // We reached the user-imposed upper bound and did not find a solution
-                                        // Return unknown
-                                        log::info!("Reached set threshold bound");
-                                        return Ok(SolverResult::Unknown);
-                                    }
-                                }
+
                                 // Do nothing, continue with next round
                             }
                             None => {
@@ -399,7 +458,17 @@ impl Solver for AbstractionSolver {
             }
 
             // Prepare next round
-            current_bounds = self.next_bounds(Some(&current_bounds), &limit_bounds);
+            current_bounds = match self.next_bounds(Some(&current_bounds), &limit_bounds) {
+                BoundUpdate::Next(b) => b,
+                BoundUpdate::LimitReached => {
+                    log::info!("Reached limit bounds, unsat");
+                    return Ok(SolverResult::Unsat);
+                }
+                BoundUpdate::ThresholdReached => {
+                    log::info!("Reached threshold, unknown");
+                    return Ok(SolverResult::Unknown);
+                }
+            };
 
             if self.encoders.values().any(|enc| !enc.is_incremental()) {
                 // reset states if at least one solver is not incremental

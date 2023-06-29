@@ -19,9 +19,9 @@ struct Options {
     #[arg(long)]
     skip_preprocess: bool,
 
-    /// Skip the verification of the solution. If this is set to true, the solver will not check if the model is correct.
+    /// If this is set to true, the solver will double-check that the found model is correct.
     #[arg(long)]
-    skip_verify: bool,
+    verify_model: bool,
 
     /// The maximum variable bound to check before returning `unsat`
     #[arg(short = 'b', long, value_enum, default_value = None)]
@@ -58,7 +58,7 @@ fn main() {
             let ext = cli.file.split('.').last();
             match ext {
                 Some("eq") => Parser::WoorpjeParser,
-                Some("smt2") | Some("smt") => Parser::Smt2Parser,
+                Some("smt2") | Some("smt") | Some("smt25") | Some("smt26") => Parser::Smt2Parser,
                 Some(other) => {
                     log::error!(
                         "Format set to 'auto', but the file extension is no supported: {}",
@@ -125,7 +125,14 @@ fn main() {
             println!("unsat");
         }
         None => {
-            let mut solver = get_solver(instance.clone()).unwrap();
+            let mut solver = match get_solver(instance.clone()) {
+                Ok(s) => s,
+                Err(e) => {
+                    log::error!("{}", e);
+                    println!("error");
+                    exit(-1);
+                }
+            };
 
             let res = match solver.solve() {
                 Ok(res) => res,
@@ -141,7 +148,7 @@ fn main() {
                 satstr::SolverResult::Sat(m) => {
                     let mut model = subs.compose(&m);
                     model.use_defaults();
-                    if !cli.skip_verify {
+                    if cli.verify_model {
                         match original_formula.eval(&model) {
                             Some(true) => {}
                             Some(false) => panic!("Model is incorrect ({})", model),

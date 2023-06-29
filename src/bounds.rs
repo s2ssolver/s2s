@@ -5,14 +5,16 @@ use std::{
     fmt::Display,
 };
 
-use indexmap::IndexMap;
+use indexmap::{IndexMap, IndexSet};
 use quickcheck::Arbitrary;
 
 use crate::{
     error::Error,
     instance::Instance,
     model::{
-        constraints::{Constraint, LinearArithFactor, LinearConstraint, LinearConstraintType},
+        constraints::{
+            Constraint, LinearArithFactor, LinearConstraint, LinearConstraintType, Symbol,
+        },
         formula::{Atom, Formula},
         Sort, Variable,
     },
@@ -171,6 +173,11 @@ impl Bounds {
 
     /// Gets the domain of a variable.
     pub fn get(&self, var: &Variable) -> IntDomain {
+        debug_assert!(
+            var.is_int(),
+            "Cannot get bounds for non-integer variable {}.",
+            var
+        );
         self.domains.get(var).map_or(self.default, |d| *d)
     }
 
@@ -203,10 +210,11 @@ impl Bounds {
         let mut bound_prev = bounds.clone();
         let mut stop = false;
         while !stop {
+            // TODO: go over asserted literals instead of  atoms
             for atom in formla.asserted_atoms() {
                 match atom {
                     Atom::Predicate(p) => match Constraint::try_from(p)? {
-                        Constraint::WordEquation(eq) => {
+                        Constraint::WordEquation(eq, true) => {
                             let lincon = LinearConstraint::from_word_equation(&eq);
                             let newbounds = lincon_upper_bound(&lincon, &bounds);
                             log::trace!("Intersecting bounds: {} and {}", bounds, newbounds);
@@ -219,7 +227,32 @@ impl Bounds {
                             bounds = bounds.intersect(&newbounds);
                             log::trace!("\tResult: {}", bounds);
                         }
-                        Constraint::RegularConstraint(_) => todo!(),
+                        Constraint::RegularConstraint(mut r, true) => {
+                            // If the automaton is finite, the pattern is bounded by the number of states (tighter bound: longest path to final state)
+                            r.compile()?;
+                            if let Some(true) = r.get_automaton().and_then(|n| Some(n.acyclic())) {
+                                // Is finite, every variable in the pattern is bounded by number of states minus length of constant part in pattern
+                                let mut new_bounds = Bounds::new();
+                                let mut const_len = 0;
+                                let mut vs = IndexSet::new();
+                                for s in r.get_pattern().iter() {
+                                    match s {
+                                        Symbol::Constant(_) => const_len += 1,
+                                        Symbol::Variable(v) => {
+                                            vs.insert(v.clone());
+                                        }
+                                    }
+                                }
+                                let bound = (r.get_automaton().unwrap().states().len() - const_len)
+                                    as isize;
+                                for v in vs {
+                                    new_bounds.set(&v, IntDomain::UpperBounded(bound));
+                                }
+                            }
+                            // If the automaton is infinite, the pattern is unbounded in general
+                        }
+                        Constraint::RegularConstraint(_, false)
+                        | Constraint::WordEquation(_, false) => unreachable!(),
                     },
 
                     Atom::False | Atom::True | Atom::BoolVar(_) => {}
@@ -542,6 +575,7 @@ fn lincon_upper_bound(lincon: &LinearConstraint, bounds: &Bounds) -> Bounds {
                 }
             }
         }
+        LinearConstraintType::Ineq => { /* Can'f infer anything */ }
     }
 
     new_bounds
