@@ -191,7 +191,7 @@ impl Abstraction {
                         p.clone(),
                         DefinitionType::Negative,
                     ));
-                    Formula::boolvar(dvar)
+                    Formula::not(Formula::boolvar(dvar))
                 }
                 _ => unreachable!("Formula not in NNF"),
             },
