@@ -380,19 +380,20 @@ impl Solver for AbstractionSolver {
 
         let mut cadical: cadical::Solver = cadical::Solver::new();
 
-        if !self.instance.get_formula().is_conjunctive() {
-            // Convert the skeleton to cnf and add it to the solver
-            let ts = Instant::now();
-            let cnf = to_cnf(self.abstraction.get_skeleton(), &mut self.instance)?;
-            log::info!(
-                "Converted Boolean skeleton into cnf ({} clauses) in {} ms",
-                cnf.len(),
-                ts.elapsed().as_millis()
-            );
-            for clause in cnf.into_iter() {
-                cadical.add_clause(clause);
-            }
+        //if !self.instance.get_formula().is_conjunctive() {
+        // Convert the skeleton to cnf and add it to the solver
+        let ts = Instant::now();
+        log::info!("Skeleton {}", self.abstraction.get_skeleton());
+        let cnf = to_cnf(self.abstraction.get_skeleton(), &mut self.instance)?;
+        log::info!(
+            "Converted Boolean skeleton into cnf ({} clauses) in {} ms",
+            cnf.len(),
+            ts.elapsed().as_millis()
+        );
+        for clause in cnf.into_iter() {
+            cadical.add_clause(clause);
         }
+        //}
 
         let mut time_encoding = 0;
         let mut time_solving = 0;

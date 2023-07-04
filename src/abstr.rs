@@ -202,8 +202,8 @@ impl Abstraction {
     /// Creates the abstraction from an instance.
     pub fn create(instance: &mut Instance) -> Result<Self, Error> {
         let mut definitions = Definitions::default();
-        let skeleton = Formula::ttrue();
-        Self::abstract_fm(instance.get_formula().clone(), &mut definitions, instance);
+        let skeleton =
+            Self::abstract_fm(instance.get_formula().clone(), &mut definitions, instance);
         Ok(Self::new(skeleton, definitions))
     }
 }

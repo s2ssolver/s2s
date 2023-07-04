@@ -67,9 +67,7 @@ pub fn to_cnf(formula: &Formula, instance: &mut Instance) -> Result<Cnf, Error> 
     ) -> Result<Formula, Error> {
         match fm {
             Formula::And(fs) | Formula::Or(fs) => {
-                if fs.is_empty() {
-                    Ok(Formula::ffalse())
-                } else if fs.len() == 1 {
+                if fs.len() == 1 {
                     maincnf(&fs[0], defs, instance)
                 } else {
                     defstep(fm, defs, instance)
@@ -186,6 +184,67 @@ pub fn to_cnf(formula: &Formula, instance: &mut Instance) -> Result<Cnf, Error> 
         }
         Formula::Not(_) => unreachable!(),
         Formula::Atom(Atom::Predicate(_)) => unreachable!(),
+    }
+
+    for (f, d) in defs {
+        let boolvar = if let Variable::Bool { value, .. } = d {
+            value
+        } else {
+            unreachable!()
+        };
+        match f {
+            Formula::Atom(_) | Formula::Not(_) => unreachable!(),
+            Formula::Or(fs) => {
+                // d -> \/fs and \/fs -> d
+                let mut clause = Vec::with_capacity(fs.len() + 1);
+                clause.push(neg(boolvar));
+                for f in fs {
+                    match f {
+                        Formula::Atom(Atom::BoolVar(Variable::Bool { value, .. })) => {
+                            clause.push(as_lit(value));
+                            cnf.push(vec![neg(value), as_lit(boolvar)]);
+                        }
+                        Formula::Not(n) => {
+                            if let Formula::Atom(Atom::BoolVar(Variable::Bool { value, .. })) =
+                                n.as_ref()
+                            {
+                                clause.push(neg(*value));
+                                cnf.push(vec![as_lit(*value), as_lit(boolvar)]);
+                            } else {
+                                unreachable!()
+                            }
+                        }
+                        _ => unreachable!(),
+                    }
+                }
+                cnf.push(clause)
+            }
+            Formula::And(fs) => {
+                // d -> /\fs and /\fs -> d
+                let mut clause = Vec::with_capacity(fs.len() + 1);
+                clause.push(neg(boolvar));
+                for f in fs {
+                    match f {
+                        Formula::Atom(Atom::BoolVar(Variable::Bool { value, .. })) => {
+                            clause.push(neg(value));
+                            cnf.push(vec![neg(boolvar), as_lit(value)]);
+                        }
+                        Formula::Not(n) => {
+                            if let Formula::Atom(Atom::BoolVar(Variable::Bool { value, .. })) =
+                                n.as_ref()
+                            {
+                                clause.push(as_lit(*value));
+                                cnf.push(vec![neg(boolvar), neg(*value)]);
+                            } else {
+                                unreachable!()
+                            }
+                        }
+                        _ => unreachable!(),
+                    }
+                }
+                cnf.push(clause)
+            }
+        }
     }
     Ok(cnf)
 }
