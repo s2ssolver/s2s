@@ -222,7 +222,7 @@ pub fn to_cnf(formula: &Formula, instance: &mut Instance) -> Result<Cnf, Error> 
             Formula::And(fs) => {
                 // d -> /\fs and /\fs -> d
                 let mut clause = Vec::with_capacity(fs.len() + 1);
-                clause.push(neg(boolvar));
+                clause.push(as_lit(boolvar));
                 for f in fs {
                     match f {
                         Formula::Atom(Atom::BoolVar(Variable::Bool { value, .. })) => {
