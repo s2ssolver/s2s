@@ -42,7 +42,7 @@ impl Preprocessor for ConjunctionSimplifier {
                         }
                     }
                 }
-                let new_fm = Formula::or(new_fs);
+                let new_fm: Formula = Formula::or(new_fs);
                 if changed {
                     PreprocessingResult::Changed(new_fm)
                 } else {
@@ -63,10 +63,11 @@ impl Preprocessor for ConjunctionSimplifier {
                     };
                     match pf.eval(&Substitution::new()) {
                         Some(true) => (),
-                        Some(false) => return PreprocessingResult::Changed(Formula::ffalse()),
+                        Some(false) => {
+                            return PreprocessingResult::Changed(Formula::ffalse());
+                        }
                         None => {
                             new_fs.push(pf);
-                            changed = true;
                         }
                     }
                 }
