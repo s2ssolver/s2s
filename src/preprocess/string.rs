@@ -175,13 +175,13 @@ impl WordEquationTrivial {
             if weq.rhs().contains_constant() {
                 Some(false)
             } else {
-                Some(true)
+                None
             }
         } else if weq.rhs().is_empty() {
             if weq.lhs().contains_constant() {
                 Some(false)
             } else {
-                Some(true)
+                None
             }
         } else if weq.lhs().is_constant() && weq.rhs().is_constant() {
             Some(weq.lhs() == weq.rhs())
