@@ -1,6 +1,6 @@
 //! Representation of quantifier free first-order formulas and predicates
 
-use std::fmt::Display;
+use std::{fmt::Display, vec};
 
 use indexmap::{indexset, IndexSet};
 use quickcheck::Arbitrary;
@@ -96,6 +96,7 @@ impl Atom {
 
 /// A literal is an atom or the negation of an atom.
 /// The purpose of the enum is to enumerate the literals of a formula, it is not used to represent formulas.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum Literal {
     Pos(Atom),
     Neg(Atom),
@@ -421,28 +422,87 @@ impl Formula {
     }
 
     /// Returns the negation normal form of this formula.
-    pub fn to_nnf(&self) -> Self {
+    pub fn to_nnf(&self) -> NNFFormula {
         match self {
-            Formula::Atom(_) => self.clone(),
-            Formula::Or(fs) => Formula::or(fs.iter().map(|f| f.to_nnf()).collect()),
-            Formula::And(fs) => Formula::and(fs.iter().map(|f| f.to_nnf()).collect()),
+            Formula::Atom(a) => NNFFormula::Literal(Literal::Pos(a.clone())),
+            Formula::Or(fs) => NNFFormula::Or(fs.iter().map(|f| f.to_nnf()).collect()),
+            Formula::And(fs) => NNFFormula::And(fs.iter().map(|f| f.to_nnf()).collect()),
             Formula::Not(f) => match f.as_ref() {
-                Formula::Atom(Atom::True) => Formula::ffalse(),
-                Formula::Atom(Atom::False) => Formula::ttrue(),
-                Formula::Atom(_) => self.clone(),
-                Formula::Or(fs) => Formula::and(
+                Formula::Atom(a) => NNFFormula::Literal(Literal::Neg(a.clone())),
+                // Apply De Morgan's laws
+                Formula::Or(fs) => NNFFormula::And(
                     fs.iter()
                         .map(|f| Formula::not(f.clone()).to_nnf())
                         .collect(),
                 ),
-                Formula::And(fs) => Formula::or(
+                // Apply De Morgan's laws
+                Formula::And(fs) => NNFFormula::Or(
                     fs.iter()
                         .map(|f| Formula::not(f.clone()).to_nnf())
                         .collect(),
                 ),
+                // Double negation, remove it
                 Formula::Not(ff) => ff.to_nnf(),
             },
         }
+    }
+}
+
+/// A first-order formula without quantifiers in *negation normal form*.
+/// A nnf formula is inductive defined as follows:
+/// - A [Literal] is a formula
+/// - If `f` and `g` are formulas, then `f ∧ g` ([Formula::And]) and `f ∨ g` ([Formula::Or]) are formulas
+///
+/// A NNF formulas should not be constructed directly but instead using [Formula::to_nnf].
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub enum NNFFormula {
+    /// A literal
+    Literal(Literal),
+    /// A disjunction
+    Or(Vec<NNFFormula>),
+    /// A conjunction
+    And(Vec<NNFFormula>),
+}
+
+impl NNFFormula {
+    pub fn literals(&self) -> Vec<&Literal> {
+        match self {
+            NNFFormula::Literal(l) => vec![l],
+            NNFFormula::Or(fs) | NNFFormula::And(fs) => fs
+                .iter()
+                .map(NNFFormula::literals)
+                .fold(Vec::new(), |acc, x| acc.into_iter().chain(x).collect()),
+        }
+    }
+
+    pub fn asserted_literals(&self) -> Vec<&Literal> {
+        match self {
+            NNFFormula::Literal(l) => vec![l],
+            NNFFormula::And(fs) => fs
+                .iter()
+                .map(NNFFormula::literals)
+                .fold(Vec::new(), |acc, x| acc.into_iter().chain(x).collect()),
+            NNFFormula::Or(_) => vec![],
+        }
+    }
+}
+
+impl From<NNFFormula> for Formula {
+    fn from(value: NNFFormula) -> Self {
+        match value {
+            NNFFormula::Literal(l) => match l {
+                Literal::Pos(a) => Formula::Atom(a),
+                Literal::Neg(a) => Formula::not(Formula::Atom(a)),
+            },
+            NNFFormula::Or(ors) => Formula::or(ors.into_iter().map(Formula::from).collect()),
+            NNFFormula::And(ands) => Formula::and(ands.into_iter().map(Formula::from).collect()),
+        }
+    }
+}
+
+impl From<Formula> for NNFFormula {
+    fn from(value: Formula) -> Self {
+        value.to_nnf()
     }
 }
 
@@ -485,6 +545,14 @@ impl Alphabet for Formula {
                 .fold(IndexSet::new(), |acc, x| acc.union(&x).cloned().collect()),
             Formula::Not(f) => f.alphabet(),
         }
+    }
+}
+
+impl Alphabet for NNFFormula {
+    fn alphabet(&self) -> IndexSet<char> {
+        self.literals().iter().fold(IndexSet::new(), |acc, x| {
+            acc.union(&x.atom().alphabet()).cloned().collect()
+        })
     }
 }
 
@@ -878,25 +946,35 @@ mod test {
     #[test]
     fn test_to_nnf_true() {
         let formula = Formula::ttrue();
-        assert_eq!(formula.to_nnf(), Formula::ttrue());
+
+        assert_eq!(
+            formula.to_nnf(),
+            NNFFormula::Literal(Literal::Pos(Atom::True))
+        );
     }
 
     #[test]
     fn test_to_nnf_false() {
         let formula = Formula::ffalse();
-        assert_eq!(formula.to_nnf(), Formula::ffalse());
+        assert_eq!(
+            formula.to_nnf(),
+            NNFFormula::Literal(Literal::Pos(Atom::False))
+        );
     }
 
     #[quickcheck]
     fn test_to_nnf_predicate(p: Predicate) {
-        let formula = Formula::Atom(Atom::Predicate(p));
-        assert_eq!(formula.to_nnf(), formula);
+        let atom = Atom::Predicate(p);
+        let formula = Formula::Atom(atom.clone());
+        assert_eq!(formula.to_nnf(), NNFFormula::Literal(Literal::Pos(atom)));
     }
 
     #[test]
+
     fn test_to_nnf_bool_var() {
-        let formula = Formula::Atom(Atom::BoolVar(Variable::new(String::from("x"), Sort::Bool)));
-        assert_eq!(formula.to_nnf(), formula);
+        let atom = Atom::BoolVar(Variable::new(String::from("x"), Sort::Bool));
+        let formula = Formula::Atom(atom.clone());
+        assert_eq!(formula.to_nnf(), NNFFormula::Literal(Literal::Pos(atom)));
     }
 
     #[quickcheck]
@@ -906,9 +984,9 @@ mod test {
             Formula::predicate(p2.clone()),
         ]));
 
-        let expected = Formula::and(vec![
-            Formula::not(Formula::predicate(p1)),
-            Formula::not(Formula::predicate(p2)),
+        let expected = NNFFormula::And(vec![
+            NNFFormula::Literal(Literal::Neg(Atom::Predicate(p1))),
+            NNFFormula::Literal(Literal::Neg(Atom::Predicate(p2))),
         ]);
         assert_eq!(formula.to_nnf(), expected);
     }
@@ -920,9 +998,9 @@ mod test {
             Formula::predicate(p2.clone()),
         ]));
 
-        let expected = Formula::or(vec![
-            Formula::not(Formula::predicate(p1)),
-            Formula::not(Formula::predicate(p2)),
+        let expected = NNFFormula::Or(vec![
+            NNFFormula::Literal(Literal::Neg(Atom::Predicate(p1))),
+            NNFFormula::Literal(Literal::Neg(Atom::Predicate(p2))),
         ]);
         assert_eq!(formula.to_nnf(), expected);
     }
@@ -930,22 +1008,9 @@ mod test {
     #[quickcheck]
     fn test_to_nff_double_negations(p: Predicate) {
         let formula = Formula::not(Formula::not(Formula::predicate(p.clone())));
-        assert_eq!(formula.to_nnf(), Formula::predicate(p));
-    }
-
-    /// Calulates the height of nested negations in a formula
-    fn neg_height(fm: &Formula) -> usize {
-        match fm {
-            Formula::Atom(_) => 0,
-            Formula::Or(fs) | Formula::And(fs) => fs.iter().map(neg_height).max().unwrap_or(0),
-            Formula::Not(f) => 1 + neg_height(f),
-        }
-    }
-
-    #[quickcheck]
-    fn test_to_nnf_neg_height(fm: Formula) {
-        println!("{:?}", fm);
-        let fm = fm.to_nnf();
-        assert!(neg_height(&fm) <= 1);
+        assert_eq!(
+            formula.to_nnf(),
+            NNFFormula::Literal(Literal::Pos(Atom::Predicate(p)))
+        );
     }
 }

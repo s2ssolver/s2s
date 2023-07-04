@@ -256,7 +256,7 @@ mod test {
     #[quickcheck]
     fn abstraction_is_bool(fm: Formula) {
         let fm = fm.to_nnf();
-        let mut instance = Instance::new(fm.to_nnf());
+        let mut instance = Instance::new(fm.into());
         let abstr = Abstraction::create(&mut instance);
 
         assert!(abstr.is_ok());
@@ -267,7 +267,7 @@ mod test {
     #[quickcheck]
     fn abstraction_all_preds_defined_correctly(fm: Formula) {
         let fm = fm.to_nnf();
-        let mut instance = Instance::new(fm.clone());
+        let mut instance = Instance::new(fm.clone().into());
         let abstr = Abstraction::create(&mut instance);
 
         assert!(abstr.is_ok());
@@ -275,7 +275,7 @@ mod test {
         let mut negs = vec![];
         let mut poss = vec![];
 
-        for (pred, pol) in get_preds(&fm, true) {
+        for (pred, pol) in get_preds(&fm.into(), true) {
             if pol {
                 poss.push(pred);
             } else {
