@@ -56,6 +56,9 @@ impl SegmentedPattern {
         if !w.is_empty() {
             segments.push(PatternSegment::Word(w));
         }
+        if segments.is_empty() {
+            segments.push(PatternSegment::Word(vec![]));
+        }
         Self { segments }
     }
 
@@ -354,6 +357,7 @@ impl AlignmentEncoder {
         }
 
         // Encode start position needs to be 0 for the first segment
+
         for pos in last_bound..self.bound {
             let var = self.start_position(0, pos, side);
             if pos == 0 {
@@ -594,10 +598,14 @@ impl AlignmentEncoder {
                 }
                 PatternSegment::Word(w) => {
                     for p in segments.prefix_min_len(i, bounds)
-                        ..self.bound - (w.len() - 1) - segments.suffix_min_len(i, bounds)
+                        ..self.bound
+                            - (w.len().saturating_sub(1))
+                            - segments.suffix_min_len(i, bounds)
                     {
                         if p < last_bound
-                            && p < last_bound - (w.len() - 1) - segments.suffix_min_len(i, bounds)
+                            && p < last_bound
+                                - (w.len().saturating_sub(1))
+                                - segments.suffix_min_len(i, bounds)
                         {
                             // Already encoded
                             continue;
@@ -686,6 +694,9 @@ impl AlignmentEncoder {
                 let rhs_c = rhs.char_at(b, *c);
                 result.add_clause(vec![neg(v), neg(lhs_c), neg(rhs_c)]);
             }
+            let lhs_lambda = lhs.char_at(b, LAMBDA);
+            let rhs_lambda = rhs.char_at(b, LAMBDA);
+            result.add_clause(vec![neg(v), neg(lhs_lambda), neg(rhs_lambda)]);
         }
 
         result.join(self.mismatch_alo.add(&new_mismatch_selectors));
@@ -829,7 +840,9 @@ impl ConstraintEncoder for AlignmentEncoder {
         res.join(suffix_enc_rhs);
 
         if !self.eq_type.is_equality() {
-            res.join(self.encode_mismatch(substitution));
+            let mismatch_enc = self.encode_mismatch(substitution);
+            log::debug!("Clauses for mismatch: {}", mismatch_enc.clauses());
+            res.join(mismatch_enc);
         }
 
         // Store variable bounds for next round

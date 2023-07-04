@@ -390,6 +390,7 @@ impl Solver for AbstractionSolver {
             cnf.len(),
             ts.elapsed().as_millis()
         );
+        log::trace!("CNF: {:?}", cnf);
         for clause in cnf.into_iter() {
             cadical.add_clause(clause);
         }
