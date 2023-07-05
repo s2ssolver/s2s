@@ -493,8 +493,7 @@ impl Solver for AbstractionSolver {
             if self
                 .encoders
                 .values()
-                .map(|f| f.values())
-                .flatten()
+                .flat_map(|f| f.values())
                 .any(|enc| !enc.is_incremental())
             {
                 // reset states if at least one solver is not incremental

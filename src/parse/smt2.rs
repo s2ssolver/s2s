@@ -198,7 +198,7 @@ impl<'a> Visitor<ALL> for FormulaBuilder<'a> {
                         ControlFlow::Break(Ok(t)) => t,
                         ControlFlow::Break(Err(e)) => return ControlFlow::Break(Err(e)),
                     };
-                    let imp_ltr = Formula::or(vec![Formula::not(lhs.clone()), rhs.clone()]);
+                    let imp_ltr = Formula::or(vec![Formula::not(lhs), rhs]);
                     ControlFlow::Break(Ok(imp_ltr))
                 }
                 CoreOp::Eq(ts) => {

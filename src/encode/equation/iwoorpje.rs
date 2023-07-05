@@ -686,20 +686,16 @@ mod tests {
             bounds.next_square_uppers();
             bounds.clamp_uppers(limit as isize);
         }
-        match result {
-            Some(true) => {
-                let sol = get_substitutions(dom_encoder.encoding(), &instance, &solver);
-                let solution = Substitution::from(sol);
+        if let Some(true) = result {
+            let sol = get_substitutions(dom_encoder.encoding(), &instance, &solver);
+            let solution = Substitution::from(sol);
 
-                assert!(
-                    eq.eval(&solution).unwrap(),
-                    "Not a solution: {} ({})",
-                    solution,
-                    eq
-                );
-            }
-
-            _ => {}
+            assert!(
+                eq.eval(&solution).unwrap(),
+                "Not a solution: {} ({})",
+                solution,
+                eq
+            );
         }
         result
     }

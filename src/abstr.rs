@@ -154,7 +154,7 @@ impl Abstraction {
                 };
                 defs.add_definition(Definition::new(
                     dvar.clone(),
-                    p.clone(),
+                    p,
                     DefinitionType::Positive,
                 ));
                 Formula::boolvar(dvar)

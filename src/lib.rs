@@ -33,7 +33,7 @@ pub fn solve(instance: &mut Instance) -> Result<SolverResult, Error> {
     let ts = Instant::now();
 
     let mut subs = Substitution::new();
-    match preprocess(&instance) {
+    match preprocess(instance) {
         (PreprocessingResult::Unchanged(_), s) => {
             assert!(s.is_empty());
             log::debug!("No preprocessing applied.");
@@ -51,11 +51,11 @@ pub fn solve(instance: &mut Instance) -> Result<SolverResult, Error> {
         Some(true) => {
             log::info!("Formula is trivially true");
             subs.use_defaults();
-            return Ok(SolverResult::Sat(subs));
+            Ok(SolverResult::Sat(subs))
         }
         Some(false) => {
             log::info!("Formula is trivially false");
-            return Ok(SolverResult::Unsat);
+            Ok(SolverResult::Unsat)
         }
         None => {
             let mut solver = get_solver(instance.clone())?;

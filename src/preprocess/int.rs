@@ -137,15 +137,12 @@ impl Preprocessor for IntSubstitutions {
 
     fn apply_predicate(&mut self, predicate: Predicate, is_asserted: bool) -> PreprocessingResult {
         if is_asserted {
-            match &predicate {
-                Predicate::Equality(Term::Int(lhs), Term::Int(rhs)) => {
-                    if let IntTerm::Var(v) = lhs {
-                        self.substitutions.set(&v, Term::Int(rhs.clone()));
-                    } else if let IntTerm::Var(v) = rhs {
-                        self.substitutions.set(&v, Term::Int(lhs.clone()));
-                    }
+            if let Predicate::Equality(Term::Int(lhs), Term::Int(rhs)) = &predicate {
+                if let IntTerm::Var(v) = lhs {
+                    self.substitutions.set(v, Term::Int(rhs.clone()));
+                } else if let IntTerm::Var(v) = rhs {
+                    self.substitutions.set(v, Term::Int(lhs.clone()));
                 }
-                _ => (),
             }
         }
         PreprocessingResult::Unchanged(Formula::predicate(predicate))
