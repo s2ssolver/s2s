@@ -246,7 +246,8 @@ impl Bounds {
                                 let bound = (r.get_automaton().unwrap().states().len() - const_len)
                                     as isize;
                                 for v in vs {
-                                    new_bounds.set(&v, IntDomain::UpperBounded(bound));
+                                    new_bounds
+                                        .set(&v.len_var().unwrap(), IntDomain::UpperBounded(bound));
                                 }
                             }
                             // If the automaton is infinite, the pattern is unbounded in general

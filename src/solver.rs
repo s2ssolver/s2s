@@ -230,7 +230,6 @@ impl AbstractionSolver {
                 let mut res = enc.encode(&bounds, dom)?;
                 // devar -> encoding
                 // Insert the negation of the definitional boolean var into all clauses
-                println!("adding negation of {} to all clauses", def_pvar);
                 res.iter_clauses_mut().for_each(|c| c.push(neg(def_pvar)));
                 encoding.join(res);
             }
@@ -238,7 +237,6 @@ impl AbstractionSolver {
                 let mut res = enc.encode(&bounds, dom)?;
                 // -devar -> negation_encoding
                 // Insert the the definitional boolean var into all clauses
-                println!("adding {} to all clauses", def_pvar);
                 res.iter_clauses_mut()
                     .for_each(|c| c.push(as_lit(def_pvar)));
                 encoding.join(res);
