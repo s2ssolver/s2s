@@ -18,8 +18,8 @@ use crate::instance::Instance;
 use crate::model::constraints::{Symbol, WordEquation};
 use crate::model::formula::{Alphabet, Atom, Literal};
 
-use crate::model::Sort;
 use crate::model::{Constraint, Substitution};
+use crate::model::{Sort, Variable};
 
 use crate::encode::domain::{get_substitutions, DomainEncoder};
 
@@ -138,6 +138,7 @@ impl AbstractionSolver {
         // Instantiate the encoders
         let mut encoders = HashMap::new();
         for d in abstraction.get_definitions().iter() {
+            log::debug!("Creating encoder for {}", d);
             match d.get_def_type() {
                 DefinitionType::Positive => {
                     // Create encoder for positive
@@ -169,6 +170,7 @@ impl AbstractionSolver {
                         Constraint::try_from(Literal::Neg(Atom::Predicate(d.get_pred().clone())))?;
                     let encoder = Self::encoder_for_constraint(&constraint_neg)?;
                     map.insert(false, encoder);
+
                     encoders.insert(d.clone(), map);
                 }
             }
@@ -217,20 +219,18 @@ impl AbstractionSolver {
         encoding.join(subs_cnf);
         let dom = self.domain_encoder.encoding();
 
-        if self.instance.get_formula().is_conjunctive() {
-            for (_, encs) in self.encoders.iter_mut() {
-                for enc in encs.values_mut() {
-                    let res = enc.encode(&bounds, dom)?;
-                    encoding.join(res);
-                }
-            }
-        } else {
             for (d, encs) in self.encoders.iter_mut() {
-                let def_pvar = self.domain_encoder.get_bools()[d.get_var()];
+            let def_pvar = if let Variable::Bool { value, .. } = d.get_var() {
+                *value
+            } else {
+                panic!("Definition variable is not a boolean")
+            };
+
                 if let Some(enc) = encs.get_mut(&true) {
                     let mut res = enc.encode(&bounds, dom)?;
                     // devar -> encoding
                     // Insert the negation of the definitional boolean var into all clauses
+                println!("adding negation of {} to all clauses", def_pvar);
                     res.iter_clauses_mut().for_each(|c| c.push(neg(def_pvar)));
                     encoding.join(res);
                 }
@@ -238,10 +238,10 @@ impl AbstractionSolver {
                     let mut res = enc.encode(&bounds, dom)?;
                     // -devar -> negation_encoding
                     // Insert the the definitional boolean var into all clauses
+                println!("adding {} to all clauses", def_pvar);
                     res.iter_clauses_mut()
                         .for_each(|c| c.push(as_lit(def_pvar)));
                     encoding.join(res);
-                }
             }
         }
 
@@ -358,8 +358,6 @@ impl AbstractionSolver {
 
 impl Solver for AbstractionSolver {
     fn solve(&mut self) -> Result<SolverResult, Error> {
-        // Encode the booleans
-        self.domain_encoder.init_booleans(&self.instance);
         let limit_bounds = self.find_limit_upper_bound()?;
         log::info!("Found limit bounds: {}", limit_bounds);
 
@@ -380,7 +378,6 @@ impl Solver for AbstractionSolver {
 
         let mut cadical: cadical::Solver = cadical::Solver::new();
 
-        //if !self.instance.get_formula().is_conjunctive() {
         // Convert the skeleton to cnf and add it to the solver
         let ts = Instant::now();
         log::info!("Skeleton {}", self.abstraction.get_skeleton());

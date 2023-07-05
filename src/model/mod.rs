@@ -241,7 +241,11 @@ impl Display for Sort {
 }
 impl Display for Variable {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.name())
+        match self {
+            Variable::String { name } => write!(f, "{}", name),
+            Variable::Int { name } => write!(f, "{}", name),
+            Variable::Bool { name, value } => write!(f, "{}[{}]", name, value),
+        }
     }
 }
 

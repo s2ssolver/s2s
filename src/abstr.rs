@@ -1,5 +1,7 @@
 //! The abstraction module. Provide functions to abstract formulas into a Boolean skeleton and a set of definitional Boolean variables.
 
+use std::fmt::{Display, Formatter};
+
 use indexmap::IndexMap;
 
 use crate::{
@@ -205,6 +207,16 @@ impl Abstraction {
         let skeleton =
             Self::abstract_fm(instance.get_formula().clone(), &mut definitions, instance);
         Ok(Self::new(skeleton, definitions))
+    }
+}
+
+impl Display for Definition {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self.def_type {
+            DefinitionType::Equivalence => write!(f, "{} <-> {}", self.var, self.pred),
+            DefinitionType::Positive => write!(f, "{} -> {}", self.var, self.pred),
+            DefinitionType::Negative => write!(f, "!{} -> !{}", self.var, self.pred),
+        }
     }
 }
 
