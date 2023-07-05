@@ -236,8 +236,13 @@ pub enum ReTerm {
 
 impl ReTerm {
     /// Returns the alphabet of constants used to construct the term.
-    /// Note that the alphabet of an ReTerm is not necessarily the same as the alphabet of the language denoted by it.
-    /// For example, the rterm `ReTerm::All` denotes the language `T^*` over some alphabet T, but its alphabet of constants is empty.
+    /// This function calculates the alphabet as follows:
+    /// - For a string term, the alphabet is the set of characters in the string.
+    /// - For a union, concatenation, or intersection, the alphabet is the union of the alphabets of the subterms.
+    /// - For a star, plus, optional, complement, or power, the alphabet is the alphabet of the subterm.
+    /// - For a difference, the alphabet is the union of the alphabets of the subterms.
+    /// - For a range, the alphabet is the union of the characters in the bounds.
+    /// - For none, any, or all, the alphabet is empty.
     pub fn alphabet(&self) -> IndexSet<char> {
         match self {
             ReTerm::None => IndexSet::new(),
@@ -254,7 +259,20 @@ impl ReTerm {
             | ReTerm::Pow(r, _)
             | ReTerm::Loop(r, _, _) => r.alphabet(),
             ReTerm::Diff(r1, r2) => r1.alphabet().union(&r2.alphabet()).cloned().collect(),
-            ReTerm::Range(p1, p2) => p1.alphabet().union(&p2.alphabet()).cloned().collect(),
+            ReTerm::Range(p1, p2) => match (p1, p2) {
+                (StringTerm::Constant(c1), StringTerm::Constant(c2)) => {
+                    if c1.len() == 1 && c2.len() == 1 {
+                        let mut alphabet = IndexSet::new();
+                        for c in c1[0]..=c2[0] {
+                            alphabet.insert(c);
+                        }
+                        alphabet
+                    } else {
+                        IndexSet::new()
+                    }
+                }
+                _ => IndexSet::new(),
+            },
         }
     }
 
