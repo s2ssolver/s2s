@@ -219,29 +219,29 @@ impl AbstractionSolver {
         encoding.join(subs_cnf);
         let dom = self.domain_encoder.encoding();
 
-            for (d, encs) in self.encoders.iter_mut() {
+        for (d, encs) in self.encoders.iter_mut() {
             let def_pvar = if let Variable::Bool { value, .. } = d.get_var() {
                 *value
             } else {
                 panic!("Definition variable is not a boolean")
             };
 
-                if let Some(enc) = encs.get_mut(&true) {
-                    let mut res = enc.encode(&bounds, dom)?;
-                    // devar -> encoding
-                    // Insert the negation of the definitional boolean var into all clauses
+            if let Some(enc) = encs.get_mut(&true) {
+                let mut res = enc.encode(&bounds, dom)?;
+                // devar -> encoding
+                // Insert the negation of the definitional boolean var into all clauses
                 println!("adding negation of {} to all clauses", def_pvar);
-                    res.iter_clauses_mut().for_each(|c| c.push(neg(def_pvar)));
-                    encoding.join(res);
-                }
-                if let Some(enc) = encs.get_mut(&false) {
-                    let mut res = enc.encode(&bounds, dom)?;
-                    // -devar -> negation_encoding
-                    // Insert the the definitional boolean var into all clauses
+                res.iter_clauses_mut().for_each(|c| c.push(neg(def_pvar)));
+                encoding.join(res);
+            }
+            if let Some(enc) = encs.get_mut(&false) {
+                let mut res = enc.encode(&bounds, dom)?;
+                // -devar -> negation_encoding
+                // Insert the the definitional boolean var into all clauses
                 println!("adding {} to all clauses", def_pvar);
-                    res.iter_clauses_mut()
-                        .for_each(|c| c.push(as_lit(def_pvar)));
-                    encoding.join(res);
+                res.iter_clauses_mut()
+                    .for_each(|c| c.push(as_lit(def_pvar)));
+                encoding.join(res);
             }
         }
 
@@ -391,7 +391,12 @@ impl Solver for AbstractionSolver {
         for clause in cnf.into_iter() {
             cadical.add_clause(clause);
         }
-        //}
+
+        // Check if the skeleton is unsat
+        if let Some(false) = cadical.solve() {
+            log::info!("Skeleton is unsat");
+            return Ok(SolverResult::Unsat);
+        }
 
         let mut time_encoding = 0;
         let mut time_solving = 0;
