@@ -182,7 +182,12 @@ pub fn to_cnf(formula: &Formula, instance: &mut Instance) -> Result<Cnf, Error> 
                 }
             }
         }
-        Formula::Not(_) => unreachable!(),
+        Formula::Not(f) => match f.as_ref() {
+            Formula::Atom(Atom::BoolVar(Variable::Bool { value, .. })) => {
+                cnf.push(vec![neg(*value)]);
+            }
+            _ => unreachable!(),
+        },
         Formula::Atom(Atom::Predicate(_)) => unreachable!(),
     }
 
