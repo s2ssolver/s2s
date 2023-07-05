@@ -8,7 +8,7 @@ use crate::{
     error::Error,
     instance::Instance,
     model::{
-        formula::{Atom, Formula, Predicate},
+        formula::{Atom, Literal, NNFFormula, Predicate},
         Sort, Variable,
     },
 };
@@ -111,13 +111,13 @@ impl Definitions {
 
 pub struct Abstraction {
     /// The Boolean skeleton, a propositional formula.
-    skeleton: Formula,
+    skeleton: NNFFormula,
     /// The set of definitional Boolean variables.
     definitions: Definitions,
 }
 
 impl Abstraction {
-    fn new(formula: Formula, definitions: Definitions) -> Self {
+    fn new(formula: NNFFormula, definitions: Definitions) -> Self {
         Self {
             skeleton: formula,
             definitions,
@@ -129,7 +129,7 @@ impl Abstraction {
     }
 
     /// Returns the Boolean skeleton.
-    pub fn get_skeleton(&self) -> &Formula {
+    pub fn get_skeleton(&self) -> &NNFFormula {
         &self.skeleton
     }
 
@@ -140,9 +140,13 @@ impl Abstraction {
     ///
     /// # Panics
     /// Panics if the formula is not in NNF.
-    fn abstract_fm(formula: Formula, defs: &mut Definitions, instance: &mut Instance) -> Formula {
+    fn abstract_fm(
+        formula: NNFFormula,
+        defs: &mut Definitions,
+        instance: &mut Instance,
+    ) -> NNFFormula {
         let res = match formula {
-            Formula::Atom(Atom::Predicate(p)) => {
+            NNFFormula::Literal(Literal::Pos(Atom::Predicate(p))) => {
                 let dvar = match defs.get_def_var(&p) {
                     Some(v) => v.get_var().clone(),
                     None => {
@@ -152,51 +156,42 @@ impl Abstraction {
                         v
                     }
                 };
+                defs.add_definition(Definition::new(dvar.clone(), p, DefinitionType::Positive));
+                NNFFormula::Literal(Literal::Pos(Atom::BoolVar(dvar)))
+            }
+            NNFFormula::Literal(Literal::Neg(Atom::Predicate(p))) => {
+                let dvar = match defs.get_def_var(&p) {
+                    Some(v) => v.get_var().clone(),
+                    None => {
+                        let v = Variable::temp(Sort::Bool);
+                        instance.add_var(v.clone());
+                        v
+                    }
+                };
                 defs.add_definition(Definition::new(
                     dvar.clone(),
-                    p,
-                    DefinitionType::Positive,
+                    p.clone(),
+                    DefinitionType::Negative,
                 ));
-                Formula::boolvar(dvar)
-            }
-            Formula::Atom(_) => formula.clone(),
-            Formula::Or(fs) => {
-                let fs = fs
-                    .into_iter()
-                    .map(|f| Self::abstract_fm(f, defs, instance))
-                    .collect::<Vec<_>>();
-                Formula::or(fs)
+                NNFFormula::Literal(Literal::Neg(Atom::BoolVar(dvar)))
             }
 
-            Formula::And(fs) => {
+            NNFFormula::Literal(_) => formula.clone(),
+            NNFFormula::Or(fs) => {
                 let fs = fs
                     .into_iter()
                     .map(|f| Self::abstract_fm(f, defs, instance))
                     .collect::<Vec<_>>();
-                Formula::and(fs)
+                NNFFormula::Or(fs)
             }
-            Formula::Not(f) => match f.as_ref() {
-                Formula::Atom(Atom::True) => Formula::ffalse(),
-                Formula::Atom(Atom::False) => Formula::ttrue(),
-                Formula::Atom(Atom::BoolVar(_)) => Formula::not(f.as_ref().clone()),
-                Formula::Atom(Atom::Predicate(p)) => {
-                    let dvar = match defs.get_def_var(p) {
-                        Some(v) => v.get_var().clone(),
-                        None => {
-                            let v = Variable::temp(Sort::Bool);
-                            instance.add_var(v.clone());
-                            v
-                        }
-                    };
-                    defs.add_definition(Definition::new(
-                        dvar.clone(),
-                        p.clone(),
-                        DefinitionType::Negative,
-                    ));
-                    Formula::not(Formula::boolvar(dvar))
-                }
-                _ => unreachable!("Formula not in NNF"),
-            },
+
+            NNFFormula::And(fs) => {
+                let fs = fs
+                    .into_iter()
+                    .map(|f| Self::abstract_fm(f, defs, instance))
+                    .collect::<Vec<_>>();
+                NNFFormula::And(fs)
+            }
         };
         res
     }
@@ -204,8 +199,11 @@ impl Abstraction {
     /// Creates the abstraction from an instance.
     pub fn create(instance: &mut Instance) -> Result<Self, Error> {
         let mut definitions = Definitions::default();
-        let skeleton =
-            Self::abstract_fm(instance.get_formula().clone(), &mut definitions, instance);
+        let skeleton = Self::abstract_fm(
+            instance.get_formula().clone().into(),
+            &mut definitions,
+            instance,
+        );
         Ok(Self::new(skeleton, definitions))
     }
 }
@@ -224,6 +222,8 @@ impl Display for Definition {
 mod test {
 
     use quickcheck_macros::quickcheck;
+
+    use crate::model::formula::Formula;
 
     use super::*;
 
@@ -273,7 +273,7 @@ mod test {
 
         assert!(abstr.is_ok());
         let abstr = abstr.unwrap();
-        assert!(is_bool(&abstr.skeleton));
+        assert!(is_bool(&abstr.skeleton.clone().into()));
     }
 
     #[quickcheck]

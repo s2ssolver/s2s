@@ -828,6 +828,12 @@ impl Display for Formula {
     }
 }
 
+impl Display for NNFFormula {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        Formula::from(self.clone()).fmt(f)
+    }
+}
+
 /* Arbitrary */
 
 impl Arbitrary for Atom {

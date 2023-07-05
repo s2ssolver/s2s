@@ -379,7 +379,10 @@ impl Solver for AbstractionSolver {
         // Convert the skeleton to cnf and add it to the solver
         let ts = Instant::now();
         log::info!("Skeleton {}", self.abstraction.get_skeleton());
-        let cnf = to_cnf(self.abstraction.get_skeleton(), &mut self.instance)?;
+        let cnf = to_cnf(
+            &self.abstraction.get_skeleton().clone().into(),
+            &mut self.instance,
+        )?;
         log::info!(
             "Converted Boolean skeleton into cnf ({} clauses) in {} ms",
             cnf.len(),
