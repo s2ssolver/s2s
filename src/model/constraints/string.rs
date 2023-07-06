@@ -616,14 +616,7 @@ impl TryFrom<ReTerm> for Regex<char> {
                 }
             }
             ReTerm::Pow(r, exp) => Ok(Regex::pow((*r).try_into()?, exp)),
-            ReTerm::Loop(e, l, u) => {
-                // Convert into finite union of powers
-                let mut res = vec![];
-                for i in l..=u {
-                    res.push(ReTerm::Pow(e.clone(), i).try_into()?);
-                }
-                Ok(Regex::union(res))
-            }
+            ReTerm::Loop(r, l, u) => Ok(Regex::loop_((*r).try_into()?, l, u)),
         }
     }
 }
