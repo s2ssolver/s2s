@@ -168,11 +168,7 @@ impl Abstraction {
                         v
                     }
                 };
-                defs.add_definition(Definition::new(
-                    dvar.clone(),
-                    p.clone(),
-                    DefinitionType::Negative,
-                ));
+                defs.add_definition(Definition::new(dvar.clone(), p, DefinitionType::Negative));
                 NNFFormula::Literal(Literal::Neg(Atom::BoolVar(dvar)))
             }
 

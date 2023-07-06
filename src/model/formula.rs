@@ -485,6 +485,14 @@ impl NNFFormula {
             NNFFormula::Or(_) => vec![],
         }
     }
+
+    pub fn boolvar(var: Variable, sign: bool) -> Self {
+        if sign {
+            Self::Literal(Literal::Pos(Atom::BoolVar(var)))
+        } else {
+            Self::Literal(Literal::Neg(Atom::BoolVar(var)))
+        }
+    }
 }
 
 impl From<NNFFormula> for Formula {
