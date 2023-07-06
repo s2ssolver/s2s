@@ -224,16 +224,16 @@ impl LinearConstraint {
         }
     }
 
-    /// Derive a linear constraint from a regular constraint, if the regular language is finite.
+    /// Derive a linear constraint that restricts the upper bound for the patter from a regular constraint, if the regular language is finite.
     /// The constraint is of the form `lhs <= rhs`, where `lhs` is the length of the pattern (i.e., the sum of the lenght all variable occurrences plus the length of the constant symbols) and `rhs` is the number of states in the automaton.
     /// Note that there cannot be a word in the (finite) language that is longer than the number of states.
     /// If the regular language is not finite, `None` is returned.
-    pub fn from_regular_constraint(re: &RegularConstraint) -> Option<Self> {
+    pub fn from_regular_constraint_upper(re: &RegularConstraint) -> Option<Self> {
         if let Some(automaton) = re.get_automaton() {
             if !automaton.acyclic() {
-                log::trace!("Automaton is not acyclic: {}", automaton.dot().unwrap());
                 return None;
             }
+
             let mut lhs = LinearArithTerm::new();
             let mut rhs = 0 as isize;
 
@@ -251,10 +251,35 @@ impl LinearConstraint {
             Some(Self {
                 lhs,
                 rhs,
-                typ: LinearConstraintType::Eq,
+                typ: LinearConstraintType::Leq,
             })
         } else {
             None
+        }
+    }
+
+    /// Derive a linear constraint that restricts the lower bound for the pattern from a regular constraint.
+    /// The constraint is of the form `lhs >= rhs`, where `lhs` is the length of the pattern (i.e., the sum of the lenght all variable occurrences plus the length of the constant symbols) and `rhs` is the shortest path from the initial state to a final state in the automaton.
+    pub fn from_regular_constraint_lower(re: &RegularConstraint) -> Self {
+        let automaton = re.get_automaton().unwrap();
+        let mut lhs = LinearArithTerm::new();
+        let mut rhs = 0 as isize;
+
+        for x in re.get_pattern().iter() {
+            match x {
+                Symbol::Constant(_) => rhs -= 1,
+                Symbol::Variable(v) => {
+                    lhs.add_var_coeff(&v.len_var().unwrap(), 1);
+                }
+            }
+        }
+
+        rhs += automaton.shortest().unwrap_or(0) as isize;
+
+        Self {
+            lhs,
+            rhs,
+            typ: LinearConstraintType::Geq,
         }
     }
 

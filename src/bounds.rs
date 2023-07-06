@@ -217,26 +217,35 @@ impl Bounds {
         }
 
         let mut fixpoint = false;
+
         while !fixpoint {
             let lastbounds = bounds.clone();
 
             // Infer bounds on the variables using the linear constraint that can be inferred
             for con in &mut constraints {
-                let lincon = match con {
+                match con {
                     Constraint::WordEquation(eq, true) => {
-                        Some(LinearConstraint::from_word_equation(&eq))
+                        let lincon = LinearConstraint::from_word_equation(&eq);
+                        let newbounds = lincon_bounds(&lincon, &bounds);
+                        bounds = bounds.intersect(&newbounds);
                     }
-                    Constraint::LinearConstraint(lin) => Some(lin.clone()),
+                    Constraint::LinearConstraint(lin) => {
+                        let newbounds = lincon_bounds(&lin, &bounds);
+                        bounds = bounds.intersect(&newbounds);
+                    }
                     Constraint::RegularConstraint(ref mut re, true) => {
                         re.compile()?;
-                        LinearConstraint::from_regular_constraint(&re)
+                        let lincon_lower = LinearConstraint::from_regular_constraint_lower(&re);
+                        let newbounds = lincon_bounds(&lincon_lower, &bounds);
+                        bounds = bounds.intersect(&newbounds);
+                        if let Some(lincon_upper) =
+                            LinearConstraint::from_regular_constraint_upper(&re)
+                        {
+                            let newbounds = lincon_bounds(&lincon_upper, &bounds);
+                            bounds = bounds.intersect(&newbounds);
+                        }
                     }
-                    _ => None,
-                };
-                if let Some(lincon) = lincon {
-                    log::trace!("Infered linear constraint: {} from {:?}", lincon, con);
-                    let newbounds = lincon_upper_bound(&lincon, &bounds);
-                    bounds = bounds.intersect(&newbounds);
+                    _ => (),
                 }
             }
 
@@ -331,7 +340,7 @@ impl Bounds {
 /// Infers the domain of the variables of a linear constraint based on the bounds of the other variables.
 ///
 /// TODO: Use new implementation of substitution
-fn lincon_upper_bound(lincon: &LinearConstraint, bounds: &Bounds) -> Bounds {
+fn lincon_bounds(lincon: &LinearConstraint, bounds: &Bounds) -> Bounds {
     // Get the lin constraint and solve if only one variable
     let mut new_bounds = Bounds::new();
     match lincon.typ {

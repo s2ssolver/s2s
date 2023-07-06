@@ -51,27 +51,27 @@ pub fn solve(instance: &mut Instance) -> Result<SolverResult, Error> {
         Some(true) => {
             log::info!("Formula is trivially true");
             subs.use_defaults();
-            Ok(SolverResult::Sat(subs))
+            return Ok(SolverResult::Sat(subs));
         }
         Some(false) => {
             log::info!("Formula is trivially false");
-            Ok(SolverResult::Unsat)
+            return Ok(SolverResult::Unsat);
         }
-        None => {
-            let mut solver = get_solver(instance.clone())?;
+        _ => (),
+    }
+    // not trivally satifable or unsatisfiable
+    let mut solver = get_solver(instance.clone())?;
 
-            match solver.solve()? {
-                SolverResult::Sat(m) => {
-                    let mut model = subs.compose(&m);
-                    model.use_defaults();
-                    Ok(SolverResult::Sat(model))
-                }
-                SolverResult::Unsat => Ok(SolverResult::Unsat),
-                SolverResult::Unknown => {
-                    log::warn!("Solver returned unknown");
-                    Ok(SolverResult::Unknown)
-                }
-            }
+    match solver.solve()? {
+        SolverResult::Sat(m) => {
+            let mut model = subs.compose(&m);
+            model.use_defaults();
+            Ok(SolverResult::Sat(model))
+        }
+        SolverResult::Unsat => Ok(SolverResult::Unsat),
+        SolverResult::Unknown => {
+            log::warn!("Solver returned unknown");
+            Ok(SolverResult::Unknown)
         }
     }
 }

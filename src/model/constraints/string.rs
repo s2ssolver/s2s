@@ -454,18 +454,22 @@ impl RegularConstraint {
     /// Returns an error if the regular expression cannot be compiled.
     pub fn compile(&mut self) -> Result<(), Error> {
         if self.automaton.is_none() {
+            log::debug!("Compiling regular expression {}", self.re);
             match regulaer::nfa::compile(&self.re) {
                 Ok(mut nfa) => {
                     nfa.normalize()?;
                     self.automaton = Some(nfa)
                 }
-                Err(_e) => {
-                    return Err(Error::Other(
-                        "Error compiling regular expression".to_string(),
-                    ))
+                Err(e) => {
+                    return Err(Error::Other(format!(
+                        "Error compiling regular expression: {}",
+                        e
+                    )))
                 }
             }
+            log::debug!("Compiling done");
         }
+
         Ok(())
     }
 
@@ -612,7 +616,14 @@ impl TryFrom<ReTerm> for Regex<char> {
                 }
             }
             ReTerm::Pow(r, exp) => Ok(Regex::pow((*r).try_into()?, exp)),
-            ReTerm::Loop(_, _, _) => todo!(),
+            ReTerm::Loop(e, l, u) => {
+                // Convert into finite union of powers
+                let mut res = vec![];
+                for i in l..=u {
+                    res.push(ReTerm::Pow(e.clone(), i).try_into()?);
+                }
+                Ok(Regex::union(res))
+            }
         }
     }
 }

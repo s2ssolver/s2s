@@ -359,6 +359,7 @@ impl AbstractionSolver {
 
 impl Solver for AbstractionSolver {
     fn solve(&mut self) -> Result<SolverResult, Error> {
+        log::debug!("Started solving");
         let limit_bounds = self.find_limit_upper_bound()?;
         log::info!("Found limit bounds: {}", limit_bounds);
 
