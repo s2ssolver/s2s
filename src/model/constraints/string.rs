@@ -455,7 +455,10 @@ impl RegularConstraint {
     pub fn compile(&mut self) -> Result<(), Error> {
         if self.automaton.is_none() {
             match regulaer::nfa::compile(&self.re) {
-                Ok(nfa) => self.automaton = Some(nfa),
+                Ok(mut nfa) => {
+                    nfa.normalize()?;
+                    self.automaton = Some(nfa)
+                }
                 Err(_e) => {
                     return Err(Error::Other(
                         "Error compiling regular expression".to_string(),
