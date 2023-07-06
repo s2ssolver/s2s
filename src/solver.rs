@@ -295,12 +295,12 @@ impl AbstractionSolver {
                 let mut current_bounds = Bounds::new();
                 for v in self.instance.vars_of_sort(Sort::String) {
                     let len_var = v.len_var().unwrap();
-                    current_bounds.set(
-                        &len_var,
-                        IntDomain::Bounded(0, self.instance.get_start_bound() as isize),
-                    );
+                    let upper = self.instance.get_start_bound() as isize;
+                    let lower = limit_bounds.get_lower(&len_var).unwrap_or(0);
+                    let upper = max(upper, lower);
+                    current_bounds.set(&len_var, IntDomain::Bounded(0, upper as isize));
                 }
-                current_bounds
+                return BoundUpdate::Next(current_bounds);
             }
         };
         next_bounds.next_square_uppers();
