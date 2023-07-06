@@ -257,7 +257,10 @@ impl AbstractionSolver {
     }
 
     fn find_limit_upper_bound(&self) -> Result<Bounds, Error> {
-        let mut limit_bounds = Bounds::infer(self.instance.get_formula(), &self.instance)?;
+        let mut limit_bounds = Bounds::infer_bounds(
+            &self.instance.get_formula().to_nnf().asserted_literals(),
+            &self.instance,
+        )?;
         // Make sure upper bounds for string variables are at least one, otherwise the encoding is not correct.
         // This will have negative effects on the performance of the solver, but avoids having to treat edge cases in the encoding(s).
         for v in self.instance.vars_of_sort(Sort::Int) {

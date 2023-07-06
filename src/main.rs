@@ -90,7 +90,14 @@ fn main() {
     // We want to validate the model against the original formula
     let original_formula = instance.get_formula().clone();
 
-    let res = solve(&mut instance).unwrap();
+    let res = match solve(&mut instance) {
+        Ok(res) => res,
+        Err(e) => {
+            log::error!("{}", e);
+            println!("error");
+            exit(-1);
+        }
+    };
 
     log::info!("Done ({}ms).", ts.elapsed().as_millis());
     match res {

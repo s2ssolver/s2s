@@ -5,17 +5,15 @@ use std::{
     fmt::Display,
 };
 
-use indexmap::{IndexMap, IndexSet};
+use indexmap::IndexMap;
 use quickcheck::Arbitrary;
 
 use crate::{
     error::Error,
     instance::Instance,
     model::{
-        constraints::{
-            Constraint, LinearArithFactor, LinearConstraint, LinearConstraintType, Symbol,
-        },
-        formula::{Atom, Formula},
+        constraints::{Constraint, LinearArithFactor, LinearConstraint, LinearConstraintType},
+        formula::Literal,
         Sort, Variable,
     },
 };
@@ -200,73 +198,51 @@ impl Bounds {
         self.get(var).get_lower()
     }
 
-    /// Infers the bounds of all variables from the given formula.
-    /// All solutions to the formula must satisfy the inferred bounds.
-    pub fn infer(formla: &Formula, instance: &Instance) -> Result<Self, Error> {
+    /// Infers the bounds of conjunction of the given literals.
+    /// If the conjunction of literals is satisfiable, then there is a solution that satisfies the inferred bounds.
+    pub fn infer_bounds(literals: &Vec<&Literal>, instance: &Instance) -> Result<Self, Error> {
         let mut bounds = Self::new();
+
+        // Set lower bound of string variables to 0
         for str_var in instance.vars_of_sort(Sort::String) {
             bounds.set(&str_var.len_var().unwrap(), IntDomain::LowerBounded(0));
         }
-        let mut bound_prev = bounds.clone();
-        let mut stop = false;
-        while !stop {
-            // TODO: go over asserted literals instead of  atoms
-            for atom in formla.asserted_atoms() {
-                match atom {
-                    Atom::Predicate(p) => match Constraint::try_from(p)? {
-                        Constraint::WordEquation(eq, true) => {
-                            let lincon = LinearConstraint::from_word_equation(&eq);
-                            let newbounds = lincon_upper_bound(&lincon, &bounds);
-                            log::trace!("Intersecting bounds: {} and {}", bounds, newbounds);
-                            bounds = bounds.intersect(&newbounds);
-                            log::trace!("\tResult: {}", bounds);
-                        }
-                        Constraint::LinearConstraint(lc) => {
-                            let newbounds = lincon_upper_bound(&lc, &bounds);
-                            log::trace!("Intersecting bounds: {} and {}", bounds, newbounds);
-                            bounds = bounds.intersect(&newbounds);
-                            log::trace!("\tResult: {}", bounds);
-                        }
-                        Constraint::RegularConstraint(mut r, true) => {
-                            // If the automaton is finite, the pattern is bounded by the number of states (tighter bound: longest path to final state)
-                            r.compile()?;
-                            if let Some(true) = r.get_automaton().map(|n| n.acyclic()) {
-                                // Is finite, every variable in the pattern is bounded by number of states minus length of constant part in pattern
-                                let mut new_bounds = Bounds::new();
-                                let mut const_len = 0;
-                                let mut vs = IndexSet::new();
-                                for s in r.get_pattern().iter() {
-                                    match s {
-                                        Symbol::Constant(_) => const_len += 1,
-                                        Symbol::Variable(v) => {
-                                            vs.insert(v.clone());
-                                        }
-                                    }
-                                }
-                                let bound = (r.get_automaton().unwrap().states().len() - const_len)
-                                    as isize;
-                                for v in vs {
-                                    new_bounds
-                                        .set(&v.len_var().unwrap(), IntDomain::UpperBounded(bound));
-                                }
-                            }
-                            // If the automaton is infinite, the pattern is unbounded in general
-                        }
-                        Constraint::RegularConstraint(_, false)
-                        | Constraint::WordEquation(_, false) => unreachable!(),
-                    },
 
-                    Atom::False | Atom::True | Atom::BoolVar(_) => {}
-                }
-            }
-            if bounds == bound_prev {
-                // Nothing changed, stop here
-                stop = true;
-            } else {
-                log::debug!("Refined bounds: {}", bounds);
-                bound_prev = bounds.clone();
+        // Convert all predicates to constraints
+        let mut constraints = Vec::with_capacity(literals.len());
+        for lit in literals {
+            if lit.is_predicate() {
+                constraints.push(Constraint::try_from((*lit).clone())?);
             }
         }
+
+        let mut fixpoint = false;
+        while !fixpoint {
+            let lastbounds = bounds.clone();
+
+            // Infer bounds on the variables using the linear constraint that can be inferred
+            for con in &mut constraints {
+                let lincon = match con {
+                    Constraint::WordEquation(eq, true) => {
+                        Some(LinearConstraint::from_word_equation(&eq))
+                    }
+                    Constraint::LinearConstraint(lin) => Some(lin.clone()),
+                    Constraint::RegularConstraint(ref mut re, true) => {
+                        re.compile()?;
+                        LinearConstraint::from_regular_constraint(&re)
+                    }
+                    _ => None,
+                };
+                if let Some(lincon) = lincon {
+                    log::trace!("Infered linear constraint: {} from {:?}", lincon, con);
+                    let newbounds = lincon_upper_bound(&lincon, &bounds);
+                    bounds = bounds.intersect(&newbounds);
+                }
+            }
+
+            fixpoint = lastbounds == bounds;
+        }
+
         Ok(bounds)
     }
 

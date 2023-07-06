@@ -2,7 +2,7 @@ use std::{collections::HashMap, fmt::Display, ops::Index};
 
 use crate::model::{terms::IntTerm, Evaluable, Substitutable, Substitution, Variable};
 
-use super::{Symbol, WordEquation};
+use super::{RegularConstraint, Symbol, WordEquation};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum LinearArithFactor {
@@ -221,6 +221,40 @@ impl LinearConstraint {
             lhs,
             rhs,
             typ: LinearConstraintType::Eq,
+        }
+    }
+
+    /// Derive a linear constraint from a regular constraint, if the regular language is finite.
+    /// The constraint is of the form `lhs <= rhs`, where `lhs` is the length of the pattern (i.e., the sum of the lenght all variable occurrences plus the length of the constant symbols) and `rhs` is the number of states in the automaton.
+    /// Note that there cannot be a word in the (finite) language that is longer than the number of states.
+    /// If the regular language is not finite, `None` is returned.
+    pub fn from_regular_constraint(re: &RegularConstraint) -> Option<Self> {
+        if let Some(automaton) = re.get_automaton() {
+            if !automaton.acyclic() {
+                log::trace!("Automaton is not acyclic: {}", automaton.dot().unwrap());
+                return None;
+            }
+            let mut lhs = LinearArithTerm::new();
+            let mut rhs = 0 as isize;
+
+            for x in re.get_pattern().iter() {
+                match x {
+                    Symbol::Constant(_) => rhs -= 1,
+                    Symbol::Variable(v) => {
+                        lhs.add_var_coeff(&v.len_var().unwrap(), 1);
+                    }
+                }
+            }
+
+            rhs += re.get_automaton().unwrap().states().len() as isize;
+
+            Some(Self {
+                lhs,
+                rhs,
+                typ: LinearConstraintType::Eq,
+            })
+        } else {
+            None
         }
     }
 
