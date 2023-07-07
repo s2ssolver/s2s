@@ -298,7 +298,7 @@ impl AbstractionSolver {
                     let upper = self.instance.get_start_bound() as isize;
                     let lower = limit_bounds.get_lower(&len_var).unwrap_or(0);
                     let upper = max(upper, lower);
-                    current_bounds.set(&len_var, IntDomain::Bounded(0, upper as isize));
+                    current_bounds.set(&len_var, IntDomain::Bounded(0, upper));
                 }
                 return BoundUpdate::Next(current_bounds);
             }

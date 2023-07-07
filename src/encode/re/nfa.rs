@@ -9,7 +9,7 @@
 
 use indexmap::IndexMap;
 use regulaer::{
-    nfa::{NfaError, State, TransitionType, NFA},
+    automaton::{AutomatonError, State, TransitionType, Automaton},
     re::Regex,
 };
 
@@ -33,7 +33,7 @@ const NFA_NOT_EPSILON_FREE_MSG: &str = "NFA must be epsilon-free";
 /// The resulting encoding is incremental.
 pub struct NFAEncoder {
     var: Variable,
-    nfa: NFA<char>,
+    nfa: Automaton<char>,
     regex: Regex<char>,
 
     /// The bounds of the variable in the previous round.
@@ -323,8 +323,8 @@ impl RegularConstraintEncoder for NFAEncoder {
     }
 }
 
-impl From<NfaError> for Error {
-    fn from(err: NfaError) -> Self {
+impl From<AutomatonError> for Error {
+    fn from(err: AutomatonError) -> Self {
         Error::EncodingError(format!("Error while encoding NFA: {:?}", err))
     }
 }
@@ -334,7 +334,7 @@ mod test {
     use cadical::Solver;
     use indexmap::IndexSet;
 
-    use regulaer::{nfa::compile, re::Regex, RegLang};
+    use regulaer::{automaton::compile, re::Regex, RegLang};
 
     use super::*;
 

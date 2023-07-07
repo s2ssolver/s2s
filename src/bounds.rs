@@ -5,14 +5,16 @@ use std::{
     fmt::Display,
 };
 
-use indexmap::IndexMap;
+use indexmap::{IndexMap, IndexSet};
 use quickcheck::Arbitrary;
 
 use crate::{
     error::Error,
     instance::Instance,
     model::{
-        constraints::{Constraint, LinearArithFactor, LinearConstraint, LinearConstraintType},
+        constraints::{
+            Constraint, LinearArithFactor, LinearConstraint, LinearConstraintType, Symbol,
+        },
         formula::Literal,
         Sort, Variable,
     },
@@ -80,6 +82,19 @@ impl IntDomain {
             IntDomain::UpperBounded(u) | IntDomain::Bounded(_, u) => *u = upper,
             IntDomain::LowerBounded(l) => *self = Self::bounded(*l, upper),
             IntDomain::Unbounded => *self = Self::UpperBounded(upper),
+            IntDomain::Empty => {}
+        }
+    }
+
+    /// Sets the lower bound of the domain.
+    /// If the domain is bounded from below, updates the lower bound.
+    /// If the domain is not bounded from below, imposes a lower bound.
+    /// If the domain is empty, does nothing.
+    pub fn set_lower(&mut self, lower: isize) {
+        match self {
+            IntDomain::LowerBounded(l) | IntDomain::Bounded(l, _) => *l = lower,
+            IntDomain::UpperBounded(u) => *self = Self::bounded(lower, *u),
+            IntDomain::Unbounded => *self = Self::LowerBounded(lower),
             IntDomain::Empty => {}
         }
     }
@@ -198,6 +213,12 @@ impl Bounds {
         self.get(var).get_lower()
     }
 
+    pub fn set_lower(&mut self, var: &Variable, lower: isize) {
+        let mut domain = self.get(var);
+        domain.set_lower(lower);
+        self.set(var, domain);
+    }
+
     /// Infers the bounds of conjunction of the given literals.
     /// If the conjunction of literals is satisfiable, then there is a solution that satisfies the inferred bounds.
     pub fn infer_bounds(literals: &Vec<&Literal>, instance: &Instance) -> Result<Self, Error> {
@@ -225,21 +246,21 @@ impl Bounds {
             for con in &mut constraints {
                 match con {
                     Constraint::WordEquation(eq, true) => {
-                        let lincon = LinearConstraint::from_word_equation(&eq);
+                        let lincon = LinearConstraint::from_word_equation(eq);
                         let newbounds = lincon_bounds(&lincon, &bounds);
                         bounds = bounds.intersect(&newbounds);
                     }
                     Constraint::LinearConstraint(lin) => {
-                        let newbounds = lincon_bounds(&lin, &bounds);
+                        let newbounds = lincon_bounds(lin, &bounds);
                         bounds = bounds.intersect(&newbounds);
                     }
                     Constraint::RegularConstraint(ref mut re, true) => {
                         re.compile()?;
-                        let lincon_lower = LinearConstraint::from_regular_constraint_lower(&re);
+                        let lincon_lower = LinearConstraint::from_regular_constraint_lower(re);
                         let newbounds = lincon_bounds(&lincon_lower, &bounds);
                         bounds = bounds.intersect(&newbounds);
                         if let Some(lincon_upper) =
-                            LinearConstraint::from_regular_constraint_upper(&re)
+                            LinearConstraint::from_regular_constraint_upper(re)
                         {
                             let newbounds = lincon_bounds(&lincon_upper, &bounds);
                             bounds = bounds.intersect(&newbounds);
@@ -250,6 +271,73 @@ impl Bounds {
             }
 
             fixpoint = lastbounds == bounds;
+        }
+        // The above found bounds are tight.
+        // We can now try to find bounds for constraints of the form "x \in R" where x is a variable and R is a regular language.
+        // We can bound x by the number of states of the automaton that recognizes the intersection of all automata that x is constrained by.
+        // We only use these bounds if x is not already bounded by a linear constraint or word equation.
+        let mut recon_partition = IndexMap::new();
+        for con in &constraints {
+            match con {
+                Constraint::RegularConstraint(re, true) => {
+                    if re.get_pattern().len() == 1 {
+                        if let Some(Symbol::Variable(v)) = re.get_pattern().first() {
+                            recon_partition
+                                .entry(v)
+                                .or_insert_with(IndexSet::new)
+                                .insert((re.clone(), true));
+                        }
+                    }
+                }
+                // For negative regular constraints, we need to determinize the automaton
+                Constraint::RegularConstraint(re, false) => {
+                    if re.get_pattern().len() == 1 {
+                        if let Some(Symbol::Variable(v)) = re.get_pattern().first() {
+                            recon_partition
+                                .entry(v)
+                                .or_insert_with(IndexSet::new)
+                                .insert((re.clone(), false));
+                        }
+                    }
+                }
+                _ => (),
+            }
+        }
+        for (string_var, regs) in recon_partition {
+            let len_var = &string_var.len_var().unwrap();
+            if bounds.get(len_var).get_upper().is_none()
+                && bounds.get(len_var).get_lower().is_none()
+            {
+                if regs.iter().map(|r| r.1).any(|v| !v) {
+                    // If there is a negative regular constraint, we cannot infer the upper bound, yet
+                    log::debug!(
+                        "Cannot infer upper bound of {}: Needs determinization",
+                        len_var
+                    );
+                    continue;
+                }
+                // intersect all automata and use the number of states as upper bound
+                let mut res = regs.first().unwrap().0.get_automaton().unwrap().clone();
+                let mut ok = true;
+                for next in regs.iter().skip(1) {
+                    res = match res.intersect(next.0.get_automaton().unwrap()) {
+                        Ok(a) => a,
+                        Err(e) => {
+                            log::warn!("Could not intersect automata: {}", e);
+                            ok = false;
+                            break;
+                        }
+                    }
+                }
+                if ok {
+                    bounds.set_upper(len_var, res.states().len() as isize);
+                    if bounds.get(len_var).get_lower().is_none() {
+                        if let Some(s) = res.shortest() {
+                            bounds.set_lower(len_var, s as isize);
+                        }
+                    }
+                }
+            }
         }
 
         Ok(bounds)

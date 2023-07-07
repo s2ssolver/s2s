@@ -235,7 +235,7 @@ impl LinearConstraint {
             }
 
             let mut lhs = LinearArithTerm::new();
-            let mut rhs = 0 as isize;
+            let mut rhs = 0;
 
             for x in re.get_pattern().iter() {
                 match x {
@@ -263,7 +263,7 @@ impl LinearConstraint {
     pub fn from_regular_constraint_lower(re: &RegularConstraint) -> Self {
         let automaton = re.get_automaton().unwrap();
         let mut lhs = LinearArithTerm::new();
-        let mut rhs = 0 as isize;
+        let mut rhs = 0;
 
         for x in re.get_pattern().iter() {
             match x {

@@ -125,10 +125,10 @@ impl Literal {
 
     /// Returns `true` iff this literal is a predicate and `false` otherwise.
     pub fn is_predicate(&self) -> bool {
-        match self {
-            Literal::Pos(Atom::Predicate(_)) | Literal::Neg(Atom::Predicate(_)) => true,
-            _ => false,
-        }
+        matches!(
+            self,
+            Literal::Pos(Atom::Predicate(_)) | Literal::Neg(Atom::Predicate(_))
+        )
     }
 }
 

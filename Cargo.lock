@@ -958,6 +958,7 @@ dependencies = [
  "dot",
  "priority-queue",
  "quickcheck",
+ "rand 0.8.5",
 ]
 
 [[package]]

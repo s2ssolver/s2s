@@ -7,7 +7,7 @@ use std::{
 
 use indexmap::IndexSet;
 use quickcheck::Arbitrary;
-use regulaer::{nfa::NFA, re::Regex};
+use regulaer::{automaton::Automaton, re::Regex};
 
 use crate::{
     error::Error,
@@ -435,7 +435,7 @@ pub struct RegularConstraint {
 
     /// The NFA that accepts the language of the regular expression.
     /// This is computed lazily.
-    automaton: Option<NFA<char>>,
+    automaton: Option<Automaton<char>>,
 }
 
 impl RegularConstraint {
@@ -455,7 +455,7 @@ impl RegularConstraint {
     pub fn compile(&mut self) -> Result<(), Error> {
         if self.automaton.is_none() {
             log::debug!("Compiling regular expression {}", self.re);
-            match regulaer::nfa::compile(&self.re) {
+            match regulaer::automaton::compile(&self.re) {
                 Ok(mut nfa) => {
                     nfa.normalize()?;
                     self.automaton = Some(nfa)
@@ -486,7 +486,7 @@ impl RegularConstraint {
     /// Returns the NFA that accepts the language of the regular expression.
     /// Returns `None` if the NFA has not been computed, yet.
     /// To compute the NFA, use `compile()`.
-    pub fn get_automaton(&self) -> Option<&NFA<char>> {
+    pub fn get_automaton(&self) -> Option<&Automaton<char>> {
         self.automaton.as_ref()
     }
 }
