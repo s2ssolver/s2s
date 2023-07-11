@@ -105,7 +105,7 @@ pub fn infer_bounds(constraints: &[Constraint], instance: &Instance) -> Result<B
         for eq in &partition.eqs {
             linears.push(LinearConstraint::from_word_equation(eq));
         }
-        for re in &partgition.regulars {
+        for re in &partition.regulars {
             if re.get_type().is_in() {
                 linears.push(LinearConstraint::from_regular_constraint_lower(re));
                 if let Some(upper) = LinearConstraint::from_regular_constraint_upper(re) {
