@@ -62,7 +62,7 @@ impl WordEquationStripPrefixSuffix {
         } else {
             let lhs = lhs.factor(i, lhs.len() - j).unwrap_or(Pattern::empty());
             let rhs = rhs.factor(i, rhs.len() - j).unwrap_or(Pattern::empty());
-            Some(WordEquation::new(lhs, rhs))
+            Some(WordEquation::new(lhs, rhs, eq.eq_type()))
         }
     }
 }
@@ -81,7 +81,7 @@ impl Preprocessor for WordEquationStripPrefixSuffix {
             Predicate::Equality(Term::String(lhs), Term::String(rhs)) => {
                 let lhs = Pattern::from(lhs);
                 let rhs = Pattern::from(rhs);
-                let eq = WordEquation::new(lhs, rhs);
+                let eq = WordEquation::new_equality(lhs, rhs);
                 match Self::strip_matches(&eq) {
                     Some(stripped) => {
                         PreprocessingResult::Changed(Formula::predicate(stripped.into()))
@@ -131,7 +131,7 @@ impl Preprocessor for WordEquationConstMatching {
             Predicate::Equality(Term::String(lhs), Term::String(rhs)) => {
                 let lhs = Pattern::from(lhs);
                 let rhs = Pattern::from(rhs);
-                let eq = WordEquation::new(lhs, rhs);
+                let eq = WordEquation::new_equality(lhs, rhs);
                 if !Self::consts_match(&eq) {
                     PreprocessingResult::Unchanged(Formula::ffalse())
                 } else {
@@ -197,7 +197,7 @@ impl Preprocessor for WordEquationTrivial {
             Predicate::Equality(Term::String(lhs), Term::String(rhs)) => {
                 let lhs = Pattern::from(lhs);
                 let rhs = Pattern::from(rhs);
-                let eq: WordEquation = WordEquation::new(lhs, rhs);
+                let eq: WordEquation = WordEquation::new_equality(lhs, rhs);
                 match Self::is_trivial(&eq) {
                     Some(true) => PreprocessingResult::Changed(Formula::ttrue()),
                     Some(false) => PreprocessingResult::Changed(Formula::ffalse()),
@@ -443,7 +443,7 @@ impl Preprocessor for WordEquationSubstitutions {
             if let Predicate::Equality(Term::String(lhs), Term::String(rhs)) = predicate.clone() {
                 let lhs = Pattern::from(lhs);
                 let rhs = Pattern::from(rhs);
-                let eq: WordEquation = WordEquation::new(lhs, rhs);
+                let eq: WordEquation = WordEquation::new_equality(lhs, rhs);
                 if let Some(pc) = Self::derive_const_prefix(&eq) {
                     log::trace!("From {}: Inferred {}", eq, pc);
                     self.add_constraint(&pc)
@@ -572,7 +572,7 @@ mod tests {
     fn test_strip_const_prefix_no_match() {
         let lhs = Pattern::constant("foo");
         let rhs = Pattern::constant("bar");
-        let eq = WordEquation::new(lhs, rhs);
+        let eq = WordEquation::new_equality(lhs, rhs);
         assert_eq!(WordEquationStripPrefixSuffix::strip_matches(&eq), None);
     }
 
@@ -580,10 +580,10 @@ mod tests {
     fn test_strip_const_prefix_match() {
         let lhs = Pattern::constant("foofoo");
         let rhs = Pattern::constant("foobar");
-        let eq = WordEquation::new(lhs, rhs);
+        let eq = WordEquation::new_equality(lhs, rhs);
         assert_eq!(
             WordEquationStripPrefixSuffix::strip_matches(&eq),
-            Some(WordEquation::new(
+            Some(WordEquation::new_equality(
                 Pattern::constant("foo"),
                 Pattern::constant("bar")
             ))
@@ -594,10 +594,10 @@ mod tests {
     fn test_strip_const_suffix_match() {
         let lhs = Pattern::constant("foobar");
         let rhs = Pattern::constant("barbar");
-        let eq = WordEquation::new(lhs, rhs);
+        let eq = WordEquation::new_equality(lhs, rhs);
         assert_eq!(
             WordEquationStripPrefixSuffix::strip_matches(&eq),
-            Some(WordEquation::new(
+            Some(WordEquation::new_equality(
                 Pattern::constant("foo"),
                 Pattern::constant("bar")
             ))
@@ -608,10 +608,10 @@ mod tests {
     fn test_strip_const_prefixsuffix_match() {
         let lhs = Pattern::constant("fooabcbar");
         let rhs = Pattern::constant("foodefbar");
-        let eq = WordEquation::new(lhs, rhs);
+        let eq = WordEquation::new_equality(lhs, rhs);
         assert_eq!(
             WordEquationStripPrefixSuffix::strip_matches(&eq),
-            Some(WordEquation::new(
+            Some(WordEquation::new_equality(
                 Pattern::constant("abc"),
                 Pattern::constant("def")
             ))
@@ -621,7 +621,7 @@ mod tests {
     #[test]
     fn test_strip_prefix_eq() {
         assert_eq!(
-            WordEquationStripPrefixSuffix::strip_matches(&WordEquation::empty()),
+            WordEquationStripPrefixSuffix::strip_matches(&WordEquation::empty_equation()),
             None
         );
     }
@@ -666,7 +666,7 @@ mod tests {
 
     #[test]
     fn trivial_empty() {
-        assert!(WordEquationTrivial::is_trivial(&WordEquation::empty()) == Some(true))
+        assert!(WordEquationTrivial::is_trivial(&WordEquation::empty_equation()) == Some(true))
     }
 
     #[quickcheck]
@@ -683,7 +683,7 @@ mod tests {
         let x = Variable::temp(Sort::String);
         let lhs = Pattern::variable(&x);
         let rhs = Pattern::constant("foo");
-        let eq = WordEquation::new(lhs, rhs);
+        let eq = WordEquation::new_equality(lhs, rhs);
 
         let expected = Some(VarConstraint::equal(&x, "foo"));
 
@@ -696,7 +696,7 @@ mod tests {
         let x = Variable::temp(Sort::String);
         let lhs = Pattern::variable(&x);
         let rhs = Pattern::constant("foo");
-        let eq = WordEquation::new(lhs, rhs);
+        let eq = WordEquation::new_equality(lhs, rhs);
         let expected = Some(VarConstraint::equal(&x, "foo"));
 
         let got = WordEquationSubstitutions::derive_const_suffix(&eq);
@@ -711,7 +711,7 @@ mod tests {
         let y = Variable::temp(Sort::String);
         let lhs = Pattern::variable(&x).append_word("ab").clone();
         let rhs = Pattern::constant("ab").append_var(&y).clone();
-        let eq = WordEquation::new(lhs, rhs);
+        let eq = WordEquation::new_equality(lhs, rhs);
 
         let expected = None;
 
@@ -727,7 +727,7 @@ mod tests {
         let y = Variable::temp(Sort::String);
         let lhs = Pattern::variable(&x).append_word("ab").clone();
         let rhs = Pattern::constant("ab").append_var(&y).clone();
-        let eq = WordEquation::new(lhs, rhs);
+        let eq = WordEquation::new_equality(lhs, rhs);
 
         let expected = None;
 
@@ -743,7 +743,7 @@ mod tests {
         let y = Variable::temp(Sort::String);
         let lhs = Pattern::variable(&x).append_word("ab").clone();
         let rhs = Pattern::constant("fooab").append_var(&y).clone();
-        let eq = WordEquation::new(lhs, rhs);
+        let eq = WordEquation::new_equality(lhs, rhs);
 
         let expected = Some(VarConstraint::ConstPrefix(x, "foo".chars().collect()));
 
@@ -759,7 +759,7 @@ mod tests {
         let y = Variable::temp(Sort::String);
         let lhs = Pattern::variable(&x).append_word("abfoo").clone();
         let rhs = Pattern::constant("ab").append_var(&y).clone();
-        let eq = WordEquation::new(lhs, rhs);
+        let eq = WordEquation::new_equality(lhs, rhs);
 
         let expected = Some(VarConstraint::ConstSuffix(y, "foo".chars().collect()));
 
@@ -774,7 +774,7 @@ mod tests {
         let y = Variable::temp(Sort::String);
         let lhs = Pattern::constant("aa").append_var(&x).clone();
         let rhs = Pattern::variable(&x).append_var(&y).clone();
-        let eq = WordEquation::new(lhs, rhs);
+        let eq = WordEquation::new_equality(lhs, rhs);
 
         let expected = None;
 

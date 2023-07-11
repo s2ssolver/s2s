@@ -9,7 +9,7 @@
 
 use indexmap::IndexMap;
 use regulaer::{
-    automaton::{AutomatonError, State, TransitionType, Automaton},
+    automaton::{Automaton, AutomatonError, State, TransitionType},
     re::Regex,
 };
 
@@ -291,7 +291,7 @@ impl ConstraintEncoder for NFAEncoder {
 }
 
 impl RegularConstraintEncoder for NFAEncoder {
-    fn new(mut re_constraint: RegularConstraint, sign: bool) -> Result<Self, Error> {
+    fn new(mut re_constraint: RegularConstraint) -> Result<Self, Error> {
         let illegal_pattern_msg = format!(
             "NFA encode can only handle single variables as LHS, but got {}",
             re_constraint.get_pattern()
@@ -314,7 +314,7 @@ impl RegularConstraintEncoder for NFAEncoder {
         Ok(Self {
             var,
             nfa,
-            sign,
+            sign: re_constraint.get_type().is_in(),
             regex: re_constraint.get_re().clone(),
             last_bound: None,
             reach_vars: IndexMap::new(),
@@ -346,7 +346,7 @@ mod test {
         },
         instance::Instance,
         model::{
-            constraints::{Pattern, RegularConstraint},
+            constraints::{Pattern, RegularConstraintType},
             Sort, Variable,
         },
     };
@@ -358,8 +358,12 @@ mod test {
         let mut alph = IndexSet::from_iter(re.alphabet().into_iter());
         alph.insert('a');
 
-        let constraint = RegularConstraint::new(re.clone(), Pattern::variable(var));
-        let mut encoder = NFAEncoder::new(constraint, true).unwrap();
+        let constraint = RegularConstraint::new(
+            re.clone(),
+            Pattern::variable(var),
+            RegularConstraintType::In,
+        );
+        let mut encoder = NFAEncoder::new(constraint).unwrap();
         let mut dom_encoder = DomainEncoder::new(alph);
         let mut solver: Solver = cadical::Solver::default();
 

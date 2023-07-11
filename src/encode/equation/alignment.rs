@@ -706,11 +706,11 @@ impl AlignmentEncoder {
 }
 
 impl WordEquationEncoder for AlignmentEncoder {
-    fn new(equation: WordEquation, sign: bool) -> Self {
+    fn new(equation: WordEquation) -> Self {
         let lhs_segs = SegmentedPattern::new(equation.lhs());
         let rhs_segs = SegmentedPattern::new(equation.rhs());
 
-        let eq_type = if sign {
+        let eq_type = if equation.eq_type().is_equality() {
             SolutionWord::Equality(WordEncoder::new())
         } else {
             SolutionWord::Inequality(WordEncoder::new(), WordEncoder::new())
@@ -856,7 +856,7 @@ impl ConstraintEncoder for AlignmentEncoder {
     }
 
     fn reset(&mut self) {
-        let new = Self::new(self.equation.clone(), self.eq_type.is_equality());
+        let new = Self::new(self.equation.clone());
         // Reset everything except the equation
         *self = new;
     }
@@ -965,7 +965,7 @@ mod tests {
         let subs_cnf = dom_encoder.encode(&bounds, &instance);
         encoding.join(subs_cnf);
 
-        let mut encoder = AlignmentEncoder::new(eq.clone(), true);
+        let mut encoder = AlignmentEncoder::new(eq.clone());
         encoding.join(encoder.encode(&bounds, dom_encoder.encoding()).unwrap());
 
         let mut solver: Solver = Solver::default();
@@ -1003,7 +1003,7 @@ mod tests {
     ) -> Option<bool> {
         let mut bounds = Bounds::with_defaults(IntDomain::Bounded(0, 1));
 
-        let mut encoder = AlignmentEncoder::new(eq.clone(), true);
+        let mut encoder = AlignmentEncoder::new(eq.clone());
         let mut instance: Instance = Instance::default();
         eq.variables()
             .iter()
@@ -1051,14 +1051,14 @@ mod tests {
 
     #[test]
     fn bindep_incremental_sat() {
-        let eq = WordEquation::parse_simple("abc", "X");
+        let eq = WordEquation::parse_simple_equality("abc", "X");
         let res = solve_bindep_incremental(&eq, 5, &eq.alphabet());
         assert!(matches!(res, Some(true)));
     }
 
     #[test]
     fn bindep_empty_eq() {
-        let eq = WordEquation::new(Pattern::from(vec![]), Pattern::from(vec![]));
+        let eq = WordEquation::new_equality(Pattern::from(vec![]), Pattern::from(vec![]));
         let bounds = Bounds::with_defaults(IntDomain::Bounded(0, 10));
         let res = solve_bindep(&eq, bounds, &eq.alphabet());
         assert!(matches!(res, Some(true)));
@@ -1066,7 +1066,7 @@ mod tests {
 
     #[test]
     fn bindep_trivial_sat_consts() {
-        let eq = WordEquation::constant("bar", "bar");
+        let eq = WordEquation::constant_equality("bar", "bar");
         let bounds = Bounds::with_defaults(IntDomain::Bounded(0, 10));
 
         let res = solve_bindep(&eq, bounds, &eq.alphabet());
@@ -1075,7 +1075,7 @@ mod tests {
 
     #[test]
     fn bindep_trivial_unsat_consts() {
-        let eq = WordEquation::constant("bar", "barr");
+        let eq = WordEquation::constant_equality("bar", "barr");
         let bounds = Bounds::with_defaults(IntDomain::Bounded(0, 10));
 
         let res = solve_bindep(&eq, bounds, &eq.alphabet());
@@ -1084,7 +1084,7 @@ mod tests {
 
     #[test]
     fn bindep_trivial_sat_const_var() {
-        let eq = WordEquation::new(
+        let eq = WordEquation::new_equality(
             Pattern::variable(&Variable::temp(Sort::String)),
             Pattern::constant("bar"),
         );
@@ -1098,7 +1098,7 @@ mod tests {
     #[test]
     fn bindep_trivial_sat_vars() {
         let var = Pattern::variable(&Variable::temp(Sort::String));
-        let eq = WordEquation::new(var.clone(), var);
+        let eq = WordEquation::new_equality(var.clone(), var);
         let bounds = Bounds::with_defaults(IntDomain::Bounded(0, 10));
         let res = solve_bindep(&eq, bounds, &eq.alphabet());
         assert!(matches!(res, Some(true)));
@@ -1113,7 +1113,7 @@ mod tests {
         lhs.append_var(&var_a).append_var(&var_b);
         let mut rhs = Pattern::empty();
         rhs.append_var(&var_b).append_var(&var_a);
-        let eq = WordEquation::new(lhs, rhs);
+        let eq = WordEquation::new_equality(lhs, rhs);
         let bounds = Bounds::with_defaults(IntDomain::Bounded(0, 10));
         let res = solve_bindep(&eq, bounds, &eq.alphabet());
         assert!(matches!(res, Some(true)));
@@ -1121,7 +1121,7 @@ mod tests {
 
     #[test]
     fn bindep_sat_pattern_const() {
-        let eq = WordEquation::parse_simple("aXc", "abc");
+        let eq = WordEquation::parse_simple_equality("aXc", "abc");
         let bounds = Bounds::with_defaults(IntDomain::Bounded(0, 1));
         let res = solve_bindep(&eq, bounds, &eq.alphabet());
         assert!(matches!(res, Some(true)));
@@ -1129,7 +1129,7 @@ mod tests {
 
     #[test]
     fn bindep_test() {
-        let eq = WordEquation::parse_simple("aXb", "YXb");
+        let eq = WordEquation::parse_simple_equality("aXb", "YXb");
         let bounds = Bounds::with_defaults(IntDomain::Bounded(0, 3));
         let res = solve_bindep(&eq, bounds, &eq.alphabet());
         assert!(matches!(res, Some(true)));
@@ -1137,7 +1137,7 @@ mod tests {
 
     #[test]
     fn bindep_trivial_unsat_const_var_too_small() {
-        let eq = WordEquation::new(
+        let eq = WordEquation::new_equality(
             Pattern::constant("foo"),
             Pattern::variable(&Variable::temp(Sort::String)),
         );
@@ -1150,7 +1150,10 @@ mod tests {
 
     #[test]
     fn bindep_sat_t1i74() {
-        let eq = WordEquation::parse_simple("A", "ebcaeccedbedefbfdFgbagebcbfacgadbefcffcgceeedd");
+        let eq = WordEquation::parse_simple_equality(
+            "A",
+            "ebcaeccedbedefbfdFgbagebcbfacgadbefcffcgceeedd",
+        );
         let bounds = Bounds::with_defaults(IntDomain::Bounded(0, 50));
         let res = solve_bindep(&eq, bounds, &eq.alphabet());
 
@@ -1158,7 +1161,10 @@ mod tests {
     }
     #[test]
     fn bindep_sat_t1i74_incremental() {
-        let eq = WordEquation::parse_simple("A", "ebcaeccedbedefbfdFgbagebcbfacgadbefcffcgceeedd");
+        let eq = WordEquation::parse_simple_equality(
+            "A",
+            "ebcaeccedbedefbfdFgbagebcbfacgadbefcffcgceeedd",
+        );
 
         let res = solve_bindep_incremental(&eq, 50, &eq.alphabet());
 
@@ -1167,7 +1173,7 @@ mod tests {
 
     #[test]
     fn bindep_sat_t1i1() {
-        let eq = WordEquation::parse_simple(
+        let eq = WordEquation::parse_simple_equality(
             "cfcbbAadeeaecAgebegeecafegebdbagddaadbddcaeeebfabfefabfacdgAgaabg",
             "AfcbbAaIegeeAaD",
         );
@@ -1178,7 +1184,7 @@ mod tests {
 
     #[test]
     fn bindep_sat_t1i97() {
-        let eq = WordEquation::parse_simple("AccAbccB", "CccAbDbcCcA");
+        let eq = WordEquation::parse_simple_equality("AccAbccB", "CccAbDbcCcA");
         let res = solve_bindep_incremental(&eq, 50, &eq.alphabet());
 
         assert!(matches!(res, Some(true)));

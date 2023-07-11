@@ -113,13 +113,10 @@ impl AbstractionSolver {
     /// Instatiates a new encoder for the given constraint.
     fn encoder_for_constraint(con: &Constraint) -> Result<Box<dyn ConstraintEncoder>, Error> {
         match con {
-            Constraint::WordEquation(eq, sign) => {
-                Ok(Box::new(AlignmentEncoder::new(eq.clone(), *sign)))
-            }
+            Constraint::WordEquation(eq) => Ok(Box::new(AlignmentEncoder::new(eq.clone()))),
+
             Constraint::LinearConstraint(lc) => Ok(Box::new(MddEncoder::new(lc.clone()))),
-            Constraint::RegularConstraint(rc, sign) => {
-                Ok(Box::new(NFAEncoder::new(rc.clone(), *sign)?))
-            }
+            Constraint::RegularConstraint(rc) => Ok(Box::new(NFAEncoder::new(rc.clone())?)),
         }
     }
 

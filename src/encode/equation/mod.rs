@@ -10,5 +10,5 @@ use crate::model::constraints::WordEquation;
 use super::ConstraintEncoder;
 
 pub trait WordEquationEncoder: ConstraintEncoder {
-    fn new(equation: WordEquation, sign: bool) -> Self;
+    fn new(equation: WordEquation) -> Self;
 }

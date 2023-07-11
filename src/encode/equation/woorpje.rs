@@ -293,8 +293,8 @@ impl ConstraintEncoder for WoorpjeEncoder {
 }
 
 impl WordEquationEncoder for WoorpjeEncoder {
-    fn new(equation: WordEquation, sign: bool) -> Self {
-        if !sign {
+    fn new(equation: WordEquation) -> Self {
+        if equation.eq_type().is_inequality() {
             panic!("WoorpjeEncoder does not support inequalities")
         }
         Self {
@@ -385,7 +385,7 @@ mod tests {
         let subs_cnf = dom_encoder.encode(&bounds, &vm);
         encoding.join(subs_cnf);
 
-        let mut encoder = WoorpjeEncoder::new(eq.clone(), true);
+        let mut encoder = WoorpjeEncoder::new(eq.clone());
         encoding.join(encoder.encode(&bounds, dom_encoder.encoding()).unwrap());
 
         let mut solver: Solver = Solver::default();
@@ -434,7 +434,7 @@ mod tests {
 
     #[test]
     fn woorpje_empty_eq() {
-        let eq = WordEquation::new(Pattern::from(vec![]), Pattern::from(vec![]));
+        let eq = WordEquation::new_equality(Pattern::from(vec![]), Pattern::from(vec![]));
         let bounds = Bounds::with_defaults(IntDomain::Bounded(0, 10));
         let res = solve_woorpje(&eq, bounds, &eq.alphabet());
         assert!(matches!(res, Some(true)));
@@ -442,7 +442,7 @@ mod tests {
 
     #[test]
     fn woorpje_trivial_sat_consts() {
-        let eq = WordEquation::constant("bar", "bar");
+        let eq = WordEquation::constant_equality("bar", "bar");
         let bounds = Bounds::with_defaults(IntDomain::Bounded(0, 10));
 
         let res = solve_woorpje(&eq, bounds, &eq.alphabet());
@@ -451,7 +451,7 @@ mod tests {
 
     #[test]
     fn woorpje_trivial_unsat_consts() {
-        let eq = WordEquation::constant("bar", "barr");
+        let eq = WordEquation::constant_equality("bar", "barr");
         let bounds = Bounds::with_defaults(IntDomain::Bounded(0, 10));
 
         let res = solve_woorpje(&eq, bounds, &eq.alphabet());
@@ -460,7 +460,7 @@ mod tests {
 
     #[test]
     fn woorpje_trivial_sat_const_var() {
-        let eq = WordEquation::new(
+        let eq = WordEquation::new_equality(
             Pattern::constant("bar"),
             Pattern::variable(&Variable::temp(Sort::String)),
         );
@@ -474,7 +474,7 @@ mod tests {
     #[test]
     fn woorpje_trivial_sat_vars() {
         let var = Pattern::variable(&Variable::temp(Sort::String));
-        let eq = WordEquation::new(var.clone(), var);
+        let eq = WordEquation::new_equality(var.clone(), var);
         let bounds = Bounds::with_defaults(IntDomain::Bounded(0, 10));
         let res = solve_woorpje(&eq, bounds, &eq.alphabet());
         assert!(matches!(res, Some(true)));
@@ -490,7 +490,7 @@ mod tests {
         lhs.append_var(&var_a).append_var(&var_b);
         let mut rhs = Pattern::empty();
         rhs.append_var(&var_b).append_var(&var_a);
-        let eq = WordEquation::new(lhs, rhs);
+        let eq = WordEquation::new_equality(lhs, rhs);
         let bounds = Bounds::with_defaults(IntDomain::Bounded(0, 10));
         let res = solve_woorpje(&eq, bounds, &eq.alphabet());
         assert!(matches!(res, Some(true)));
@@ -503,7 +503,7 @@ mod tests {
         let mut lhs = Pattern::empty();
         lhs.append_word("a").append_var(&var_a).append_word("c");
         let rhs = Pattern::constant("abc");
-        let eq = WordEquation::new(lhs, rhs);
+        let eq = WordEquation::new_equality(lhs, rhs);
         let bounds = Bounds::with_defaults(IntDomain::Bounded(0, 3));
         let res = solve_woorpje(&eq, bounds, &eq.alphabet());
         assert!(matches!(res, Some(true)));
@@ -511,7 +511,7 @@ mod tests {
 
     #[test]
     fn woorpje_trivial_unsat_const_var_too_small() {
-        let eq = WordEquation::new(
+        let eq = WordEquation::new_equality(
             Pattern::constant("foo"),
             Pattern::variable(&Variable::temp(Sort::String)),
         );
@@ -585,7 +585,7 @@ mod tests {
             "AbbHabbAbbaHeFcadEbdeHbAcacdebabccAecbcdH"
         );
 
-        let eq = WordEquation::new(lhs.clone(), rhs.clone());
+        let eq = WordEquation::new_equality(lhs.clone(), rhs.clone());
         let solution: HashMap<Variable, Vec<char>> = HashMap::from([
             (var_a.clone(), "a".chars().collect()),
             (var_b.clone(), "abbd".chars().collect()),

@@ -21,12 +21,12 @@ use super::{
 pub enum Constraint {
     /// A word equation is a constraint of the form `a = b`, where `a` and `b` are [Pattern].
     /// If the second argument is `true`, the equation is interpreted as a disequation, i.e., `a != b`.
-    WordEquation(WordEquation, bool),
+    WordEquation(WordEquation),
     /// A linear arithmetic constraint is a constraint of the form `a # b`, where `a` and `b` are [LinearArithTerm] and `#` is a variant of [LinearConstraintType] .
     LinearConstraint(LinearConstraint),
     /// A regular constraint is a constraint of the form `a in b`, where `a` is a [Pattern] and `b` is a [RegularConstraint].
     /// If the second argument is `true`, the constraint is interpreted as `a not in b`.
-    RegularConstraint(RegularConstraint, bool),
+    RegularConstraint(RegularConstraint),
 }
 
 /* Conversions between constraints and predicates */
@@ -38,7 +38,10 @@ impl TryFrom<Literal> for Constraint {
         match value {
             Literal::Pos(Atom::Predicate(predicate)) => Constraint::try_from(predicate),
             Literal::Neg(Atom::Predicate(predicate)) => match Constraint::try_from(predicate)? {
-                Constraint::WordEquation(eq, _) => Ok(Constraint::WordEquation(eq, false)),
+                Constraint::WordEquation(mut eq) => {
+                    eq.set_inequality();
+                    Ok(Constraint::WordEquation(eq))
+                }
                 Constraint::LinearConstraint(mut l) => match l.typ {
                     LinearConstraintType::Eq => {
                         l.typ = LinearConstraintType::Ineq;
@@ -65,7 +68,10 @@ impl TryFrom<Literal> for Constraint {
                         Ok(Constraint::LinearConstraint(l))
                     }
                 },
-                Constraint::RegularConstraint(r, _) => Ok(Constraint::RegularConstraint(r, false)),
+                Constraint::RegularConstraint(mut r) => {
+                    r.set_type_notin();
+                    Ok(Constraint::RegularConstraint(r))
+                }
             },
             _ => Err(Error::SolverError(format!("Not a constrait {}", value))),
         }
@@ -78,7 +84,7 @@ impl TryFrom<Predicate> for Constraint {
     fn try_from(value: Predicate) -> Result<Self, Self::Error> {
         match value {
             Predicate::Equality(Term::String(lhs), Term::String(rhs)) => Ok(
-                Constraint::WordEquation(WordEquation::new(lhs.into(), rhs.into()), true),
+                Constraint::WordEquation(WordEquation::new_equality(lhs.into(), rhs.into())),
             ),
             Predicate::Equality(Term::Int(lhs), Term::Int(rhs)) => {
                 let lin_lhs = LinearArithTerm::from(lhs);
@@ -111,8 +117,8 @@ impl TryFrom<Predicate> for Constraint {
                 Ok(Constraint::LinearConstraint(con))
             }
             Predicate::In(Term::String(pat), Term::Regular(re)) => {
-                let con = RegularConstraint::new(re.try_into()?, pat.into());
-                Ok(Constraint::RegularConstraint(con, true))
+                let con = RegularConstraint::new_in(re.try_into()?, pat.into());
+                Ok(Constraint::RegularConstraint(con))
             }
             // Unsupported
             Predicate::Leq(Term::String(_), Term::String(_))
@@ -160,7 +166,7 @@ impl TryFrom<Predicate> for WordEquation {
     fn try_from(value: Predicate) -> Result<Self, Self::Error> {
         match value {
             Predicate::Equality(Term::String(lhs), Term::String(rhs)) => {
-                Ok(Self::new(lhs.into(), rhs.into()))
+                Ok(Self::new_equality(lhs.into(), rhs.into()))
             }
             _ => Err(()),
         }
@@ -186,6 +192,6 @@ impl From<WordEquation> for Formula {
 
 impl From<(StringTerm, StringTerm)> for WordEquation {
     fn from(value: (StringTerm, StringTerm)) -> Self {
-        Self::new(value.0.into(), value.1.into())
+        Self::new_equality(value.0.into(), value.1.into())
     }
 }

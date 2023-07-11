@@ -348,24 +348,58 @@ impl IntoIterator for Pattern {
     }
 }
 
+/// The type of a word equation.
+/// This is either an equality or an inequality.
+#[derive(Clone, Debug, PartialEq, Hash, Eq, Copy)]
+pub enum WordEquationType {
+    /// An equality of the form `lhs = rhs`.
+    Equality,
+    /// An inequality of the form `lhs != rhs`.
+    Inequality,
+}
+
+impl WordEquationType {
+    pub fn is_equality(&self) -> bool {
+        matches!(self, Self::Equality)
+    }
+
+    pub fn is_inequality(&self) -> bool {
+        matches!(self, Self::Inequality)
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Hash, Eq)]
 pub struct WordEquation {
     lhs: Pattern,
     rhs: Pattern,
+    eq_type: WordEquationType,
 }
 
 impl WordEquation {
-    pub fn new(lhs: Pattern, rhs: Pattern) -> Self {
-        Self { lhs, rhs }
+    /// Creates a new word equation of the form `lhs = rhs` or `lhs != rhs`.
+    pub fn new(lhs: Pattern, rhs: Pattern, eq_type: WordEquationType) -> Self {
+        Self { lhs, rhs, eq_type }
+    }
+
+    /// Creates a new word equation of the form `lhs = rhs`.
+    pub fn new_equality(lhs: Pattern, rhs: Pattern) -> Self {
+        Self::new(lhs, rhs, WordEquationType::Equality)
     }
 
     /// Returns the empty word equation.
-    pub fn empty() -> Self {
-        Self::new(Pattern::empty(), Pattern::empty())
+    pub fn empty_equation() -> Self {
+        Self::new(
+            Pattern::empty(),
+            Pattern::empty(),
+            WordEquationType::Equality,
+        )
     }
 
+    pub fn eq_type(&self) -> WordEquationType {
+        self.eq_type
+    }
     /// Parses a word equation from two strings, where lowercase chars are interpreted as constants and uppercase chars are interpreted as variables.
-    pub fn parse_simple(lhs: &str, rhs: &str) -> Self {
+    pub fn parse_simple_equality(lhs: &str, rhs: &str) -> Self {
         let mut pat_lhs = Pattern::empty();
         for c in lhs.chars() {
             if c.is_lowercase() {
@@ -382,12 +416,21 @@ impl WordEquation {
                 pat_rhs.append_var(&Variable::new(c.to_string(), Sort::String));
             }
         }
-        Self::new(pat_lhs, pat_rhs)
+        Self::new(pat_lhs, pat_rhs, WordEquationType::Equality)
     }
 
     /// Creates a new equation from two constant strings.
-    pub fn constant(lhs: &str, rhs: &str) -> Self {
-        Self::new(Pattern::constant(lhs), Pattern::constant(rhs))
+    pub fn constant_equality(lhs: &str, rhs: &str) -> Self {
+        Self::new(
+            Pattern::constant(lhs),
+            Pattern::constant(rhs),
+            WordEquationType::Equality,
+        )
+    }
+
+    /// Sets the equation type to inequality.
+    pub fn set_inequality(&mut self) {
+        self.eq_type = WordEquationType::Inequality;
     }
 
     pub fn lhs(&self) -> &Pattern {
@@ -400,7 +443,7 @@ impl WordEquation {
 
     /// Reverses both sides of the equation.
     pub fn reverse(&self) -> Self {
-        Self::new(self.rhs.reversed(), self.lhs.reversed())
+        Self::new(self.rhs.reversed(), self.lhs.reversed(), self.eq_type)
     }
 
     pub fn variables(&self) -> IndexSet<Variable> {
@@ -424,11 +467,32 @@ impl WordEquation {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
+pub enum RegularConstraintType {
+    /// The pattern must be contained in the language of the regular expression.
+    In,
+    /// The pattern must not be contained in the language of the regular expression.
+    NotInt,
+}
+
+impl RegularConstraintType {
+    pub fn is_in(&self) -> bool {
+        matches!(self, Self::In)
+    }
+
+    pub fn is_not_in(&self) -> bool {
+        matches!(self, Self::NotInt)
+    }
+}
+
 /// Represents a constraint on a pattern to be contained in a regular language, given by a regular expression
 #[derive(Debug, Clone)]
 pub struct RegularConstraint {
     /// The variable that is constrained by the regular expression.
     pattern: Pattern,
+
+    /// Operator
+    re_type: RegularConstraintType,
 
     /// The regular expression
     re: Regex<char>,
@@ -439,12 +503,19 @@ pub struct RegularConstraint {
 }
 
 impl RegularConstraint {
-    pub fn new(re: Regex<char>, pattern: Pattern) -> Self {
+    /// Creates a new constraint that either requires the pattern to be contained in the language of the regular expression or not.
+    pub fn new(re: Regex<char>, pattern: Pattern, re_type: RegularConstraintType) -> Self {
         Self {
             re,
             pattern,
+            re_type,
             automaton: None,
         }
+    }
+
+    /// Creates a new constraint that requires the pattern to be contained in the language of the regular expression.
+    pub fn new_in(re: Regex<char>, pattern: Pattern) -> Self {
+        Self::new(re, pattern, RegularConstraintType::In)
     }
 
     /// Compiles the regular expression into an NFA and stores it in the constraint.
@@ -478,9 +549,24 @@ impl RegularConstraint {
         &self.pattern
     }
 
+    /// Returns the operator
+    pub fn get_type(&self) -> RegularConstraintType {
+        self.re_type
+    }
+
+    /// Sets the operator to `NotContains`
+    pub fn set_type_notin(&mut self) {
+        self.re_type = RegularConstraintType::NotInt;
+    }
+
     /// Returns the regular expression
     pub fn get_re(&self) -> &Regex<char> {
         &self.re
+    }
+
+    /// Return `true` iff the pattern is a single variable.
+    pub fn single_var_pattern(&self) -> bool {
+        self.pattern.len() == 1 && self.pattern.first().unwrap().is_variable()
     }
 
     /// Returns the NFA that accepts the language of the regular expression.
@@ -531,6 +617,7 @@ impl Substitutable for WordEquation {
         Self::new(
             self.lhs.apply_substitution(sub),
             self.rhs.apply_substitution(sub),
+            self.eq_type,
         )
     }
 }
@@ -677,7 +764,13 @@ impl Arbitrary for Pattern {
 
 impl Arbitrary for WordEquation {
     fn arbitrary(g: &mut quickcheck::Gen) -> Self {
-        WordEquation::new(Pattern::arbitrary(g), Pattern::arbitrary(g))
+        WordEquation::new(
+            Pattern::arbitrary(g),
+            Pattern::arbitrary(g),
+            g.choose(&[WordEquationType::Equality, WordEquationType::Inequality])
+                .unwrap()
+                .clone(),
+        )
     }
 }
 

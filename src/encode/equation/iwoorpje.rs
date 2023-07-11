@@ -528,8 +528,8 @@ impl IWoorpjeEncoder {
 }
 
 impl WordEquationEncoder for IWoorpjeEncoder {
-    fn new(equation: WordEquation, sing: bool) -> Self {
-        if !sing {
+    fn new(equation: WordEquation) -> Self {
+        if equation.eq_type().is_inequality() {
             panic!("IWoorpjeEncoder does not support inequalities")
         }
         Self {
@@ -584,7 +584,7 @@ impl ConstraintEncoder for IWoorpjeEncoder {
     }
 
     fn reset(&mut self) {
-        let new = Self::new(self.equation.clone(), true);
+        let new = Self::new(self.equation.clone());
         // Reset everything except the equation
         *self = new;
     }
@@ -619,7 +619,7 @@ mod tests {
         let subs_cnf = dom_encoder.encode(&bounds, &instance);
 
         encoding.join(subs_cnf);
-        let mut encoder = IWoorpjeEncoder::new(eq.clone(), true);
+        let mut encoder = IWoorpjeEncoder::new(eq.clone());
         encoding.join(encoder.encode(&bounds, dom_encoder.encoding()).unwrap());
 
         let mut solver: Solver = Solver::default();
@@ -656,7 +656,7 @@ mod tests {
     ) -> Option<bool> {
         let mut bounds = Bounds::with_defaults(IntDomain::Bounded(0, 1));
 
-        let mut encoder = IWoorpjeEncoder::new(eq.clone(), true);
+        let mut encoder = IWoorpjeEncoder::new(eq.clone());
         let mut instance = Instance::default();
         eq.variables().iter().for_each(|v| {
             instance.add_var(v.clone());
@@ -702,14 +702,14 @@ mod tests {
 
     #[test]
     fn iwoorpje_incremental_sat() {
-        let eq = WordEquation::parse_simple("abc", "X");
+        let eq = WordEquation::parse_simple_equality("abc", "X");
         let res = solve_iwoorpje_incremental(&eq, 10, &eq.alphabet());
         assert!(matches!(res, Some(true)));
     }
 
     #[test]
     fn iwoorpje_empty_eq() {
-        let eq = WordEquation::new(Pattern::from(vec![]), Pattern::from(vec![]));
+        let eq = WordEquation::new_equality(Pattern::from(vec![]), Pattern::from(vec![]));
         let bounds = Bounds::with_defaults(IntDomain::Bounded(0, 10));
         let res = solve_iwoorpje(&eq, bounds, &eq.alphabet());
         assert!(matches!(res, Some(true)));
@@ -717,7 +717,7 @@ mod tests {
 
     #[test]
     fn iwoorpje_trivial_sat_consts() {
-        let eq = WordEquation::constant("bar", "bar");
+        let eq = WordEquation::constant_equality("bar", "bar");
         let bounds = Bounds::with_defaults(IntDomain::Bounded(0, 10));
 
         let res = solve_iwoorpje(&eq, bounds, &eq.alphabet());
@@ -726,7 +726,7 @@ mod tests {
 
     #[test]
     fn iwoorpje_trivial_unsat_consts() {
-        let eq = WordEquation::constant("bar", "barr");
+        let eq = WordEquation::constant_equality("bar", "barr");
         let bounds = Bounds::with_defaults(IntDomain::Bounded(0, 10));
 
         let res = solve_iwoorpje(&eq, bounds, &eq.alphabet());
@@ -735,7 +735,7 @@ mod tests {
 
     #[test]
     fn iwoorpje_trivial_sat_const_var() {
-        let eq = WordEquation::parse_simple("X", "bar");
+        let eq = WordEquation::parse_simple_equality("X", "bar");
 
         let bounds = Bounds::with_defaults(IntDomain::Bounded(0, 5));
 
@@ -746,7 +746,7 @@ mod tests {
     #[test]
     fn iwoorpje_trivial_sat_vars() {
         let var = Pattern::variable(&Variable::temp(Sort::String));
-        let eq = WordEquation::new(var.clone(), var);
+        let eq = WordEquation::new_equality(var.clone(), var);
         let bounds = Bounds::with_defaults(IntDomain::Bounded(0, 10));
         let res = solve_iwoorpje(&eq, bounds, &eq.alphabet());
         assert!(matches!(res, Some(true)));
@@ -761,7 +761,7 @@ mod tests {
         lhs.append_var(&var_a).append_var(&var_b);
         let mut rhs = Pattern::empty();
         rhs.append_var(&var_b).append_var(&var_a);
-        let eq = WordEquation::new(lhs, rhs);
+        let eq = WordEquation::new_equality(lhs, rhs);
         let bounds = Bounds::with_defaults(IntDomain::Bounded(0, 10));
         let res = solve_iwoorpje(&eq, bounds, &eq.alphabet());
         assert!(matches!(res, Some(true)));
@@ -769,7 +769,7 @@ mod tests {
 
     #[test]
     fn iwoorpje_sat_pattern_const() {
-        let eq = WordEquation::parse_simple("aXc", "abc");
+        let eq = WordEquation::parse_simple_equality("aXc", "abc");
         let bounds = Bounds::with_defaults(IntDomain::Bounded(0, 1));
         let res = solve_iwoorpje(&eq, bounds, &eq.alphabet());
         assert!(matches!(res, Some(true)));
@@ -777,7 +777,7 @@ mod tests {
 
     #[test]
     fn iwoorpje_test() {
-        let eq = WordEquation::parse_simple("aXb", "YXb");
+        let eq = WordEquation::parse_simple_equality("aXb", "YXb");
         let bounds = Bounds::with_defaults(IntDomain::Bounded(0, 3));
         let res = solve_iwoorpje(&eq, bounds, &eq.alphabet());
         assert!(matches!(res, Some(true)));
@@ -785,7 +785,7 @@ mod tests {
 
     #[test]
     fn iwoorpje_trivial_unsat_const_var_too_small() {
-        let eq = WordEquation::new(
+        let eq = WordEquation::new_equality(
             Pattern::constant("foo"),
             Pattern::variable(&Variable::temp(Sort::String)),
         );
@@ -798,7 +798,7 @@ mod tests {
 
     #[test]
     fn iwoorpje_sat_t1i74() {
-        let eq = WordEquation::parse_simple("A", "dFg");
+        let eq = WordEquation::parse_simple_equality("A", "dFg");
 
         let res = solve_iwoorpje_incremental(&eq, 4, &eq.alphabet());
 
