@@ -369,16 +369,58 @@ impl WordEquationType {
 }
 
 #[derive(Clone, Debug, PartialEq, Hash, Eq)]
-pub struct WordEquation {
-    lhs: Pattern,
-    rhs: Pattern,
-    eq_type: WordEquationType,
+pub enum WordEquation {
+    Assignment {
+        lhs: Variable,
+        rhs: Vec<char>,
+        eq_type: WordEquationType,
+    },
+    VarEquality {
+        lhs: Variable,
+        rhs: Variable,
+        eq_type: WordEquationType,
+    },
+    Generic {
+        lhs: Pattern,
+        rhs: Pattern,
+        eq_type: WordEquationType,
+    },
 }
 
 impl WordEquation {
     /// Creates a new word equation of the form `lhs = rhs` or `lhs != rhs`.
     pub fn new(lhs: Pattern, rhs: Pattern, eq_type: WordEquationType) -> Self {
-        Self { lhs, rhs, eq_type }
+        if lhs.len() == 1 && rhs.len() == 1 {
+            if let Some(Symbol::Variable(v_lhs)) = lhs.first() {
+                if let Some(Symbol::Variable(v_rhs)) = rhs.first() {
+                    return Self::VarEquality {
+                        lhs: v_lhs.clone(),
+                        rhs: v_rhs.clone(),
+                        eq_type,
+                    };
+                }
+            }
+        }
+        if lhs.len() == 1 && rhs.is_constant() {
+            if let Some(Symbol::Variable(v_lhs)) = lhs.first() {
+                return Self::Assignment {
+                    lhs: v_lhs.clone(),
+                    rhs: rhs
+                        .symbols
+                        .iter()
+                        .map(|x| match x {
+                            Symbol::Constant(c) => *c,
+                            _ => unreachable!(),
+                        })
+                        .collect(),
+                    eq_type,
+                };
+            }
+        }
+        if rhs.len() == 1 && lhs.is_constant() {
+            return Self::new(rhs, lhs, eq_type);
+        }
+        Self::Generic { lhs, rhs, eq_type }
     }
 
     /// Creates a new word equation of the form `lhs = rhs`.
@@ -396,7 +438,11 @@ impl WordEquation {
     }
 
     pub fn eq_type(&self) -> WordEquationType {
-        self.eq_type
+        match self {
+            Self::Assignment { eq_type, .. } => *eq_type,
+            Self::VarEquality { eq_type, .. } => *eq_type,
+            Self::Generic { eq_type, .. } => *eq_type,
+        }
     }
     /// Parses a word equation from two strings, where lowercase chars are interpreted as constants and uppercase chars are interpreted as variables.
     pub fn parse_simple_equality(lhs: &str, rhs: &str) -> Self {
@@ -430,38 +476,54 @@ impl WordEquation {
 
     /// Sets the equation type to inequality.
     pub fn set_inequality(&mut self) {
-        self.eq_type = WordEquationType::Inequality;
+        match self {
+            Self::Assignment { eq_type, .. } => *eq_type = WordEquationType::Inequality,
+            Self::VarEquality { eq_type, .. } => *eq_type = WordEquationType::Inequality,
+            Self::Generic { eq_type, .. } => *eq_type = WordEquationType::Inequality,
+        }
     }
 
     pub fn lhs(&self) -> &Pattern {
-        &self.lhs
+        match self {
+            Self::Assignment { lhs, .. } => &Pattern::variable(lhs),
+            Self::VarEquality { lhs, .. } => &Pattern::variable(lhs),
+            Self::Generic { lhs, .. } => lhs,
+        }
     }
 
     pub fn rhs(&self) -> &Pattern {
-        &self.rhs
+        match self {
+            Self::Assignment { rhs, .. } => &Pattern::constant(&rhs.iter().collect::<String>()),
+            Self::VarEquality { rhs, .. } => &Pattern::variable(rhs),
+            Self::Generic { rhs, .. } => rhs,
+        }
     }
 
     /// Reverses both sides of the equation.
     pub fn reverse(&self) -> Self {
-        Self::new(self.rhs.reversed(), self.lhs.reversed(), self.eq_type)
+        Self::new(self.rhs().reversed(), self.lhs().reversed(), self.eq_type())
     }
 
     pub fn variables(&self) -> IndexSet<Variable> {
-        self.lhs.vars().union(&self.rhs.vars()).cloned().collect()
+        self.lhs()
+            .vars()
+            .union(&self.rhs().vars())
+            .cloned()
+            .collect()
     }
 
     /// Returns the set of symbols that occur in the equation.
     pub fn symbols(&self) -> IndexSet<Symbol> {
         let mut res = IndexSet::new();
-        res.extend(self.lhs.symbols().cloned());
-        res.extend(self.rhs.symbols().cloned());
+        res.extend(self.lhs().symbols().cloned());
+        res.extend(self.rhs().symbols().cloned());
         res
     }
 
     pub fn alphabet(&self) -> IndexSet<char> {
-        self.lhs
+        self.lhs()
             .alphabet()
-            .union(&self.rhs.alphabet())
+            .union(&self.rhs().alphabet())
             .cloned()
             .collect()
     }
@@ -615,9 +677,9 @@ impl Substitutable for Pattern {
 impl Substitutable for WordEquation {
     fn apply_substitution(&self, sub: &Substitution) -> Self {
         Self::new(
-            self.lhs.apply_substitution(sub),
-            self.rhs.apply_substitution(sub),
-            self.eq_type,
+            self.lhs().apply_substitution(sub),
+            self.rhs().apply_substitution(sub),
+            self.eq_type(),
         )
     }
 }
@@ -625,8 +687,8 @@ impl Substitutable for WordEquation {
 impl Evaluable for WordEquation {
     fn eval(&self, sub: &Substitution) -> Option<bool> {
         let substituted = self.apply_substitution(sub);
-        if substituted.lhs.is_constant() && substituted.rhs.is_constant() {
-            Some(substituted.lhs == substituted.rhs)
+        if substituted.lhs().is_constant() && substituted.rhs().is_constant() {
+            Some(substituted.lhs() == substituted.rhs())
         } else {
             None
         }
@@ -723,7 +785,7 @@ impl Display for Pattern {
 
 impl Display for WordEquation {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{} = {}", self.lhs, self.rhs)
+        write!(f, "{} = {}", self.lhs(), self.rhs())
     }
 }
 
