@@ -707,8 +707,8 @@ impl AlignmentEncoder {
 
 impl WordEquationEncoder for AlignmentEncoder {
     fn new(equation: WordEquation) -> Self {
-        let lhs_segs = SegmentedPattern::new(equation.lhs());
-        let rhs_segs = SegmentedPattern::new(equation.rhs());
+        let lhs_segs = SegmentedPattern::new(&equation.lhs());
+        let rhs_segs = SegmentedPattern::new(&equation.rhs());
 
         let eq_type = if equation.eq_type().is_equality() {
             SolutionWord::Equality(WordEncoder::new())
@@ -752,8 +752,8 @@ impl ConstraintEncoder for AlignmentEncoder {
         let mut res = EncodingResult::empty();
 
         let bound = max(
-            FilledPattern::fill(self.equation.lhs(), bounds).length(),
-            FilledPattern::fill(self.equation.rhs(), bounds).length(),
+            FilledPattern::fill(&self.equation.lhs(), bounds).length(),
+            FilledPattern::fill(&self.equation.rhs(), bounds).length(),
         );
         assert!(bound >= self.bound, "Bound cannot shrink");
 

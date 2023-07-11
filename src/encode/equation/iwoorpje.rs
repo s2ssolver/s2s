@@ -553,8 +553,8 @@ impl ConstraintEncoder for IWoorpjeEncoder {
         } else {
             EncodingResult::empty()
         };
-        let lhs = FilledPattern::fill(self.equation.lhs(), bounds);
-        let rhs = FilledPattern::fill(self.equation.rhs(), bounds);
+        let lhs = FilledPattern::fill(&self.equation.lhs(), bounds);
+        let rhs = FilledPattern::fill(&self.equation.rhs(), bounds);
         let prev = self.filled_equation.take();
         self.previous_filled_equation = prev;
         self.filled_equation = Some((lhs, rhs));

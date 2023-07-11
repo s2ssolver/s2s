@@ -631,7 +631,7 @@ mod tests {
         match WordEquationStripPrefixSuffix::strip_matches(&weq) {
             Some(stripped) => {
                 assert!(
-                    weq.lhs().contains(stripped.lhs()) && weq.rhs().contains(stripped.rhs()),
+                    weq.lhs().contains(&stripped.lhs()) && weq.rhs().contains(&stripped.rhs()),
                     "stripped: {}\n original: {}",
                     stripped,
                     weq

@@ -114,8 +114,8 @@ impl ConstraintEncoder for WoorpjeEncoder {
     ) -> Result<EncodingResult, Error> {
         let mut cnf = Cnf::new();
         let subs = dom_enc.string();
-        let lhs = FilledPattern::fill(self.equation.lhs(), bounds);
-        let rhs = FilledPattern::fill(self.equation.rhs(), bounds);
+        let lhs = FilledPattern::fill(&self.equation.lhs(), bounds);
+        let rhs = FilledPattern::fill(&self.equation.rhs(), bounds);
         log::trace!(
             "Encoding {} ({} x {})",
             self.equation,

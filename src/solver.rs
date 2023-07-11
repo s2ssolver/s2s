@@ -1,12 +1,12 @@
 use std::cmp::max;
 use std::collections::HashMap;
 
-use indexmap::IndexSet;
+use indexmap::{IndexMap, IndexSet};
 
 use std::time::Instant;
 
 use crate::abstr::{Abstraction, Definition, DefinitionType};
-use crate::bounds::{Bounds, IntDomain};
+use crate::bounds::{infer_bounds, Bounds, IntDomain};
 use crate::encode::{
     AlignmentEncoder, ConstraintEncoder, EncodingResult, MddEncoder, NFAEncoder,
     RegularConstraintEncoder, WordEquationEncoder,
@@ -16,7 +16,7 @@ use crate::error::Error;
 
 use crate::instance::Instance;
 use crate::model::constraints::{Symbol, WordEquation};
-use crate::model::formula::{Alphabet, Atom, Literal};
+use crate::model::formula::{Alphabet, Atom, Literal, NNFFormula};
 
 use crate::model::{Constraint, Substitution};
 use crate::model::{Sort, Variable};
@@ -101,9 +101,42 @@ impl BoundUpdate {
     }
 }
 
+struct ConstraintManager {
+    constraints: IndexMap<Literal, Constraint>,
+}
+
+impl ConstraintManager {
+    fn new() -> Self {
+        Self {
+            constraints: IndexMap::new(),
+        }
+    }
+
+    fn create(&mut self, lit: &Literal) -> Result<(), Error> {
+        if self.constraints.get(lit).is_none() {
+            let con = Constraint::try_from(lit.clone())?;
+            self.constraints.insert(lit.clone(), con.clone());
+        }
+        Ok(())
+    }
+
+    fn constraint_for_literal(&self, lit: &Literal) -> Option<&Constraint> {
+        self.constraints.get(lit)
+    }
+
+    fn from_literals(lits: &[&Literal]) -> Result<Self, Error> {
+        let mut cm = Self::new();
+        for lit in lits.iter() {
+            cm.create(lit)?;
+        }
+        Ok(cm)
+    }
+}
+
 struct AbstractionSolver {
     instance: Instance,
     alphabet: IndexSet<char>,
+    constraint_mng: ConstraintManager,
     encoders: HashMap<Definition, HashMap<bool, Box<dyn ConstraintEncoder>>>,
     abstraction: Abstraction,
     domain_encoder: DomainEncoder,
@@ -172,9 +205,13 @@ impl AbstractionSolver {
                 }
             }
         }
+        let cm = ConstraintManager::from_literals(
+            &NNFFormula::from(instance.get_formula().clone()).literals(),
+        )?;
 
         Ok(Self {
             instance,
+            constraint_mng: cm,
             alphabet,
             encoders,
             abstraction,
@@ -193,7 +230,7 @@ impl AbstractionSolver {
         let mut bounds = bounds.clone();
         if self.encoders.len() == 1 {
             // Check if the only constraint is a single (positive) word equation
-            if let Some((Constraint::WordEquation(eq, _), true)) =
+            if let Some((Constraint::WordEquation(eq), true)) =
                 self.encoders.keys().next().map(|d| {
                     (
                         d.get_pred().clone().try_into().unwrap(),
@@ -254,10 +291,25 @@ impl AbstractionSolver {
     }
 
     fn find_limit_upper_bound(&self) -> Result<Bounds, Error> {
-        let mut limit_bounds = Bounds::infer_bounds(
-            &self.instance.get_formula().to_nnf().asserted_literals(),
-            &self.instance,
-        )?;
+        let mut limit_bounds = if self.instance.get_formula().is_conjunctive() {
+            let asserted_constr = self
+                .instance
+                .get_formula()
+                .to_nnf()
+                .asserted_literals()
+                .iter()
+                .map(|lit| {
+                    self.constraint_mng
+                        .constraint_for_literal(lit)
+                        .unwrap()
+                        .clone()
+                })
+                .collect::<Vec<_>>();
+            infer_bounds(&asserted_constr, &self.instance)?
+        } else {
+            Bounds::new()
+        };
+
         // Make sure upper bounds for string variables are at least one, otherwise the encoding is not correct.
         // This will have negative effects on the performance of the solver, but avoids having to treat edge cases in the encoding(s).
         for v in self.instance.vars_of_sort(Sort::Int) {

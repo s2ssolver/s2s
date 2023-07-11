@@ -483,19 +483,19 @@ impl WordEquation {
         }
     }
 
-    pub fn lhs(&self) -> &Pattern {
+    pub fn lhs(&self) -> Pattern {
         match self {
-            Self::Assignment { lhs, .. } => &Pattern::variable(lhs),
-            Self::VarEquality { lhs, .. } => &Pattern::variable(lhs),
-            Self::Generic { lhs, .. } => lhs,
+            Self::Assignment { lhs, .. } => Pattern::variable(lhs),
+            Self::VarEquality { lhs, .. } => Pattern::variable(lhs),
+            Self::Generic { lhs, .. } => lhs.clone(),
         }
     }
 
-    pub fn rhs(&self) -> &Pattern {
+    pub fn rhs(&self) -> Pattern {
         match self {
-            Self::Assignment { rhs, .. } => &Pattern::constant(&rhs.iter().collect::<String>()),
-            Self::VarEquality { rhs, .. } => &Pattern::variable(rhs),
-            Self::Generic { rhs, .. } => rhs,
+            Self::Assignment { rhs, .. } => Pattern::constant(&rhs.iter().collect::<String>()),
+            Self::VarEquality { rhs, .. } => Pattern::variable(rhs),
+            Self::Generic { rhs, .. } => rhs.clone(),
         }
     }
 
@@ -534,7 +534,7 @@ pub enum RegularConstraintType {
     /// The pattern must be contained in the language of the regular expression.
     In,
     /// The pattern must not be contained in the language of the regular expression.
-    NotInt,
+    NotIn,
 }
 
 impl RegularConstraintType {
@@ -543,7 +543,7 @@ impl RegularConstraintType {
     }
 
     pub fn is_not_in(&self) -> bool {
-        matches!(self, Self::NotInt)
+        matches!(self, Self::NotIn)
     }
 }
 
@@ -618,7 +618,7 @@ impl RegularConstraint {
 
     /// Sets the operator to `NotContains`
     pub fn set_type_notin(&mut self) {
-        self.re_type = RegularConstraintType::NotInt;
+        self.re_type = RegularConstraintType::NotIn;
     }
 
     /// Returns the regular expression
