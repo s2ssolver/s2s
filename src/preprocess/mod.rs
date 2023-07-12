@@ -1,12 +1,13 @@
 mod formula;
 mod int;
+
 mod string;
 
 use crate::{
     instance::Instance,
     model::{
-        formula::{Atom, Formula, Predicate},
-        Substitutable, Substitution, Variable,
+        formula::{Formula, Literal, NNFFormula},
+        Substitutable, Substitution,
     },
     preprocess::{
         formula::ConjunctionSimplifier,
@@ -27,12 +28,12 @@ use self::string::{
 ///
 #[derive(Debug, Clone)]
 pub enum PreprocessingResult {
-    Changed(Formula),
-    Unchanged(Formula),
+    Changed(NNFFormula),
+    Unchanged(NNFFormula),
 }
 
 impl PreprocessingResult {
-    fn get_formula(&self) -> &Formula {
+    fn get_formula(&self) -> &NNFFormula {
         match self {
             PreprocessingResult::Changed(f) => f,
             PreprocessingResult::Unchanged(f) => f,
@@ -54,21 +55,20 @@ impl Substitutable for PreprocessingResult {
 }
 
 trait Preprocessor {
-    fn apply_predicate(&mut self, predicate: Predicate, _is_asserted: bool) -> PreprocessingResult {
-        PreprocessingResult::Unchanged(Formula::predicate(predicate))
+    /// Initialize the preprocessor with the formula to preprocess.
+    /// Does not mutate the formula or return a new one.
+    /// Can be used for preprocessor-specific initialization.
+    fn init(&mut self, _formula: &Formula) {}
+
+    fn apply_literal(&mut self, literal: Literal, _is_asserted: bool) -> PreprocessingResult {
+        PreprocessingResult::Unchanged(NNFFormula::Literal(literal))
     }
 
-    fn apply_boolvar(&mut self, var: Variable, _is_asserted: bool) -> PreprocessingResult {
-        PreprocessingResult::Unchanged(Formula::boolvar(var))
-    }
-
-    fn apply_fm(&mut self, formula: Formula, is_asserted: bool) -> PreprocessingResult {
+    fn apply_fm(&mut self, formula: NNFFormula, is_asserted: bool) -> PreprocessingResult {
         match formula {
-            Formula::Atom(Atom::True) => PreprocessingResult::Unchanged(Formula::ttrue()),
-            Formula::Atom(Atom::False) => PreprocessingResult::Unchanged(Formula::ffalse()),
-            Formula::Atom(Atom::BoolVar(x)) => self.apply_boolvar(x, is_asserted),
-            Formula::Atom(Atom::Predicate(p)) => self.apply_predicate(p, is_asserted),
-            Formula::Or(fs) => {
+            NNFFormula::Literal(l) => self.apply_literal(l, is_asserted),
+
+            NNFFormula::Or(fs) => {
                 let mut changed = false;
                 let mut new_fs = Vec::new();
                 for f in fs {
@@ -80,14 +80,14 @@ trait Preprocessor {
                         }
                     }
                 }
-                let new_fm = Formula::or(new_fs);
+                let new_fm = NNFFormula::or(new_fs);
                 if changed {
                     PreprocessingResult::Changed(new_fm)
                 } else {
                     PreprocessingResult::Unchanged(new_fm)
                 }
             }
-            Formula::And(fs) => {
+            NNFFormula::And(fs) => {
                 let mut changed = false;
                 let mut new_fs = Vec::new();
                 for f in fs {
@@ -99,19 +99,13 @@ trait Preprocessor {
                         }
                     }
                 }
-                let new_fm = Formula::and(new_fs);
+                let new_fm = NNFFormula::and(new_fs);
                 if changed {
                     PreprocessingResult::Changed(new_fm)
                 } else {
                     PreprocessingResult::Unchanged(new_fm)
                 }
             }
-            Formula::Not(f) => match self.apply_fm(*f, false) {
-                PreprocessingResult::Unchanged(f) => {
-                    PreprocessingResult::Unchanged(Formula::not(f))
-                }
-                PreprocessingResult::Changed(f) => PreprocessingResult::Changed(Formula::not(f)),
-            },
         }
     }
 
@@ -123,7 +117,7 @@ trait Preprocessor {
         result
     }
 
-    fn apply(&mut self, formula: Formula) -> PreprocessingResult {
+    fn apply(&mut self, formula: NNFFormula) -> PreprocessingResult {
         let applied = self.apply_fm(formula, true);
 
         self.finalize(applied)
@@ -139,7 +133,7 @@ pub fn preprocess(instance: &Instance) -> (PreprocessingResult, Substitution) {
 
     //preprocessors.push(Box::new(WordEquationSubstitutions {}));
     let max_rounds = 10;
-    let mut preprocessed = PreprocessingResult::Unchanged(instance.get_formula().clone());
+    let mut preprocessed = PreprocessingResult::Unchanged(instance.get_formula().clone().into());
     for r in 0..max_rounds {
         let mut preprocessors: Vec<Box<dyn Preprocessor>> = vec![
             // Add preprocessors

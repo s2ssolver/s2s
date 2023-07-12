@@ -1,7 +1,10 @@
 //! Preprocessors for formulas
 
 use crate::{
-    model::{formula::Formula, Evaluable, Substitution},
+    model::{
+        formula::{Formula, NNFFormula},
+        Evaluable, Substitution,
+    },
     preprocess::Preprocessor,
     PreprocessingResult,
 };
@@ -27,10 +30,10 @@ impl Preprocessor for ConjunctionSimplifier {
         Self {}
     }
 
-    fn apply_fm(&mut self, formula: Formula, _is_asserted: bool) -> PreprocessingResult {
+    fn apply_fm(&mut self, formula: NNFFormula, _is_asserted: bool) -> PreprocessingResult {
         match formula {
-            Formula::Atom(_) => PreprocessingResult::Unchanged(formula),
-            Formula::Or(fs) => {
+            NNFFormula::Literal(_) => PreprocessingResult::Unchanged(formula),
+            NNFFormula::Or(fs) => {
                 let mut changed = false;
                 let mut new_fs = Vec::new();
                 for f in fs {
@@ -42,14 +45,14 @@ impl Preprocessor for ConjunctionSimplifier {
                         }
                     }
                 }
-                let new_fm: Formula = Formula::or(new_fs);
+                let new_fm = NNFFormula::Or(new_fs);
                 if changed {
                     PreprocessingResult::Changed(new_fm)
                 } else {
                     PreprocessingResult::Unchanged(new_fm)
                 }
             }
-            Formula::And(fs) => {
+            NNFFormula::And(fs) => {
                 let mut changed = false;
                 let mut new_fs = Vec::new();
                 for f in fs {
@@ -64,26 +67,20 @@ impl Preprocessor for ConjunctionSimplifier {
                     match pf.eval(&Substitution::new()) {
                         Some(true) => (),
                         Some(false) => {
-                            return PreprocessingResult::Changed(Formula::ffalse());
+                            return PreprocessingResult::Changed(Formula::ffalse().into());
                         }
                         None => {
                             new_fs.push(pf);
                         }
                     }
                 }
-                let new_fm = Formula::and(new_fs);
+                let new_fm = NNFFormula::And(new_fs);
                 if changed {
                     PreprocessingResult::Changed(new_fm)
                 } else {
                     PreprocessingResult::Unchanged(new_fm)
                 }
             }
-            Formula::Not(f) => match self.apply_fm(*f, _is_asserted) {
-                PreprocessingResult::Unchanged(f) => {
-                    PreprocessingResult::Unchanged(Formula::not(f))
-                }
-                PreprocessingResult::Changed(f) => PreprocessingResult::Changed(Formula::not(f)),
-            },
         }
     }
 }

@@ -2,7 +2,7 @@
 
 use crate::{
     model::{
-        formula::{Formula, Predicate},
+        formula::{Atom, Literal, NNFFormula, Predicate},
         terms::{IntTerm, Term},
         Substitution,
     },
@@ -30,84 +30,114 @@ impl Preprocessor for ConstIntReducer {
         Self::default()
     }
 
-    fn apply_predicate(&mut self, predicate: Predicate, _is_asserted: bool) -> PreprocessingResult {
-        match predicate {
-            Predicate::Equality(Term::Int(lhs), Term::Int(rhs)) => {
-                match (lhs.is_const(), rhs.is_const()) {
-                    (Some(l), Some(r)) => {
-                        if l == r {
-                            PreprocessingResult::Changed(Formula::ttrue())
-                        } else {
-                            PreprocessingResult::Changed(Formula::ffalse())
+    fn apply_literal(&mut self, literal: Literal, _is_asserted: bool) -> PreprocessingResult {
+        if let Atom::Predicate(p) = literal.atom() {
+            match p {
+                Predicate::Equality(Term::Int(lhs), Term::Int(rhs)) => {
+                    match (lhs.is_const(), rhs.is_const()) {
+                        (Some(l), Some(r)) => {
+                            if l == r {
+                                if literal.is_pos() {
+                                    PreprocessingResult::Changed(NNFFormula::ttrue())
+                                } else {
+                                    PreprocessingResult::Changed(NNFFormula::ffalse())
+                                }
+                            } else {
+                                if literal.is_pos() {
+                                    PreprocessingResult::Changed(NNFFormula::ffalse())
+                                } else {
+                                    PreprocessingResult::Changed(NNFFormula::ttrue())
+                                }
+                            }
                         }
+                        _ => PreprocessingResult::Unchanged(NNFFormula::Literal(literal)),
                     }
-                    _ => PreprocessingResult::Unchanged(Formula::predicate(Predicate::Equality(
-                        lhs.into(),
-                        rhs.into(),
-                    ))),
                 }
-            }
-            Predicate::Geq(Term::Int(lhs), Term::Int(rhs)) => {
-                match (lhs.is_const(), rhs.is_const()) {
-                    (Some(l), Some(r)) => {
-                        if l >= r {
-                            PreprocessingResult::Changed(Formula::ttrue())
-                        } else {
-                            PreprocessingResult::Changed(Formula::ffalse())
+                Predicate::Geq(Term::Int(lhs), Term::Int(rhs)) => {
+                    match (lhs.is_const(), rhs.is_const()) {
+                        (Some(l), Some(r)) => {
+                            if l >= r {
+                                if literal.is_pos() {
+                                    PreprocessingResult::Changed(NNFFormula::ttrue())
+                                } else {
+                                    PreprocessingResult::Changed(NNFFormula::ffalse())
+                                }
+                            } else {
+                                if literal.is_pos() {
+                                    PreprocessingResult::Changed(NNFFormula::ffalse())
+                                } else {
+                                    PreprocessingResult::Changed(NNFFormula::ttrue())
+                                }
+                            }
                         }
+                        _ => PreprocessingResult::Unchanged(NNFFormula::Literal(literal)),
                     }
-                    _ => PreprocessingResult::Unchanged(Formula::predicate(Predicate::Geq(
-                        lhs.into(),
-                        rhs.into(),
-                    ))),
                 }
-            }
-            Predicate::Greater(Term::Int(lhs), Term::Int(rhs)) => {
-                match (lhs.is_const(), rhs.is_const()) {
-                    (Some(l), Some(r)) => {
-                        if l > r {
-                            PreprocessingResult::Changed(Formula::ttrue())
-                        } else {
-                            PreprocessingResult::Changed(Formula::ffalse())
+                Predicate::Greater(Term::Int(lhs), Term::Int(rhs)) => {
+                    match (lhs.is_const(), rhs.is_const()) {
+                        (Some(l), Some(r)) => {
+                            if l > r {
+                                if literal.is_pos() {
+                                    PreprocessingResult::Changed(NNFFormula::ttrue())
+                                } else {
+                                    PreprocessingResult::Changed(NNFFormula::ffalse())
+                                }
+                            } else {
+                                if literal.is_pos() {
+                                    PreprocessingResult::Changed(NNFFormula::ffalse())
+                                } else {
+                                    PreprocessingResult::Changed(NNFFormula::ttrue())
+                                }
+                            }
                         }
+                        _ => PreprocessingResult::Unchanged(NNFFormula::Literal(literal)),
                     }
-                    _ => PreprocessingResult::Unchanged(Formula::predicate(Predicate::Greater(
-                        lhs.into(),
-                        rhs.into(),
-                    ))),
                 }
-            }
-            Predicate::Leq(Term::Int(lhs), Term::Int(rhs)) => {
-                match (lhs.is_const(), rhs.is_const()) {
-                    (Some(l), Some(r)) => {
-                        if l <= r {
-                            PreprocessingResult::Changed(Formula::ttrue())
-                        } else {
-                            PreprocessingResult::Changed(Formula::ffalse())
+                Predicate::Leq(Term::Int(lhs), Term::Int(rhs)) => {
+                    match (lhs.is_const(), rhs.is_const()) {
+                        (Some(l), Some(r)) => {
+                            if l <= r {
+                                if literal.is_pos() {
+                                    PreprocessingResult::Changed(NNFFormula::ttrue())
+                                } else {
+                                    PreprocessingResult::Changed(NNFFormula::ffalse())
+                                }
+                            } else {
+                                if literal.is_pos() {
+                                    PreprocessingResult::Changed(NNFFormula::ffalse())
+                                } else {
+                                    PreprocessingResult::Changed(NNFFormula::ttrue())
+                                }
+                            }
                         }
+                        _ => PreprocessingResult::Unchanged(NNFFormula::Literal(literal)),
                     }
-                    _ => PreprocessingResult::Unchanged(Formula::predicate(Predicate::Leq(
-                        lhs.into(),
-                        rhs.into(),
-                    ))),
                 }
-            }
-            Predicate::Less(Term::Int(lhs), Term::Int(rhs)) => {
-                match (lhs.is_const(), rhs.is_const()) {
-                    (Some(l), Some(r)) => {
-                        if l < r {
-                            PreprocessingResult::Changed(Formula::ttrue())
-                        } else {
-                            PreprocessingResult::Changed(Formula::ffalse())
+                Predicate::Less(Term::Int(lhs), Term::Int(rhs)) => {
+                    match (lhs.is_const(), rhs.is_const()) {
+                        (Some(l), Some(r)) => {
+                            if l < r {
+                                if literal.is_pos() {
+                                    PreprocessingResult::Changed(NNFFormula::ttrue())
+                                } else {
+                                    PreprocessingResult::Changed(NNFFormula::ffalse())
+                                }
+                            } else {
+                                if literal.is_pos() {
+                                    PreprocessingResult::Changed(NNFFormula::ffalse())
+                                } else {
+                                    PreprocessingResult::Changed(NNFFormula::ttrue())
+                                }
+                            }
                         }
+                        _ => PreprocessingResult::Unchanged(NNFFormula::Literal(literal)),
                     }
-                    _ => PreprocessingResult::Unchanged(Formula::predicate(Predicate::Less(
-                        lhs.into(),
-                        rhs.into(),
-                    ))),
                 }
+
+                _ => PreprocessingResult::Unchanged(NNFFormula::Literal(literal)),
             }
-            _ => PreprocessingResult::Unchanged(Formula::predicate(predicate)),
+        } else {
+            PreprocessingResult::Unchanged(NNFFormula::Literal(literal))
         }
     }
 }
@@ -135,16 +165,18 @@ impl Preprocessor for IntSubstitutions {
         }
     }
 
-    fn apply_predicate(&mut self, predicate: Predicate, is_asserted: bool) -> PreprocessingResult {
-        if is_asserted {
-            if let Predicate::Equality(Term::Int(lhs), Term::Int(rhs)) = &predicate {
-                if let IntTerm::Var(v) = lhs {
-                    self.substitutions.set(v, Term::Int(rhs.clone()));
-                } else if let IntTerm::Var(v) = rhs {
-                    self.substitutions.set(v, Term::Int(lhs.clone()));
+    fn apply_literal(&mut self, literal: Literal, is_asserted: bool) -> PreprocessingResult {
+        if is_asserted && literal.is_pos() {
+            if let Atom::Predicate(p) = literal.atom() {
+                if let Predicate::Equality(Term::Int(lhs), Term::Int(rhs)) = p {
+                    if let IntTerm::Var(v) = lhs {
+                        self.substitutions.set(v, Term::Int(rhs.clone()));
+                    } else if let IntTerm::Var(v) = rhs {
+                        self.substitutions.set(v, Term::Int(lhs.clone()));
+                    }
                 }
             }
         }
-        PreprocessingResult::Unchanged(Formula::predicate(predicate))
+        PreprocessingResult::Unchanged(NNFFormula::Literal(literal))
     }
 }

@@ -40,7 +40,7 @@ pub fn solve(instance: &mut Instance) -> Result<SolverResult, Error> {
         }
         (PreprocessingResult::Changed(c), s) => {
             subs = s;
-            instance.set_formula(c)
+            instance.set_formula(c.into())
         }
     }
     log::info!("Preprocessing done ({}ms).", ts.elapsed().as_millis());

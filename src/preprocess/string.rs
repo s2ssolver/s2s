@@ -1,13 +1,14 @@
 //! Contains preprocessing rules for string constraints.
 
-use std::{cmp::min, fmt::Display};
+use std::{cmp::min, collections::HashMap, fmt::Display};
 
-use indexmap::IndexMap;
+use indexmap::{IndexMap, IndexSet};
+use regulaer::{re::CharRegex, RegLang};
 
 use crate::model::{
     constraints::{Pattern, Symbol, WordEquation},
-    formula::{Formula, Predicate},
-    terms::{StringTerm, Term},
+    formula::{Alphabet, Atom, Formula, Literal, NNFFormula, Predicate},
+    terms::{ReTerm, StringTerm, Term},
     Substitution, Variable,
 };
 
@@ -76,21 +77,27 @@ impl Preprocessor for WordEquationStripPrefixSuffix {
         String::from("Word Equation Stripping")
     }
 
-    fn apply_predicate(&mut self, predicate: Predicate, _is_asserted: bool) -> PreprocessingResult {
-        match predicate {
+    fn apply_literal(&mut self, literal: Literal, _is_asserted: bool) -> PreprocessingResult {
+        if literal.is_pos() {
+            if let Atom::Predicate(p) = literal.atom() {
+                match p {
             Predicate::Equality(Term::String(lhs), Term::String(rhs)) => {
-                let lhs = Pattern::from(lhs);
-                let rhs = Pattern::from(rhs);
+                        let lhs = Pattern::from(lhs.clone());
+                        let rhs = Pattern::from(rhs.clone());
                 let eq = WordEquation::new_equality(lhs, rhs);
-                match Self::strip_matches(&eq) {
-                    Some(stripped) => {
-                        PreprocessingResult::Changed(Formula::predicate(stripped.into()))
+                        if let Some(stripped) = Self::strip_matches(&eq) {
+                            return PreprocessingResult::Changed(NNFFormula::predicate(
+                                stripped.into(),
+                                true,
+                            ));
                     }
-                    None => PreprocessingResult::Unchanged(Formula::predicate(eq.into())),
                 }
+                    _ => {}
             }
-            _ => PreprocessingResult::Unchanged(Formula::predicate(predicate)),
         }
+    }
+
+        PreprocessingResult::Unchanged(NNFFormula::Literal(literal))
     }
 
     fn new() -> Self
@@ -126,28 +133,25 @@ impl WordEquationConstMatching {
 }
 
 impl Preprocessor for WordEquationConstMatching {
-    fn apply_predicate(&mut self, predicate: Predicate, _is_asserted: bool) -> PreprocessingResult {
-        match predicate {
+    fn apply_literal(&mut self, literal: Literal, _is_asserted: bool) -> PreprocessingResult {
+        if let Atom::Predicate(p) = literal.atom() {
+            match p {
             Predicate::Equality(Term::String(lhs), Term::String(rhs)) => {
-                let lhs = Pattern::from(lhs);
-                let rhs = Pattern::from(rhs);
+                    let lhs = Pattern::from(lhs.clone());
+                    let rhs = Pattern::from(rhs.clone());
                 let eq = WordEquation::new_equality(lhs, rhs);
                 if !Self::consts_match(&eq) {
-                    PreprocessingResult::Unchanged(Formula::ffalse())
+                        if literal.is_pos() {
+                            return PreprocessingResult::Unchanged(NNFFormula::ffalse());
                 } else {
-                    PreprocessingResult::Unchanged(Formula::predicate(eq.into()))
+                            return PreprocessingResult::Unchanged(NNFFormula::ffalse());
                 }
             }
-            _ => PreprocessingResult::Unchanged(Formula::predicate(predicate)),
         }
+                _ => {}
     }
-
-    fn apply_boolvar(
-        &mut self,
-        var: crate::model::Variable,
-        _is_asserted: bool,
-    ) -> PreprocessingResult {
-        PreprocessingResult::Unchanged(Formula::boolvar(var))
+        }
+        return PreprocessingResult::Unchanged(NNFFormula::Literal(literal));
     }
 
     fn get_substitution(&self) -> Option<Substitution> {
@@ -192,20 +196,35 @@ impl WordEquationTrivial {
 }
 
 impl Preprocessor for WordEquationTrivial {
-    fn apply_predicate(&mut self, predicate: Predicate, _is_asserted: bool) -> PreprocessingResult {
-        match predicate {
+    fn apply_literal(&mut self, literal: Literal, _is_asserted: bool) -> PreprocessingResult {
+        if let Atom::Predicate(p) = literal.atom() {
+            match p {
             Predicate::Equality(Term::String(lhs), Term::String(rhs)) => {
-                let lhs = Pattern::from(lhs);
-                let rhs = Pattern::from(rhs);
+                    let lhs = Pattern::from(lhs.clone());
+                    let rhs = Pattern::from(rhs.clone());
                 let eq: WordEquation = WordEquation::new_equality(lhs, rhs);
                 match Self::is_trivial(&eq) {
-                    Some(true) => PreprocessingResult::Changed(Formula::ttrue()),
-                    Some(false) => PreprocessingResult::Changed(Formula::ffalse()),
-                    None => PreprocessingResult::Unchanged(Formula::predicate(eq.into())),
+                        Some(true) => {
+                            if literal.is_pos() {
+                                return PreprocessingResult::Changed(NNFFormula::ttrue());
+                            } else {
+                                return PreprocessingResult::Changed(NNFFormula::ffalse());
                 }
             }
-            _ => PreprocessingResult::Unchanged(Formula::predicate(predicate)),
+                        Some(false) => {
+                            if literal.is_pos() {
+                                return PreprocessingResult::Changed(NNFFormula::ffalse());
+                            } else {
+                                return PreprocessingResult::Changed(NNFFormula::ttrue());
         }
+    }
+                        None => {}
+                    }
+                }
+                _ => {}
+            }
+        }
+        return PreprocessingResult::Unchanged(NNFFormula::Literal(literal));
     }
 
     fn get_substitution(&self) -> Option<Substitution> {
@@ -435,14 +454,16 @@ impl WordEquationSubstitutions {
 }
 
 impl Preprocessor for WordEquationSubstitutions {
-    fn apply_predicate(&mut self, predicate: Predicate, is_asserted: bool) -> PreprocessingResult {
-        if !is_asserted {
-            return PreprocessingResult::Unchanged(Formula::predicate(predicate));
+    fn apply_literal(&mut self, literal: Literal, is_asserted: bool) -> PreprocessingResult {
+        if !is_asserted || literal.is_neg() {
+            return PreprocessingResult::Unchanged(NNFFormula::Literal(literal));
         }
         if !self.conflict {
-            if let Predicate::Equality(Term::String(lhs), Term::String(rhs)) = predicate.clone() {
-                let lhs = Pattern::from(lhs);
-                let rhs = Pattern::from(rhs);
+            if let Atom::Predicate(Predicate::Equality(Term::String(lhs), Term::String(rhs))) =
+                literal.atom()
+            {
+                let lhs = Pattern::from(lhs.clone());
+                let rhs = Pattern::from(rhs.clone());
                 let eq: WordEquation = WordEquation::new_equality(lhs, rhs);
                 if let Some(pc) = Self::derive_const_prefix(&eq) {
                     log::trace!("From {}: Inferred {}", eq, pc);
@@ -454,7 +475,7 @@ impl Preprocessor for WordEquationSubstitutions {
                 }
             }
         }
-        PreprocessingResult::Unchanged(Formula::predicate(predicate))
+        PreprocessingResult::Unchanged(NNFFormula::Literal(literal))
     }
 
     fn get_substitution(&self) -> Option<Substitution> {
@@ -495,7 +516,7 @@ impl Preprocessor for WordEquationSubstitutions {
 
     fn finalize(&mut self, result: PreprocessingResult) -> PreprocessingResult {
         if self.conflict {
-            PreprocessingResult::Changed(Formula::ffalse())
+            PreprocessingResult::Changed(NNFFormula::ffalse())
         } else {
             result
         }

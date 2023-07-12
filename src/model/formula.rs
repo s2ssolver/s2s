@@ -473,6 +473,143 @@ pub enum NNFFormula {
 }
 
 impl NNFFormula {
+    /// Returns the formula `true`.
+    /// This is a shortcut for `Formula::Atom(Atom::True)`.
+    ///
+    /// # Example
+    /// ```rust
+    /// use satstr::model::formula::{Formula, Atom};
+    /// assert_eq!(Formula::ttrue(), Formula::Atom(Atom::True));
+    /// ```
+    pub fn ttrue() -> Self {
+        Self::Literal(Literal::Pos(Atom::True))
+    }
+
+    /// Returns the formula `false`.
+    /// This is a shortcut for `Formula::Atom(Atom::False)`.
+    ///
+    /// # Example
+    /// ```rust
+    /// use satstr::model::formula::{Formula, Atom};
+    /// assert_eq!(Formula::ffalse(), Formula::Atom(Atom::False));
+    /// ```
+    pub fn ffalse() -> Self {
+        Self::Literal(Literal::Pos(Atom::False))
+    }
+
+    /// Creates a new formula only consisting of a single Boolean variable
+    ///
+    /// # Example
+    /// ```rust
+    /// use satstr::model::formula::{NNFFormula, Predicate, Atom, Literal};
+    /// use satstr::model::terms::Term;
+    /// use satstr::model::{Variable, Sort};
+    /// let x = Variable::new(String::from("x"), Sort::Bool);
+    /// assert_eq!(NNFFormula::boolvar(x.clone(), true), NNFFormula::Literal(Literal::Pos(Atom::BoolVar(x.clone()))));
+    /// assert_eq!(NNFFormula::boolvar(x.clone(), false), NNFFormula::Literal(Literal::Neg(Atom::BoolVar(x.clone()))));
+    /// ```
+    pub fn boolvar(var: Variable, sign: bool) -> Self {
+        if sign {
+            Self::Literal(Literal::Pos(Atom::BoolVar(var)))
+        } else {
+            Self::Literal(Literal::Neg(Atom::BoolVar(var)))
+        }
+    }
+
+    /// Creates a new formula only consisting of a single predicate with the given sign.
+    ///
+    /// # Example
+    /// ```rust
+    /// use satstr::model::formula::{NNFFormula, Predicate, Atom, Literal};
+    /// use satstr::model::terms::Term;
+    /// let pred = Predicate::Equality(Term::Int(1.into()), Term::Int(2.into()));
+    /// assert_eq!(NNFFormula::predicate(pred.clone(), true), NNFFormula::Literal(Literal::Pos(Atom::Predicate(pred.clone()))));
+    /// assert_eq!(NNFFormula::predicate(pred.clone(), false), NNFFormula::Literal(Literal::Neg(Atom::Predicate(pred.clone()))));
+    /// ```
+    pub fn predicate(pred: Predicate, sign: bool) -> Self {
+        if sign {
+            Self::Literal(Literal::Pos(Atom::Predicate(pred)))
+        } else {
+            Self::Literal(Literal::Neg(Atom::Predicate(pred)))
+        }
+    }
+
+    /// Creates the conjunction of the given formulas.
+    /// Performs some normalization:
+    /// - If one of the formulas is `false`, returns `false`
+    /// - If one of the formulas is `true`, removes it
+    /// - If one of the formulas is a conjunction, adds its conjuncts (i.e. flattens the formula)
+    ///
+    /// # Example
+    /// ```rust
+    /// use satstr::model::formula::{NNFFormula, Predicate, Literal, Atom};
+    /// use satstr::model::terms::Term;
+    ///
+    /// let f1 = NNFFormula::ffalse();
+    /// let f2 = NNFFormula::ttrue();
+    /// let f3 = NNFFormula::Literal(Literal::Pos(Atom::Predicate(Predicate::Equality(Term::Int(1.into()), Term::Int(2.into())))));
+    /// assert_eq!(NNFFormula::and(vec![f1.clone(), f2.clone(), f3.clone()]), f1);
+    /// assert_eq!(NNFFormula::and(vec![f2.clone(), f3.clone()]), f3);
+    /// ```
+    pub fn and(fs: Vec<NNFFormula>) -> Self {
+        let mut conjs = Vec::new();
+        for f in fs {
+            match f {
+                NNFFormula::And(fs) => conjs.extend(fs),
+                NNFFormula::Literal(Literal::Pos(Atom::False))
+                | NNFFormula::Literal(Literal::Neg(Atom::True)) => return Self::ffalse(),
+                NNFFormula::Literal(Literal::Pos(Atom::True))
+                | NNFFormula::Literal(Literal::Neg(Atom::False)) => (),
+                f => conjs.push(f),
+            }
+        }
+        if conjs.is_empty() {
+            Self::ttrue()
+        } else if conjs.len() == 1 {
+            conjs.into_iter().next().unwrap()
+        } else {
+            Self::And(conjs)
+        }
+    }
+
+    /// Creates the disjunction of the given formulas.
+    /// Performs some normalization:
+    /// - If one of the formulas is `true`, returns `true`
+    /// - If one of the formulas is `false`, removes it
+    /// - If one of the formulas is a disjunction, adds its disjuncts (i.e. flattens the formula)
+    ///
+    /// # Example
+    /// ```rust
+    /// use satstr::model::formula::{Formula, Predicate, NNFFormula, Literal, Atom};
+    /// use satstr::model::terms::Term;
+    ///
+    /// let f1 = NNFFormula::ffalse();
+    /// let f2 = NNFFormula::ttrue();
+    /// let f3 = NNFFormula::Literal(Literal::Pos(Atom::Predicate(Predicate::Equality(Term::Int(1.into()), Term::Int(2.into())))));
+    /// assert_eq!(NNFFormula::or(vec![f1.clone(), f2.clone(), f3.clone()]), f2);
+    /// assert_eq!(NNFFormula::or(vec![f1.clone(), f3.clone()]), f3);
+    /// ```
+    pub fn or(fs: Vec<NNFFormula>) -> Self {
+        let mut disj = Vec::new();
+        for f in fs {
+            match f {
+                NNFFormula::Or(fs) => disj.extend(fs),
+                NNFFormula::Literal(Literal::Pos(Atom::False))
+                | NNFFormula::Literal(Literal::Neg(Atom::True)) => (),
+                NNFFormula::Literal(Literal::Pos(Atom::True))
+                | NNFFormula::Literal(Literal::Neg(Atom::False)) => return Self::ttrue(),
+                f => disj.push(f),
+            }
+        }
+        if disj.is_empty() {
+            Self::ffalse()
+        } else if disj.len() == 1 {
+            disj.into_iter().next().unwrap()
+        } else {
+            Self::Or(disj)
+        }
+    }
+
     pub fn literals(&self) -> Vec<&Literal> {
         match self {
             NNFFormula::Literal(l) => vec![l],
@@ -491,14 +628,6 @@ impl NNFFormula {
                 .map(NNFFormula::literals)
                 .fold(Vec::new(), |acc, x| acc.into_iter().chain(x).collect()),
             NNFFormula::Or(_) => vec![],
-        }
-    }
-
-    pub fn boolvar(var: Variable, sign: bool) -> Self {
-        if sign {
-            Self::Literal(Literal::Pos(Atom::BoolVar(var)))
-        } else {
-            Self::Literal(Literal::Neg(Atom::BoolVar(var)))
         }
     }
 }
@@ -522,32 +651,7 @@ impl From<Formula> for NNFFormula {
     }
 }
 
-/* Substitution and Evaluation */
-
-impl Substitutable for Formula {
-    fn apply_substitution(&self, sub: &Substitution) -> Self {
-        match self {
-            Formula::Atom(Atom::True) => Formula::ttrue(),
-            Formula::Atom(Atom::False) => Formula::ffalse(),
-            Formula::Atom(Atom::BoolVar(v)) => {
-                if let Some(Term::Bool(f)) = sub.get(v) {
-                    return f.as_ref().clone();
-                } else {
-                    Formula::Atom(Atom::BoolVar(v.clone()))
-                }
-            }
-            Formula::Atom(Atom::Predicate(p)) => {
-                Formula::Atom(Atom::Predicate(p.apply_substitution(sub)))
-            }
-            Formula::Or(fs) => Formula::or(fs.iter().map(|f| f.apply_substitution(sub)).collect()),
-            Formula::And(fs) => {
-                Formula::and(fs.iter().map(|f| f.apply_substitution(sub)).collect())
-            }
-            Formula::Not(f) => Formula::not(f.apply_substitution(sub)),
-        }
-    }
-}
-
+/* Alphabets */
 impl Alphabet for Formula {
     /// Returns the alphabet of constants used in this formula.
     /// Collects the alphabet of all predicates occurring in this formula and returns the union of them.
@@ -601,6 +705,32 @@ impl Alphabet for Predicate {
                 alphabet
             }
             _ => indexset! {},
+        }
+    }
+}
+
+/* Substitution and Evaluation */
+
+impl Substitutable for Formula {
+    fn apply_substitution(&self, sub: &Substitution) -> Self {
+        match self {
+            Formula::Atom(Atom::True) => Formula::ttrue(),
+            Formula::Atom(Atom::False) => Formula::ffalse(),
+            Formula::Atom(Atom::BoolVar(v)) => {
+                if let Some(Term::Bool(f)) = sub.get(v) {
+                    return f.as_ref().clone();
+                } else {
+                    Formula::Atom(Atom::BoolVar(v.clone()))
+                }
+            }
+            Formula::Atom(Atom::Predicate(p)) => {
+                Formula::Atom(Atom::Predicate(p.apply_substitution(sub)))
+            }
+            Formula::Or(fs) => Formula::or(fs.iter().map(|f| f.apply_substitution(sub)).collect()),
+            Formula::And(fs) => {
+                Formula::and(fs.iter().map(|f| f.apply_substitution(sub)).collect())
+            }
+            Formula::Not(f) => Formula::not(f.apply_substitution(sub)),
         }
     }
 }
@@ -776,6 +906,17 @@ impl Evaluable for Predicate {
     }
 }
 
+impl Substitutable for NNFFormula {
+    fn apply_substitution(&self, sub: &Substitution) -> Self {
+        Formula::from(self.clone()).apply_substitution(sub).into()
+    }
+}
+
+impl Evaluable for NNFFormula {
+    fn eval(&self, sub: &Substitution) -> Option<bool> {
+        Formula::from(self.clone()).eval(sub)
+    }
+}
 /* Pretty Printing */
 
 impl Display for Atom {
