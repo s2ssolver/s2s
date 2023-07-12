@@ -78,7 +78,7 @@ impl Pattern {
         Self { symbols: vec![] }
     }
 
-    fn new(symbols: Vec<Symbol>) -> Self {
+    pub fn new(symbols: Vec<Symbol>) -> Self {
         Self { symbols }
     }
 

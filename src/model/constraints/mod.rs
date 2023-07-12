@@ -137,7 +137,9 @@ impl From<StringTerm> for Pattern {
     fn from(value: StringTerm) -> Self {
         match value {
             StringTerm::Variable(var) => Self::variable(&var),
-            StringTerm::Constant(word) => Self::constant(&word.iter().collect::<String>()),
+            StringTerm::Constant(word) => {
+                Self::new(word.iter().map(|c| Symbol::Constant(*c)).collect())
+            }
             StringTerm::Concat(lhs, rhs) => {
                 let mut res = Self::from(*lhs);
                 res.extend(Self::from(*rhs));

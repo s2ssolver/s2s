@@ -7,7 +7,7 @@ use regulaer::{re::CharRegex, RegLang};
 
 use crate::model::{
     constraints::{Pattern, Symbol, WordEquation},
-    formula::{Alphabet, Atom, Formula, Literal, NNFFormula, Predicate},
+    formula::{Alphabet, Atom, Literal, NNFFormula, Predicate},
     terms::{ReTerm, StringTerm, Term},
     Substitution, Variable,
 };
@@ -81,21 +81,21 @@ impl Preprocessor for WordEquationStripPrefixSuffix {
         if literal.is_pos() {
             if let Atom::Predicate(p) = literal.atom() {
                 match p {
-            Predicate::Equality(Term::String(lhs), Term::String(rhs)) => {
+                    Predicate::Equality(Term::String(lhs), Term::String(rhs)) => {
                         let lhs = Pattern::from(lhs.clone());
                         let rhs = Pattern::from(rhs.clone());
-                let eq = WordEquation::new_equality(lhs, rhs);
+                        let eq = WordEquation::new_equality(lhs, rhs);
                         if let Some(stripped) = Self::strip_matches(&eq) {
                             return PreprocessingResult::Changed(NNFFormula::predicate(
                                 stripped.into(),
                                 true,
                             ));
+                        }
                     }
-                }
                     _ => {}
+                }
             }
         }
-    }
 
         PreprocessingResult::Unchanged(NNFFormula::Literal(literal))
     }
@@ -136,20 +136,20 @@ impl Preprocessor for WordEquationConstMatching {
     fn apply_literal(&mut self, literal: Literal, _is_asserted: bool) -> PreprocessingResult {
         if let Atom::Predicate(p) = literal.atom() {
             match p {
-            Predicate::Equality(Term::String(lhs), Term::String(rhs)) => {
+                Predicate::Equality(Term::String(lhs), Term::String(rhs)) => {
                     let lhs = Pattern::from(lhs.clone());
                     let rhs = Pattern::from(rhs.clone());
-                let eq = WordEquation::new_equality(lhs, rhs);
-                if !Self::consts_match(&eq) {
+                    let eq = WordEquation::new_equality(lhs, rhs);
+                    if !Self::consts_match(&eq) {
                         if literal.is_pos() {
                             return PreprocessingResult::Unchanged(NNFFormula::ffalse());
-                } else {
+                        } else {
                             return PreprocessingResult::Unchanged(NNFFormula::ffalse());
+                        }
+                    }
                 }
-            }
-        }
                 _ => {}
-    }
+            }
         }
         return PreprocessingResult::Unchanged(NNFFormula::Literal(literal));
     }
@@ -199,25 +199,25 @@ impl Preprocessor for WordEquationTrivial {
     fn apply_literal(&mut self, literal: Literal, _is_asserted: bool) -> PreprocessingResult {
         if let Atom::Predicate(p) = literal.atom() {
             match p {
-            Predicate::Equality(Term::String(lhs), Term::String(rhs)) => {
+                Predicate::Equality(Term::String(lhs), Term::String(rhs)) => {
                     let lhs = Pattern::from(lhs.clone());
                     let rhs = Pattern::from(rhs.clone());
-                let eq: WordEquation = WordEquation::new_equality(lhs, rhs);
-                match Self::is_trivial(&eq) {
+                    let eq: WordEquation = WordEquation::new_equality(lhs, rhs);
+                    match Self::is_trivial(&eq) {
                         Some(true) => {
                             if literal.is_pos() {
                                 return PreprocessingResult::Changed(NNFFormula::ttrue());
                             } else {
                                 return PreprocessingResult::Changed(NNFFormula::ffalse());
-                }
-            }
+                            }
+                        }
                         Some(false) => {
                             if literal.is_pos() {
                                 return PreprocessingResult::Changed(NNFFormula::ffalse());
                             } else {
                                 return PreprocessingResult::Changed(NNFFormula::ttrue());
-        }
-    }
+                            }
+                        }
                         None => {}
                     }
                 }
@@ -536,6 +536,216 @@ impl Preprocessor for WordEquationSubstitutions {
             eqs: IndexMap::new(),
             conflict: false,
         }
+    }
+}
+
+/// Finds constraints of the from `xyz \in R` and `xyz = w` where `w` is a word, `R` is a regular term, and `x`, `y`, `z` are variables do not occur anywhere else in the formula. It then tries to find a possible substitution for `xyz` that satisfies the constraint.
+#[derive(Debug, Default)]
+pub struct IndependetVarSubstitutions {
+    var_occurrences: HashMap<Variable, usize>,
+    alphabet: IndexSet<char>,
+    substitutions: Substitution,
+}
+
+impl IndependetVarSubstitutions {
+    fn pick_re(&self, re: &ReTerm, sign: bool) -> Option<Vec<char>> {
+        let r: CharRegex = if let Ok(r) = re.clone().try_into() {
+            r
+        } else {
+            return None;
+        };
+        if sign {
+            log::trace!("Picking a word from {}", r);
+            if let Some(w) = r.try_pick(0) {
+                log::trace!("Picked {:?}", w);
+                debug_assert!(
+                    r.contains(&w),
+                    "Picked word {:?} is not in the language {:?}",
+                    w,
+                    r
+                );
+
+                Some(w)
+            } else {
+                log::trace!("No word found");
+                None
+            }
+        } else {
+            // Check if r accepts empty
+            if !r.contains(&[]) {
+                return Some(Vec::new());
+            }
+            // Check if any singleton words is accepted
+            for c in self.alphabet.iter() {
+                if !r.contains(&[*c]) {
+                    return Some(vec![*c]);
+                }
+            }
+            None
+        }
+    }
+
+    fn for_re(&mut self, lhs: &Pattern, re: &ReTerm, sign: bool) {
+        if self.is_independent(&lhs) && lhs.len() > 0 && !lhs.contains_constant() {
+            if let Some(w) = self.pick_re(re, sign) {
+                // LHS[0] = w, LHS[1..] = empty.
+                for (i, s) in lhs.symbols().enumerate() {
+                    if let Symbol::Variable(v) = s {
+                        if i == 0 {
+                            self.substitutions
+                                .set(v, StringTerm::Constant(w.clone()).into());
+                        } else {
+                            self.substitutions.set(v, StringTerm::constant("").into());
+                        }
+                    } else {
+                        unreachable!()
+                    }
+                }
+            }
+        }
+    }
+
+    fn for_eq(&mut self, lhs: &Pattern, rhs: &Pattern, sign: bool) {
+        if self.is_independent(&lhs) && lhs.len() > 0 {
+            if rhs.is_constant() && !lhs.contains_constant() {
+                let w = rhs.iter().fold(String::new(), |mut acc, s| {
+                    if let Symbol::Constant(c) = s {
+                        acc.push(*c);
+                    } else {
+                        unreachable!()
+                    }
+                    acc
+                });
+                // LHS[0] = w, LHS[1..] = empty.
+                for (i, s) in lhs.symbols().enumerate() {
+                    if let Symbol::Variable(v) = s {
+                        if i == 0 {
+                            if sign {
+                                self.substitutions.set(v, StringTerm::constant(&w).into());
+                            } else {
+                                if !w.is_empty() {
+                                    self.substitutions.set(v, StringTerm::constant("").into());
+                                } else {
+                                    self.substitutions.set(v, StringTerm::constant(&"a").into());
+                                }
+                            }
+                        } else {
+                            self.substitutions.set(v, StringTerm::constant("").into());
+                        }
+                    } else {
+                        unreachable!()
+                    }
+                }
+            }
+        }
+    }
+
+    fn calculate_occurrences(&mut self, formula: &NNFFormula) {
+        match formula {
+            NNFFormula::Literal(l) => {
+                for v in l.atom().vars() {
+                    *self.var_occurrences.entry(v.clone()).or_default() += 1;
+                }
+            }
+            NNFFormula::And(fs) | NNFFormula::Or(fs) => {
+                fs.iter().for_each(|f| self.calculate_occurrences(f))
+            }
+        }
+    }
+
+    /// Return if all variables in the pattern are independent, i.e., they occur only once in the formula.
+    fn is_independent(&self, pat: &Pattern) -> bool {
+        pat.vars()
+            .iter()
+            .all(|v| self.var_occurrences.get(v).unwrap_or(&0) == &1)
+    }
+}
+
+impl Preprocessor for IndependetVarSubstitutions {
+    fn get_substitution(&self) -> Option<Substitution> {
+        Some(self.substitutions.clone())
+    }
+
+    fn init(&mut self, formula: &NNFFormula) {
+        self.calculate_occurrences(formula);
+        self.alphabet = formula.alphabet();
+    }
+
+    fn get_name(&self) -> String {
+        "Regex independent variable substitutions".to_string()
+    }
+
+    fn apply_literal(&mut self, literal: Literal, _: bool) -> PreprocessingResult {
+        if let Atom::Predicate(p) = literal.atom() {
+            match p {
+                Predicate::Equality(Term::String(lhs), Term::String(rhs)) => {
+                    let lhs = Pattern::from(lhs.clone());
+                    let rhs = Pattern::from(rhs.clone());
+                    // Check if we can infer something from the equality
+                    self.for_eq(&lhs, &rhs, literal.is_pos());
+                    // Symmetric case
+                    self.for_eq(&rhs, &lhs, literal.is_pos());
+                }
+                Predicate::In(Term::String(p), Term::Regular(r)) => {
+                    let lhs = Pattern::from(p.clone());
+                    self.for_re(&lhs, r, literal.is_pos());
+                }
+                _ => {}
+            }
+        }
+        PreprocessingResult::Unchanged(NNFFormula::Literal(literal))
+    }
+
+    fn new() -> Self
+    where
+        Self: Sized,
+    {
+        Self {
+            var_occurrences: HashMap::new(),
+            substitutions: Substitution::new(),
+            alphabet: IndexSet::new(),
+        }
+    }
+}
+
+pub struct TrivialREReducer {}
+
+impl Preprocessor for TrivialREReducer {
+    fn get_name(&self) -> String {
+        "Trivial Regular Constraint Reducer".to_string()
+    }
+
+    fn new() -> Self
+    where
+        Self: Sized,
+    {
+        Self {}
+    }
+
+    fn apply_literal(&mut self, literal: Literal, _is_asserted: bool) -> PreprocessingResult {
+        if let Atom::Predicate(p) = literal.atom() {
+            if let Predicate::In(Term::String(lhs), Term::Regular(re)) = p {
+                if let Some(w) = lhs.is_const() {
+                    let regex = match CharRegex::try_from(re.clone()) {
+                        Ok(r) => r,
+                        Err(_) => {
+                            return PreprocessingResult::Unchanged(NNFFormula::Literal(literal))
+                        }
+                    };
+                    let sat = regex.contains(&w);
+                    if (sat && literal.is_pos()) || (!sat && literal.is_neg()) {
+                        return PreprocessingResult::Changed(NNFFormula::ttrue());
+                    } else if (sat && literal.is_neg()) || (!sat && literal.is_pos()) {
+                        return PreprocessingResult::Changed(NNFFormula::ffalse());
+                    }
+                }
+            }
+        }
+        return PreprocessingResult::Unchanged(NNFFormula::Literal(literal));
+    }
+
+    fn get_substitution(&self) -> Option<Substitution> {
+        None
     }
 }
 

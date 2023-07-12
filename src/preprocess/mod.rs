@@ -6,12 +6,13 @@ mod string;
 use crate::{
     instance::Instance,
     model::{
-        formula::{Formula, Literal, NNFFormula},
+        formula::{Literal, NNFFormula},
         Substitutable, Substitution,
     },
     preprocess::{
         formula::ConjunctionSimplifier,
         int::{ConstIntReducer, IntSubstitutions},
+        string::{IndependetVarSubstitutions, TrivialREReducer},
     },
 };
 
@@ -58,7 +59,7 @@ trait Preprocessor {
     /// Initialize the preprocessor with the formula to preprocess.
     /// Does not mutate the formula or return a new one.
     /// Can be used for preprocessor-specific initialization.
-    fn init(&mut self, _formula: &Formula) {}
+    fn init(&mut self, _formula: &NNFFormula) {}
 
     fn apply_literal(&mut self, literal: Literal, _is_asserted: bool) -> PreprocessingResult {
         PreprocessingResult::Unchanged(NNFFormula::Literal(literal))
@@ -141,7 +142,9 @@ pub fn preprocess(instance: &Instance) -> (PreprocessingResult, Substitution) {
             Box::new(WordEquationConstMatching::new()),
             Box::new(WordEquationTrivial::new()),
             Box::new(WordEquationSubstitutions::new()),
+            Box::new(IndependetVarSubstitutions::new()),
             Box::new(ConstIntReducer::new()),
+            Box::new(TrivialREReducer::new()),
             Box::new(ConjunctionSimplifier::new()),
             Box::new(IntSubstitutions::new()),
         ];
@@ -150,6 +153,7 @@ pub fn preprocess(instance: &Instance) -> (PreprocessingResult, Substitution) {
         let mut rd_changed = false;
         for preprocess in preprocessors.iter_mut() {
             log::trace!("Running Preprocessor: {}", preprocess.get_name());
+            preprocess.init(preprocessed.get_formula());
             preprocessed = match preprocessed {
                 PreprocessingResult::Changed(f) => match preprocess.apply(f) {
                     PreprocessingResult::Changed(t) => {
