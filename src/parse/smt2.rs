@@ -17,11 +17,11 @@ use crate::{
     },
 };
 
-use super::{Instance, ParseError};
+use super::{util::unicode_unescape, Instance, ParseError};
 
 pub fn parse_smt<R: BufRead>(smt: R) -> Result<Instance, ParseError> {
     let script = Script::<Term>::parse(smt)
-        .map_err(|e| ParseError::Other(format!("Error parsing SMT-LIB script: {}", e), None))?;
+        .map_err(|e| ParseError::Other(format!("Error parsing SMT-LIB script: {}", e)))?;
     let mut instance = Instance::default();
 
     let mut asserts = vec![];
@@ -122,7 +122,7 @@ impl<'a> FormulaBuilder<'a> {
                         Ok(s) => s,
                         Err(s) => return Err(s),
                     },
-                    Err(s) => return Err(ParseError::Other(format!("{}", s), None)),
+                    Err(s) => return Err(ParseError::Other(format!("{}", s))),
                 };
                 sorts.push(sort);
             }
@@ -172,7 +172,6 @@ impl<'a> Visitor<ALL> for FormulaBuilder<'a> {
                     if ts.len() != 2 {
                         return ControlFlow::Break(Err(ParseError::SyntaxError(
                             "= needs exactly arguments".to_string(),
-                            None,
                         )));
                     }
                     let sorts = match self.get_sorts(ts) {
@@ -182,7 +181,6 @@ impl<'a> Visitor<ALL> for FormulaBuilder<'a> {
                     if sorts[0] != NSort::Bool || sorts[1] != NSort::Bool {
                         return ControlFlow::Break(Err(ParseError::SyntaxError(
                             "Invalid arguments for '=>': expected bool and bool".to_string(),
-                            None,
                         )));
                     }
                     // Rewrite as -lhs \/ rhs
@@ -205,7 +203,6 @@ impl<'a> Visitor<ALL> for FormulaBuilder<'a> {
                     if ts.len() != 2 {
                         return ControlFlow::Break(Err(ParseError::SyntaxError(
                             "= needs exactly arguments".to_string(),
-                            None,
                         )));
                     }
                     let sorts = match self.get_sorts(ts) {
@@ -260,10 +257,10 @@ impl<'a> Visitor<ALL> for FormulaBuilder<'a> {
                             let imp_rtl = Formula::or(vec![lhs, Formula::not(rhs)]);
                             ControlFlow::Break(Ok(Formula::and(vec![imp_ltr, imp_rtl])))
                         }
-                        (_, _) => ControlFlow::Break(Err(ParseError::SyntaxError(
-                            format!("Sorts for '=' mismatch: {} and {}", sort_lhs, sort_rhs),
-                            None,
-                        ))),
+                        (_, _) => ControlFlow::Break(Err(ParseError::SyntaxError(format!(
+                            "Sorts for '=' mismatch: {} and {}",
+                            sort_lhs, sort_rhs
+                        )))),
                     }
                 }
                 CoreOp::Distinct(_) => todo!(),
@@ -297,7 +294,6 @@ impl<'a> Visitor<ALL> for FormulaBuilder<'a> {
                         if ts.len() != 2 {
                             return ControlFlow::Break(Err(ParseError::SyntaxError(
                                 "= needs exactly arguments".to_string(),
-                                None,
                             )));
                         }
                         let sorts = match self.get_sorts(ts) {
@@ -340,13 +336,10 @@ impl<'a> Visitor<ALL> for FormulaBuilder<'a> {
 
                                 ControlFlow::Break(Ok(Formula::predicate(pred)))
                             }
-                            (_, _) => ControlFlow::Break(Err(ParseError::SyntaxError(
-                                format!(
-                                    "Invalid arguments for '>=': {} and {}",
-                                    sort_lhs, sort_rhs
-                                ),
-                                None,
-                            ))),
+                            (_, _) => ControlFlow::Break(Err(ParseError::SyntaxError(format!(
+                                "Invalid arguments for '>=': {} and {}",
+                                sort_lhs, sort_rhs
+                            )))),
                         }
                     }
 
@@ -386,10 +379,10 @@ impl<'a> Visitor<ALL> for FormulaBuilder<'a> {
                         ControlFlow::Break(Err(ParseError::Unsupported(format!("{}", string_op))))
                     }
 
-                    _ => ControlFlow::Break(Err(ParseError::SyntaxError(
-                        format!("Unexpected string operation: {}", string_op),
-                        None,
-                    ))),
+                    _ => ControlFlow::Break(Err(ParseError::SyntaxError(format!(
+                        "Unexpected string operation: {}",
+                        string_op
+                    )))),
                 },
             },
             Term::UF(_) => todo!(),
@@ -403,10 +396,10 @@ impl<'a> Visitor<ALL> for FormulaBuilder<'a> {
         let name = var.as_ref().sym_str();
         if let Some(vvar) = self.instance.var_by_name(name) {
             if vvar.sort() != NSort::Bool {
-                return ControlFlow::Break(Err(ParseError::SyntaxError(
-                    format!("Expected Boolean variable but found {} ", vvar.sort()),
-                    None,
-                )));
+                return ControlFlow::Break(Err(ParseError::SyntaxError(format!(
+                    "Expected Boolean variable but found {} ",
+                    vvar.sort()
+                ))));
             }
             ControlFlow::Break(Ok(Formula::boolvar(vvar.clone())))
         } else {
@@ -535,13 +528,15 @@ impl<'a> Visitor<ALL> for StringTermBuilder<'a> {
 
     fn visit_const(&mut self, constant: &IConst) -> ControlFlow<Self::BreakTy> {
         match constant.as_ref() {
-            Constant::String(s) => ControlFlow::Break(Ok(StringTerm::constant(s))),
+            Constant::String(s) => match unicode_unescape(s, true) {
+                Ok(s) => ControlFlow::Break(Ok(StringTerm::Constant(s))),
+                Err(e) => ControlFlow::Break(Err(e)),
+            },
             Constant::Numeral(_)
             | Constant::Decimal(_)
             | Constant::Hexadecimal(_)
             | Constant::Binary(_) => ControlFlow::Break(Err(ParseError::SyntaxError(
                 "Can only concatenate string constants".to_string(),
-                None,
             ))),
         }
     }
@@ -550,10 +545,10 @@ impl<'a> Visitor<ALL> for StringTermBuilder<'a> {
         let name = var.as_ref().sym_str();
         if let Some(vvar) = self.instance.var_by_name(name) {
             if vvar.sort() != NSort::String {
-                return ControlFlow::Break(Err(ParseError::SyntaxError(
-                    format!("Expected string variable but found {} ", vvar.sort()),
-                    None,
-                )));
+                return ControlFlow::Break(Err(ParseError::SyntaxError(format!(
+                    "Expected string variable but found {} ",
+                    vvar.sort()
+                ))));
             }
             ControlFlow::Break(Ok(StringTerm::variable(vvar)))
         } else {
@@ -634,7 +629,6 @@ impl<'a> Visitor<ALL> for ReTermBuilder<'a> {
                         if rs.len() != 2 {
                             return ControlFlow::Break(Err(ParseError::SyntaxError(
                                 "Regular Difference needs exactly two arguments".to_string(),
-                                None,
                             )));
                         }
                         let lhs = match rs[0].visit_with(self) {
@@ -768,10 +762,10 @@ fn biguint2isize(n: &BigUint) -> Result<isize, ParseError> {
     let as_isize: Result<isize, _> = n.try_into();
     match as_isize {
         Ok(i) => Ok(i),
-        Err(_) => Err(ParseError::SyntaxError(
-            format!("Integer constant out of range: {}", n),
-            None,
-        )),
+        Err(_) => Err(ParseError::SyntaxError(format!(
+            "Integer constant out of range: {}",
+            n
+        ))),
     }
 }
 
@@ -793,7 +787,6 @@ impl<'a> Visitor<ALL> for IntArithTermBuilder<'a> {
                         if ts.len() < 2 {
                             return ControlFlow::Break(Err(ParseError::SyntaxError(
                                 "+ needs at least two arguments".to_string(),
-                                None,
                             )));
                         }
                         let mut iter = ts.iter();
@@ -821,7 +814,6 @@ impl<'a> Visitor<ALL> for IntArithTermBuilder<'a> {
                         if ts.len() < 2 {
                             return ControlFlow::Break(Err(ParseError::SyntaxError(
                                 "+ needs at least two arguments".to_string(),
-                                None,
                             )));
                         }
                         let mut iter = ts.iter();
@@ -844,7 +836,6 @@ impl<'a> Visitor<ALL> for IntArithTermBuilder<'a> {
                         if ts.len() < 2 {
                             return ControlFlow::Break(Err(ParseError::SyntaxError(
                                 "+ needs at least two arguments".to_string(),
-                                None,
                             )));
                         }
                         let mut iter = ts.iter();
@@ -906,19 +897,19 @@ impl<'a> Visitor<ALL> for IntArithTermBuilder<'a> {
                 let as_isize: Result<isize, _> = n.try_into();
                 match as_isize {
                     Ok(i) => ControlFlow::Break(Ok(IntTerm::constant(i))),
-                    Err(_) => ControlFlow::Break(Err(ParseError::SyntaxError(
-                        format!("Integer constant out of range: {}", n),
-                        None,
-                    ))),
+                    Err(_) => ControlFlow::Break(Err(ParseError::SyntaxError(format!(
+                        "Integer constant out of range: {}",
+                        n
+                    )))),
                 }
             }
             Constant::String(_)
             | Constant::Decimal(_)
             | Constant::Hexadecimal(_)
-            | Constant::Binary(_) => ControlFlow::Break(Err(ParseError::SyntaxError(
-                format!("Expected numeral constant but found {}", constant),
-                None,
-            ))),
+            | Constant::Binary(_) => ControlFlow::Break(Err(ParseError::SyntaxError(format!(
+                "Expected numeral constant but found {}",
+                constant
+            )))),
         }
     }
 
@@ -926,10 +917,10 @@ impl<'a> Visitor<ALL> for IntArithTermBuilder<'a> {
         let name = var.as_ref().sym_str();
         if let Some(vvar) = self.instance.var_by_name(name) {
             if vvar.sort() != NSort::Int {
-                return ControlFlow::Break(Err(ParseError::SyntaxError(
-                    format!("Expected int variable but found {} ", vvar.sort()),
-                    None,
-                )));
+                return ControlFlow::Break(Err(ParseError::SyntaxError(format!(
+                    "Expected int variable but found {} ",
+                    vvar.sort()
+                ))));
             }
             ControlFlow::Break(Ok(IntTerm::var(vvar)))
         } else {
@@ -1041,10 +1032,10 @@ impl<'a> Visitor<ALL> for StringLenToArithBuilder<'a> {
         let name = var.as_ref().sym_str();
         if let Some(vvar) = self.instance.var_by_name(name) {
             if vvar.sort() != NSort::String {
-                return ControlFlow::Break(Err(ParseError::SyntaxError(
-                    format!("Expected string variable but found {} ", vvar.sort()),
-                    None,
-                )));
+                return ControlFlow::Break(Err(ParseError::SyntaxError(format!(
+                    "Expected string variable but found {} ",
+                    vvar.sort()
+                ))));
             }
             ControlFlow::Break(Ok(IntTerm::Var(vvar.len_var().unwrap())))
         } else {

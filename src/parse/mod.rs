@@ -2,6 +2,7 @@ use std::path::PathBuf;
 
 use indexmap::IndexSet;
 mod smt2;
+mod util;
 
 use crate::{
     instance::Instance,
@@ -12,9 +13,9 @@ use crate::{
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum ParseError {
     /// Syntax error, optionally with line and column number
-    SyntaxError(String, Option<(usize, usize)>),
+    SyntaxError(String),
     /// Other error, optionally with line and column number
-    Other(String, Option<(usize, usize)>),
+    Other(String),
     /// Unsupported feature
     Unsupported(String),
     /// Unknown identifier
@@ -35,7 +36,7 @@ impl Parser {
                 Parser::WoorpjeParser => parse_woorpje(&input),
                 Parser::Smt2Parser => smt2::parse_smt(input.as_bytes()),
             },
-            Err(e) => Err(ParseError::Other(e.to_string(), None)),
+            Err(e) => Err(ParseError::Other(e.to_string())),
         }
     }
 }
@@ -49,24 +50,20 @@ fn parse_woorpje(input: &str) -> Result<Instance, ParseError> {
         let mut tokens = line.split_ascii_whitespace();
         let first = tokens
             .next()
-            .ok_or(ParseError::SyntaxError("empty line".to_string(), None))?;
+            .ok_or(ParseError::SyntaxError("empty line".to_string()))?;
         if first.starts_with('#') {
             // comment
             continue;
         }
         match first {
             "Variables" => {
-                let second = tokens.next().ok_or(ParseError::SyntaxError(
-                    "missing variables".to_string(),
-                    None,
-                ))?;
+                let second = tokens
+                    .next()
+                    .ok_or(ParseError::SyntaxError("missing variables".to_string()))?;
                 let varsnames = second
                     .strip_prefix('{')
                     .and_then(|r| r.strip_suffix('}'))
-                    .ok_or(ParseError::SyntaxError(
-                        "Invalid variables".to_string(),
-                        None,
-                    ))?;
+                    .ok_or(ParseError::SyntaxError("Invalid variables".to_string()))?;
                 for v in varsnames.chars() {
                     if alphabet.contains(&v) {
                         panic!("Alphabet cannot contain variables with same name");
@@ -78,14 +75,12 @@ fn parse_woorpje(input: &str) -> Result<Instance, ParseError> {
             "Terminals" => {
                 let second = tokens.next().ok_or(ParseError::SyntaxError(
                     "Missing alphabet definition".to_string(),
-                    None,
                 ))?;
                 let alph = second
                     .strip_prefix('{')
                     .and_then(|r| r.strip_suffix('}'))
                     .ok_or(ParseError::SyntaxError(
                         "Invalid alphabet definition".to_string(),
-                        None,
                     ))?;
                 alph.chars().for_each(|c| {
                     if instance.var_by_name(c.to_string().as_str()).is_some() {

@@ -41,14 +41,10 @@ impl Display for Error {
 impl Display for ParseError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match &self {
-            ParseError::SyntaxError(msg, None) => write!(f, "Syntax error: {}", msg),
-            ParseError::SyntaxError(msg, Some((line, col))) => {
-                write!(f, "Syntax error at line {}, column {}: {}", line, col, msg)
-            }
-            ParseError::Other(msg, None) => write!(f, "Error: {}", msg),
-            ParseError::Other(msg, Some((line, col))) => {
-                write!(f, "Error at line {}, column {}: {}", line, col, msg)
-            }
+            ParseError::SyntaxError(msg) => write!(f, "Syntax error: {}", msg),
+
+            ParseError::Other(msg) => write!(f, "Error: {}", msg),
+
             ParseError::Unsupported(msg) => write!(f, "Unsupported: {}", msg),
             ParseError::UnknownIdentifier(msg) => write!(f, "Unknown identifier: {}", msg),
             ParseError::FileNotFound(msg) => write!(f, "File not found: {}", msg),
