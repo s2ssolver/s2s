@@ -291,7 +291,7 @@ impl ConstraintEncoder for NFAEncoder {
 }
 
 impl RegularConstraintEncoder for NFAEncoder {
-    fn new(mut re_constraint: RegularConstraint) -> Result<Self, Error> {
+    fn new(re_constraint: RegularConstraint) -> Result<Self, Error> {
         let illegal_pattern_msg = format!(
             "NFA encode can only handle single variables as LHS, but got {}",
             re_constraint.get_pattern()
@@ -304,8 +304,7 @@ impl RegularConstraintEncoder for NFAEncoder {
         } else {
             return Err(Error::EncodingError(illegal_pattern_msg));
         };
-        // Make sure the NFA is compiled
-        re_constraint.compile()?;
+
         // We clone the nfa because any changes would break the incremental encoding
         let mut nfa = re_constraint.get_automaton().unwrap().clone();
         // Normalize the NFA

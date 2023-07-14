@@ -87,12 +87,11 @@ pub fn infer_bounds(constraints: &[Constraint], instance: &Instance) -> Result<B
                     } else {
                         RegularConstraintType::NotIn
                     };
-                    let mut re = RegularConstraint::new(
+                    let re = RegularConstraint::new(
                         CharRegex::const_word(rhs),
                         Pattern::variable(lhs),
                         rtype,
                     );
-                    re.compile()?;
                     regulars.push(re);
                 }
                 WordEquation::VarEquality { .. } => var_eqs.push(eq.clone()),

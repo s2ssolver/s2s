@@ -1,5 +1,6 @@
 use std::{
     cmp::min,
+    collections::HashSet,
     fmt::{Display, Formatter},
     hash::Hash,
     slice::Iter,
@@ -585,10 +586,13 @@ impl RegularConstraint {
     ///
     /// # Errors
     /// Returns an error if the regular expression cannot be compiled.
-    pub fn compile(&mut self) -> Result<(), Error> {
+    pub fn compile(&mut self, alphabet: &IndexSet<char>) -> Result<(), Error> {
         if self.automaton.is_none() {
             log::debug!("Compiling regular expression {}", self.re);
-            match regulaer::automaton::compile(&self.re) {
+            match regulaer::automaton::compile_with_alphabet(
+                &self.re,
+                Some(&HashSet::from_iter(alphabet.iter().cloned())),
+            ) {
                 Ok(mut nfa) => {
                     nfa.normalize()?;
                     self.automaton = Some(nfa)

@@ -158,7 +158,7 @@ impl AbstractionSolver {
         // Make sure the alphabet contains at least one character
 
         let mut next_chr = 'a';
-        for _ in 0..instance.get_formula().vars().len() + 20 {
+        for _ in 0..instance.get_formula().vars().len() {
             while alphabet.contains(&next_chr) {
                 next_chr = (next_chr as u8 + 1) as char;
             }
@@ -171,7 +171,15 @@ impl AbstractionSolver {
 
         // Create the abstraction
         let abstraction = Abstraction::create(&mut instance)?;
+        let mut cm = ConstraintManager::from_literals(
+            &NNFFormula::from(instance.get_formula().clone()).literals(),
+        )?;
 
+        for (_, c) in cm.constraints.iter_mut() {
+            if let Constraint::RegularConstraint(ref mut re) = c {
+                re.compile(&instance.alphabet())?;
+            }
+        }
         // Instantiate the encoders
         let mut encoders = HashMap::new();
         for d in abstraction.get_definitions().iter() {
@@ -180,8 +188,11 @@ impl AbstractionSolver {
                 DefinitionType::Positive => {
                     // Create encoder for positive
                     let mut map = HashMap::new();
-                    let constraint =
-                        Constraint::try_from(Literal::Pos(Atom::Predicate(d.get_pred().clone())))?;
+                    let constraint = cm
+                        .constraint_for_literal(&Literal::Pos(Atom::Predicate(
+                            d.get_pred().clone(),
+                        )))
+                        .unwrap();
                     let encoder = Self::encoder_for_constraint(&constraint)?;
                     map.insert(true, encoder);
                     encoders.insert(d.clone(), map);
@@ -189,8 +200,11 @@ impl AbstractionSolver {
                 DefinitionType::Negative => {
                     // Create encoder for positive
                     let mut map = HashMap::new();
-                    let constraint =
-                        Constraint::try_from(Literal::Neg(Atom::Predicate(d.get_pred().clone())))?;
+                    let constraint = cm
+                        .constraint_for_literal(&Literal::Neg(Atom::Predicate(
+                            d.get_pred().clone(),
+                        )))
+                        .unwrap();
                     let encoder = Self::encoder_for_constraint(&constraint)?;
                     map.insert(false, encoder);
                     encoders.insert(d.clone(), map);
@@ -198,13 +212,19 @@ impl AbstractionSolver {
                 DefinitionType::Equivalence => {
                     // Create encoder for positive and negative
                     let mut map = HashMap::new();
-                    let constraint_pos =
-                        Constraint::try_from(Literal::Pos(Atom::Predicate(d.get_pred().clone())))?;
+                    let constraint_pos = cm
+                        .constraint_for_literal(&Literal::Pos(Atom::Predicate(
+                            d.get_pred().clone(),
+                        )))
+                        .unwrap();
                     let encoder = Self::encoder_for_constraint(&constraint_pos)?;
                     map.insert(true, encoder);
 
-                    let constraint_neg =
-                        Constraint::try_from(Literal::Neg(Atom::Predicate(d.get_pred().clone())))?;
+                    let constraint_neg = cm
+                        .constraint_for_literal(&Literal::Neg(Atom::Predicate(
+                            d.get_pred().clone(),
+                        )))
+                        .unwrap();
                     let encoder = Self::encoder_for_constraint(&constraint_neg)?;
                     map.insert(false, encoder);
 
@@ -212,9 +232,6 @@ impl AbstractionSolver {
                 }
             }
         }
-        let cm = ConstraintManager::from_literals(
-            &NNFFormula::from(instance.get_formula().clone()).literals(),
-        )?;
 
         Ok(Self {
             instance,
@@ -417,15 +434,6 @@ impl AbstractionSolver {
 impl Solver for AbstractionSolver {
     fn solve(&mut self) -> Result<SolverResult, Error> {
         log::debug!("Started solving");
-        for (_, c) in self.constraint_mng.constraints.iter_mut() {
-            if let Constraint::RegularConstraint(ref mut re) = c {
-                re.compile()?;
-                re.get_automaton_mut()
-                    .as_mut()
-                    .unwrap()
-                    .extend_alphabet(self.instance.alphabet().iter().cloned())
-            }
-        }
 
         let limit_bounds = self.find_limit_upper_bound()?;
         log::info!("Found limit bounds: {}", limit_bounds);
