@@ -585,7 +585,7 @@ impl IndependetVarSubstitutions {
         }
     }
 
-    fn for_re(&mut self, lhs: &Pattern, re: &ReTerm, sign: bool) {
+    fn for_re(&mut self, lhs: &Pattern, re: &ReTerm, sign: bool) -> bool {
         if self.is_independent(&lhs) && lhs.len() > 0 && !lhs.contains_constant() {
             if let Some(w) = self.pick_re(re, sign) {
                 // LHS[0] = w, LHS[1..] = empty.
@@ -601,11 +601,13 @@ impl IndependetVarSubstitutions {
                         unreachable!()
                     }
                 }
+                return true;
             }
         }
+        false
     }
 
-    fn for_eq(&mut self, lhs: &Pattern, rhs: &Pattern, sign: bool) {
+    fn for_eq(&mut self, lhs: &Pattern, rhs: &Pattern, sign: bool) -> bool {
         if self.is_independent(&lhs) && lhs.len() > 0 {
             if rhs.is_constant() && !lhs.contains_constant() {
                 let w = rhs.iter().fold(String::new(), |mut acc, s| {
@@ -636,8 +638,10 @@ impl IndependetVarSubstitutions {
                         unreachable!()
                     }
                 }
+                return true;
             }
         }
+        false
     }
 
     fn calculate_occurrences(&mut self, formula: &NNFFormula) {
@@ -682,13 +686,19 @@ impl Preprocessor for IndependetVarSubstitutions {
                     let lhs = Pattern::from(lhs.clone());
                     let rhs = Pattern::from(rhs.clone());
                     // Check if we can infer something from the equality
-                    self.for_eq(&lhs, &rhs, literal.is_pos());
+                    if self.for_eq(&lhs, &rhs, literal.is_pos()) {
+                        return PreprocessingResult::Changed(NNFFormula::ttrue());
+                    }
                     // Symmetric case
-                    self.for_eq(&rhs, &lhs, literal.is_pos());
+                    if self.for_eq(&rhs, &lhs, literal.is_pos()) {
+                        return PreprocessingResult::Changed(NNFFormula::ttrue());
+                    }
                 }
                 Predicate::In(Term::String(p), Term::Regular(r)) => {
                     let lhs = Pattern::from(p.clone());
-                    self.for_re(&lhs, r, literal.is_pos());
+                    if self.for_re(&lhs, r, literal.is_pos()) {
+                        return PreprocessingResult::Changed(NNFFormula::ttrue());
+                    }
                 }
                 _ => {}
             }
