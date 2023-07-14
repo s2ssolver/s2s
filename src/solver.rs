@@ -115,7 +115,7 @@ impl ConstraintManager {
     fn create(&mut self, lit: &Literal) -> Result<(), Error> {
         if self.constraints.get(lit).is_none() {
             let con = Constraint::try_from(lit.clone())?;
-            self.constraints.insert(lit.clone(), con.clone());
+            self.constraints.insert(lit.clone(), con);
         }
         Ok(())
     }
@@ -177,7 +177,7 @@ impl AbstractionSolver {
 
         for (_, c) in cm.constraints.iter_mut() {
             if let Constraint::RegularConstraint(ref mut re) = c {
-                re.compile(&instance.alphabet())?;
+                re.compile(Some(&instance.alphabet()))?;
             }
         }
         // Instantiate the encoders
@@ -193,7 +193,7 @@ impl AbstractionSolver {
                             d.get_pred().clone(),
                         )))
                         .unwrap();
-                    let encoder = Self::encoder_for_constraint(&constraint)?;
+                    let encoder = Self::encoder_for_constraint(constraint)?;
                     map.insert(true, encoder);
                     encoders.insert(d.clone(), map);
                 }
@@ -205,7 +205,7 @@ impl AbstractionSolver {
                             d.get_pred().clone(),
                         )))
                         .unwrap();
-                    let encoder = Self::encoder_for_constraint(&constraint)?;
+                    let encoder = Self::encoder_for_constraint(constraint)?;
                     map.insert(false, encoder);
                     encoders.insert(d.clone(), map);
                 }
@@ -217,7 +217,7 @@ impl AbstractionSolver {
                             d.get_pred().clone(),
                         )))
                         .unwrap();
-                    let encoder = Self::encoder_for_constraint(&constraint_pos)?;
+                    let encoder = Self::encoder_for_constraint(constraint_pos)?;
                     map.insert(true, encoder);
 
                     let constraint_neg = cm
@@ -225,7 +225,7 @@ impl AbstractionSolver {
                             d.get_pred().clone(),
                         )))
                         .unwrap();
-                    let encoder = Self::encoder_for_constraint(&constraint_neg)?;
+                    let encoder = Self::encoder_for_constraint(constraint_neg)?;
                     map.insert(false, encoder);
 
                     encoders.insert(d.clone(), map);

@@ -178,16 +178,16 @@ impl TryFrom<Predicate> for WordEquation {
 impl From<WordEquation> for Predicate {
     fn from(val: WordEquation) -> Self {
         Predicate::Equality(
-            Term::String(val.lhs().clone().into()),
-            Term::String(val.rhs().clone().into()),
+            Term::String(val.lhs().into()),
+            Term::String(val.rhs().into()),
         )
     }
 }
 
 impl From<WordEquation> for Formula {
     fn from(val: WordEquation) -> Self {
-        let lhs = Term::String(val.lhs().clone().into());
-        let rhs = Term::String(val.rhs().clone().into());
+        let lhs = Term::String(val.lhs().into());
+        let rhs = Term::String(val.rhs().into());
         Formula::predicate(Predicate::Equality(lhs, rhs))
     }
 }

@@ -269,7 +269,7 @@ mod test {
 
         assert!(abstr.is_ok());
         let abstr = abstr.unwrap();
-        assert!(is_bool(&abstr.skeleton.clone().into()));
+        assert!(is_bool(&abstr.skeleton.into()));
     }
 
     #[quickcheck]

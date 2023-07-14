@@ -42,12 +42,10 @@ impl Preprocessor for ConstIntReducer {
                                 } else {
                                     PreprocessingResult::Changed(NNFFormula::ffalse())
                                 }
+                            } else if literal.is_pos() {
+                                PreprocessingResult::Changed(NNFFormula::ffalse())
                             } else {
-                                if literal.is_pos() {
-                                    PreprocessingResult::Changed(NNFFormula::ffalse())
-                                } else {
-                                    PreprocessingResult::Changed(NNFFormula::ttrue())
-                                }
+                                PreprocessingResult::Changed(NNFFormula::ttrue())
                             }
                         }
                         _ => PreprocessingResult::Unchanged(NNFFormula::Literal(literal)),
@@ -62,12 +60,10 @@ impl Preprocessor for ConstIntReducer {
                                 } else {
                                     PreprocessingResult::Changed(NNFFormula::ffalse())
                                 }
+                            } else if literal.is_pos() {
+                                PreprocessingResult::Changed(NNFFormula::ffalse())
                             } else {
-                                if literal.is_pos() {
-                                    PreprocessingResult::Changed(NNFFormula::ffalse())
-                                } else {
-                                    PreprocessingResult::Changed(NNFFormula::ttrue())
-                                }
+                                PreprocessingResult::Changed(NNFFormula::ttrue())
                             }
                         }
                         _ => PreprocessingResult::Unchanged(NNFFormula::Literal(literal)),
@@ -82,12 +78,10 @@ impl Preprocessor for ConstIntReducer {
                                 } else {
                                     PreprocessingResult::Changed(NNFFormula::ffalse())
                                 }
+                            } else if literal.is_pos() {
+                                PreprocessingResult::Changed(NNFFormula::ffalse())
                             } else {
-                                if literal.is_pos() {
-                                    PreprocessingResult::Changed(NNFFormula::ffalse())
-                                } else {
-                                    PreprocessingResult::Changed(NNFFormula::ttrue())
-                                }
+                                PreprocessingResult::Changed(NNFFormula::ttrue())
                             }
                         }
                         _ => PreprocessingResult::Unchanged(NNFFormula::Literal(literal)),
@@ -102,12 +96,10 @@ impl Preprocessor for ConstIntReducer {
                                 } else {
                                     PreprocessingResult::Changed(NNFFormula::ffalse())
                                 }
+                            } else if literal.is_pos() {
+                                PreprocessingResult::Changed(NNFFormula::ffalse())
                             } else {
-                                if literal.is_pos() {
-                                    PreprocessingResult::Changed(NNFFormula::ffalse())
-                                } else {
-                                    PreprocessingResult::Changed(NNFFormula::ttrue())
-                                }
+                                PreprocessingResult::Changed(NNFFormula::ttrue())
                             }
                         }
                         _ => PreprocessingResult::Unchanged(NNFFormula::Literal(literal)),
@@ -122,12 +114,10 @@ impl Preprocessor for ConstIntReducer {
                                 } else {
                                     PreprocessingResult::Changed(NNFFormula::ffalse())
                                 }
+                            } else if literal.is_pos() {
+                                PreprocessingResult::Changed(NNFFormula::ffalse())
                             } else {
-                                if literal.is_pos() {
-                                    PreprocessingResult::Changed(NNFFormula::ffalse())
-                                } else {
-                                    PreprocessingResult::Changed(NNFFormula::ttrue())
-                                }
+                                PreprocessingResult::Changed(NNFFormula::ttrue())
                             }
                         }
                         _ => PreprocessingResult::Unchanged(NNFFormula::Literal(literal)),
@@ -167,13 +157,13 @@ impl Preprocessor for IntSubstitutions {
 
     fn apply_literal(&mut self, literal: Literal, is_asserted: bool) -> PreprocessingResult {
         if is_asserted && literal.is_pos() {
-            if let Atom::Predicate(p) = literal.atom() {
-                if let Predicate::Equality(Term::Int(lhs), Term::Int(rhs)) = p {
-                    if let IntTerm::Var(v) = lhs {
-                        self.substitutions.set(v, Term::Int(rhs.clone()));
-                    } else if let IntTerm::Var(v) = rhs {
-                        self.substitutions.set(v, Term::Int(lhs.clone()));
-                    }
+            if let Atom::Predicate(Predicate::Equality(Term::Int(lhs), Term::Int(rhs))) =
+                literal.atom()
+            {
+                if let IntTerm::Var(v) = lhs {
+                    self.substitutions.set(v, Term::Int(rhs.clone()));
+                } else if let IntTerm::Var(v) = rhs {
+                    self.substitutions.set(v, Term::Int(lhs.clone()));
                 }
             }
         }

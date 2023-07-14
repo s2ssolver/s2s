@@ -37,7 +37,7 @@ impl ConstraintPartition {
                 return true;
             }
         }
-        return false;
+        false
     }
 
     fn contains_linear(&self) -> bool {

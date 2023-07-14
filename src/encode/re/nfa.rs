@@ -357,11 +357,12 @@ mod test {
         let mut alph = IndexSet::from_iter(re.alphabet().into_iter());
         alph.insert('a');
 
-        let constraint = RegularConstraint::new(
+        let mut constraint = RegularConstraint::new(
             re.clone(),
             Pattern::variable(var),
             RegularConstraintType::In,
         );
+        constraint.compile(None).unwrap();
         let mut encoder = NFAEncoder::new(constraint).unwrap();
         let mut dom_encoder = DomainEncoder::new(alph);
         let mut solver: Solver = cadical::Solver::default();

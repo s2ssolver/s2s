@@ -586,13 +586,18 @@ impl RegularConstraint {
     ///
     /// # Errors
     /// Returns an error if the regular expression cannot be compiled.
-    pub fn compile(&mut self, alphabet: &IndexSet<char>) -> Result<(), Error> {
+    pub fn compile(&mut self, alphabet: Option<&IndexSet<char>>) -> Result<(), Error> {
         if self.automaton.is_none() {
             log::debug!("Compiling regular expression {}", self.re);
-            match regulaer::automaton::compile_with_alphabet(
-                &self.re,
-                Some(&HashSet::from_iter(alphabet.iter().cloned())),
-            ) {
+
+            let res = match alphabet {
+                Some(alph) => regulaer::automaton::compile_with_alphabet(
+                    &self.re,
+                    Some(&HashSet::from_iter(alph.iter().cloned())),
+                ),
+                None => regulaer::automaton::compile(&self.re),
+            };
+            match res {
                 Ok(mut nfa) => {
                     nfa.normalize()?;
                     self.automaton = Some(nfa)
@@ -840,9 +845,8 @@ impl Arbitrary for WordEquation {
         WordEquation::new(
             Pattern::arbitrary(g),
             Pattern::arbitrary(g),
-            g.choose(&[WordEquationType::Equality, WordEquationType::Inequality])
-                .unwrap()
-                .clone(),
+            *g.choose(&[WordEquationType::Equality, WordEquationType::Inequality])
+                .unwrap(),
         )
     }
 }
