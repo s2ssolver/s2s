@@ -637,6 +637,13 @@ impl RegularConstraint {
     pub fn get_automaton(&self) -> Option<&Automaton<char>> {
         self.automaton.as_ref()
     }
+
+    /// Returns the NFA that accepts the language of the regular expression.
+    /// Returns `None` if the NFA has not been computed, yet.
+    /// To compute the NFA, use `compile()`.
+    pub fn get_automaton_mut(&mut self) -> Option<&mut Automaton<char>> {
+        self.automaton.as_mut()
+    }
 }
 
 impl PartialEq for RegularConstraint {

@@ -1,4 +1,5 @@
 use indexmap::{IndexMap, IndexSet};
+
 use regulaer::re::CharRegex;
 
 use crate::{
@@ -72,8 +73,9 @@ pub fn infer_bounds(constraints: &[Constraint], instance: &Instance) -> Result<B
         let mut var_eqs = vec![];
         let mut regulars = vec![];
         for r in &partition.regulars {
-            let mut r = r.clone();
-            r.compile()?;
+            let r = r.clone();
+            assert!(r.get_automaton().is_some());
+
             regulars.push(r);
         }
         for eq in &partition.eqs {
@@ -98,7 +100,7 @@ pub fn infer_bounds(constraints: &[Constraint], instance: &Instance) -> Result<B
             }
         }
 
-        from_regular_constraints(&regulars, &var_eqs)?
+        from_regular_constraints(&regulars, &var_eqs, instance)?
     } else {
         // Use linear propagation method to find bounds, might be incomplete
         let mut linears = partition.linear.clone();
@@ -132,6 +134,7 @@ pub fn infer_bounds(constraints: &[Constraint], instance: &Instance) -> Result<B
 fn from_regular_constraints(
     constraints: &[RegularConstraint],
     var_eqs: &[WordEquation],
+    _instance: &Instance,
 ) -> Result<Bounds, Error> {
     let all_single_var = constraints
         .iter()
@@ -184,47 +187,41 @@ fn from_regular_constraints(
         // intersect all automata and use the number of states as upper bound
         let first = regs.first().unwrap();
 
-        let mut res = if first.get_type().is_in() {
-            first.get_automaton().unwrap().clone()
-        } else {
-            // TODO: Use instance alphabet here!
-            // first.get_automaton().unwrap().complement(None)?
-            log::warn!("Complement not implemented yet");
-            continue;
-        };
+        let mut res = first.get_automaton().unwrap().clone();
+
+        if first.get_type().is_not_in() {
+            res = res.complement()?;
+        }
 
         // Simultaneously calculate the underapproximation by multiplying the number of states in each automaton
         // If we run into an error (e.g. complement is no supported), we use the approximation
-        let mut approxed = Some(res.states().len() as isize);
+        log::trace!("Current {} ({} states)", first.get_re(), res.states().len());
+
         let mut ok = true;
-        let mut use_approx = false;
+
         for next in regs.iter().skip(1) {
-            if next.get_type().is_in() {
-                let nfa_next = next.get_automaton().unwrap().clone();
-                res = match res.intersect(&nfa_next) {
-                    Ok(a) => a,
-                    Err(e) => {
-                        log::warn!("Could not intersect automata: {}", e,);
-                        ok = false;
-                        break;
-                    }
-                }
-            } else {
-                log::warn!("Complement not implemented yet, using approximation instead");
-                use_approx = true;
-                match approxed {
-                    Some(current) => match 2_isize
-                        .checked_pow(next.get_automaton().unwrap().states().len() as u32)
-                    {
-                        Some(pow) => match current.checked_mul(pow) {
-                            Some(res) => approxed = Some(res),
-                            None => approxed = None,
-                        },
-                        None => approxed = None,
-                    },
-                    None => (),
+            let mut nfa_next = next.get_automaton().unwrap().clone();
+
+            if next.get_type().is_not_in() {
+                nfa_next = nfa_next.complement()?;
+            }
+
+            log::trace!(
+                "Intersecting with {} ({} states)",
+                next.get_re(),
+                nfa_next.states().len()
+            );
+
+            res = match res.intersect(&nfa_next) {
+                Ok(a) => a,
+                Err(e) => {
+                    log::warn!("Could not intersect automata: {}", e,);
+                    ok = false;
+                    break;
                 }
             };
+
+            log::trace!("\t done ({} states)", res.states().len());
         }
 
         if !ok {
@@ -232,13 +229,6 @@ fn from_regular_constraints(
                 "Did not infer bounds for {} due to privous error.",
                 string_var
             );
-        } else if use_approx {
-            if let Some(v) = approxed {
-                res_bounds.set_upper(len_var, v);
-            } else {
-                log::debug!("Apprxomated bound overflowed, using unbounded");
-                // Stays Unbounded
-            }
         } else {
             log::info!("Found bound for {}: {}", string_var, res.states().len());
             res_bounds.set_upper(len_var, res.states().len() as isize);

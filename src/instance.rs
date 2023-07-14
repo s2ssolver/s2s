@@ -2,7 +2,10 @@ use std::cmp::max;
 
 use indexmap::IndexMap;
 
-use crate::model::{formula::Formula, Sort, Variable};
+use crate::model::{
+    formula::{Alphabet, Formula},
+    Sort, Variable,
+};
 
 /// A problem instance, consisting of a formula, a set of managed variables, and congigurations.
 #[derive(Clone, Debug)]
@@ -131,5 +134,11 @@ impl Instance {
     /// Returns a variable by name, if it exists
     pub fn var_by_name(&self, name: &str) -> Option<&Variable> {
         self.vars.get(name)
+    }
+}
+
+impl Alphabet for Instance {
+    fn alphabet(&self) -> indexmap::IndexSet<char> {
+        self.formula.alphabet()
     }
 }

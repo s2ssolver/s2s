@@ -156,7 +156,14 @@ impl AbstractionSolver {
     fn new(mut instance: Instance) -> Result<Self, Error> {
         let mut alphabet = instance.get_formula().alphabet();
         // Make sure the alphabet contains at least one character
-        alphabet.insert('a');
+
+        let mut next_chr = 'a';
+        for _ in 0..instance.get_formula().vars().len() + 20 {
+            while alphabet.contains(&next_chr) {
+                next_chr = (next_chr as u8 + 1) as char;
+            }
+            alphabet.insert(next_chr);
+        }
         log::debug!("Alphabet: {:?}", alphabet);
 
         // Instantiate the Domain encoder
@@ -305,6 +312,7 @@ impl AbstractionSolver {
                         .clone()
                 })
                 .collect::<Vec<_>>();
+
             infer_bounds(&asserted_constr, &self.instance)?
         } else {
             Bounds::new()
@@ -409,6 +417,16 @@ impl AbstractionSolver {
 impl Solver for AbstractionSolver {
     fn solve(&mut self) -> Result<SolverResult, Error> {
         log::debug!("Started solving");
+        for (_, c) in self.constraint_mng.constraints.iter_mut() {
+            if let Constraint::RegularConstraint(ref mut re) = c {
+                re.compile()?;
+                re.get_automaton_mut()
+                    .as_mut()
+                    .unwrap()
+                    .extend_alphabet(self.instance.alphabet().iter().cloned())
+            }
+        }
+
         let limit_bounds = self.find_limit_upper_bound()?;
         log::info!("Found limit bounds: {}", limit_bounds);
 
