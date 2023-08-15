@@ -1,16 +1,14 @@
 use indexmap::{IndexMap, IndexSet};
 
-use regulaer::re::CharRegex;
-
 use crate::{
     error::Error,
     instance::Instance,
     model::{
         constraints::{
-            LinearArithFactor, LinearConstraint, LinearConstraintType, Pattern, RegularConstraint,
-            RegularConstraintType, Symbol, WordEquation,
+            LinearArithFactor, LinearConstraint, LinearConstraintType, RegularConstraint, Symbol,
+            WordEquation,
         },
-        Constraint, Sort,
+        Constraint,
     },
 };
 
@@ -40,8 +38,20 @@ impl ConstraintPartition {
         false
     }
 
-    fn contains_linear(&self) -> bool {
+    fn contains_linears(&self) -> bool {
         !self.linear.is_empty()
+    }
+
+    fn contains_eq(&self) -> bool {
+        !self.eqs.is_empty()
+    }
+
+    fn contains_regulars(&self) -> bool {
+        !self.regulars.is_empty()
+    }
+
+    fn all_regulars(&self) -> bool {
+        self.linear.is_empty() && self.eqs.is_empty()
     }
 
     fn new(constraints: &[Constraint]) -> Self {
@@ -61,70 +71,18 @@ impl ConstraintPartition {
             eqs,
         }
     }
-}
 
-/// Infers the bounds of conjunction of the given constraints.
-/// If the conjunction of literals is satisfiable, then there is a solution that satisfies the inferred bounds.
-pub fn infer_bounds(constraints: &[Constraint], instance: &Instance) -> Result<Bounds, Error> {
-    let partition = ConstraintPartition::new(constraints);
-
-    // Check which techniques can be used
-    let mut inferred: Bounds = if !partition.contains_concat() && !partition.contains_linear() {
-        let mut var_eqs = vec![];
-        let mut regulars = vec![];
-        for r in &partition.regulars {
-            let r = r.clone();
-            assert!(r.get_automaton().is_some());
-
-            regulars.push(r);
-        }
-        for eq in &partition.eqs {
-            match eq {
-                WordEquation::Assignment { lhs, rhs, eq_type } => {
-                    // Convert to regular constraint
-                    let rtype = if eq_type.is_equality() {
-                        RegularConstraintType::In
-                    } else {
-                        RegularConstraintType::NotIn
-                    };
-                    let re = RegularConstraint::new(
-                        CharRegex::const_word(rhs),
-                        Pattern::variable(lhs),
-                        rtype,
-                    );
-                    regulars.push(re);
-                }
-                WordEquation::VarEquality { .. } => var_eqs.push(eq.clone()),
-                WordEquation::Generic { .. } => unreachable!("No concatenation in partition"),
-            }
-        }
-
-        from_regular_constraints(&regulars, &var_eqs, instance)?
-    } else {
-        // Use linear propagation method to find bounds, might be incomplete
-        let mut linears = partition.linear.clone();
-        for eq in &partition.eqs {
-            linears.push(LinearConstraint::from_word_equation(eq));
-        }
-        for re in &partition.regulars {
-            if re.get_type().is_in() {
-                linears.push(LinearConstraint::from_regular_constraint_lower(re));
-                if let Some(upper) = LinearConstraint::from_regular_constraint_upper(re) {
-                    linears.push(upper);
-                }
-            }
-        }
-        from_linears(&linears)?
-    };
-    log::debug!("Inferred bounds: {}", inferred);
-    // Set lower bound of string variables to 0, if they are unbouded from below
-    for str_var in instance.vars_of_sort(Sort::String) {
-        if inferred.get_lower(&str_var.len_var().unwrap()).is_none() {
-            inferred.set_lower(&str_var.len_var().unwrap(), 0);
-        }
+    fn equations(&self) -> &Vec<WordEquation> {
+        &self.eqs
     }
 
-    Ok(inferred)
+    fn regulars(&self) -> &Vec<RegularConstraint> {
+        &self.regulars
+    }
+
+    fn linears(&self) -> &Vec<LinearConstraint> {
+        &self.linear
+    }
 }
 
 /// Tries to find bounds for a set of  constraints of the form "x \in R" where x is a variable and R is a regular language.
@@ -175,6 +133,9 @@ fn from_regular_constraints(
                         // Something changed, so we need to propagate again
                         propagated = true;
                     }
+                } else {
+                    // Cannot handle disequalities at the moment
+                    return Ok(res_bounds);
                 }
             }
         }
@@ -240,14 +201,27 @@ fn from_regular_constraints(
     Ok(res_bounds)
 }
 
-fn from_linears(linears: &[LinearConstraint]) -> Result<Bounds, Error> {
-    let mut bounds = Bounds::new();
+/// Refines given bounds base on linear constraints which are either directly given or inferred from word equations and regular constraints.
+/// Uses linear propagation method to find and refine bounds, is incomplete.
+fn refine(partition: &ConstraintPartition, mut bounds: Bounds) -> Result<Bounds, Error> {
+    let mut linears = partition.linears().clone();
+    for eq in &partition.eqs {
+        linears.push(LinearConstraint::from_word_equation(eq));
+    }
+    for re in &partition.regulars {
+        if re.get_type().is_in() {
+            linears.push(LinearConstraint::from_regular_constraint_lower(re));
+            if let Some(upper) = LinearConstraint::from_regular_constraint_upper(re) {
+                linears.push(upper);
+            }
+        }
+    }
     let mut fixpoint = false;
     while !fixpoint {
         let lastbounds = bounds.clone();
 
         // Infer bounds on the variables using the linear constraint that can be inferred
-        for linear in linears {
+        for linear in &linears {
             let newbounds = propagate_bounds(linear, &bounds);
             bounds = bounds.intersect(&newbounds);
         }
@@ -483,4 +457,45 @@ fn propagate_bounds(lincon: &LinearConstraint, bounds: &Bounds) -> Bounds {
     }
 
     new_bounds
+}
+
+/// Rewrites a set of word equations into a straight line form.
+/// Returns `None` if the equations are not in the straight line fragment.
+/// The returned vector contains the equations in the input but ordered in a straight line form.
+/// That is, for each i (0 <= i < n) result[i] is of the form `x_i = y_1 ... y_(n_i)` where `x_i` is a variable that does not occur in any equation `j < i`, and `y_1 ... y_(n_i)` are variables.
+fn to_straight_line(_eqs: &[WordEquation]) -> Option<Vec<WordEquation>> {
+    todo!()
+}
+
+pub fn infer(constraints: &[Constraint], instance: &Instance) -> Result<Bounds, Error> {
+    let partition = ConstraintPartition::new(constraints);
+
+    // Check the fragment
+    let inferred = if partition.all_regulars() {
+        // If only regulars constraints: use the regular bound inference
+        from_regular_constraints(partition.regulars(), &[], instance)?
+    } else if partition.contains_regulars()
+        && partition.contains_eq()
+        && !partition.contains_concat()
+        && !partition.contains_linears()
+    {
+        // If regulars with `x = y` and `x != y` constraints: use the regular bound inference with var equality
+        from_regular_constraints(partition.regulars(), partition.equations(), instance)?
+    } else if partition.contains_eq()
+        && partition.contains_concat()
+        && !partition.contains_linears()
+    {
+        if let Some(_straight_line) = to_straight_line(partition.equations()) {
+            // If straight line fragment: use the straight line bound inference
+            log::warn!("Straight line fragment not implemented yet");
+            Bounds::new()
+        } else {
+            Bounds::new()
+        }
+    } else {
+        Bounds::new()
+    };
+
+    // Refine the bounds based on linears propagation
+    refine(&partition, inferred)
 }

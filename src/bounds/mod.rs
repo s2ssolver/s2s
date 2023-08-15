@@ -12,7 +12,7 @@ use crate::model::Variable;
 
 mod infer;
 
-pub use infer::infer_bounds;
+pub use infer::infer;
 
 /// The domain of an integer variable.
 /// The domain is represented as a range of possible values.

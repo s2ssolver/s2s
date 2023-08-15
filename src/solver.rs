@@ -6,7 +6,7 @@ use indexmap::{IndexMap, IndexSet};
 use std::time::Instant;
 
 use crate::abstr::{Abstraction, Definition, DefinitionType};
-use crate::bounds::{infer_bounds, Bounds, IntDomain};
+use crate::bounds::{infer, Bounds, IntDomain};
 use crate::encode::{
     AlignmentEncoder, ConstraintEncoder, EncodingResult, MddEncoder, NFAEncoder,
     RegularConstraintEncoder, WordEquationEncoder,
@@ -330,7 +330,7 @@ impl AbstractionSolver {
                 })
                 .collect::<Vec<_>>();
 
-            infer_bounds(&asserted_constr, &self.instance)?
+            infer(&asserted_constr, &self.instance)?
         } else {
             Bounds::new()
         };
