@@ -1,216 +1,135 @@
-//! The abstraction module. Provide functions to abstract formulas into a Boolean skeleton and a set of definitional Boolean variables.
-
-use std::fmt::{Display, Formatter};
-
-use indexmap::IndexMap;
-
 use crate::{
-    error::Error,
     instance::Instance,
     model::{
-        formula::{Atom, Literal, NNFFormula, Predicate},
+        formula::{Atom, Literal, NNFFormula},
         Sort, Variable,
     },
+    sat::{as_lit, neg, pvar, PLit},
 };
+use std::collections::HashMap;
 
-/// The type of a definition.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum DefinitionType {
-    /// A definition of the form `p <=> f`.
-    Equivalence,
-    /// A definition of the form `p => f`.
-    Positive,
-    /// A definition of the form `!p => !f`.
-    Negative,
-}
-
-/// A defintion consits of a Boolean variable, the predicate it defines, and the type of the definition.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct Definition {
-    var: Variable,
-    pred: Predicate,
-    def_type: DefinitionType,
-}
-
-impl Definition {
-    /// Creates a new definition.
-    pub fn new(var: Variable, pred: Predicate, def_type: DefinitionType) -> Self {
-        Self {
-            var,
-            pred,
-            def_type,
-        }
-    }
-
-    /// Returns the Boolean variable of the definition.
-    pub fn get_var(&self) -> &Variable {
-        &self.var
-    }
-
-    /// Returns the predicate of the definition.
-    pub fn get_pred(&self) -> &Predicate {
-        &self.pred
-    }
-
-    /// Returns the type of the definition.
-    #[allow(dead_code)]
-    pub fn get_def_type(&self) -> &DefinitionType {
-        &self.def_type
-    }
-}
-
-/// A set of [Defintion]s. Definitions are index by their defining Boolean variable.
-/// Adding a definitions make sure that the definitions are consistent. That is,
-/// if a predicate is defined by a variable, then it is not defined by another variable.
-/// A predicate is defined either positively, negatively, or by an equivalence.
-#[derive(Debug, Default)]
 pub struct Definitions {
-    /// The definitions indexed by their Boolean variable.
-    var2def: IndexMap<Variable, Definition>,
+    literal2def: HashMap<Literal, PLit>,
+    def2literal: HashMap<PLit, Literal>,
 }
 
 impl Definitions {
-    /// If the predicate is defined by a variable, returns the definition.
-    /// Otherwise, returns None.
-    /// Note that this method requires iterating over all the definitions.
-    fn get_def_var(&self, p: &Predicate) -> Option<&Definition> {
-        self.var2def
-            .iter()
-            .find(|(_v, d)| &d.pred == p)
-            .map(|(_v, d)| d)
+    fn new() -> Self {
+        Self {
+            literal2def: HashMap::new(),
+            def2literal: HashMap::new(),
+        }
     }
 
-    /// Adds a definition.
-    /// Panics if this definition is inconsistent with the existing definitions.
-    /// A definition is inconsistent if the predicate is already defined by another variable.
-    fn add_definition(&mut self, def: Definition) {
-        let clone = def.clone();
-        self.var2def
-            .entry(def.var.clone())
-            .and_modify(|d| {
-                if d.pred != def.pred {
-                    panic!("Inconsistent definitions")
-                }
-                match (&d.def_type, def.def_type) {
-                    (DefinitionType::Negative, DefinitionType::Positive)
-                    | (DefinitionType::Positive, DefinitionType::Negative) => {
-                        // Was defined in other polarity, now is equivalent
-                        d.def_type = DefinitionType::Equivalence
-                    }
-                    (_, _) => (), // nothing to do
-                }
-            })
-            .or_insert(clone);
+    fn insert(&mut self, literal: Literal, var: PLit) {
+        self.literal2def.insert(literal.clone(), var);
+        self.def2literal.insert(var, literal);
     }
 
-    /// Returns an iterator over the definitions.
-    pub fn iter(&self) -> impl Iterator<Item = &Definition> {
-        self.var2def.values()
+    pub fn iter(&self) -> impl Iterator<Item = (&PLit, &Literal)> {
+        self.def2literal.iter()
+    }
+
+    /// Defines a literal and returns the corresponding definitional variable/literal.
+    /// If the literal is already defined, the already created variable is returned.
+    /// If the negation of the literal is already defined, the negation of the already created variable/literal is returned.
+    fn define(&mut self, literal: &Literal) -> PLit {
+        let negated = literal.negated();
+        let var = if let Some(var) = self.literal2def.get(&literal) {
+            *var
+        } else if let Some(var) = self.literal2def.get(&negated) {
+            let var = -*var;
+            self.insert(literal.clone(), var);
+            var
+        } else {
+            let var = if literal.is_neg() {
+                neg(pvar())
+            } else {
+                as_lit(pvar())
+            };
+            self.insert(literal.clone(), var);
+            var
+        };
+
+        assert!((literal.is_neg()) == (var < 0));
+        assert!((literal.is_pos()) == (var > 0));
+        var
     }
 }
 
 pub struct Abstraction {
-    /// The Boolean skeleton, a propositional formula.
-    skeleton: NNFFormula,
-    /// The set of definitional Boolean variables.
     definitions: Definitions,
+    skeleton: NNFFormula,
 }
 
 impl Abstraction {
-    fn new(formula: NNFFormula, definitions: Definitions) -> Self {
+    pub fn new(instance: &mut Instance) -> Self {
+        let mut defs = Definitions::new();
+
+        let skeleton = Self::build(&mut defs, &instance.get_formula().clone().into(), instance);
+
         Self {
-            skeleton: formula,
-            definitions,
+            definitions: defs,
+            skeleton,
         }
     }
 
-    pub fn get_definitions(&self) -> &Definitions {
-        &self.definitions
+    /// Builds the Boolean skeleton of the formula and stores the definitions in `defs`.
+    /// Returns the root literal of the skeleton.
+    fn build(defs: &mut Definitions, root: &NNFFormula, instance: &mut Instance) -> NNFFormula {
+        match root {
+            NNFFormula::Literal(l) => {
+                let defv = defs.define(l);
+                let var = instance
+                    .vars_of_sort(Sort::Bool)
+                    .find(|v| match v {
+                        Variable::Bool { value, .. } => *value == defv.abs() as u32,
+                        _ => unreachable!(),
+                    })
+                    .cloned();
+                let var = match var {
+                    None => {
+                        let v = Variable::Bool {
+                            name: format!("def_{}", defv),
+                            value: defv.abs() as u32,
+                        };
+                        instance.add_var(v.clone());
+                        v
+                    }
+                    Some(v) => v,
+                };
+                let atom: Atom = Atom::BoolVar(var);
+                if l.is_pos() {
+                    NNFFormula::Literal(Literal::Pos(atom))
+                } else {
+                    NNFFormula::Literal(Literal::Neg(atom))
+                }
+            }
+            NNFFormula::Or(fs) => {
+                let mut children = vec![];
+                for child in fs {
+                    children.push(Self::build(defs, child, instance));
+                }
+                NNFFormula::or(children)
+            }
+            NNFFormula::And(fs) => {
+                let mut children = vec![];
+                for child in fs {
+                    children.push(Self::build(defs, child, instance));
+                }
+                NNFFormula::and(children)
+            }
+        }
     }
 
-    /// Returns the Boolean skeleton.
+    /// Returns the skeleton of the formula.
     pub fn get_skeleton(&self) -> &NNFFormula {
         &self.skeleton
     }
 
-    /// Abstracts a formula into a Boolean skeleton and a set of definitional Boolean variables.
-    /// All introduced definitions are added to the definitions given as argument.
-    /// The Boolean skeleton is returned.
-    /// The definitions are returned as a side effect.
-    ///
-    /// # Panics
-    /// Panics if the formula is not in NNF.
-    fn abstract_fm(
-        formula: NNFFormula,
-        defs: &mut Definitions,
-        instance: &mut Instance,
-    ) -> NNFFormula {
-        let res = match formula {
-            NNFFormula::Literal(Literal::Pos(Atom::Predicate(p))) => {
-                let dvar = match defs.get_def_var(&p) {
-                    Some(v) => v.get_var().clone(),
-                    None => {
-                        let v = Variable::temp(Sort::Bool);
-                        instance.add_var(v.clone());
-
-                        v
-                    }
-                };
-                defs.add_definition(Definition::new(dvar.clone(), p, DefinitionType::Positive));
-                NNFFormula::Literal(Literal::Pos(Atom::BoolVar(dvar)))
-            }
-            NNFFormula::Literal(Literal::Neg(Atom::Predicate(p))) => {
-                let dvar = match defs.get_def_var(&p) {
-                    Some(v) => v.get_var().clone(),
-                    None => {
-                        let v = Variable::temp(Sort::Bool);
-                        instance.add_var(v.clone());
-                        v
-                    }
-                };
-                defs.add_definition(Definition::new(dvar.clone(), p, DefinitionType::Negative));
-                NNFFormula::Literal(Literal::Neg(Atom::BoolVar(dvar)))
-            }
-
-            NNFFormula::Literal(_) => formula.clone(),
-            NNFFormula::Or(fs) => {
-                let fs = fs
-                    .into_iter()
-                    .map(|f| Self::abstract_fm(f, defs, instance))
-                    .collect::<Vec<_>>();
-                NNFFormula::Or(fs)
-            }
-
-            NNFFormula::And(fs) => {
-                let fs = fs
-                    .into_iter()
-                    .map(|f| Self::abstract_fm(f, defs, instance))
-                    .collect::<Vec<_>>();
-                NNFFormula::And(fs)
-            }
-        };
-        res
-    }
-
-    /// Creates the abstraction from an instance.
-    pub fn create(instance: &mut Instance) -> Result<Self, Error> {
-        let mut definitions = Definitions::default();
-        let skeleton = Self::abstract_fm(
-            instance.get_formula().clone().into(),
-            &mut definitions,
-            instance,
-        );
-        Ok(Self::new(skeleton, definitions))
-    }
-}
-
-impl Display for Definition {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self.def_type {
-            DefinitionType::Equivalence => write!(f, "{} <-> {}", self.var, self.pred),
-            DefinitionType::Positive => write!(f, "{} -> {}", self.var, self.pred),
-            DefinitionType::Negative => write!(f, "!{} -> !{}", self.var, self.pred),
-        }
+    /// Returns the definitions of the abstraction.
+    pub fn definitions(&self) -> &Definitions {
+        &self.definitions
     }
 }
 
@@ -219,100 +138,42 @@ mod test {
 
     use quickcheck_macros::quickcheck;
 
-    use crate::model::formula::Formula;
+    use crate::model::formula::Predicate;
 
     use super::*;
 
     #[quickcheck]
-    fn defintion_pos_neg_equals_equiv(p: Predicate) {
-        let mut instance = Instance::default();
-        let v1 = Variable::temp(Sort::Bool);
-        instance.add_var(v1.clone());
+    fn define_new(p: Predicate) {
+        let mut defs = Definitions::new();
 
-        let mut defs = Definitions::default();
-        defs.add_definition(Definition::new(
-            v1.clone(),
-            p.clone(),
-            DefinitionType::Positive,
-        ));
-        defs.add_definition(Definition::new(v1, p.clone(), DefinitionType::Negative));
-        let res = defs.get_def_var(&p).unwrap().get_def_type();
-        assert_eq!(res, &DefinitionType::Equivalence);
-    }
+        let literal = Literal::Pos(Atom::Predicate(p));
 
-    fn is_bool(fm: &Formula) -> bool {
-        match fm {
-            Formula::Atom(Atom::Predicate(_)) => false,
-            Formula::Atom(_) => true,
-            Formula::And(fs) | Formula::Or(fs) => fs.iter().all(is_bool),
-            Formula::Not(f) => is_bool(f),
-        }
-    }
-
-    fn get_preds(fm: &Formula, pol: bool) -> Vec<(Predicate, bool)> {
-        match fm {
-            Formula::Atom(Atom::Predicate(p)) => vec![(p.clone(), pol)],
-            Formula::Atom(_) => vec![],
-            Formula::And(fs) | Formula::Or(fs) => fs
-                .iter()
-                .flat_map(|f| get_preds(f, pol))
-                .collect::<Vec<_>>(),
-            Formula::Not(f) => get_preds(f, !pol),
-        }
+        let var = defs.define(&literal);
+        assert!(var > 0);
     }
 
     #[quickcheck]
-    fn abstraction_is_bool(fm: Formula) {
-        let fm = fm.to_nnf();
-        let mut instance = Instance::new(fm.into());
-        let abstr = Abstraction::create(&mut instance);
+    fn define_negated(p: Predicate) {
+        let mut defs = Definitions::new();
 
-        assert!(abstr.is_ok());
-        let abstr = abstr.unwrap();
-        assert!(is_bool(&abstr.skeleton.into()));
+        let literal = Literal::Pos(Atom::Predicate(p.clone()));
+        let neg_literal = Literal::Neg(Atom::Predicate(p));
+
+        let var = defs.define(&literal);
+        assert!(var > 0);
+        let neg_var = defs.define(&neg_literal);
+        assert!(neg_var == -var);
     }
-
     #[quickcheck]
-    fn abstraction_all_preds_defined_correctly(fm: Formula) {
-        let fm = fm.to_nnf();
-        let mut instance = Instance::new(fm.clone().into());
-        let abstr = Abstraction::create(&mut instance);
+    fn define_negated_rev(p: Predicate) {
+        let mut defs = Definitions::new();
 
-        assert!(abstr.is_ok());
-        let abstr = abstr.unwrap();
-        let mut negs = vec![];
-        let mut poss = vec![];
+        let literal = Literal::Pos(Atom::Predicate(p.clone()));
+        let neg_literal = Literal::Neg(Atom::Predicate(p));
 
-        for (pred, pol) in get_preds(&fm.into(), true) {
-            if pol {
-                poss.push(pred);
-            } else {
-                negs.push(pred);
-            }
-        }
-        for p in &negs {
-            let dtype = abstr
-                .get_definitions()
-                .get_def_var(p)
-                .unwrap()
-                .get_def_type();
-            if poss.contains(p) {
-                assert_eq!(dtype, &DefinitionType::Equivalence)
-            } else {
-                assert_eq!(dtype, &DefinitionType::Negative)
-            }
-        }
-        for p in &poss {
-            let dtype = abstr
-                .get_definitions()
-                .get_def_var(p)
-                .unwrap()
-                .get_def_type();
-            if negs.contains(p) {
-                assert_eq!(dtype, &DefinitionType::Equivalence)
-            } else {
-                assert_eq!(dtype, &DefinitionType::Positive)
-            }
-        }
+        let neg_var = defs.define(&neg_literal);
+        assert!(neg_var < 0);
+        let var = defs.define(&literal);
+        assert!(neg_var == -var);
     }
 }

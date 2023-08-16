@@ -130,6 +130,13 @@ impl Literal {
             Literal::Pos(Atom::Predicate(_)) | Literal::Neg(Atom::Predicate(_))
         )
     }
+
+    pub fn negated(&self) -> Self {
+        match self {
+            Literal::Pos(a) => Literal::Neg(a.clone()),
+            Literal::Neg(a) => Literal::Pos(a.clone()),
+        }
+    }
 }
 
 /// A first-order formula without quantifiers.

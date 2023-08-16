@@ -5,7 +5,7 @@ use indexmap::{IndexMap, IndexSet};
 
 use std::time::Instant;
 
-use crate::abstr::{Abstraction, Definition, DefinitionType};
+use crate::abstr::Abstraction;
 use crate::bounds::{infer, Bounds, IntDomain};
 use crate::encode::{
     AlignmentEncoder, ConstraintEncoder, EncodingResult, MddEncoder, NFAEncoder,
@@ -16,14 +16,14 @@ use crate::error::Error;
 
 use crate::instance::Instance;
 use crate::model::constraints::{Symbol, WordEquation};
-use crate::model::formula::{Alphabet, Atom, Literal, NNFFormula};
+use crate::model::formula::{Alphabet, Literal, NNFFormula};
 
+use crate::model::Sort;
 use crate::model::{Constraint, Substitution};
-use crate::model::{Sort, Variable};
 
 use crate::encode::domain::{get_substitutions, DomainEncoder};
 
-use crate::sat::{as_lit, neg, to_cnf, Cnf};
+use crate::sat::{to_cnf, Cnf, PLit};
 
 /// The result of a satisfiability check
 pub enum SolverResult {
@@ -137,7 +137,7 @@ struct AbstractionSolver {
     instance: Instance,
     alphabet: IndexSet<char>,
     constraint_mng: ConstraintManager,
-    encoders: HashMap<Definition, HashMap<bool, Box<dyn ConstraintEncoder>>>,
+    encoders: HashMap<PLit, Box<dyn ConstraintEncoder>>,
     abstraction: Abstraction,
     domain_encoder: DomainEncoder,
 }
@@ -170,7 +170,7 @@ impl AbstractionSolver {
         let dom_encoder = DomainEncoder::new(alphabet.clone());
 
         // Create the abstraction
-        let abstraction = Abstraction::create(&mut instance)?;
+        let abstraction = Abstraction::new(&mut instance);
         let mut cm = ConstraintManager::from_literals(
             &NNFFormula::from(instance.get_formula().clone()).literals(),
         )?;
@@ -182,55 +182,11 @@ impl AbstractionSolver {
         }
         // Instantiate the encoders
         let mut encoders = HashMap::new();
-        for d in abstraction.get_definitions().iter() {
-            log::debug!("Creating encoder for {}", d);
-            match d.get_def_type() {
-                DefinitionType::Positive => {
-                    // Create encoder for positive
-                    let mut map = HashMap::new();
-                    let constraint = cm
-                        .constraint_for_literal(&Literal::Pos(Atom::Predicate(
-                            d.get_pred().clone(),
-                        )))
-                        .unwrap();
-                    let encoder = Self::encoder_for_constraint(constraint)?;
-                    map.insert(true, encoder);
-                    encoders.insert(d.clone(), map);
-                }
-                DefinitionType::Negative => {
-                    // Create encoder for positive
-                    let mut map = HashMap::new();
-                    let constraint = cm
-                        .constraint_for_literal(&Literal::Neg(Atom::Predicate(
-                            d.get_pred().clone(),
-                        )))
-                        .unwrap();
-                    let encoder = Self::encoder_for_constraint(constraint)?;
-                    map.insert(false, encoder);
-                    encoders.insert(d.clone(), map);
-                }
-                DefinitionType::Equivalence => {
-                    // Create encoder for positive and negative
-                    let mut map = HashMap::new();
-                    let constraint_pos = cm
-                        .constraint_for_literal(&Literal::Pos(Atom::Predicate(
-                            d.get_pred().clone(),
-                        )))
-                        .unwrap();
-                    let encoder = Self::encoder_for_constraint(constraint_pos)?;
-                    map.insert(true, encoder);
-
-                    let constraint_neg = cm
-                        .constraint_for_literal(&Literal::Neg(Atom::Predicate(
-                            d.get_pred().clone(),
-                        )))
-                        .unwrap();
-                    let encoder = Self::encoder_for_constraint(constraint_neg)?;
-                    map.insert(false, encoder);
-
-                    encoders.insert(d.clone(), map);
-                }
-            }
+        for (d, lit) in abstraction.definitions().iter() {
+            log::debug!("Creating encoder for {:?}", d);
+            let constraint = cm.constraint_for_literal(lit).unwrap().clone();
+            let encoder = Self::encoder_for_constraint(&constraint)?;
+            encoders.insert(*d, encoder);
         }
 
         Ok(Self {
@@ -251,20 +207,7 @@ impl AbstractionSolver {
             return Ok(EncodingResult::Trivial(true));
         }
 
-        let mut bounds = bounds.clone();
-        if self.encoders.len() == 1 {
-            // Check if the only constraint is a single (positive) word equation
-            if let Some((Constraint::WordEquation(eq), true)) =
-                self.encoders.keys().next().map(|d| {
-                    (
-                        d.get_pred().clone().try_into().unwrap(),
-                        *d.get_def_type() == DefinitionType::Positive,
-                    )
-                })
-            {
-                bounds = sharpen_bounds(&eq, &bounds, &self.instance)
-            }
-        }
+        // Check if the only constraint is a single (positive) word equation adn call sharpen_bounds
 
         // Encode the domain
         let ts = Instant::now();
@@ -277,28 +220,12 @@ impl AbstractionSolver {
         encoding.join(subs_cnf);
         let dom = self.domain_encoder.encoding();
 
-        for (d, encs) in self.encoders.iter_mut() {
-            let def_pvar = if let Variable::Bool { value, .. } = d.get_var() {
-                *value
-            } else {
-                panic!("Definition variable is not a boolean")
-            };
-
-            if let Some(enc) = encs.get_mut(&true) {
-                let mut res = enc.encode(&bounds, dom)?;
-                // devar -> encoding
-                // Insert the negation of the definitional boolean var into all clauses
-                res.iter_clauses_mut().for_each(|c| c.push(neg(def_pvar)));
-                encoding.join(res);
-            }
-            if let Some(enc) = encs.get_mut(&false) {
-                let mut res = enc.encode(&bounds, dom)?;
-                // -devar -> negation_encoding
-                // Insert the the definitional boolean var into all clauses
-                res.iter_clauses_mut()
-                    .for_each(|c| c.push(as_lit(def_pvar)));
-                encoding.join(res);
-            }
+        for (d, enc) in self.encoders.iter_mut() {
+            let mut res = enc.encode(&bounds, dom)?;
+            // devar -> encoding
+            // Insert the negation of the definitional boolean literal into all clauses
+            res.iter_clauses_mut().for_each(|c| c.push(-*d));
+            encoding.join(res);
         }
 
         Ok(encoding)
@@ -307,10 +234,8 @@ impl AbstractionSolver {
     // Reset all states
     fn reset(&mut self) {
         self.domain_encoder = DomainEncoder::new(self.alphabet.clone());
-        for (_, encoders) in self.encoders.iter_mut() {
-            for (_, encoder) in encoders.iter_mut() {
-                encoder.reset();
-            }
+        for (_, encoder) in self.encoders.iter_mut() {
+            encoder.reset();
         }
     }
 
@@ -569,12 +494,7 @@ impl Solver for AbstractionSolver {
                 }
             };
 
-            if self
-                .encoders
-                .values()
-                .flat_map(|f| f.values())
-                .any(|enc| !enc.is_incremental())
-            {
+            if self.encoders.values().any(|enc| !enc.is_incremental()) {
                 // reset states if at least one solver is not incremental
                 self.reset();
                 cadical = cadical::Solver::new();
@@ -584,7 +504,7 @@ impl Solver for AbstractionSolver {
     }
 }
 
-fn sharpen_bounds(eq: &WordEquation, bounds: &Bounds, vars: &Instance) -> Bounds {
+fn _sharpen_bounds(eq: &WordEquation, bounds: &Bounds, vars: &Instance) -> Bounds {
     let mut new_bounds = bounds.clone();
     // Todo: Cache this or do linearly
     let mut abs_consts: isize = 0;
