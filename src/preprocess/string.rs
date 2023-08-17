@@ -639,7 +639,12 @@ impl IndependetVarSubstitutions {
         match formula {
             NNFFormula::Literal(l) => {
                 for v in l.atom().vars() {
-                    *self.var_occurrences.entry(v.clone()).or_default() += 1;
+                    // Map str-length-vars back to the original vars
+                    if let Some(v) = v.len_str_var() {
+                        *self.var_occurrences.entry(v.clone()).or_default() += 1;
+                    } else {
+                        *self.var_occurrences.entry(v.clone()).or_default() += 1;
+                    }
                 }
             }
             NNFFormula::And(fs) | NNFFormula::Or(fs) => {
@@ -652,7 +657,7 @@ impl IndependetVarSubstitutions {
     fn is_independent(&self, pat: &Pattern) -> bool {
         pat.vars()
             .iter()
-            .all(|v| self.var_occurrences.get(v).unwrap_or(&0) == &1)
+            .all(|v| self.var_occurrences.get(&v).unwrap_or(&0) == &1)
     }
 }
 
@@ -667,7 +672,7 @@ impl Preprocessor for IndependetVarSubstitutions {
     }
 
     fn get_name(&self) -> String {
-        "Regex independent variable substitutions".to_string()
+        "Independent variable substitutions".to_string()
     }
 
     fn apply_literal(&mut self, literal: Literal, _: bool) -> PreprocessingResult {
