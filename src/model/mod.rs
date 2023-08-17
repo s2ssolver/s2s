@@ -118,6 +118,18 @@ impl Variable {
     pub fn is_len_var(&self) -> bool {
         self.name().ends_with("$len")
     }
+
+    pub fn len_str_var(&self) -> Option<Variable> {
+        let mut split = self.name().split("$");
+        let name = split.next()?;
+        if split.next() == Some("len") {
+            Some(Variable::String {
+                name: name.to_string(),
+            })
+        } else {
+            None
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]

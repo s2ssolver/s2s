@@ -63,6 +63,7 @@ impl ConstraintPartition {
                 Constraint::RegularConstraint(r) => regulars.push(r.clone()),
                 Constraint::LinearConstraint(l) => linear.push(l.clone()),
                 Constraint::WordEquation(e) => eqs.push(e.clone()),
+                Constraint::BoolVarConstraint(_, _) => (),
             }
         }
         Self {
@@ -218,6 +219,11 @@ fn refine(partition: &ConstraintPartition, mut bounds: Bounds) -> Result<Bounds,
             }
         }
     }
+    log::debug!(
+        "Refining bounds {} for deduced linears: {:#?}",
+        bounds,
+        linears
+    );
     let mut fixpoint = false;
     while !fixpoint {
         let lastbounds = bounds.clone();
@@ -230,6 +236,7 @@ fn refine(partition: &ConstraintPartition, mut bounds: Bounds) -> Result<Bounds,
 
         fixpoint = lastbounds == bounds;
     }
+    log::debug!("Refined bounds: {}", bounds);
     Ok(bounds)
 }
 

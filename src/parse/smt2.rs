@@ -514,14 +514,18 @@ impl<'a> Visitor<ALL> for StringTermBuilder<'a> {
                         "String operation".to_string(),
                     ))),
                 },
-                Op::Arith(_) | Op::Array(_) | Op::BitVec(_) | Op::Set(_) => ControlFlow::Break(
-                    Err(ParseError::Unsupported("Non-String operation".to_string())),
-                ),
+                Op::Arith(_) | Op::Array(_) | Op::BitVec(_) | Op::Set(_) => {
+                    ControlFlow::Break(Err(ParseError::Unsupported(format!(
+                        "1Non-String operation: {}",
+                        s
+                    ))))
+                }
             },
             Term::CoreOp(_) | Term::UF(_) | Term::Let(_) | Term::Match(_) | Term::Quantifier(_) => {
-                ControlFlow::Break(Err(ParseError::Unsupported(
-                    "Non-String operation".to_string(),
-                )))
+                ControlFlow::Break(Err(ParseError::Unsupported(format!(
+                    "2Non-String operation: {}",
+                    term
+                ))))
             }
         }
     }
@@ -745,14 +749,18 @@ impl<'a> Visitor<ALL> for ReTermBuilder<'a> {
                         "String operation".to_string(),
                     ))),
                 },
-                Op::Arith(_) | Op::Array(_) | Op::BitVec(_) | Op::Set(_) => ControlFlow::Break(
-                    Err(ParseError::Unsupported("Non-String operation".to_string())),
-                ),
+                Op::Arith(_) | Op::Array(_) | Op::BitVec(_) | Op::Set(_) => {
+                    ControlFlow::Break(Err(ParseError::Unsupported(format!(
+                        "3Non-String operation: {}",
+                        s
+                    ))))
+                }
             },
             Term::CoreOp(_) | Term::UF(_) | Term::Let(_) | Term::Match(_) | Term::Quantifier(_) => {
-                ControlFlow::Break(Err(ParseError::Unsupported(
-                    "Non-String operation".to_string(),
-                )))
+                ControlFlow::Break(Err(ParseError::Unsupported(format!(
+                    "4Non-String operation: {}",
+                    term
+                ))))
             }
         }
     }
@@ -880,13 +888,14 @@ impl<'a> Visitor<ALL> for IntArithTermBuilder<'a> {
                     }
                 }
                 Op::String(_) | Op::Array(_) | Op::BitVec(_) | Op::Set(_) => ControlFlow::Break(
-                    Err(ParseError::Unsupported("Non-String operation".to_string())),
+                    Err(ParseError::Unsupported(format!("Non-Int operation: {}", s))),
                 ),
             },
             Term::CoreOp(_) | Term::UF(_) | Term::Let(_) | Term::Match(_) | Term::Quantifier(_) => {
-                ControlFlow::Break(Err(ParseError::Unsupported(
-                    "Non-String operation".to_string(),
-                )))
+                ControlFlow::Break(Err(ParseError::Unsupported(format!(
+                    "Non-Int operation: {}",
+                    term
+                ))))
             }
         }
     }

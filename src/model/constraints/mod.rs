@@ -3,6 +3,8 @@
 mod integer;
 mod string;
 
+use std::fmt::Display;
+
 pub use integer::*;
 pub use string::*;
 
@@ -201,5 +203,24 @@ impl From<WordEquation> for Formula {
 impl From<(StringTerm, StringTerm)> for WordEquation {
     fn from(value: (StringTerm, StringTerm)) -> Self {
         Self::new_equality(value.0.into(), value.1.into())
+    }
+}
+
+impl Display for Constraint {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Constraint::WordEquation(eq) => write!(f, "{}", eq),
+            Constraint::LinearConstraint(l) => write!(f, "{}", l),
+            Constraint::RegularConstraint(re) => {
+                write!(f, "{} in {}", re.get_pattern(), re.get_re())
+            }
+            Constraint::BoolVarConstraint(c, p) => {
+                if *p {
+                    write!(f, "{}", c)
+                } else {
+                    write!(f, "not {}", c)
+                }
+            }
+        }
     }
 }
