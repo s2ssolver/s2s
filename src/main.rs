@@ -19,6 +19,10 @@ struct Options {
     #[arg(long)]
     verify_model: bool,
 
+    /// If this is set to true, the solver will not actually solve the instance, but terminate after preprocessing.
+    #[arg(long)]
+    dry: bool,
+
     /// The maximum variable bound to check before returning `unsat`
     #[arg(short = 'b', long, value_enum, default_value = None)]
     max_bound: Option<usize>,
@@ -86,6 +90,7 @@ fn main() {
         instance.set_print_model(true);
     }
     instance.set_lbound(cli.min_bound);
+    instance.set_dry_run(cli.dry);
     // Keep a copy of the formula since the solver might modify it during preprocessing
     // We want to validate the model against the original formula
     let original_formula = instance.get_formula().clone();

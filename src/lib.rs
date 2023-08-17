@@ -59,6 +59,12 @@ pub fn solve(instance: &mut Instance) -> Result<SolverResult, Error> {
         }
         _ => (),
     }
+
+    if instance.dry_run() {
+        log::info!("Dry run, terminating.");
+        return Ok(SolverResult::Unknown);
+    }
+
     // not trivally satifable or unsatisfiable
     let mut solver = get_solver(instance.clone())?;
 

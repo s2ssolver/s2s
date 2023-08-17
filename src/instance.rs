@@ -24,6 +24,9 @@ pub struct Instance {
 
     print_model: bool,
 
+    /// Terminate after preprocessing without solving the instance
+    dry: bool,
+
     /// The set of variables, indexed by name
     vars: IndexMap<String, Variable>,
 }
@@ -36,6 +39,7 @@ impl Default for Instance {
             start_bound: 1,
             vars: IndexMap::new(),
             print_model: false,
+            dry: false,
         }
     }
 }
@@ -48,6 +52,7 @@ impl Instance {
             start_bound: 1,
             vars: IndexMap::new(),
             print_model: false,
+            dry: false,
         }
     }
 
@@ -134,6 +139,14 @@ impl Instance {
     /// Returns a variable by name, if it exists
     pub fn var_by_name(&self, name: &str) -> Option<&Variable> {
         self.vars.get(name)
+    }
+
+    pub fn dry_run(&self) -> bool {
+        self.dry
+    }
+
+    pub fn set_dry_run(&mut self, dry: bool) {
+        self.dry = dry;
     }
 }
 
