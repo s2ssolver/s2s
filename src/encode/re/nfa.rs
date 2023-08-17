@@ -15,16 +15,21 @@ use regulaer::{
 
 use crate::{
     bounds::Bounds,
-    encode::{domain::DomainEncoding, ConstraintEncoder, EncodingResult, LAMBDA},
+    encode::{
+        domain::DomainEncoding, AlignmentEncoder, ConstraintEncoder, EncodingResult,
+        WordEquationEncoder, LAMBDA,
+    },
     error::Error,
+    instance::Instance,
     model::{
-        constraints::{RegularConstraint, Symbol},
-        Variable,
+        constraints::{
+            Pattern, RegularConstraint, RegularConstraintType, Symbol, WordEquation,
+            WordEquationType,
+        },
+        Constraint, Sort, Variable,
     },
     sat::{as_lit, neg, pvar, PVar},
 };
-
-use super::RegularConstraintEncoder;
 
 const NFA_NOT_EPSILON_FREE_MSG: &str = "NFA must be epsilon-free";
 
@@ -247,7 +252,11 @@ impl ConstraintEncoder for NFAEncoder {
         bounds: &Bounds,
         substitution: &DomainEncoding,
     ) -> Result<EncodingResult, Error> {
-        log::debug!("Encoding `{} in {}` ", self.var, self.regex,);
+        if self.sign {
+            log::debug!("Encoding `{} in {}` ", self.var, self.regex,);
+        } else {
+            log::debug!("Encoding `{} notin {}` ", self.var, self.regex,);
+        }
         let bound = bounds
             .get(&self.var.len_var().unwrap())
             .get_upper()
@@ -290,35 +299,96 @@ impl ConstraintEncoder for NFAEncoder {
     }
 }
 
-impl RegularConstraintEncoder for NFAEncoder {
-    fn new(re_constraint: RegularConstraint) -> Result<Self, Error> {
-        let illegal_pattern_msg = format!(
-            "NFA encode can only handle single variables as LHS, but got {}",
-            re_constraint.get_pattern()
-        );
-        if re_constraint.get_pattern().len() != 1 {
-            return Err(Error::EncodingError(illegal_pattern_msg));
-        }
-        let var = if let Some(Symbol::Variable(v)) = re_constraint.get_pattern().symbols().next() {
-            v.clone()
-        } else {
-            return Err(Error::EncodingError(illegal_pattern_msg));
-        };
-
+impl NFAEncoder {
+    fn new(
+        var: &Variable,
+        automaton: &Automaton<char>,
+        regex: &Regex<char>,
+        ttype: RegularConstraintType,
+    ) -> Self {
         // We clone the nfa because any changes would break the incremental encoding
-        let mut nfa = re_constraint.get_automaton().unwrap().clone();
+        let mut nfa = automaton.clone();
         // Normalize the NFA
-        nfa.normalize()?;
+        nfa.normalize().unwrap();
 
-        Ok(Self {
-            var,
+        Self {
+            var: var.clone(),
             nfa,
-            sign: re_constraint.get_type().is_in(),
-            regex: re_constraint.get_re().clone(),
+            sign: ttype.is_in(),
+            regex: regex.clone(),
             last_bound: None,
             reach_vars: IndexMap::new(),
             bound_selector: None,
-        })
+        }
+    }
+
+    fn from_constraint(con: &RegularConstraint) -> Result<Self, Error> {
+        if con.get_pattern().len() == 1 {
+            if let Some(Symbol::Variable(v)) = con.get_pattern().symbols().next() {
+                return Ok(Self::new(
+                    &v,
+                    con.get_automaton().unwrap(),
+                    con.get_re(),
+                    con.get_type(),
+                ));
+            }
+        }
+        return Err(Error::EncodingError(
+            "Can only encode single variable patterns".to_string(),
+        ));
+    }
+}
+
+pub struct PatternNFAEncoder {
+    nfa_encoder: NFAEncoder,
+    equation_encoder: AlignmentEncoder,
+}
+
+impl PatternNFAEncoder {
+    fn new(rec: RegularConstraint, instance: &mut Instance) -> Self {
+        let new_var = Variable::temp(Sort::String);
+        instance.add_var(new_var.clone());
+
+        let weq = WordEquation::Generic {
+            lhs: Pattern::variable(&new_var),
+            rhs: rec.get_pattern().clone(),
+            eq_type: WordEquationType::Equality,
+        };
+
+        let mut rec_constraint = rec.clone();
+        rec_constraint.set_pattern(Pattern::variable(&new_var));
+
+        let equation_encoder = AlignmentEncoder::new(weq);
+        let nfa_encoder = NFAEncoder::new(
+            &new_var,
+            rec.get_automaton().unwrap(),
+            rec.get_re(),
+            rec.get_type(),
+        );
+        Self {
+            nfa_encoder,
+            equation_encoder,
+        }
+    }
+}
+
+impl ConstraintEncoder for PatternNFAEncoder {
+    fn is_incremental(&self) -> bool {
+        true
+    }
+
+    fn reset(&mut self) {
+        self.equation_encoder.reset();
+        self.nfa_encoder.reset();
+    }
+
+    fn encode(
+        &mut self,
+        bounds: &Bounds,
+        substitution: &DomainEncoding,
+    ) -> Result<EncodingResult, Error> {
+        self.equation_encoder.encode(bounds, substitution)?;
+        self.nfa_encoder.encode(bounds, substitution)
     }
 }
 
@@ -326,6 +396,29 @@ impl From<AutomatonError> for Error {
     fn from(err: AutomatonError) -> Self {
         Error::EncodingError(format!("Error while encoding NFA: {:?}", err))
     }
+}
+
+pub fn build_re_encoder(
+    rec: RegularConstraint,
+    instance: &mut Instance,
+) -> Result<Box<dyn ConstraintEncoder>, Error> {
+    let encoder: Box<dyn ConstraintEncoder> = if rec.get_pattern().len() == 1 {
+        if let Some(Symbol::Variable(v)) = rec.get_pattern().symbols().next() {
+            Box::new(NFAEncoder::new(
+                &v,
+                rec.get_automaton().unwrap(),
+                rec.get_re(),
+                rec.get_type(),
+            ))
+        } else {
+            return Err(Error::EncodingError(
+                "Cannot encode constant pattern".to_string(),
+            ));
+        }
+    } else {
+        Box::new(PatternNFAEncoder::new(rec, instance))
+    };
+    Ok(encoder)
 }
 
 #[cfg(test)]
@@ -339,10 +432,7 @@ mod test {
 
     use crate::{
         bounds::IntDomain,
-        encode::{
-            domain::{get_substitutions, DomainEncoder},
-            re::RegularConstraintEncoder,
-        },
+        encode::domain::{get_substitutions, DomainEncoder},
         instance::Instance,
         model::{
             constraints::{Pattern, RegularConstraintType},
@@ -363,7 +453,7 @@ mod test {
             RegularConstraintType::In,
         );
         constraint.compile(None).unwrap();
-        let mut encoder = NFAEncoder::new(constraint).unwrap();
+        let mut encoder = NFAEncoder::from_constraint(&constraint).unwrap();
         let mut dom_encoder = DomainEncoder::new(alph);
         let mut solver: Solver = cadical::Solver::default();
 

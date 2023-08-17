@@ -31,7 +31,7 @@ pub use boolvar::BoolVarEncoder;
 pub use equation::{AlignmentEncoder, IWoorpjeEncoder, WoorpjeEncoder, WordEquationEncoder};
 use indexmap::IndexSet;
 pub use linear::MddEncoder;
-pub use re::{NFAEncoder, RegularConstraintEncoder};
+pub use re::build_re_encoder;
 
 /// The character used to represent unused positions
 const LAMBDA: char = char::REPLACEMENT_CHARACTER;

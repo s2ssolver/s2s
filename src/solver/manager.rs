@@ -2,8 +2,8 @@ use indexmap::{IndexMap, IndexSet};
 
 use crate::{
     encode::{
-        AlignmentEncoder, BoolVarEncoder, ConstraintEncoder, MddEncoder, NFAEncoder,
-        RegularConstraintEncoder, WordEquationEncoder,
+        build_re_encoder, AlignmentEncoder, BoolVarEncoder, ConstraintEncoder, MddEncoder,
+        WordEquationEncoder,
     },
     error::Error,
     instance::Instance,
@@ -101,7 +101,7 @@ impl EncodingManager {
         &mut self,
         lit: &Literal,
         def: PLit,
-        instance: &Instance,
+        instance: &mut Instance,
         is_asserted: bool,
     ) -> Result<(), Error> {
         let mut con = Constraint::try_from(lit.clone())?;
@@ -117,7 +117,7 @@ impl EncodingManager {
         let ctx = EncodingContext::new(con.clone(), def, watcher, is_asserted);
         self.add_context(ctx.clone(), lit);
 
-        let encoder = Self::encoder_for_constraint(&con)?;
+        let encoder = Self::encoder_for_constraint(&con, instance)?;
         self.encoders.insert(ctx, encoder);
         Ok(())
     }
@@ -127,11 +127,14 @@ impl EncodingManager {
     }
 
     /// Instatiates a new encoder for the given constraint.
-    fn encoder_for_constraint(con: &Constraint) -> Result<Box<dyn ConstraintEncoder>, Error> {
+    fn encoder_for_constraint(
+        con: &Constraint,
+        instance: &mut Instance,
+    ) -> Result<Box<dyn ConstraintEncoder>, Error> {
         match con {
             Constraint::WordEquation(eq) => Ok(Box::new(AlignmentEncoder::new(eq.clone()))),
             Constraint::LinearConstraint(lc) => Ok(Box::new(MddEncoder::new(lc.clone()))),
-            Constraint::RegularConstraint(rc) => Ok(Box::new(NFAEncoder::new(rc.clone())?)),
+            Constraint::RegularConstraint(rc) => build_re_encoder(rc.clone(), instance),
             Constraint::BoolVarConstraint(v, pol) => {
                 Ok(Box::new(BoolVarEncoder::new(v.clone(), *pol)))
             }

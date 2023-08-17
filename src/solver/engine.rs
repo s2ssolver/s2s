@@ -68,7 +68,7 @@ impl AbstractionSolver {
             .cloned()
             .collect::<HashSet<_>>();
         for (def, lit) in abstraction.definitions().iter() {
-            cm.add(lit, *def, &instance, asserted_lits.contains(&lit))?;
+            cm.add(lit, *def, &mut instance, asserted_lits.contains(&lit))?;
         }
 
         Ok(Self {

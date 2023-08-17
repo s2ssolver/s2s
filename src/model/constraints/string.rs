@@ -630,6 +630,10 @@ impl RegularConstraint {
         self.re_type = RegularConstraintType::NotIn;
     }
 
+    pub fn set_pattern(&mut self, pattern: Pattern) {
+        self.pattern = pattern;
+    }
+
     /// Returns the regular expression
     pub fn get_re(&self) -> &Regex<char> {
         &self.re

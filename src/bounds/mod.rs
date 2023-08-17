@@ -243,7 +243,7 @@ impl Bounds {
             Some(d) => *d,
             None => {
                 if var.is_len_var() {
-                    IntDomain::LowerBounded(0)
+                    IntDomain::LowerBounded(1)
                 } else {
                     self.default
                 }
