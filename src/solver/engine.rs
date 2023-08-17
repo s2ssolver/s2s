@@ -1,159 +1,41 @@
 use std::cmp::max;
-use std::collections::HashMap;
 
-use indexmap::{IndexMap, IndexSet};
+use indexmap::IndexSet;
 
 use std::time::Instant;
 
 use crate::abstr::Abstraction;
 use crate::bounds::{infer, Bounds, IntDomain};
-use crate::encode::{
-    AlignmentEncoder, ConstraintEncoder, EncodingResult, MddEncoder, NFAEncoder,
-    RegularConstraintEncoder, WordEquationEncoder,
-};
+
+use crate::encode::EncodingResult;
+use crate::model::constraints::{Symbol, WordEquation};
+use crate::{Solver, SolverResult};
 
 use crate::error::Error;
 
 use crate::instance::Instance;
-use crate::model::constraints::{Symbol, WordEquation};
-use crate::model::formula::{Alphabet, Literal, NNFFormula};
+
+use crate::model::formula::Alphabet;
 
 use crate::model::Sort;
 use crate::model::{Constraint, Substitution};
 
 use crate::encode::domain::{get_substitutions, DomainEncoder};
 
-use crate::sat::{to_cnf, Cnf, PLit};
+use crate::sat::{to_cnf, Cnf};
 
-/// The result of a satisfiability check
-pub enum SolverResult {
-    /// The instance is satisfiable with the given model
-    Sat(Substitution),
-    /// The instance is unsatisfiable
-    Unsat,
-    /// The solver could not determine the satisfiability of the instance
-    Unknown,
-}
+use super::manager::EncodingManager;
 
-impl SolverResult {
-    /// Returns true if the instance is satisfiable
-    pub fn is_sat(&self) -> bool {
-        matches!(self, SolverResult::Sat(_))
-    }
-
-    /// Returns the model if the instance is satisfiable
-    pub fn get_model(&self) -> Option<&Substitution> {
-        match self {
-            SolverResult::Sat(model) => Some(model),
-            _ => None,
-        }
-    }
-
-    /// Returns true if the instance is unsatisfiable
-    pub fn is_unsat(&self) -> bool {
-        matches!(self, SolverResult::Unsat)
-    }
-}
-
-impl std::fmt::Display for SolverResult {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            SolverResult::Sat(_) => write!(f, "sat"),
-            SolverResult::Unsat => write!(f, "unsat"),
-            SolverResult::Unknown => write!(f, "unknown"),
-        }
-    }
-}
-
-/// A solver for a problem instance.
-/// A solver provides a `solve` method that takes an instance and decides whether it is satisfiable.
-/// Implementations of this trait accept different kinds of instances.
-// todo: Default solver for formulas.
-pub trait Solver {
-    /// Solve the given instance.
-    fn solve(&mut self) -> Result<SolverResult, Error>;
-}
-
-/// Returns a solver for the given instance.
-pub fn get_solver(inst: Instance) -> Result<Box<dyn Solver>, Error> {
-    AbstractionSolver::new(inst).map(|s| Box::new(s) as Box<dyn Solver>)
-}
-
-/// The result of increasing the bounds used for solving.
-enum BoundUpdate {
-    /// The next bounds to be used
-    Next(Bounds),
-    /// The current bounds are sufficient, if the instance is satisfiable
-    LimitReached,
-    /// User-imposed threshold reached, cannot increase bounds further
-    ThresholdReached,
-}
-
-impl BoundUpdate {
-    fn unwrap(self) -> Bounds {
-        match self {
-            BoundUpdate::Next(b) => b,
-            BoundUpdate::LimitReached => panic!("Called unwarp on BoundUpdate::LimitReached"),
-            BoundUpdate::ThresholdReached => {
-                panic!("Called unwarp on BoundUpdate::ThresholdReached")
-            }
-        }
-    }
-}
-
-struct ConstraintManager {
-    constraints: IndexMap<Literal, Constraint>,
-}
-
-impl ConstraintManager {
-    fn new() -> Self {
-        Self {
-            constraints: IndexMap::new(),
-        }
-    }
-
-    fn create(&mut self, lit: &Literal) -> Result<(), Error> {
-        if self.constraints.get(lit).is_none() {
-            let con = Constraint::try_from(lit.clone())?;
-            self.constraints.insert(lit.clone(), con);
-        }
-        Ok(())
-    }
-
-    fn constraint_for_literal(&self, lit: &Literal) -> Option<&Constraint> {
-        self.constraints.get(lit)
-    }
-
-    fn from_literals(lits: &[&Literal]) -> Result<Self, Error> {
-        let mut cm = Self::new();
-        for lit in lits.iter() {
-            cm.create(lit)?;
-        }
-        Ok(cm)
-    }
-}
-
-struct AbstractionSolver {
+pub(super) struct AbstractionSolver {
     instance: Instance,
     alphabet: IndexSet<char>,
-    constraint_mng: ConstraintManager,
-    encoders: HashMap<PLit, Box<dyn ConstraintEncoder>>,
+    encoding_mng: EncodingManager,
     abstraction: Abstraction,
     domain_encoder: DomainEncoder,
 }
 
 impl AbstractionSolver {
-    /// Instatiates a new encoder for the given constraint.
-    fn encoder_for_constraint(con: &Constraint) -> Result<Box<dyn ConstraintEncoder>, Error> {
-        match con {
-            Constraint::WordEquation(eq) => Ok(Box::new(AlignmentEncoder::new(eq.clone()))),
-
-            Constraint::LinearConstraint(lc) => Ok(Box::new(MddEncoder::new(lc.clone()))),
-            Constraint::RegularConstraint(rc) => Ok(Box::new(NFAEncoder::new(rc.clone())?)),
-        }
-    }
-
-    fn new(mut instance: Instance) -> Result<Self, Error> {
+    pub fn new(mut instance: Instance) -> Result<Self, Error> {
         let mut alphabet = instance.get_formula().alphabet();
         // Make sure the alphabet contains at least one character
 
@@ -171,29 +53,17 @@ impl AbstractionSolver {
 
         // Create the abstraction
         let abstraction = Abstraction::new(&mut instance);
-        let mut cm = ConstraintManager::from_literals(
-            &NNFFormula::from(instance.get_formula().clone()).literals(),
-        )?;
+        let mut cm = EncodingManager::new();
 
-        for (_, c) in cm.constraints.iter_mut() {
-            if let Constraint::RegularConstraint(ref mut re) = c {
-                re.compile(Some(&instance.alphabet()))?;
-            }
-        }
-        // Instantiate the encoders
-        let mut encoders = HashMap::new();
-        for (d, lit) in abstraction.definitions().iter() {
-            log::debug!("Creating encoder for {:?}", d);
-            let constraint = cm.constraint_for_literal(lit).unwrap().clone();
-            let encoder = Self::encoder_for_constraint(&constraint)?;
-            encoders.insert(*d, encoder);
+        for (def, lit) in abstraction.definitions().iter() {
+            cm.add(lit, *def, &instance)?;
         }
 
         Ok(Self {
             instance,
-            constraint_mng: cm,
+            encoding_mng: cm,
             alphabet,
-            encoders,
+
             abstraction,
             domain_encoder: dom_encoder,
         })
@@ -203,7 +73,7 @@ impl AbstractionSolver {
     /// Returns the encoding result.
     fn encode_bounded(&mut self, bounds: &Bounds) -> Result<EncodingResult, Error> {
         let mut encoding = EncodingResult::empty();
-        if self.encoders.is_empty() {
+        if self.encoding_mng.num_constraints() == 0 {
             return Ok(EncodingResult::Trivial(true));
         }
 
@@ -220,12 +90,22 @@ impl AbstractionSolver {
         encoding.join(subs_cnf);
         let dom = self.domain_encoder.encoding();
 
-        for (d, enc) in self.encoders.iter_mut() {
+        for (ctx, enc) in self.encoding_mng.iter() {
             let mut res = enc.encode(&bounds, dom)?;
-            // devar -> encoding
-            // Insert the negation of the definitional boolean literal into all clauses
-            res.iter_clauses_mut().for_each(|c| c.push(-*d));
+            let def_lit = ctx.definitional();
+            let watcher = ctx.watcher();
+            // def_lit -> encoding
+            // watcher -> (def_lit -> encoding)
+            // Insert the negation of def_lit and watcher into all clauses
+
+            for ref mut clause in res.iter_clauses_mut() {
+                clause.push(-watcher);
+                clause.push(-def_lit);
+            }
+            // Append encoding to results
             encoding.join(res);
+            encoding.add_assumption(def_lit);
+            encoding.add_assumption(watcher);
         }
 
         Ok(encoding)
@@ -234,7 +114,7 @@ impl AbstractionSolver {
     // Reset all states
     fn reset(&mut self) {
         self.domain_encoder = DomainEncoder::new(self.alphabet.clone());
-        for (_, encoder) in self.encoders.iter_mut() {
+        for (_, encoder) in self.encoding_mng.iter() {
             encoder.reset();
         }
     }
@@ -247,12 +127,8 @@ impl AbstractionSolver {
                 .to_nnf()
                 .asserted_literals()
                 .iter()
-                .map(|lit| {
-                    self.constraint_mng
-                        .constraint_for_literal(lit)
-                        .unwrap()
-                        .clone()
-                })
+                .filter_map(|lit| self.encoding_mng.for_literal(lit))
+                .map(|ctx| ctx.constraint().clone())
                 .collect::<Vec<_>>();
 
             infer(&asserted_constr, &self.instance)?
@@ -433,6 +309,7 @@ impl Solver for AbstractionSolver {
 
                         time_encoding += t_adding;
                         let ts = Instant::now();
+
                         let res = cadical.solve_with(assms.iter().cloned());
 
                         let t_solving = ts.elapsed().as_millis();
@@ -494,11 +371,38 @@ impl Solver for AbstractionSolver {
                 }
             };
 
-            if self.encoders.values().any(|enc| !enc.is_incremental()) {
+            if self
+                .encoding_mng
+                .iter()
+                .map(|(_, enc)| enc)
+                .any(|enc| !enc.is_incremental())
+            {
                 // reset states if at least one solver is not incremental
                 self.reset();
                 cadical = cadical::Solver::new();
                 log::debug!("Reset state");
+            }
+        }
+    }
+}
+
+/// The result of increasing the bounds used for solving.
+enum BoundUpdate {
+    /// The next bounds to be used
+    Next(Bounds),
+    /// The current bounds are sufficient, if the instance is satisfiable
+    LimitReached,
+    /// User-imposed threshold reached, cannot increase bounds further
+    ThresholdReached,
+}
+
+impl BoundUpdate {
+    fn unwrap(self) -> Bounds {
+        match self {
+            BoundUpdate::Next(b) => b,
+            BoundUpdate::LimitReached => panic!("Called unwarp on BoundUpdate::LimitReached"),
+            BoundUpdate::ThresholdReached => {
+                panic!("Called unwarp on BoundUpdate::ThresholdReached")
             }
         }
     }
