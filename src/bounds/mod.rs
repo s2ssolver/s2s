@@ -137,6 +137,57 @@ impl IntDomain {
             (IntDomain::Unbounded, IntDomain::Unbounded) => IntDomain::Unbounded,
         }
     }
+
+    /// Joins two integer domains.
+    /// The join of two bounded domains is the smallest bounded domain that contains both domains.
+    pub fn join(&self, other: &Self) -> Self {
+        match (&self, &other) {
+            (IntDomain::Empty, other) | (other, IntDomain::Empty) => *other.clone(),
+            (IntDomain::Bounded(l1, u1), IntDomain::Bounded(l2, u2)) => {
+                let l = *l1.max(l2);
+                let u = *u1.min(u2);
+                if l > u {
+                    IntDomain::Empty
+                } else {
+                    IntDomain::Bounded(l, u)
+                }
+            }
+            (IntDomain::Bounded(l1, u2), IntDomain::LowerBounded(l2))
+            | (IntDomain::LowerBounded(l2), IntDomain::Bounded(l1, u2)) => {
+                let l = *l1.max(l2);
+                let u = *u2;
+                if l > u {
+                    IntDomain::Empty
+                } else {
+                    IntDomain::Bounded(l, u)
+                }
+            }
+            (IntDomain::Bounded(l1, u1), IntDomain::UpperBounded(u2))
+            | (IntDomain::UpperBounded(u2), IntDomain::Bounded(l1, u1)) => {
+                let l = *l1;
+                let u = *u1.min(u2);
+                if l > u {
+                    IntDomain::Empty
+                } else {
+                    IntDomain::Bounded(l, u)
+                }
+            }
+            (_, IntDomain::Unbounded) | (IntDomain::Unbounded, _) => IntDomain::Unbounded,
+
+            (IntDomain::LowerBounded(l1), IntDomain::LowerBounded(l2)) => {
+                let l = *l1.max(l2);
+                IntDomain::LowerBounded(l)
+            }
+            (IntDomain::LowerBounded(l), _) | (_, IntDomain::LowerBounded(l)) => {
+                IntDomain::LowerBounded(*l)
+            }
+
+            (IntDomain::UpperBounded(u), IntDomain::UpperBounded(u2)) => {
+                let u = *u.min(u2);
+                IntDomain::UpperBounded(u)
+            }
+        }
+    }
 }
 
 /// Represents and manages the bounds of integer variables.
@@ -168,6 +219,9 @@ impl Bounds {
         }
     }
 
+    pub fn set_default(&mut self, default: IntDomain) {
+        self.default = default;
+    }
     /// Sets the domain of a variable.
     pub fn set(&mut self, var: &Variable, domain: IntDomain) -> Option<IntDomain> {
         assert!(
@@ -185,7 +239,16 @@ impl Bounds {
             "Cannot get bounds for non-integer variable {}.",
             var
         );
-        self.domains.get(var).map_or(self.default, |d| *d)
+        match self.domains.get(var) {
+            Some(d) => *d,
+            None => {
+                if var.is_len_var() {
+                    IntDomain::LowerBounded(0)
+                } else {
+                    self.default
+                }
+            }
+        }
     }
 
     /// Returns the upper bound of a variable.
@@ -273,6 +336,14 @@ impl Bounds {
             }
         }
         any_changed
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = (&Variable, &IntDomain)> {
+        self.domains.iter()
+    }
+
+    pub fn get_default(&self) -> IntDomain {
+        self.default
     }
 
     /// Clamps the upper bounds of all variables to the given limit.

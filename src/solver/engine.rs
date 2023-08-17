@@ -1,6 +1,9 @@
+use std::char::{from_u32, EscapeUnicode};
 use std::cmp::max;
+use std::collections::HashSet;
 
 use indexmap::IndexSet;
+use regulaer::re;
 
 use std::time::Instant;
 
@@ -9,6 +12,7 @@ use crate::bounds::{infer, Bounds, IntDomain};
 
 use crate::encode::EncodingResult;
 use crate::model::constraints::{Symbol, WordEquation};
+use crate::solver::analysis::{init_bounds, next_bounds};
 use crate::{Solver, SolverResult};
 
 use crate::error::Error;
@@ -18,12 +22,13 @@ use crate::instance::Instance;
 use crate::model::formula::Alphabet;
 
 use crate::model::Sort;
-use crate::model::{Constraint, Substitution};
+use crate::model::Substitution;
 
 use crate::encode::domain::{get_substitutions, DomainEncoder};
 
 use crate::sat::{to_cnf, Cnf};
 
+use super::analysis::BoundUpdate;
 use super::manager::EncodingManager;
 
 pub(super) struct AbstractionSolver {
@@ -56,9 +61,14 @@ impl AbstractionSolver {
         // Create the abstraction
         let abstraction = Abstraction::new(&mut instance);
         let mut cm = EncodingManager::new();
-
+        let fm = instance.get_formula().to_nnf();
+        let asserted_lits = fm
+            .asserted_literals()
+            .iter()
+            .cloned()
+            .collect::<HashSet<_>>();
         for (def, lit) in abstraction.definitions().iter() {
-            cm.add(lit, *def, &instance)?;
+            cm.add(lit, *def, &instance, asserted_lits.contains(&lit))?;
         }
 
         Ok(Self {
@@ -92,7 +102,7 @@ impl AbstractionSolver {
         encoding.join(subs_cnf);
         let dom = self.domain_encoder.encoding();
 
-        for (ctx, enc) in self.encoding_mng.iter() {
+        for (ctx, enc) in self.encoding_mng.iter_mut() {
             let mut res = enc.encode(&bounds, dom)?;
             let def_lit = ctx.definitional();
             let watcher = ctx.watcher();
@@ -116,7 +126,7 @@ impl AbstractionSolver {
     // Reset all states
     fn reset(&mut self) {
         self.domain_encoder = DomainEncoder::new(self.alphabet.clone());
-        for (_, encoder) in self.encoding_mng.iter() {
+        for (_, encoder) in self.encoding_mng.iter_mut() {
             encoder.reset();
         }
     }
@@ -133,7 +143,7 @@ impl AbstractionSolver {
                 .map(|ctx| ctx.constraint().clone())
                 .collect::<Vec<_>>();
 
-            infer(&asserted_constr, &self.instance)?
+            infer(&asserted_constr)?
         } else {
             Bounds::new()
         };
@@ -238,16 +248,12 @@ impl Solver for AbstractionSolver {
     fn solve(&mut self) -> Result<SolverResult, Error> {
         log::debug!("Started solving");
 
-        let limit_bounds = self.find_limit_upper_bound()?;
-        log::info!("Found limit bounds: {}", limit_bounds);
-
-        if limit_bounds.any_empty() {
-            log::info!("Empty upper bounds, unsat");
-            return Ok(SolverResult::Unsat);
-        }
-
         // First call guarantees to returns some bounds
-        let mut current_bounds = self.next_bounds(None, &limit_bounds).unwrap();
+        let mut current_bounds = match init_bounds(&self.encoding_mng, &self.instance)? {
+            BoundUpdate::Next(b) => b,
+            BoundUpdate::LimitReached => return Ok(SolverResult::Unsat),
+            BoundUpdate::ThresholdReached => return Ok(SolverResult::Unknown),
+        };
 
         log::info!(
             "Started solving loop for system of {} equations, alphabet size {}",
@@ -361,7 +367,13 @@ impl Solver for AbstractionSolver {
             }
 
             // Prepare next round
-            current_bounds = match self.next_bounds(Some(&current_bounds), &limit_bounds) {
+            // self.next_bounds(Some(&current_bounds), &limit_bounds) {
+            current_bounds = match next_bounds(
+                &self.encoding_mng,
+                &cadical,
+                &current_bounds,
+                self.instance.get_upper_threshold(),
+            )? {
                 BoundUpdate::Next(b) => b,
                 BoundUpdate::LimitReached => {
                     log::info!("Reached limit bounds, unsat");
@@ -375,7 +387,7 @@ impl Solver for AbstractionSolver {
 
             if self
                 .encoding_mng
-                .iter()
+                .iter_mut()
                 .map(|(_, enc)| enc)
                 .any(|enc| !enc.is_incremental())
             {
@@ -383,28 +395,6 @@ impl Solver for AbstractionSolver {
                 self.reset();
                 cadical = cadical::Solver::new();
                 log::debug!("Reset state");
-            }
-        }
-    }
-}
-
-/// The result of increasing the bounds used for solving.
-enum BoundUpdate {
-    /// The next bounds to be used
-    Next(Bounds),
-    /// The current bounds are sufficient, if the instance is satisfiable
-    LimitReached,
-    /// User-imposed threshold reached, cannot increase bounds further
-    ThresholdReached,
-}
-
-impl BoundUpdate {
-    fn unwrap(self) -> Bounds {
-        match self {
-            BoundUpdate::Next(b) => b,
-            BoundUpdate::LimitReached => panic!("Called unwarp on BoundUpdate::LimitReached"),
-            BoundUpdate::ThresholdReached => {
-                panic!("Called unwarp on BoundUpdate::ThresholdReached")
             }
         }
     }

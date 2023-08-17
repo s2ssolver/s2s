@@ -445,7 +445,7 @@ impl From<isize> for IntTerm {
 impl Display for StringTerm {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            StringTerm::Variable(var) => write!(f, "{}", var),
+            StringTerm::Variable(var) => write!(f, "[{}]", var),
             StringTerm::Constant(word) => write!(f, "{}", word.iter().collect::<String>()),
             StringTerm::Concat(lhs, rhs) => write!(f, "{}{}", lhs, rhs),
         }

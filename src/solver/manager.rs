@@ -2,8 +2,8 @@ use indexmap::{IndexMap, IndexSet};
 
 use crate::{
     encode::{
-        AlignmentEncoder, ConstraintEncoder, MddEncoder, NFAEncoder, RegularConstraintEncoder,
-        WordEquationEncoder,
+        AlignmentEncoder, BoolVarEncoder, ConstraintEncoder, MddEncoder, NFAEncoder,
+        RegularConstraintEncoder, WordEquationEncoder,
     },
     error::Error,
     instance::Instance,
@@ -26,13 +26,20 @@ pub struct EncodingContext {
     constraint: Constraint,
     definitional: Definitional,
     watcher: Watcher,
+    is_asserted: bool,
 }
 impl EncodingContext {
-    fn new(constraint: Constraint, definitional: Definitional, watcher: Watcher) -> Self {
+    fn new(
+        constraint: Constraint,
+        definitional: Definitional,
+        watcher: Watcher,
+        is_asserted: bool,
+    ) -> Self {
         Self {
             constraint,
             definitional,
             watcher,
+            is_asserted,
         }
     }
 
@@ -49,6 +56,11 @@ impl EncodingContext {
     /// Returns the constraint.
     pub fn constraint(&self) -> &Constraint {
         &self.constraint
+    }
+
+    /// Returns true if the constraint is asserted.
+    pub fn is_asserted(&self) -> bool {
+        self.is_asserted
     }
 }
 
@@ -85,7 +97,13 @@ impl EncodingManager {
         self.ctx_by_literal.insert(lit.clone(), ctx);
     }
 
-    pub fn add(&mut self, lit: &Literal, def: PLit, instance: &Instance) -> Result<(), Error> {
+    pub fn add(
+        &mut self,
+        lit: &Literal,
+        def: PLit,
+        instance: &Instance,
+        is_asserted: bool,
+    ) -> Result<(), Error> {
         let mut con = Constraint::try_from(lit.clone())?;
 
         // Pre-compile NFAs for regular constraints.
@@ -96,7 +114,7 @@ impl EncodingManager {
 
         let watcher = as_lit(pvar());
 
-        let ctx = EncodingContext::new(con.clone(), def, watcher);
+        let ctx = EncodingContext::new(con.clone(), def, watcher, is_asserted);
         self.add_context(ctx.clone(), lit);
 
         let encoder = Self::encoder_for_constraint(&con)?;
@@ -124,9 +142,13 @@ impl EncodingManager {
         self.ctx_by_literal.get(lit)
     }
 
-    pub fn iter(
+    pub fn iter_mut(
         &mut self,
     ) -> impl Iterator<Item = (&EncodingContext, &mut Box<dyn ConstraintEncoder>)> {
         self.encoders.iter_mut()
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = (&EncodingContext, &Box<dyn ConstraintEncoder>)> {
+        self.encoders.iter()
     }
 }

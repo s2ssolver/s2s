@@ -6,6 +6,7 @@ use crate::model::Substitution;
 
 use self::engine::AbstractionSolver;
 
+mod analysis;
 mod engine;
 mod manager;
 

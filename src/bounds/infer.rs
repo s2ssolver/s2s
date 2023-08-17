@@ -92,7 +92,6 @@ impl ConstraintPartition {
 fn from_regular_constraints(
     constraints: &[RegularConstraint],
     var_eqs: &[WordEquation],
-    _instance: &Instance,
 ) -> Result<Bounds, Error> {
     let all_single_var = constraints
         .iter()
@@ -208,8 +207,8 @@ fn refine(partition: &ConstraintPartition, mut bounds: Bounds) -> Result<Bounds,
     let mut linears = partition.linears().clone();
     for eq in &partition.eqs {
         if eq.eq_type().is_equality() {
-        linears.push(LinearConstraint::from_word_equation(eq));
-    }
+            linears.push(LinearConstraint::from_word_equation(eq));
+        }
     }
     for re in &partition.regulars {
         if re.get_type().is_in() {
@@ -473,23 +472,24 @@ fn propagate_bounds(lincon: &LinearConstraint, bounds: &Bounds) -> Bounds {
 /// The returned vector contains the equations in the input but ordered in a straight line form.
 /// That is, for each i (0 <= i < n) result[i] is of the form `x_i = y_1 ... y_(n_i)` where `x_i` is a variable that does not occur in any equation `j < i`, and `y_1 ... y_(n_i)` are variables.
 fn to_straight_line(_eqs: &[WordEquation]) -> Option<Vec<WordEquation>> {
-    todo!()
+    // TODO
+    None
 }
 
-pub fn infer(constraints: &[Constraint], instance: &Instance) -> Result<Bounds, Error> {
+pub fn infer(constraints: &[Constraint]) -> Result<Bounds, Error> {
     let partition = ConstraintPartition::new(constraints);
 
     // Check the fragment
     let inferred = if partition.all_regulars() {
         // If only regulars constraints: use the regular bound inference
-        from_regular_constraints(partition.regulars(), &[], instance)?
-    } else if partition.contains_regulars()
-        && partition.contains_eq()
+        from_regular_constraints(partition.regulars(), &[])?
+    } else if partition.contains_eq()
         && !partition.contains_concat()
         && !partition.contains_linears()
     {
         // If regulars with `x = y` and `x != y` constraints: use the regular bound inference with var equality
-        from_regular_constraints(partition.regulars(), partition.equations(), instance)?
+
+        from_regular_constraints(partition.regulars(), partition.equations())?
     } else if partition.contains_eq()
         && partition.contains_concat()
         && !partition.contains_linears()
