@@ -139,11 +139,12 @@ impl Preprocessor for WordEquationConstMatching {
             let lhs = Pattern::from(lhs.clone());
             let rhs = Pattern::from(rhs.clone());
             let eq = WordEquation::new_equality(lhs, rhs);
+
             if !Self::consts_match(&eq) {
                 if literal.is_pos() {
-                    return PreprocessingResult::Unchanged(NNFFormula::ffalse());
+                    return PreprocessingResult::Changed(NNFFormula::ffalse());
                 } else {
-                    return PreprocessingResult::Unchanged(NNFFormula::ttrue());
+                    return PreprocessingResult::Changed(NNFFormula::ttrue());
                 }
             }
         }

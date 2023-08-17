@@ -37,11 +37,20 @@ impl Preprocessor for ConjunctionSimplifier {
                 let mut changed = false;
                 let mut new_fs = Vec::new();
                 for f in fs {
-                    match self.apply_fm(f, _is_asserted) {
-                        PreprocessingResult::Unchanged(f) => new_fs.push(f),
+                    let pf = match self.apply_fm(f, _is_asserted) {
+                        PreprocessingResult::Unchanged(f) => f,
                         PreprocessingResult::Changed(f) => {
                             changed = true;
-                            new_fs.push(f);
+                            f
+                        }
+                    };
+                    match pf.eval(&Substitution::new()) {
+                        Some(true) => {
+                            return PreprocessingResult::Changed(Formula::ttrue().into());
+                        }
+                        Some(false) => (),
+                        None => {
+                            new_fs.push(pf);
                         }
                     }
                 }
