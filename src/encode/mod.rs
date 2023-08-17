@@ -19,12 +19,15 @@ pub mod domain;
 /// Encoder for word equations
 mod equation;
 
+mod boolvar;
+
 /// Encoder for regular constraints
 mod re;
 
 /// Encoder for linear constraints
 mod linear;
 
+pub use boolvar::BoolVarEncoder;
 pub use equation::{AlignmentEncoder, IWoorpjeEncoder, WoorpjeEncoder, WordEquationEncoder};
 use indexmap::IndexSet;
 pub use linear::MddEncoder;

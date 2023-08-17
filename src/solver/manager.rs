@@ -114,6 +114,9 @@ impl EncodingManager {
             Constraint::WordEquation(eq) => Ok(Box::new(AlignmentEncoder::new(eq.clone()))),
             Constraint::LinearConstraint(lc) => Ok(Box::new(MddEncoder::new(lc.clone()))),
             Constraint::RegularConstraint(rc) => Ok(Box::new(NFAEncoder::new(rc.clone())?)),
+            Constraint::BoolVarConstraint(v, pol) => {
+                Ok(Box::new(BoolVarEncoder::new(v.clone(), *pol)))
+            }
         }
     }
 

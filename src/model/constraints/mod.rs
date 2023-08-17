@@ -11,6 +11,7 @@ use crate::error::Error;
 use super::{
     formula::{Atom, Formula, Literal, Predicate},
     terms::{StringTerm, Term},
+    Variable,
 };
 
 /// A constraint is a combinatorial problem over a set of variables.
@@ -27,6 +28,8 @@ pub enum Constraint {
     /// A regular constraint is a constraint of the form `a in b`, where `a` is a [Pattern] and `b` is a [RegularConstraint].
     /// If the second argument is `true`, the constraint is interpreted as `a not in b`.
     RegularConstraint(RegularConstraint),
+    /// A boolean variable constraint is a constraint of the form `a` or `not a`, where `a` is a [Variable] of sort Boolean.
+    BoolVarConstraint(Variable, bool),
 }
 
 /* Conversions between constraints and predicates */
@@ -36,6 +39,8 @@ impl TryFrom<Literal> for Constraint {
 
     fn try_from(value: Literal) -> Result<Self, Self::Error> {
         match value {
+            Literal::Pos(Atom::BoolVar(v)) => Ok(Constraint::BoolVarConstraint(v, true)),
+            Literal::Neg(Atom::BoolVar(v)) => Ok(Constraint::BoolVarConstraint(v, false)),
             Literal::Pos(Atom::Predicate(predicate)) => Constraint::try_from(predicate),
             Literal::Neg(Atom::Predicate(predicate)) => match Constraint::try_from(predicate)? {
                 Constraint::WordEquation(mut eq) => {
@@ -72,6 +77,7 @@ impl TryFrom<Literal> for Constraint {
                     r.set_type_notin();
                     Ok(Constraint::RegularConstraint(r))
                 }
+                Constraint::BoolVarConstraint(a, _) => Ok(Constraint::BoolVarConstraint(a, false)),
             },
             _ => Err(Error::SolverError(format!("Not a constrait {}", value))),
         }
