@@ -206,7 +206,9 @@ fn from_regular_constraints(
 fn refine(partition: &ConstraintPartition, mut bounds: Bounds) -> Result<Bounds, Error> {
     let mut linears = partition.linears().clone();
     for eq in &partition.eqs {
+        if eq.eq_type().is_equality() {
         linears.push(LinearConstraint::from_word_equation(eq));
+    }
     }
     for re in &partition.regulars {
         if re.get_type().is_in() {
