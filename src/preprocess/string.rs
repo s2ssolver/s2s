@@ -84,7 +84,9 @@ impl Preprocessor for WordEquationStripPrefixSuffix {
             {
                 let lhs = Pattern::from(lhs.clone());
                 let rhs = Pattern::from(rhs.clone());
+
                 let eq = WordEquation::new_equality(lhs, rhs);
+
                 if let Some(stripped) = Self::strip_matches(&eq) {
                     return PreprocessingResult::Changed(NNFFormula::predicate(
                         stripped.into(),

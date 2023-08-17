@@ -418,7 +418,7 @@ impl WordEquation {
                 };
             }
         }
-        if rhs.len() == 1 && lhs.is_constant() {
+        if rhs.len() == 1 && lhs.is_constant() && !rhs.is_constant() {
             return Self::new(rhs, lhs, eq_type);
         }
         Self::Generic { lhs, rhs, eq_type }
