@@ -39,12 +39,14 @@ impl AbstractionSolver {
         let mut alphabet = instance.get_formula().alphabet();
         // Make sure the alphabet contains at least one character
 
-        let mut next_chr = 'a';
+        let mut next_chr: u32 = 'a' as u32;
+
         for _ in 0..instance.get_formula().vars().len() {
-            while alphabet.contains(&next_chr) {
-                next_chr = (next_chr as u8 + 1) as char;
+            while alphabet.contains(&char::from_u32(next_chr).unwrap()) {
+                next_chr += 1;
             }
-            alphabet.insert(next_chr);
+            let chr = char::from_u32(next_chr).unwrap();
+            alphabet.insert(chr);
         }
         log::debug!("Alphabet: {:?}", alphabet);
 
