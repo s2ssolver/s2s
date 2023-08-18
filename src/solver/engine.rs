@@ -149,9 +149,11 @@ impl AbstractionSolver {
         }
     }
 
-    /// Makes sure that the upper bounds for string variables are at least 1.
+    /// Makes sure that the upper bounds for string variables are at least 1 and the lower bounds are always 0.
     /// This is necessary for the encoding to work correctly.
-    /// Encoding the problem with upper bounds lower than 1 will result soundness issues.
+    /// If these properties are not satisfied, bugs that lead to soundness issues are triggered:
+    /// - The NFA encoding does not respect the lower bound assignment
+    /// - The WEQ encoding seems to fail somewhere if an upper bound of 0 is set
     /// If a upper bound less than 1, it is set to 1.
     fn sanitize_bounds(&self, bounds: &mut Bounds) {
         for v in self.instance.vars_of_sort(Sort::String) {
@@ -161,6 +163,7 @@ impl AbstractionSolver {
                     bounds.set_upper(&len_var, 1);
                 }
             }
+            bounds.set_lower(&len_var, 0);
         }
     }
 }
