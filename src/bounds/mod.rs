@@ -152,25 +152,16 @@ impl IntDomain {
                     IntDomain::Bounded(l, u)
                 }
             }
-            (IntDomain::Bounded(l1, u2), IntDomain::LowerBounded(l2))
-            | (IntDomain::LowerBounded(l2), IntDomain::Bounded(l1, u2)) => {
-                let l = *l1.max(l2);
-                let u = *u2;
-                if l > u {
-                    IntDomain::Empty
-                } else {
-                    IntDomain::Bounded(l, u)
-                }
+            (IntDomain::Bounded(l1, _), IntDomain::LowerBounded(l2))
+            | (IntDomain::LowerBounded(l2), IntDomain::Bounded(l1, _)) => {
+                let l = *l1.min(l2);
+
+                IntDomain::LowerBounded(l)
             }
-            (IntDomain::Bounded(l1, u1), IntDomain::UpperBounded(u2))
-            | (IntDomain::UpperBounded(u2), IntDomain::Bounded(l1, u1)) => {
-                let l = *l1;
-                let u = *u1.min(u2);
-                if l > u {
-                    IntDomain::Empty
-                } else {
-                    IntDomain::Bounded(l, u)
-                }
+            (IntDomain::Bounded(_, u1), IntDomain::UpperBounded(u2))
+            | (IntDomain::UpperBounded(u2), IntDomain::Bounded(_, u1)) => {
+                let u = *u1.max(u2);
+                IntDomain::UpperBounded(u)
             }
             (_, IntDomain::Unbounded) | (IntDomain::Unbounded, _) => IntDomain::Unbounded,
 

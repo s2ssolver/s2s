@@ -73,6 +73,7 @@ fn join(b1: Bounds, b2: Bounds) -> Bounds {
         let b1 = b1.get(v);
         let b2 = b2.get(v);
         let maxb = b1.join(&b2);
+
         max.set(v, maxb);
     }
     let def = b1.get_default().join(&b2.get_default());
@@ -221,6 +222,7 @@ fn underapprox(constraints: &Vec<EncodingContext>) -> Result<Bounds, Error> {
         }
     }
     let mut bounds = infer_for(&base)?;
+
     if bounds.any_empty() {
         log::debug!("Empty bounds on asserted constraints: {:?}", base);
         return Ok(bounds);
@@ -241,11 +243,13 @@ fn underapprox(constraints: &Vec<EncodingContext>) -> Result<Bounds, Error> {
         for set in powerset.iter() {
             let mut new_set = set.clone();
             new_set.insert(ctx);
-            infer_for(&new_set)?;
-            if bounds.any_empty() {
+            let these = infer_for(&new_set)?;
+
+            for s in &new_set {}
+            if these.any_empty() {
                 continue;
             } else {
-                bounds = join(bounds, infer_for(&new_set)?);
+                bounds = join(bounds, these);
             }
 
             // TODO: Filter sets with empty bounds
@@ -253,5 +257,6 @@ fn underapprox(constraints: &Vec<EncodingContext>) -> Result<Bounds, Error> {
         }
         powerset.extend(new_sets);
     }
+
     Ok(bounds)
 }
