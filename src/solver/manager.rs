@@ -76,6 +76,8 @@ pub(super) struct EncodingManager {
 
     /// Mapping from context to its encoder.
     encoders: IndexMap<EncodingContext, Box<dyn ConstraintEncoder>>,
+
+    watchers: IndexMap<EncodingContext, Vec<PLit>>,
 }
 
 impl EncodingManager {
@@ -86,6 +88,7 @@ impl EncodingManager {
             ctx_by_watcher: IndexMap::new(),
             ctx_by_literal: IndexMap::new(),
             encoders: IndexMap::new(),
+            watchers: IndexMap::new(),
         }
     }
 
@@ -114,12 +117,28 @@ impl EncodingManager {
 
         let watcher = as_lit(pvar());
 
-        let ctx = EncodingContext::new(con.clone(), def, watcher, is_asserted);
+        let ctx = EncodingContext::new(con.clone(), def, watcher.clone(), is_asserted);
         self.add_context(ctx.clone(), lit);
 
-        let encoder = Self::encoder_for_constraint(&con, instance)?;
+        let encoder = Self::encoder_for_constraint(&con)?;
         self.encoders.insert(ctx, encoder);
         Ok(())
+    }
+
+    pub fn register_assumptions(&mut self, ctx: &EncodingContext, lit: &PLit) {
+        self.watchers
+            .entry(ctx.clone())
+            .or_default()
+            .push(lit.clone());
+    }
+    pub fn clear_assumptions(&mut self) {
+        self.watchers = IndexMap::new();
+    }
+
+    pub fn get_watching_literals(&self, ctx: &EncodingContext) -> Vec<PLit> {
+        let mut watchers = self.watchers.get(ctx).cloned().unwrap_or(Vec::new());
+        watchers.push(ctx.watcher());
+        watchers
     }
 
     pub fn num_constraints(&self) -> usize {
@@ -127,14 +146,11 @@ impl EncodingManager {
     }
 
     /// Instatiates a new encoder for the given constraint.
-    fn encoder_for_constraint(
-        con: &Constraint,
-        instance: &mut Instance,
-    ) -> Result<Box<dyn ConstraintEncoder>, Error> {
+    fn encoder_for_constraint(con: &Constraint) -> Result<Box<dyn ConstraintEncoder>, Error> {
         match con {
             Constraint::WordEquation(eq) => Ok(Box::new(AlignmentEncoder::new(eq.clone()))),
             Constraint::LinearConstraint(lc) => Ok(Box::new(MddEncoder::new(lc.clone()))),
-            Constraint::RegularConstraint(rc) => build_re_encoder(rc.clone(), instance),
+            Constraint::RegularConstraint(rc) => build_re_encoder(rc.clone()),
             Constraint::BoolVarConstraint(v, pol) => {
                 Ok(Box::new(BoolVarEncoder::new(v.clone(), *pol)))
             }
