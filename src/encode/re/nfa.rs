@@ -16,17 +16,12 @@ use regulaer::{
 use crate::{
     bounds::Bounds,
     encode::{
-        domain::DomainEncoding, AlignmentEncoder, ConstraintEncoder, EncodingResult,
-        WordEquationEncoder, LAMBDA,
+        domain::DomainEncoding, ConstraintEncoder, EncodingResult, WordEquationEncoder, LAMBDA,
     },
     error::Error,
-    instance::Instance,
     model::{
-        constraints::{
-            Pattern, RegularConstraint, RegularConstraintType, Symbol, WordEquation,
-            WordEquationType,
-        },
-        Constraint, Sort, Variable,
+        constraints::{RegularConstraint, RegularConstraintType, Symbol},
+        Variable,
     },
     sat::{as_lit, neg, pvar, PVar},
 };
@@ -257,13 +252,14 @@ impl ConstraintEncoder for NFAEncoder {
         } else {
             log::debug!("Encoding `{} notin {}` ", self.var, self.regex,);
         }
+
         let bound = bounds
             .get(&self.var.len_var().unwrap())
             .get_upper()
             .unwrap_or(0) as usize;
-        log::debug!("Bound: {}", bound);
+        log::trace!("Bound: {}", bound);
         if Some(bound) == self.last_bound {
-            log::debug!("Upper bound did not change, skipping encoding");
+            log::trace!("Upper bound did not change, skipping encoding");
             if let Some(s) = self.bound_selector {
                 return Ok(EncodingResult::assumption(as_lit(s)));
             } else {
@@ -280,19 +276,19 @@ impl ConstraintEncoder for NFAEncoder {
         self.create_reach_vars(bound);
 
         let e_init = self.encode_intial();
-        log::debug!("Encoded initial state: {} clauses", e_init.clauses());
+        log::trace!("Encoded initial state: {} clauses", e_init.clauses());
         res.join(e_init);
 
         let e_transition = self.encode_transitions(bound, substitution)?;
-        log::debug!("Encoded transitions: {} clauses", e_transition.clauses());
+        log::trace!("Encoded transitions: {} clauses", e_transition.clauses());
         res.join(e_transition);
 
         let e_predecessor = self.encode_predecessor(bound, substitution)?;
-        log::debug!("Encoded predecessors: {} clauses", e_predecessor.clauses());
+        log::trace!("Encoded predecessors: {} clauses", e_predecessor.clauses());
         res.join(e_predecessor);
 
         let e_final = self.encode_final(bound);
-        log::debug!("Encoded final state: {} clauses", e_final.clauses());
+        log::trace!("Encoded final state: {} clauses", e_final.clauses());
         res.join(e_final);
 
         Ok(res)
@@ -339,69 +335,13 @@ impl NFAEncoder {
     }
 }
 
-pub struct PatternNFAEncoder {
-    nfa_encoder: NFAEncoder,
-    equation_encoder: AlignmentEncoder,
-}
-
-impl PatternNFAEncoder {
-    fn new(rec: RegularConstraint, instance: &mut Instance) -> Self {
-        let new_var = Variable::temp(Sort::String);
-        instance.add_var(new_var.clone());
-
-        let weq = WordEquation::Generic {
-            lhs: Pattern::variable(&new_var),
-            rhs: rec.get_pattern().clone(),
-            eq_type: WordEquationType::Equality,
-        };
-
-        let mut rec_constraint = rec.clone();
-        rec_constraint.set_pattern(Pattern::variable(&new_var));
-
-        let equation_encoder = AlignmentEncoder::new(weq);
-        let nfa_encoder = NFAEncoder::new(
-            &new_var,
-            rec.get_automaton().unwrap(),
-            rec.get_re(),
-            rec.get_type(),
-        );
-        Self {
-            nfa_encoder,
-            equation_encoder,
-        }
-    }
-}
-
-impl ConstraintEncoder for PatternNFAEncoder {
-    fn is_incremental(&self) -> bool {
-        true
-    }
-
-    fn reset(&mut self) {
-        self.equation_encoder.reset();
-        self.nfa_encoder.reset();
-    }
-
-    fn encode(
-        &mut self,
-        bounds: &Bounds,
-        substitution: &DomainEncoding,
-    ) -> Result<EncodingResult, Error> {
-        self.equation_encoder.encode(bounds, substitution)?;
-        self.nfa_encoder.encode(bounds, substitution)
-    }
-}
-
 impl From<AutomatonError> for Error {
     fn from(err: AutomatonError) -> Self {
         Error::EncodingError(format!("Error while encoding NFA: {:?}", err))
     }
 }
 
-pub fn build_re_encoder(
-    rec: RegularConstraint,
-    instance: &mut Instance,
-) -> Result<Box<dyn ConstraintEncoder>, Error> {
+pub fn build_re_encoder(rec: RegularConstraint) -> Result<Box<dyn ConstraintEncoder>, Error> {
     let encoder: Box<dyn ConstraintEncoder> = if rec.get_pattern().len() == 1 {
         if let Some(Symbol::Variable(v)) = rec.get_pattern().symbols().next() {
             Box::new(NFAEncoder::new(
@@ -416,7 +356,7 @@ pub fn build_re_encoder(
             ));
         }
     } else {
-        Box::new(PatternNFAEncoder::new(rec, instance))
+        panic!("Cannot encode non-singleton patterns")
     };
     Ok(encoder)
 }

@@ -5,11 +5,14 @@ use std::{cmp::min, collections::HashMap, fmt::Display};
 use indexmap::{IndexMap, IndexSet};
 use regulaer::{re::CharRegex, RegLang};
 
-use crate::model::{
-    constraints::{Pattern, Symbol, WordEquation},
-    formula::{Alphabet, Atom, Literal, NNFFormula, Predicate},
-    terms::{ReTerm, StringTerm, Term},
-    Substitution, Variable,
+use crate::{
+    instance::Instance,
+    model::{
+        constraints::{Pattern, Symbol, WordEquation},
+        formula::{Alphabet, Atom, Literal, NNFFormula, Predicate},
+        terms::{ReTerm, StringTerm, Term},
+        Sort, Substitution, Variable,
+    },
 };
 
 use super::{PreprocessingResult, Preprocessor};
@@ -77,7 +80,12 @@ impl Preprocessor for WordEquationStripPrefixSuffix {
         String::from("Word Equation Stripping")
     }
 
-    fn apply_literal(&mut self, literal: Literal, _is_asserted: bool) -> PreprocessingResult {
+    fn apply_literal(
+        &mut self,
+        literal: Literal,
+        _is_asserted: bool,
+        _instance: &mut Instance,
+    ) -> PreprocessingResult {
         if literal.is_pos() {
             if let Atom::Predicate(Predicate::Equality(Term::String(lhs), Term::String(rhs))) =
                 literal.atom()
@@ -132,7 +140,12 @@ impl WordEquationConstMatching {
 }
 
 impl Preprocessor for WordEquationConstMatching {
-    fn apply_literal(&mut self, literal: Literal, _is_asserted: bool) -> PreprocessingResult {
+    fn apply_literal(
+        &mut self,
+        literal: Literal,
+        _is_asserted: bool,
+        _instance: &mut Instance,
+    ) -> PreprocessingResult {
         if let Atom::Predicate(Predicate::Equality(Term::String(lhs), Term::String(rhs))) =
             literal.atom()
         {
@@ -193,7 +206,12 @@ impl WordEquationTrivial {
 }
 
 impl Preprocessor for WordEquationTrivial {
-    fn apply_literal(&mut self, literal: Literal, _is_asserted: bool) -> PreprocessingResult {
+    fn apply_literal(
+        &mut self,
+        literal: Literal,
+        _is_asserted: bool,
+        _instance: &mut Instance,
+    ) -> PreprocessingResult {
         if let Atom::Predicate(Predicate::Equality(Term::String(lhs), Term::String(rhs))) =
             literal.atom()
         {
@@ -448,7 +466,12 @@ impl WordEquationSubstitutions {
 }
 
 impl Preprocessor for WordEquationSubstitutions {
-    fn apply_literal(&mut self, literal: Literal, is_asserted: bool) -> PreprocessingResult {
+    fn apply_literal(
+        &mut self,
+        literal: Literal,
+        is_asserted: bool,
+        _instance: &mut Instance,
+    ) -> PreprocessingResult {
         if !is_asserted || literal.is_neg() {
             return PreprocessingResult::Unchanged(NNFFormula::Literal(literal));
         }
@@ -678,7 +701,12 @@ impl Preprocessor for IndependetVarSubstitutions {
         "Independent variable substitutions".to_string()
     }
 
-    fn apply_literal(&mut self, literal: Literal, _: bool) -> PreprocessingResult {
+    fn apply_literal(
+        &mut self,
+        literal: Literal,
+        _: bool,
+        _instance: &mut Instance,
+    ) -> PreprocessingResult {
         if let Atom::Predicate(p) = literal.atom() {
             match p {
                 Predicate::Equality(Term::String(lhs), Term::String(rhs)) => {
@@ -731,7 +759,12 @@ impl Preprocessor for TrivialREReducer {
         Self {}
     }
 
-    fn apply_literal(&mut self, literal: Literal, _is_asserted: bool) -> PreprocessingResult {
+    fn apply_literal(
+        &mut self,
+        literal: Literal,
+        _is_asserted: bool,
+        _instance: &mut Instance,
+    ) -> PreprocessingResult {
         if let Atom::Predicate(Predicate::In(Term::String(lhs), Term::Regular(re))) = literal.atom()
         {
             if let Some(w) = lhs.is_const() {
@@ -745,6 +778,60 @@ impl Preprocessor for TrivialREReducer {
                 } else if (sat && literal.is_neg()) || (!sat && literal.is_pos()) {
                     return PreprocessingResult::Changed(NNFFormula::ffalse());
                 }
+            }
+        }
+        PreprocessingResult::Unchanged(NNFFormula::Literal(literal))
+    }
+
+    fn get_substitution(&self) -> Option<Substitution> {
+        None
+    }
+}
+
+/// Splits regular constraints of the form `xyz in R` into `t = xyz /\ t in R` where `t` is a fresh variable.
+pub struct SplitPatternRegularConstraints {}
+
+impl Preprocessor for SplitPatternRegularConstraints {
+    fn get_name(&self) -> String {
+        "SplitPatternRegularConstraints".to_string()
+    }
+
+    fn new() -> Self
+    where
+        Self: Sized,
+    {
+        Self {}
+    }
+
+    fn apply_literal(
+        &mut self,
+        literal: Literal,
+        _is_asserted: bool,
+        instance: &mut Instance,
+    ) -> PreprocessingResult {
+        if let Atom::Predicate(Predicate::In(Term::String(lhs), Term::Regular(re))) = literal.atom()
+        {
+            let pattern = Pattern::from(lhs.clone());
+            if pattern.len() > 1 {
+                let new_var = Variable::temp(Sort::String);
+                instance.add_var(new_var.clone());
+
+                let weq = Atom::Predicate(Predicate::Equality(
+                    Term::String(StringTerm::Variable(new_var.clone())),
+                    Term::String(lhs.clone()),
+                ));
+                let rec = Atom::Predicate(Predicate::In(
+                    Term::String(StringTerm::Variable(new_var)),
+                    Term::Regular(re.clone()),
+                ));
+                let weq_lit = NNFFormula::Literal(Literal::Pos(weq));
+                let rec_lit = if literal.is_pos() {
+                    NNFFormula::Literal(Literal::Pos(rec))
+                } else {
+                    NNFFormula::Literal(Literal::Neg(rec))
+                };
+                let fm = NNFFormula::and(vec![weq_lit, rec_lit]);
+                return PreprocessingResult::Changed(fm);
             }
         }
         PreprocessingResult::Unchanged(NNFFormula::Literal(literal))

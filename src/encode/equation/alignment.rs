@@ -764,7 +764,7 @@ impl ConstraintEncoder for AlignmentEncoder {
                 if let Some(v) = self.bound_selector {
                     res.add_assumption(as_lit(v));
                 }
-                log::debug!(
+                log::trace!(
                     "Bound did not change ({}, {}), returning assumption from previous round",
                     lastbounds,
                     bounds
@@ -783,13 +783,13 @@ impl ConstraintEncoder for AlignmentEncoder {
 
         // Encode the candidates
         let cand_enc = self.eq_type.encode(bound, substitution);
-        log::debug!("Clauses for candidates: {}", cand_enc.clauses());
+        log::trace!("Clauses for candidates: {}", cand_enc.clauses());
         res.join(cand_enc);
 
         // Encode alignment of segments with candidates LHS
         let ts = Instant::now();
         let align_enc = self.encode_alignment(bounds, &EqSide::Lhs, substitution);
-        log::debug!(
+        log::trace!(
             "Clauses for alignments LHS: {} ({} ms)",
             align_enc.clauses(),
             ts.elapsed().as_millis()
@@ -799,7 +799,7 @@ impl ConstraintEncoder for AlignmentEncoder {
         // Encode alignment of segments with candidates RHS
         let ts = Instant::now();
         let align_enc = self.encode_alignment(bounds, &EqSide::Rhs, substitution);
-        log::debug!(
+        log::trace!(
             "Clauses for alignments RHS: {} ({} ms)",
             align_enc.clauses(),
             ts.elapsed().as_millis()
@@ -809,7 +809,7 @@ impl ConstraintEncoder for AlignmentEncoder {
         let ts = Instant::now();
         let vars_match_lhs_enc = self.match_candidate(substitution, bounds, &EqSide::Lhs);
 
-        log::debug!(
+        log::trace!(
             "Clauses for variable matching LHS: {} ({} ms)",
             vars_match_lhs_enc.clauses(),
             ts.elapsed().as_millis()
@@ -818,7 +818,7 @@ impl ConstraintEncoder for AlignmentEncoder {
 
         let ts = Instant::now();
         let vars_match_rhs_enc = self.match_candidate(substitution, bounds, &EqSide::Rhs);
-        log::debug!(
+        log::trace!(
             "Clauses for variable matching RHS: {} ({} ms)",
             vars_match_rhs_enc.clauses(),
             ts.elapsed().as_millis()
@@ -826,14 +826,14 @@ impl ConstraintEncoder for AlignmentEncoder {
         res.join(vars_match_rhs_enc);
 
         let suffix_enc_lhs = self.lambda_suffix(bounds, &EqSide::Lhs, substitution);
-        log::debug!(
+        log::trace!(
             "Clauses for lambda suffix lhs: {}",
             suffix_enc_lhs.clauses()
         );
         res.join(suffix_enc_lhs);
 
         let suffix_enc_rhs = self.lambda_suffix(bounds, &EqSide::Rhs, substitution);
-        log::debug!(
+        log::trace!(
             "Clauses for lambda suffix rhs: {}",
             suffix_enc_rhs.clauses()
         );
@@ -841,7 +841,7 @@ impl ConstraintEncoder for AlignmentEncoder {
 
         if !self.eq_type.is_equality() {
             let mismatch_enc = self.encode_mismatch(substitution);
-            log::debug!("Clauses for mismatch: {}", mismatch_enc.clauses());
+            log::trace!("Clauses for mismatch: {}", mismatch_enc.clauses());
             res.join(mismatch_enc);
         }
 

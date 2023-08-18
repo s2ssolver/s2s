@@ -144,7 +144,7 @@ pub(super) fn next_bounds(
     let failed = collect_failed(mngr, solver);
     assert!(failed.len() > 0, "Formula cannot be unsat with empty core");
     let limit_bounds = underapprox(&failed)?;
-    log::info!("Upper Bounds for core: {:?}", limit_bounds);
+    log::debug!("Upper Bounds for core: {}", limit_bounds);
     if let Some(th) = threshold {
         if last.uppers_geq(th as isize) {
             return Ok(BoundUpdate::ThresholdReached);

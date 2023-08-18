@@ -12,7 +12,7 @@ use crate::{
     preprocess::{
         formula::ConjunctionSimplifier,
         int::{ConstIntReducer, IntSubstitutions},
-        string::{IndependetVarSubstitutions, TrivialREReducer},
+        string::{IndependetVarSubstitutions, SplitPatternRegularConstraints, TrivialREReducer},
     },
 };
 
@@ -61,19 +61,29 @@ trait Preprocessor {
     /// Can be used for preprocessor-specific initialization.
     fn init(&mut self, _formula: &NNFFormula) {}
 
-    fn apply_literal(&mut self, literal: Literal, _is_asserted: bool) -> PreprocessingResult {
+    fn apply_literal(
+        &mut self,
+        literal: Literal,
+        _is_asserted: bool,
+        _instance: &mut Instance,
+    ) -> PreprocessingResult {
         PreprocessingResult::Unchanged(NNFFormula::Literal(literal))
     }
 
-    fn apply_fm(&mut self, formula: NNFFormula, is_asserted: bool) -> PreprocessingResult {
+    fn apply_fm(
+        &mut self,
+        formula: NNFFormula,
+        is_asserted: bool,
+        _instance: &mut Instance,
+    ) -> PreprocessingResult {
         match formula {
-            NNFFormula::Literal(l) => self.apply_literal(l, is_asserted),
+            NNFFormula::Literal(l) => self.apply_literal(l, is_asserted, _instance),
 
             NNFFormula::Or(fs) => {
                 let mut changed = false;
                 let mut new_fs = Vec::new();
                 for f in fs {
-                    match self.apply_fm(f, false) {
+                    match self.apply_fm(f, false, _instance) {
                         PreprocessingResult::Unchanged(f) => new_fs.push(f),
                         PreprocessingResult::Changed(f) => {
                             changed = true;
@@ -92,7 +102,7 @@ trait Preprocessor {
                 let mut changed = false;
                 let mut new_fs = Vec::new();
                 for f in fs {
-                    match self.apply_fm(f, is_asserted) {
+                    match self.apply_fm(f, is_asserted, _instance) {
                         PreprocessingResult::Unchanged(f) => new_fs.push(f),
                         PreprocessingResult::Changed(f) => {
                             changed = true;
@@ -118,8 +128,8 @@ trait Preprocessor {
         result
     }
 
-    fn apply(&mut self, formula: NNFFormula) -> PreprocessingResult {
-        let applied = self.apply_fm(formula, true);
+    fn apply(&mut self, formula: NNFFormula, _instance: &mut Instance) -> PreprocessingResult {
+        let applied = self.apply_fm(formula, true, _instance);
 
         self.finalize(applied)
     }
@@ -129,7 +139,7 @@ trait Preprocessor {
         Self: Sized;
 }
 
-pub fn preprocess(instance: &Instance) -> (PreprocessingResult, Substitution) {
+pub fn preprocess(instance: &mut Instance) -> (PreprocessingResult, Substitution) {
     let mut comp_sub = Substitution::new();
 
     //preprocessors.push(Box::new(WordEquationSubstitutions {}));
@@ -155,14 +165,14 @@ pub fn preprocess(instance: &Instance) -> (PreprocessingResult, Substitution) {
             log::trace!("Running Preprocessor: {}", preprocess.get_name());
             preprocess.init(preprocessed.get_formula());
             preprocessed = match preprocessed {
-                PreprocessingResult::Changed(f) => match preprocess.apply(f) {
+                PreprocessingResult::Changed(f) => match preprocess.apply(f, instance) {
                     PreprocessingResult::Changed(t) => {
                         rd_changed = true;
                         PreprocessingResult::Changed(t)
                     }
                     PreprocessingResult::Unchanged(t) => PreprocessingResult::Changed(t),
                 },
-                PreprocessingResult::Unchanged(f) => match preprocess.apply(f) {
+                PreprocessingResult::Unchanged(f) => match preprocess.apply(f, instance) {
                     PreprocessingResult::Changed(t) => {
                         rd_changed = true;
                         PreprocessingResult::Changed(t)
@@ -185,5 +195,28 @@ pub fn preprocess(instance: &Instance) -> (PreprocessingResult, Substitution) {
             break;
         }
     }
+
+    // Mandatory normalizer to split regular constraints with compound patterns into a regular constraint with a single variable pattern and a word equation
+    let mut normalizer = SplitPatternRegularConstraints::new();
+    normalizer.init(preprocessed.get_formula());
+    preprocessed = match preprocessed {
+        PreprocessingResult::Changed(f) => match normalizer.apply(f, instance) {
+            PreprocessingResult::Changed(t) => PreprocessingResult::Changed(t),
+            PreprocessingResult::Unchanged(t) => PreprocessingResult::Changed(t),
+        },
+        PreprocessingResult::Unchanged(f) => match normalizer.apply(f, instance) {
+            PreprocessingResult::Changed(t) => PreprocessingResult::Changed(t),
+            PreprocessingResult::Unchanged(t) => PreprocessingResult::Unchanged(t),
+        },
+    };
+    if let Some(sub) = normalizer.get_substitution() {
+        if !sub.is_empty() {
+            log::debug!("Applying inferred substitution: {}", sub);
+            preprocessed = preprocessed.apply_substitution(&sub);
+
+            comp_sub = comp_sub.compose(&sub);
+        }
+    }
+
     (preprocessed, comp_sub)
 }

@@ -1,6 +1,7 @@
 //! Preprocessors for formulas
 
 use crate::{
+    instance::Instance,
     model::{
         formula::{Formula, NNFFormula},
         Evaluable, Substitution,
@@ -30,14 +31,19 @@ impl Preprocessor for ConjunctionSimplifier {
         Self {}
     }
 
-    fn apply_fm(&mut self, formula: NNFFormula, _is_asserted: bool) -> PreprocessingResult {
+    fn apply_fm(
+        &mut self,
+        formula: NNFFormula,
+        _is_asserted: bool,
+        _instance: &mut Instance,
+    ) -> PreprocessingResult {
         match formula {
             NNFFormula::Literal(_) => PreprocessingResult::Unchanged(formula),
             NNFFormula::Or(fs) => {
                 let mut changed = false;
                 let mut new_fs = Vec::new();
                 for f in fs {
-                    let pf = match self.apply_fm(f, _is_asserted) {
+                    let pf = match self.apply_fm(f, _is_asserted, _instance) {
                         PreprocessingResult::Unchanged(f) => f,
                         PreprocessingResult::Changed(f) => {
                             changed = true;
@@ -65,7 +71,7 @@ impl Preprocessor for ConjunctionSimplifier {
                 let mut changed = false;
                 let mut new_fs = Vec::new();
                 for f in fs {
-                    let pf = match self.apply_fm(f, _is_asserted) {
+                    let pf = match self.apply_fm(f, _is_asserted, _instance) {
                         PreprocessingResult::Unchanged(f) => f,
 
                         PreprocessingResult::Changed(f) => {

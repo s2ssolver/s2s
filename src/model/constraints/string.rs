@@ -588,8 +588,6 @@ impl RegularConstraint {
     /// Returns an error if the regular expression cannot be compiled.
     pub fn compile(&mut self, alphabet: Option<&IndexSet<char>>) -> Result<(), Error> {
         if self.automaton.is_none() {
-            log::debug!("Compiling regular expression {}", self.re);
-
             let res = match alphabet {
                 Some(alph) => regulaer::automaton::compile_with_alphabet(
                     &self.re,
@@ -609,8 +607,15 @@ impl RegularConstraint {
                     )))
                 }
             }
-            log::debug!("Compiling done");
         }
+        log::debug!(
+            "Compiled regular expression {} ({} states)",
+            self.re,
+            self.automaton
+                .as_ref()
+                .map(|n| n.states().len())
+                .unwrap_or(usize::MAX)
+        );
 
         Ok(())
     }

@@ -1,4 +1,4 @@
-use std::{ops::Index, slice::Iter};
+use std::{fmt::Display, ops::Index, slice::Iter};
 
 use crate::{
     bounds::Bounds,
@@ -127,6 +127,15 @@ impl EncodingResult {
         }
     }
 
+    pub fn clear_assumptions(&mut self) {
+        match self {
+            EncodingResult::Cnf(_, ref mut asms) => {
+                asms.clear();
+            }
+            EncodingResult::Trivial(_) => {}
+        }
+    }
+
     pub fn add_assumption(&mut self, assumption: PLit) {
         match self {
             EncodingResult::Cnf(_, ref mut asms) => {
@@ -136,6 +145,13 @@ impl EncodingResult {
                 *self = EncodingResult::assumption(assumption);
             }
             EncodingResult::Trivial(false) => {}
+        }
+    }
+
+    pub fn assumptions(&self) -> IndexSet<PLit> {
+        match self {
+            EncodingResult::Cnf(_, asms) => asms.clone(),
+            EncodingResult::Trivial(_) => IndexSet::new(),
         }
     }
 
@@ -169,6 +185,26 @@ impl EncodingResult {
             },
             EncodingResult::Trivial(true) => *self = other,
             EncodingResult::Trivial(false) => {}
+        }
+    }
+}
+
+impl Display for EncodingResult {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            EncodingResult::Cnf(cnf, assmp) => {
+                for clause in cnf {
+                    writeln!(f, "{:?}", clause)?;
+                }
+                write!(f, "c assumptions: ")?;
+                for asm in assmp {
+                    write!(f, "{} ", asm)?;
+                }
+                writeln!(f)
+            }
+            EncodingResult::Trivial(v) => {
+                write!(f, "c trivially {}", if *v { "sat" } else { "unsat" })
+            }
         }
     }
 }

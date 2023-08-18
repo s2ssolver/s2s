@@ -1,6 +1,7 @@
 //! Preprocessor for the `int` type.
 
 use crate::{
+    instance::Instance,
     model::{
         formula::{Atom, Literal, NNFFormula, Predicate},
         terms::{IntTerm, Term},
@@ -30,7 +31,12 @@ impl Preprocessor for ConstIntReducer {
         Self::default()
     }
 
-    fn apply_literal(&mut self, literal: Literal, _is_asserted: bool) -> PreprocessingResult {
+    fn apply_literal(
+        &mut self,
+        literal: Literal,
+        _is_asserted: bool,
+        _instance: &mut Instance,
+    ) -> PreprocessingResult {
         if let Atom::Predicate(p) = literal.atom() {
             match p {
                 Predicate::Equality(Term::Int(lhs), Term::Int(rhs)) => {
@@ -155,7 +161,12 @@ impl Preprocessor for IntSubstitutions {
         }
     }
 
-    fn apply_literal(&mut self, literal: Literal, is_asserted: bool) -> PreprocessingResult {
+    fn apply_literal(
+        &mut self,
+        literal: Literal,
+        is_asserted: bool,
+        _instance: &mut Instance,
+    ) -> PreprocessingResult {
         if is_asserted && literal.is_pos() {
             if let Atom::Predicate(Predicate::Equality(Term::Int(lhs), Term::Int(rhs))) =
                 literal.atom()
