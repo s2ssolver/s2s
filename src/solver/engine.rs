@@ -105,6 +105,7 @@ impl AbstractionSolver {
         let dom = self.domain_encoder.encoding();
         let mut assumptions: IndexMap<EncodingContext, Vec<PLit>> = IndexMap::new();
         for (ctx, enc) in self.encoding_mng.iter_mut() {
+            let ts = Instant::now();
             let mut res = enc.encode(&bounds, dom)?;
 
             let def_lit = ctx.definitional();
@@ -126,9 +127,14 @@ impl AbstractionSolver {
             for assm in res.assumptions() {
                 assumptions.entry(ctx.clone()).or_default().push(assm);
             }
+            log::info!(
+                "Encoded: {}. ({} clauses, {} ms)",
+                ctx.constraint(),
+                res.clauses(),
+                ts.elapsed().as_millis()
+            );
             // Append encoding to results
             encoding.join(res);
-
             encoding.add_assumption(watcher);
         }
         // Register assumptions
