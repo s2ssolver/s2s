@@ -125,7 +125,7 @@ pub fn to_cnf(formula: &NNFFormula, instance: &mut Instance) -> Result<Cnf, Erro
 
     // Add definitional clauses
     for (f, d) in defs {
-        let boolvar = if let Variable::Bool { value, .. } = d {
+        let def_var = if let Variable::Bool { value, .. } = d {
             value
         } else {
             unreachable!()
@@ -134,7 +134,7 @@ pub fn to_cnf(formula: &NNFFormula, instance: &mut Instance) -> Result<Cnf, Erro
             NNFFormula::Or(fs) => {
                 // d -> \/fs and \/fs -> d
                 let mut clause = Vec::with_capacity(fs.len() + 1);
-                clause.push(neg(boolvar));
+                clause.push(neg(def_var));
                 for f in fs {
                     match f {
                         NNFFormula::Literal(Literal::Pos(Atom::BoolVar(Variable::Bool {
@@ -142,14 +142,14 @@ pub fn to_cnf(formula: &NNFFormula, instance: &mut Instance) -> Result<Cnf, Erro
                             ..
                         }))) => {
                             clause.push(as_lit(value));
-                            cnf.push(vec![neg(value), as_lit(boolvar)]);
+                            cnf.push(vec![neg(value), as_lit(def_var)]);
                         }
                         NNFFormula::Literal(Literal::Neg(Atom::BoolVar(Variable::Bool {
                             value,
                             ..
                         }))) => {
-                            clause.push(as_lit(value));
-                            cnf.push(vec![as_lit(value), neg(boolvar)]);
+                            clause.push(neg(value));
+                            cnf.push(vec![as_lit(value), as_lit(def_var)]);
                         }
                         _ => unreachable!(),
                     }
@@ -159,7 +159,7 @@ pub fn to_cnf(formula: &NNFFormula, instance: &mut Instance) -> Result<Cnf, Erro
             NNFFormula::And(fs) => {
                 // d -> /\fs and /\fs -> d
                 let mut clause = Vec::with_capacity(fs.len() + 1);
-                clause.push(as_lit(boolvar));
+                clause.push(as_lit(def_var));
                 for f in fs {
                     match f {
                         NNFFormula::Literal(Literal::Pos(Atom::BoolVar(Variable::Bool {
@@ -167,14 +167,14 @@ pub fn to_cnf(formula: &NNFFormula, instance: &mut Instance) -> Result<Cnf, Erro
                             ..
                         }))) => {
                             clause.push(neg(value));
-                            cnf.push(vec![neg(boolvar), as_lit(value)]);
+                            cnf.push(vec![neg(def_var), as_lit(value)]);
                         }
                         NNFFormula::Literal(Literal::Neg(Atom::BoolVar(Variable::Bool {
                             value,
                             ..
                         }))) => {
                             clause.push(as_lit(value));
-                            cnf.push(vec![neg(boolvar), neg(value)]);
+                            cnf.push(vec![neg(def_var), neg(value)]);
                         }
                         _ => unreachable!(),
                     }

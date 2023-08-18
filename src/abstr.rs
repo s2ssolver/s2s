@@ -90,7 +90,7 @@ impl Abstraction {
                 let var = match var {
                     None => {
                         let v = Variable::Bool {
-                            name: format!("def_{}", defv),
+                            name: format!("def_{}", defv.abs()),
                             value: defv.abs() as u32,
                         };
                         instance.add_var(v.clone());

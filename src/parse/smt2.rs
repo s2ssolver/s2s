@@ -254,7 +254,7 @@ impl<'a> Visitor<ALL> for FormulaBuilder<'a> {
                                 ControlFlow::Break(Err(e)) => return ControlFlow::Break(Err(e)),
                             };
                             let imp_ltr = Formula::or(vec![Formula::not(lhs.clone()), rhs.clone()]);
-                            let imp_rtl = Formula::or(vec![lhs, Formula::not(rhs)]);
+                            let imp_rtl = Formula::or(vec![Formula::not(rhs), lhs]);
                             ControlFlow::Break(Ok(Formula::and(vec![imp_ltr, imp_rtl])))
                         }
                         (_, _) => ControlFlow::Break(Err(ParseError::SyntaxError(format!(
