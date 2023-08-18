@@ -813,12 +813,12 @@ impl ConstraintEncoder for AlignmentEncoder {
         }
         let mut res = EncodingResult::empty();
 
+        // Must be larger than 0
         let bound = min(
             FilledPattern::fill(&self.equation.lhs(), bounds).length(),
             FilledPattern::fill(&self.equation.rhs(), bounds).length(),
-        );
-        // Must be larger than 0
-        let bound = max(bound, 1);
+        ) + 1;
+
         assert!(bound >= self.bound, "Bound cannot shrink");
         assert!(bound > 0);
 
