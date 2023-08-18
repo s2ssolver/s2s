@@ -630,10 +630,13 @@ impl NNFFormula {
     pub fn asserted_literals(&self) -> Vec<&Literal> {
         match self {
             NNFFormula::Literal(l) => vec![l],
-            NNFFormula::And(fs) => fs
-                .iter()
-                .map(NNFFormula::literals)
-                .fold(Vec::new(), |acc, x| acc.into_iter().chain(x).collect()),
+            NNFFormula::And(fs) => {
+                let mut res = vec![];
+                for f in fs {
+                    res.extend(f.asserted_literals())
+                }
+                res
+            }
             NNFFormula::Or(_) => vec![],
         }
     }

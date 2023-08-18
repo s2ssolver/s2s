@@ -106,14 +106,12 @@ pub(super) fn init_bounds(
         .map(|(ctx, _)| ctx)
         .filter(|ctx| ctx.is_asserted())
         .collect();
-
+    for c in base.iter() {
+        log::debug!("Asserted: {}", c.constraint());
+    }
     let base_bounds = infer_for(&base)?;
     if base_bounds.any_empty() {
-        log::debug!(
-            "Empty bounds on asserted constraints: {:?}: {:?}",
-            base,
-            base_bounds
-        );
+        log::debug!("Empty bounds on asserted constraints: {}", base_bounds);
         return Ok(BoundUpdate::LimitReached);
     }
     // Use the lower bounds as the upper bounds for the first round.
