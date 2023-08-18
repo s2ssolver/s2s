@@ -1,4 +1,6 @@
-use indexmap::IndexSet;
+use std::cmp::{max, min};
+
+use indexmap::{indexset, IndexSet};
 
 use crate::{
     bounds::{infer, Bounds, IntDomain},
@@ -134,23 +136,58 @@ pub(super) fn next_bounds(
     threshold: Option<usize>,
 ) -> Result<BoundUpdate, Error> {
     let failed = collect_failed(mngr, solver);
-    let underapproxed = underapprox(&failed)?;
-    log::info!("Upper Bounds for core: {:?}", underapproxed);
+    let limit_bounds = underapprox(&failed)?;
+    log::info!("Upper Bounds for core: {:?}", limit_bounds);
     if let Some(th) = threshold {
         if last.uppers_geq(th as isize) {
             return Ok(BoundUpdate::ThresholdReached);
         }
     }
 
-    if underapproxed.any_empty() {
+    if limit_bounds.any_empty() {
         return Ok(BoundUpdate::LimitReached);
     }
-    if limit_reached(&underapproxed, last) {
+    if limit_reached(&limit_bounds, last) {
         return Ok(BoundUpdate::LimitReached);
+    }
+    let mut vars_to_update = indexset! {};
+    for c in failed {
+        vars_to_update.extend(c.constraint().vars().iter().map(|x| {
+            if x.is_string() {
+                x.len_var().unwrap()
+            } else {
+                x.clone()
+            }
+        }));
     }
     let mut next = last.clone();
-    next.next_square_uppers();
-    next = next.intersect(&underapproxed);
+    let mut was_updated = false;
+    for v in vars_to_update.iter() {
+        let mut updated = last.get(v);
+
+        if let Some(u) = updated.get_upper() {
+            // next square
+            let mut new_upper = ((u as f64).sqrt() + 1f64).powi(2) as isize;
+            if let Some(limit) = limit_bounds.get_upper(v) {
+                new_upper = min(new_upper, limit);
+            }
+            if new_upper > u {
+                updated.set_upper(new_upper);
+                was_updated = true
+            }
+        } else {
+            panic!("No upper bound for variable {} ({})", v, last);
+        }
+        if let Some(l) = updated.get_lower() {
+            let new_lower = max(1, limit_bounds.get_lower(v).unwrap_or(l));
+            updated.set_lower(new_lower);
+        }
+        assert!(next.get(v).get_upper().is_some());
+        next.set(v, updated);
+    }
+    if !was_updated {
+        return Ok(BoundUpdate::LimitReached);
+    }
     if let Some(th) = threshold {
         next.clamp_uppers(th as isize);
     }

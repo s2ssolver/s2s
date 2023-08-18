@@ -411,7 +411,7 @@ mod tests {
                 eq.lhs().apply_substitution(&solution),
                 eq.rhs().apply_substitution(&solution)
             );
-            println!("Solution: {}", solution);
+
             if let Some(svs) = encoder.get_state_vars() {
                 for j in 0..svs[0].len() {
                     print!("\t{}", j)

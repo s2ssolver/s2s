@@ -1,5 +1,7 @@
 use std::{collections::HashMap, fmt::Display, ops::Index};
 
+use indexmap::IndexSet;
+
 use crate::model::{terms::IntTerm, Evaluable, Substitutable, Substitution, Variable};
 
 use super::{RegularConstraint, Symbol, WordEquation};
@@ -71,6 +73,19 @@ impl LinearArithTerm {
 
     pub fn iter(&self) -> impl Iterator<Item = &LinearArithFactor> {
         self.factors.iter()
+    }
+
+    pub fn vars(&self) -> IndexSet<Variable> {
+        let mut vars = IndexSet::new();
+        for f in self.iter() {
+            match f {
+                LinearArithFactor::VarCoeff(x, _) => {
+                    vars.insert(x.clone());
+                }
+                LinearArithFactor::Const(_) => {}
+            }
+        }
+        vars
     }
 
     /// The number of summands in the term

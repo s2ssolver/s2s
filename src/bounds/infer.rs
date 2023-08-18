@@ -218,11 +218,7 @@ fn refine(partition: &ConstraintPartition, mut bounds: Bounds) -> Result<Bounds,
             }
         }
     }
-    log::debug!(
-        "Refining bounds {} for deduced linears: {:#?}",
-        bounds,
-        linears
-    );
+    log::debug!("Refining bounds {} for deduced linears", bounds,);
     let mut fixpoint = false;
     while !fixpoint {
         let lastbounds = bounds.clone();

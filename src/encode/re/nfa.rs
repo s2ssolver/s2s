@@ -493,7 +493,8 @@ mod test {
     fn var_in_epsi() {
         let var = Variable::temp(Sort::String);
         let re = Regex::epsilon();
-        let bounds = Bounds::with_defaults(IntDomain::Bounded(0, 0));
+        let mut bounds = Bounds::with_defaults(IntDomain::Bounded(0, 0));
+        bounds.set(&var.len_var().unwrap(), IntDomain::Bounded(0, 1));
 
         assert_eq!(solve_with_bounds(&var, re, &[bounds]), Some(true));
     }

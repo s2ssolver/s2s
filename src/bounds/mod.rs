@@ -243,7 +243,10 @@ impl Bounds {
             Some(d) => *d,
             None => {
                 if var.is_len_var() {
-                    IntDomain::LowerBounded(1)
+                    let mut df = self.get_default().clone();
+                    // Set lower bound to 0 for length variables by default
+                    df.set_lower(0);
+                    df
                 } else {
                     self.default
                 }

@@ -5,6 +5,7 @@ mod string;
 
 use std::fmt::Display;
 
+use indexmap::{indexset, IndexSet};
 pub use integer::*;
 pub use string::*;
 
@@ -32,6 +33,17 @@ pub enum Constraint {
     RegularConstraint(RegularConstraint),
     /// A boolean variable constraint is a constraint of the form `a` or `not a`, where `a` is a [Variable] of sort Boolean.
     BoolVarConstraint(Variable, bool),
+}
+
+impl Constraint {
+    pub fn vars(&self) -> IndexSet<Variable> {
+        match self {
+            Constraint::WordEquation(eq) => eq.variables(),
+            Constraint::LinearConstraint(l) => l.lhs().vars(),
+            Constraint::RegularConstraint(r) => r.get_pattern().vars(),
+            Constraint::BoolVarConstraint(v, _) => indexset![v.clone()],
+        }
+    }
 }
 
 /* Conversions between constraints and predicates */
@@ -103,6 +115,7 @@ impl TryFrom<Predicate> for Constraint {
             Predicate::Leq(Term::Int(lhs), Term::Int(rhs)) => {
                 let lin_lhs = LinearArithTerm::from(lhs);
                 let lin_rhs = LinearArithTerm::from(rhs);
+
                 let con = LinearConstraint::from((lin_lhs, lin_rhs, LinearConstraintType::Leq));
                 Ok(Constraint::LinearConstraint(con))
             }
