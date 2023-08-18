@@ -65,7 +65,7 @@ impl Variable {
     /// ```
     pub fn temp(sort: Sort) -> Self {
         let id = VAR_COUNTER.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-        let name = format!("tmp_{}", id);
+        let name = format!("tmp${}", id);
         Self::new(name, sort)
     }
 
@@ -103,6 +103,13 @@ impl Variable {
         }
     }
 
+    pub fn is_temp(&self) -> bool {
+        self.name().starts_with("tmp$")
+    }
+
+    pub fn is_ephemeral(&self) -> bool {
+        self.is_temp() | self.is_len_var()
+    }
     /// Returns a variable representing the length of the this variable, if the variable is of sort string.
     /// Returns None otherwise.
     pub fn len_var(&self) -> Option<Self> {
@@ -265,6 +272,9 @@ impl Display for Substitution {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let mut first = true;
         for (var, val) in &self.subs {
+            if var.is_ephemeral() {
+                continue;
+            }
             if !first {
                 write!(f, ", ")?;
             }
