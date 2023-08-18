@@ -186,7 +186,7 @@ pub(super) fn next_bounds(
             panic!("No upper bound for variable {} ({})", v, last);
         }
         if let Some(l) = updated.get_lower() {
-            let new_lower = max(1, limit_bounds.get_lower(v).unwrap_or(l));
+            let new_lower = max(0, limit_bounds.get_lower(v).unwrap_or(l));
             updated.set_lower(new_lower);
         }
         assert!(next.get(v).get_upper().is_some());
