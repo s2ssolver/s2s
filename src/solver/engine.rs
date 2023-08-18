@@ -135,115 +135,18 @@ impl AbstractionSolver {
         }
     }
 
-    fn find_limit_upper_bound(&self) -> Result<Bounds, Error> {
-        let mut limit_bounds = if self.instance.get_formula().is_conjunctive() {
-            let asserted_constr = self
-                .instance
-                .get_formula()
-                .to_nnf()
-                .asserted_literals()
-                .iter()
-                .filter_map(|lit| self.encoding_mng.for_literal(lit))
-                .map(|ctx| ctx.constraint().clone())
-                .collect::<Vec<_>>();
-
-            infer(&asserted_constr)?
-        } else {
-            Bounds::new()
-        };
-
-        // Make sure upper bounds for string variables are at least one, otherwise the encoding is not correct.
-        // This will have negative effects on the performance of the solver, but avoids having to treat edge cases in the encoding(s).
-        for v in self.instance.vars_of_sort(Sort::Int) {
-            if v.is_len_var() {
-                if let Some(0) = limit_bounds.get(v).get_upper() {
-                    log::trace!("Setting upper bound for {} from 0 to 1", v);
-                    limit_bounds.set_upper(v, 1);
-                }
-            }
-        }
-        Ok(limit_bounds)
-    }
-
-    /// Returns the next bounds to be used in the next round, based on the current bounds and the limit bounds.
-    /// If current bounds are None, the next bounds will be the first bounds to be used.
-    /// If the instance has an upper threshold, the upper bounds are clamped to the threshold.
-    fn next_bounds(&self, current_bounds: Option<&Bounds>, limit_bounds: &Bounds) -> BoundUpdate {
-        let mut next_bounds = match current_bounds {
-            Some(c) => {
-                if self.bounds_reach_threshold(c) {
-                    // No need to go further, we reached the threshold
-                    return BoundUpdate::ThresholdReached;
-                }
-                if self.bounds_reach_limit(c, limit_bounds) {
-                    // No need to go further, we reached the limit
-                    return BoundUpdate::LimitReached;
-                }
-                c.clone()
-            }
-            None => {
-                // Initialize
-                let mut current_bounds = Bounds::new();
+    /// Makes sure that the upper bounds for string variables are at least 1.
+    /// This is necessary for the encoding to work correctly.
+    /// Encoding the problem with upper bounds lower than 1 will result soundness issues.
+    /// If a upper bound less than 1, it is set to 1.
+    fn sanitize_bounds(&self, bounds: &mut Bounds) {
                 for v in self.instance.vars_of_sort(Sort::String) {
                     let len_var = v.len_var().unwrap();
-                    let upper = self.instance.get_start_bound() as isize;
-                    let lower = limit_bounds.get_lower(&len_var).unwrap_or(0);
-                    let upper = max(upper, lower);
-                    current_bounds.set(&len_var, IntDomain::Bounded(0, upper));
-                }
-                return BoundUpdate::Next(current_bounds);
-            }
-        };
-        next_bounds.next_square_uppers();
-
-        while next_bounds.any_empty() && !self.bounds_reach_limit(&next_bounds, limit_bounds) {
-            next_bounds.next_square_uppers();
-            next_bounds = next_bounds.intersect(limit_bounds);
-        }
-
-        // Clamp upper bounds to threshold
-        if let Some(upper) = self.instance.get_upper_threshold() {
-            next_bounds.clamp_uppers(upper as isize);
-        }
-        BoundUpdate::Next(next_bounds)
-    }
-
-    /// Returns true if the current upper bounds are equal to or greater than the limit upper bounds.
-    fn bounds_reach_limit(&self, current_bounds: &Bounds, limit_bounds: &Bounds) -> bool {
-        for v in self.instance.vars_of_sort(Sort::Int) {
-            match (
-                current_bounds.get(v).get_upper(),
-                limit_bounds.get(v).get_upper(),
-            ) {
-                (Some(c), Some(l)) => {
-                    if c < l {
-                        return false;
-                    }
-                }
-                (Some(_), None) => return false,
-                (None, Some(_)) => return false,
-                (None, None) => (),
-            }
-        }
-        true
-    }
-
-    /// Returns true if the current upper bounds are greater than or equal to the threshold given in the instance.
-    fn bounds_reach_threshold(&self, current_bounds: &Bounds) -> bool {
-        if let Some(threshold) = self.instance.get_upper_threshold() {
-            for v in self.instance.vars_of_sort(Sort::Int) {
-                match current_bounds.get(v).get_upper() {
-                    Some(c) => {
-                        if c < threshold as isize {
-                            return false;
-                        }
-                    }
-                    None => return false,
+            if let Some(upper) = bounds.get_upper(&len_var) {
+                if upper <= 0 {
+                    bounds.set_upper(&len_var, 1);
                 }
             }
-            true
-        } else {
-            false
         }
     }
 }
@@ -258,6 +161,9 @@ impl Solver for AbstractionSolver {
             BoundUpdate::LimitReached => return Ok(SolverResult::Unsat),
             BoundUpdate::ThresholdReached => return Ok(SolverResult::Unknown),
         };
+
+        // Sanitize bounds
+        self.sanitize_bounds(&mut current_bounds);
 
         log::info!(
             "Started solving loop for system of {} equations, alphabet size {}",
@@ -391,6 +297,8 @@ impl Solver for AbstractionSolver {
                     return Ok(SolverResult::Unknown);
                 }
             };
+            // Sanitize bounds
+            self.sanitize_bounds(&mut current_bounds);
 
             if self
                 .encoding_mng
