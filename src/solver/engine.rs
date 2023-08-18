@@ -112,11 +112,15 @@ impl AbstractionSolver {
 
             for ref mut clause in res.iter_clauses_mut() {
                 clause.push(-watcher);
+                if !self.instance.get_formula().is_conjunctive() {
                 clause.push(-def_lit);
+            }
             }
             // Append encoding to results
             encoding.join(res);
+            if !self.instance.get_formula().is_conjunctive() {
             encoding.add_assumption(def_lit);
+            }
             encoding.add_assumption(watcher);
         }
 
@@ -266,6 +270,7 @@ impl Solver for AbstractionSolver {
 
         // Convert the skeleton to cnf and add it to the solver
         let ts = Instant::now();
+        if !self.instance.get_formula().is_conjunctive() {
         log::info!("Skeleton {}", self.abstraction.get_skeleton());
         let cnf = to_cnf(self.abstraction.get_skeleton(), &mut self.instance)?;
         log::info!(
@@ -277,11 +282,13 @@ impl Solver for AbstractionSolver {
         for clause in cnf.into_iter() {
             cadical.add_clause(clause);
         }
-
         // Check if the skeleton is unsat
         if let Some(false) = cadical.solve() {
             log::info!("Skeleton is unsat");
             return Ok(SolverResult::Unsat);
+        }
+        } else {
+            log::info!("Formula is conjunctive, skipping skeleton encoding");
         }
 
         let mut time_encoding = 0;
