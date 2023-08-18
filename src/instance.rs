@@ -27,6 +27,8 @@ pub struct Instance {
     /// Terminate after preprocessing without solving the instance
     dry: bool,
 
+    preprocess: bool,
+
     /// The set of variables, indexed by name
     vars: IndexMap<String, Variable>,
 }
@@ -37,6 +39,7 @@ impl Default for Instance {
             formula: Formula::ttrue(),
             ubound: None,
             start_bound: 1,
+            preprocess: true,
             vars: IndexMap::new(),
             print_model: false,
             dry: false,
@@ -50,6 +53,7 @@ impl Instance {
             formula,
             ubound: None,
             start_bound: 1,
+            preprocess: true,
             vars: IndexMap::new(),
             print_model: false,
             dry: false,
@@ -72,6 +76,14 @@ impl Instance {
             self.add_var(v.clone());
         }
         self.formula = formula;
+    }
+
+    pub fn preprocess(&self) -> bool {
+        self.preprocess
+    }
+
+    pub fn set_preprocess(&mut self, preprocess: bool) {
+        self.preprocess = preprocess;
     }
 
     pub fn remove_bound(&mut self) {

@@ -91,6 +91,9 @@ fn main() {
     }
     instance.set_lbound(cli.min_bound);
     instance.set_dry_run(cli.dry);
+    if cli.skip_preprocess {
+        instance.set_preprocess(false);
+    }
     // Keep a copy of the formula since the solver might modify it during preprocessing
     // We want to validate the model against the original formula
     let original_formula = instance.get_formula().clone();

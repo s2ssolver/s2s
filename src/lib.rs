@@ -33,18 +33,21 @@ pub fn solve(instance: &mut Instance) -> Result<SolverResult, Error> {
     let ts = Instant::now();
 
     let mut subs = Substitution::new();
-    match preprocess(instance) {
-        (PreprocessingResult::Unchanged(_), s) => {
-            assert!(s.is_empty());
-            log::debug!("No preprocessing applied.");
+
+    if instance.preprocess() {
+        match preprocess(instance) {
+            (PreprocessingResult::Unchanged(_), s) => {
+                assert!(s.is_empty());
+                log::debug!("No preprocessing applied.");
+            }
+            (PreprocessingResult::Changed(c), s) => {
+                subs = s;
+                instance.set_formula(c.into())
+            }
         }
-        (PreprocessingResult::Changed(c), s) => {
-            subs = s;
-            instance.set_formula(c.into())
-        }
+        log::info!("Preprocessing done ({}ms).", ts.elapsed().as_millis());
     }
-    log::info!("Preprocessing done ({}ms).", ts.elapsed().as_millis());
-    log::debug!("Formula post preprocessing: {}", instance.get_formula());
+    log::debug!("Solving formula {}", instance.get_formula());
 
     // Check if the formula is trivial
     match instance.get_formula().eval(&subs) {
