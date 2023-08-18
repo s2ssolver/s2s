@@ -313,7 +313,6 @@ impl From<(LinearArithTerm, LinearArithTerm, LinearConstraintType)> for LinearCo
             for fac in consts {
                 lhs.remove_factor(&fac);
             }
-
             Self { lhs, rhs: c, typ }
         } else {
             let mut lhs = lhs.subtract(&rhs);
@@ -333,7 +332,7 @@ impl From<(LinearArithTerm, LinearArithTerm, LinearConstraintType)> for LinearCo
                 lhs.remove_factor(&fac);
             }
 
-            Self { lhs, rhs: 0, typ }
+            Self { lhs, rhs: c, typ }
         }
     }
 }
