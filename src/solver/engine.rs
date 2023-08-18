@@ -2,7 +2,7 @@ use std::char::{from_u32, EscapeUnicode};
 use std::cmp::max;
 use std::collections::HashSet;
 
-use indexmap::IndexSet;
+use indexmap::{IndexMap, IndexSet};
 use regulaer::re;
 
 use std::time::Instant;
@@ -13,6 +13,7 @@ use crate::bounds::{infer, Bounds, IntDomain};
 use crate::encode::EncodingResult;
 use crate::model::constraints::{Symbol, WordEquation};
 use crate::solver::analysis::{init_bounds, next_bounds};
+use crate::solver::manager::EncodingContext;
 use crate::{Solver, SolverResult};
 
 use crate::error::Error;
@@ -21,12 +22,12 @@ use crate::instance::Instance;
 
 use crate::model::formula::Alphabet;
 
-use crate::model::Sort;
 use crate::model::Substitution;
+use crate::model::{Sort, Variable};
 
 use crate::encode::domain::{get_substitutions, DomainEncoder};
 
-use crate::sat::{to_cnf, Cnf};
+use crate::sat::{to_cnf, Cnf, PLit};
 
 use super::analysis::BoundUpdate;
 use super::manager::EncodingManager;
@@ -99,29 +100,42 @@ impl AbstractionSolver {
             subs_cnf.clauses(),
             ts.elapsed().as_millis()
         );
+
         encoding.join(subs_cnf);
         let dom = self.domain_encoder.encoding();
-
+        let mut assumptions: IndexMap<EncodingContext, Vec<PLit>> = IndexMap::new();
         for (ctx, enc) in self.encoding_mng.iter_mut() {
             let mut res = enc.encode(&bounds, dom)?;
+
             let def_lit = ctx.definitional();
             let watcher = ctx.watcher();
             // def_lit -> encoding
             // watcher -> (def_lit -> encoding)
             // Insert the negation of def_lit and watcher into all clauses
-
+            if !self.instance.get_formula().is_conjunctive() {
+                log::debug!("Distributing neg. defintional {}", -def_lit);
+            }
             for ref mut clause in res.iter_clauses_mut() {
                 clause.push(-watcher);
                 if !self.instance.get_formula().is_conjunctive() {
-                clause.push(-def_lit);
+                    clause.push(-def_lit);
+                }
             }
+
+            // Register the assumptions
+            for assm in res.assumptions() {
+                assumptions.entry(ctx.clone()).or_default().push(assm);
             }
             // Append encoding to results
             encoding.join(res);
-            if !self.instance.get_formula().is_conjunctive() {
-            encoding.add_assumption(def_lit);
-            }
+
             encoding.add_assumption(watcher);
+        }
+        // Register assumptions
+        for (ctx, asms) in assumptions.into_iter() {
+            for asm in asms.into_iter() {
+                self.encoding_mng.register_assumptions(&ctx, &asm);
+            }
         }
 
         Ok(encoding)
@@ -140,8 +154,8 @@ impl AbstractionSolver {
     /// Encoding the problem with upper bounds lower than 1 will result soundness issues.
     /// If a upper bound less than 1, it is set to 1.
     fn sanitize_bounds(&self, bounds: &mut Bounds) {
-                for v in self.instance.vars_of_sort(Sort::String) {
-                    let len_var = v.len_var().unwrap();
+        for v in self.instance.vars_of_sort(Sort::String) {
+            let len_var = v.len_var().unwrap();
             if let Some(upper) = bounds.get_upper(&len_var) {
                 if upper <= 0 {
                     bounds.set_upper(&len_var, 1);
@@ -177,22 +191,22 @@ impl Solver for AbstractionSolver {
         // Convert the skeleton to cnf and add it to the solver
         let ts = Instant::now();
         if !self.instance.get_formula().is_conjunctive() {
-        log::info!("Skeleton {}", self.abstraction.get_skeleton());
-        let cnf = to_cnf(self.abstraction.get_skeleton(), &mut self.instance)?;
-        log::info!(
-            "Converted Boolean skeleton into cnf ({} clauses) in {} ms",
-            cnf.len(),
-            ts.elapsed().as_millis()
-        );
-        log::trace!("CNF: {:?}", cnf);
-        for clause in cnf.into_iter() {
-            cadical.add_clause(clause);
-        }
-        // Check if the skeleton is unsat
-        if let Some(false) = cadical.solve() {
-            log::info!("Skeleton is unsat");
-            return Ok(SolverResult::Unsat);
-        }
+            log::info!("Skeleton {}", self.abstraction.get_skeleton());
+            let cnf = to_cnf(self.abstraction.get_skeleton(), &mut self.instance)?;
+            log::info!(
+                "Converted Boolean skeleton into cnf ({} clauses) in {} ms",
+                cnf.len(),
+                ts.elapsed().as_millis()
+            );
+            log::trace!("CNF: {:?}", cnf);
+            for clause in cnf.into_iter() {
+                cadical.add_clause(clause);
+            }
+            // Check if the skeleton is unsat
+            if let Some(false) = cadical.solve() {
+                log::info!("Skeleton is unsat");
+                return Ok(SolverResult::Unsat);
+            }
         } else {
             log::info!("Formula is conjunctive, skipping skeleton encoding");
         }
@@ -210,6 +224,7 @@ impl Solver for AbstractionSolver {
                 let elapsed = ts.elapsed().as_millis();
                 log::info!("Encoding took {} ms", elapsed);
                 time_encoding += elapsed;
+
                 match encoding {
                     EncodingResult::Cnf(clauses, assms) => {
                         let n_clauses = clauses.len();
@@ -258,7 +273,11 @@ impl Solver for AbstractionSolver {
                                 return Ok(SolverResult::Sat(model));
                             }
                             Some(false) => {
-
+                                for asm in assms {
+                                    if cadical.failed(asm) {
+                                        //pr!intln!("Failed assumption {}", asm);
+                                    }
+                                }
                                 // Do nothing, continue with next round
                             }
                             None => {

@@ -38,9 +38,15 @@ pub(super) fn collect_failed(
     solver: &cadical::Solver,
 ) -> Vec<EncodingContext> {
     let mut failed = Vec::new();
+
+    assert!(solver.status() == Some(false));
     for (ctx, _) in mngr.iter() {
-        if solver.failed(ctx.watcher()) {
-            failed.push(ctx.clone());
+        let watchers = mngr.get_watching_literals(ctx);
+        for w in watchers {
+            if solver.failed(w) {
+                failed.push(ctx.clone());
+                break;
+            }
         }
     }
     failed
@@ -136,6 +142,7 @@ pub(super) fn next_bounds(
     threshold: Option<usize>,
 ) -> Result<BoundUpdate, Error> {
     let failed = collect_failed(mngr, solver);
+    assert!(failed.len() > 0, "Formula cannot be unsat with empty core");
     let limit_bounds = underapprox(&failed)?;
     log::info!("Upper Bounds for core: {:?}", limit_bounds);
     if let Some(th) = threshold {
