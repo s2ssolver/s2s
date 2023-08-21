@@ -172,9 +172,13 @@ impl Preprocessor for IntSubstitutions {
                 literal.atom()
             {
                 if let IntTerm::Var(v) = lhs {
-                    self.substitutions.set(v, Term::Int(rhs.clone()));
+                    if !v.is_len_var() {
+                        self.substitutions.set(v, Term::Int(rhs.clone()));
+                    }
                 } else if let IntTerm::Var(v) = rhs {
-                    self.substitutions.set(v, Term::Int(lhs.clone()));
+                    if !v.is_len_var() {
+                        self.substitutions.set(v, Term::Int(lhs.clone()));
+                    }
                 }
             }
         }
