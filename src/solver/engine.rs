@@ -279,7 +279,8 @@ impl Solver for AbstractionSolver {
                                     time_encoding,
                                     time_solving
                                 );
-
+                                //self.encoding_mng
+                                //    .print_debug(&cadical, self.domain_encoder.encoding());
                                 return Ok(SolverResult::Sat(model));
                             }
                             Some(false) => {

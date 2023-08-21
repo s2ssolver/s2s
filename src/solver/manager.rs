@@ -2,8 +2,8 @@ use indexmap::{IndexMap, IndexSet};
 
 use crate::{
     encode::{
-        build_re_encoder, AlignmentEncoder, BoolVarEncoder, ConstraintEncoder, MddEncoder,
-        WordEquationEncoder,
+        build_re_encoder, domain::DomainEncoding, AlignmentEncoder, BoolVarEncoder,
+        ConstraintEncoder, MddEncoder, WordEquationEncoder,
     },
     error::Error,
     instance::Instance,
@@ -139,6 +139,14 @@ impl EncodingManager {
         let mut watchers = self.watchers.get(ctx).cloned().unwrap_or(Vec::new());
         watchers.push(ctx.watcher());
         watchers
+    }
+
+    pub fn print_debug(&self, solver: &cadical::Solver, dom: &DomainEncoding) {
+        for (ctx, enc) in self.iter() {
+            if solver.value(ctx.definitional).unwrap_or(false) {
+                enc.print_debug(solver, dom);
+            }
+        }
     }
 
     pub fn num_constraints(&self) -> usize {

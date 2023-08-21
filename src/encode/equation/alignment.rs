@@ -511,29 +511,26 @@ impl AlignmentEncoder {
         let mut assumptions = indexset! {};
         // Need to clone due to mutable borrow later
         let segments = self.segments(side).clone();
-        let subs = dom.string();
-        let last_bound = self.last_bound.unwrap_or(0);
-        let word = self.candidates.encoder_for(side);
+
         // Last segment cannot over-extend the bound
         let i = segments.length() - 1;
         let s = segments.get(i);
         let start_pos = segments.prefix_min_len(i, bounds);
         match s {
             PatternSegment::Variable(v) => {
-                for pos in start_pos..self.bound {
+                for pos in 0..self.bound {
                     let vbound = self.get_var_bound(v, bounds);
 
                     for len in 0..=vbound {
+                        let lenvar = dom.int().get(&v.len_var().unwrap(), len as isize).unwrap();
+
                         if pos + len > self.bound {
                             let svar = self.start_position(i, pos, side);
-                            let lenvar =
-                                dom.int().get(&v.len_var().unwrap(), len as isize).unwrap();
 
-                            clauses.push(vec![
-                                neg(self.bound_selector.unwrap()),
-                                neg(svar),
-                                neg(lenvar),
-                            ]);
+                            let clause =
+                                vec![neg(self.bound_selector.unwrap()), neg(svar), neg(lenvar)];
+
+                            clauses.push(clause);
                         }
                     }
                 }
@@ -547,7 +544,7 @@ impl AlignmentEncoder {
                 }
             }
         }
-        EncodingResult::Cnf(vec![], assumptions)
+        EncodingResult::Cnf(clauses, assumptions)
     }
 
     /// Encodes the matching of each segment of the pattern with the factor of candidate solution word as the respective position.
@@ -953,6 +950,55 @@ impl ConstraintEncoder for AlignmentEncoder {
                 }
                 if let Some(true) = solver.value(as_lit(rhs.char_at(pos, *c))) {
                     rhs_sol.push(*c);
+                }
+            }
+        }
+        println!("SOLUTION FOR {} (BOUND: {})", self.equation, self.bound);
+        println!("\tLHS: {}", lhs_sol);
+        println!("\tRHS: {}", rhs_sol);
+        println!(
+            "\t Bound selector {} is {}",
+            self.bound_selector.unwrap(),
+            solver.value(as_lit(self.bound_selector.unwrap())).unwrap()
+        );
+        println!("\tLHS POSITIONS:");
+        for i in 0..self.segments(&EqSide::Lhs).length() {
+            for p in 0..self.bound {
+                let v = self.start_position(i, p, &EqSide::Lhs);
+
+                if let Some(true) = solver.value(as_lit(v)) {
+                    println!(
+                        "\t\t- {} starts at {} ({})",
+                        self.segments(&EqSide::Lhs).segments[i],
+                        p,
+                        v
+                    );
+                }
+            }
+        }
+        println!("\tRHS POSITIONS:");
+        for i in 0..self.segments(&EqSide::Rhs).length() {
+            for p in 0..self.bound {
+                let v = self.start_position(i, p, &EqSide::Rhs);
+                if let Some(true) = solver.value(as_lit(v)) {
+                    println!(
+                        "\t\t- {} starts at {} ({})",
+                        self.segments(&EqSide::Rhs).segments[i],
+                        p,
+                        v
+                    );
+                }
+            }
+        }
+        println!("\tASSIGNED LENGTHS");
+        for v in &self.equation.variables() {
+            let v = &v.len_var().unwrap();
+
+            for l in 0..=self.last_var_bounds.as_ref().unwrap().get_upper(v).unwrap() {
+                let lvar = dom.int().get(v, l).unwrap();
+
+                if let Some(true) = solver.value(as_lit(lvar)) {
+                    println!("\t\t- |{}| = {} ({})", v, l, lvar);
                 }
             }
         }
