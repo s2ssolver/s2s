@@ -8,7 +8,7 @@ use regulaer::{re::CharRegex, RegLang};
 use crate::{
     instance::Instance,
     model::{
-        constraints::{Pattern, Symbol, WordEquation},
+        constraints::{LinearArithFactor, LinearArithTerm, Pattern, Symbol, WordEquation},
         formula::{Alphabet, Atom, Literal, NNFFormula, Predicate},
         terms::{ReTerm, StringTerm, Term},
         Sort, Substitution, Variable,
@@ -664,6 +664,56 @@ impl IndependetVarSubstitutions {
     fn calculate_occurrences(&mut self, formula: &NNFFormula) {
         match formula {
             NNFFormula::Literal(l) => {
+                match l.atom() {
+                    Atom::Predicate(p) => match p {
+                        Predicate::Equality(Term::String(lhs), Term::String(rhs)) => {
+                            for s in Pattern::from(lhs.clone()) {
+                                if let Symbol::Variable(v) = s {
+                                    *self.var_occurrences.entry(v.clone()).or_default() += 1;
+                                }
+                            }
+                            for s in Pattern::from(rhs.clone()) {
+                                if let Symbol::Variable(v) = s {
+                                    *self.var_occurrences.entry(v.clone()).or_default() += 1;
+                                }
+                            }
+                        }
+                        Predicate::Leq(Term::Int(lhs), Term::Int(rhs))
+                        | Predicate::Less(Term::Int(lhs), Term::Int(rhs))
+                        | Predicate::Geq(Term::Int(lhs), Term::Int(rhs))
+                        | Predicate::Greater(Term::Int(lhs), Term::Int(rhs))
+                        | Predicate::Equality(Term::Int(lhs), Term::Int(rhs)) => {
+                            for f in LinearArithTerm::from(lhs.clone()).iter() {
+                                if let LinearArithFactor::VarCoeff(v, _) = f {
+                                    if let Some(vs) = v.len_str_var() {
+                                        *self.var_occurrences.entry(vs).or_default() += 1;
+                                    } else {
+                                        *self.var_occurrences.entry(v.clone()).or_default() += 1;
+                                    }
+                                }
+                            }
+                            for f in LinearArithTerm::from(rhs.clone()).iter() {
+                                if let LinearArithFactor::VarCoeff(v, _) = f {
+                                    if let Some(vs) = v.len_str_var() {
+                                        *self.var_occurrences.entry(vs).or_default() += 1;
+                                    } else {
+                                        *self.var_occurrences.entry(v.clone()).or_default() += 1;
+                                    }
+                                }
+                            }
+                        }
+
+                        Predicate::In(Term::String(lhs), _) => {
+                            for s in Pattern::from(lhs.clone()) {
+                                if let Symbol::Variable(v) = s {
+                                    *self.var_occurrences.entry(v.clone()).or_default() += 1;
+                                }
+                            }
+                        }
+                        _ => unreachable!(),
+                    },
+                    _ => (),
+                }
                 for v in l.atom().vars() {
                     // Map str-length-vars back to the original vars
                     if let Some(v) = v.len_str_var() {
@@ -713,6 +763,7 @@ impl Preprocessor for IndependetVarSubstitutions {
                     let lhs = Pattern::from(lhs.clone());
                     let rhs = Pattern::from(rhs.clone());
                     // Check if we can infer something from the equality
+
                     if self.for_eq(&lhs, &rhs, literal.is_pos()) {
                         return PreprocessingResult::Changed(NNFFormula::ttrue());
                     }

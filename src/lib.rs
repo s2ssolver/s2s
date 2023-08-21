@@ -30,6 +30,9 @@ use crate::model::{Evaluable, Substitution};
 
 pub fn solve(instance: &mut Instance) -> Result<SolverResult, Error> {
     // Preprocess the formula
+
+    log::trace!("Solving formula {}", instance.get_formula());
+
     let ts = Instant::now();
 
     let mut subs = Substitution::new();
