@@ -2,7 +2,7 @@ use super::ParseError;
 
 /// Unescape a string literal as specified in the SMT-LIB standard.
 /// If `legacy` is true, additionally unescapes unicode escape sequences in SMT-LIB 2.5 syntax (`\xAB` with A, B hex chars).
-pub fn unicode_unescape(s: &str, legacy: bool) -> Result<Vec<char>, ParseError> {
+pub fn unescape(s: &str, legacy: bool) -> Result<Vec<char>, ParseError> {
     let mut res = Vec::new();
     let mut chars = s.chars().peekable();
     while let Some(c) = chars.next() {
@@ -45,6 +45,7 @@ pub fn unicode_unescape(s: &str, legacy: bool) -> Result<Vec<char>, ParseError> 
                     res.push(char::from_u32(code).unwrap());
                 }
                 Some(c) => {
+                    res.push('\\');
                     res.push(c);
                 }
                 None => {
@@ -53,7 +54,24 @@ pub fn unicode_unescape(s: &str, legacy: bool) -> Result<Vec<char>, ParseError> 
                     ))
                 }
             }
-        } else {
+        }
+        /*else if c == '"' {
+            match chars.next() {
+                Some('"') => res.push('"'),
+                Some(c) => {
+                    return Err(ParseError::SyntaxError(format!(
+                        "Invalid character after quote: {} ('{}')",
+                        c, s
+                    )))
+                }
+                None => {
+                    return Err(ParseError::SyntaxError(
+                        "Invalid escape sequence".to_string(),
+                    ))
+                }
+            }
+        }*/
+        else {
             res.push(c);
         }
     }
@@ -62,20 +80,20 @@ pub fn unicode_unescape(s: &str, legacy: bool) -> Result<Vec<char>, ParseError> 
 
 #[cfg(test)]
 mod tests {
-    use super::unicode_unescape;
+    use super::unescape;
 
     #[test]
     fn basic_unescapes() {
         assert_eq!(
-            unicode_unescape("hello\\u{21}", false).unwrap(),
+            unescape("hello\\u{21}", false).unwrap(),
             "hello!".chars().collect::<Vec<char>>()
         );
         assert_eq!(
-            unicode_unescape("\\u{1f600}", false).unwrap(),
+            unescape("\\u{1f600}", false).unwrap(),
             "😀".chars().collect::<Vec<char>>()
         );
         assert_eq!(
-            unicode_unescape("\\u1f600", false).unwrap(),
+            unescape("\\u1f600", false).unwrap(),
             "😀".chars().collect::<Vec<char>>()
         );
     }
@@ -83,11 +101,11 @@ mod tests {
     #[test]
     fn smt25_unescapes() {
         assert_eq!(
-            unicode_unescape("hello\\x21", true).unwrap(),
+            unescape("hello\\x21", true).unwrap(),
             "hello!".chars().collect::<Vec<char>>()
         );
         assert_eq!(
-            unicode_unescape("\\x65", true).unwrap(),
+            unescape("\\x65", true).unwrap(),
             "e".chars().collect::<Vec<char>>()
         );
     }
@@ -95,26 +113,26 @@ mod tests {
     #[test]
     #[should_panic]
     fn invalid_escape_sequence1() {
-        _ = unicode_unescape("\\u{}", false);
+        _ = unescape("\\u{}", false);
     }
 
     #[test]
     #[should_panic]
     fn tooshort_escape_sequence() {
-        _ = unicode_unescape("\\u12", false);
+        _ = unescape("\\u12", false);
     }
 
     #[test]
     #[should_panic]
     fn nonhex_escape_sequence() {
-        _ = unicode_unescape("\\u{12g}", false);
+        _ = unescape("\\u{12g}", false);
     }
 
     #[test]
     #[should_panic]
     fn smt25_invalid() {
         assert_eq!(
-            unicode_unescape("\\xFG", true).unwrap(),
+            unescape("\\xFG", true).unwrap(),
             "e".chars().collect::<Vec<char>>()
         );
     }

@@ -17,7 +17,7 @@ use crate::{
     },
 };
 
-use super::{util::unicode_unescape, Instance, ParseError};
+use super::{util::unescape, Instance, ParseError};
 
 pub fn parse_smt<R: BufRead>(smt: R) -> Result<Instance, ParseError> {
     let script = Script::<Term>::parse(smt)
@@ -532,7 +532,7 @@ impl<'a> Visitor<ALL> for StringTermBuilder<'a> {
 
     fn visit_const(&mut self, constant: &IConst) -> ControlFlow<Self::BreakTy> {
         match constant.as_ref() {
-            Constant::String(s) => match unicode_unescape(s, true) {
+            Constant::String(s) => match unescape(s, true) {
                 Ok(s) => ControlFlow::Break(Ok(StringTerm::Constant(s))),
                 Err(e) => ControlFlow::Break(Err(e)),
             },
