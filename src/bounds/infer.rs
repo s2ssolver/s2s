@@ -448,7 +448,7 @@ fn propagate_bounds(lincon: &LinearConstraint, bounds: &Bounds) -> Bounds {
                                 None => {}
                                 Some(u) => {
                                     log::trace!("{}: var {} lower bounded by {}", lincon, v, u);
-                                    new_bounds.set(v, IntDomain::LowerBounded(u));
+                                    new_bounds.set(v, IntDomain::UpperBounded(u));
                                 }
                             }
                         }
