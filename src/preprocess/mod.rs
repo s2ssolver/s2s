@@ -12,7 +12,10 @@ use crate::{
     preprocess::{
         formula::ConjunctionSimplifier,
         int::{ConstIntReducer, IntSubstitutions},
-        string::{IndependetVarSubstitutions, SplitPatternRegularConstraints, TrivialREReducer},
+        string::{
+            IndependetVarSubstitutions, RegexConstStrip, SplitPatternRegularConstraints,
+            TrivialREReducer,
+        },
     },
 };
 
@@ -157,6 +160,7 @@ pub fn preprocess(instance: &mut Instance) -> (PreprocessingResult, Substitution
             Box::new(TrivialREReducer::new()),
             Box::new(ConjunctionSimplifier::new()),
             Box::new(IntSubstitutions::new()),
+            Box::new(RegexConstStrip::new()),
         ];
 
         log::trace!("Preprocessing round {}", r);

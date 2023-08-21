@@ -2,6 +2,7 @@ use std::fmt::{Display, Formatter};
 
 use indexmap::IndexSet;
 use quickcheck::{Arbitrary, Gen};
+use regulaer::re::Regex;
 
 use super::{
     constraints::Pattern,
@@ -347,6 +348,32 @@ impl ReTerm {
             | ReTerm::Loop(r, _, _) => r.contains_inter(),
             ReTerm::Diff(r1, r2) => r1.contains_inter() || r2.contains_inter(),
             _ => false,
+        }
+    }
+
+    pub fn from_regex(regex: &Regex<char>) -> Self {
+        match regex {
+            Regex::Const(w) => Self::String(StringTerm::Constant(w.clone())),
+            Regex::None => Self::None,
+            Regex::All => Self::All,
+            Regex::AllChar => Self::Any,
+            Regex::Concat(rs) => Self::Concat(rs.iter().map(Self::from_regex).collect()),
+            Regex::Union(rs) => Self::Union(rs.iter().map(Self::from_regex).collect()),
+            Regex::Inter(rs) => Self::Inter(rs.iter().map(Self::from_regex).collect()),
+            Regex::Star(r) => Self::Star(Box::new(Self::from_regex(r))),
+            Regex::Plus(r) => Self::Plus(Box::new(Self::from_regex(r))),
+            Regex::Opt(r) => Self::Optional(Box::new(Self::from_regex(r))),
+            Regex::Range(l, u) => Self::Range(
+                StringTerm::Constant(vec![*l]),
+                StringTerm::Constant(vec![*u]),
+            ),
+            Regex::Pow(r, e) => Self::Pow(Box::new(Self::from_regex(r)), *e),
+            Regex::Comp(r) => Self::Comp(Box::new(Self::from_regex(r))),
+            Regex::Diff(r1, r2) => Self::Diff(
+                Box::new(Self::from_regex(r1)),
+                Box::new(Self::from_regex(r2)),
+            ),
+            Regex::Loop(r, l, u) => Self::Loop(Box::new(Self::from_regex(r)), *l, *u),
         }
     }
 }

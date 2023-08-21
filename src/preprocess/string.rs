@@ -3,7 +3,10 @@
 use std::{cmp::min, collections::HashMap, fmt::Display};
 
 use indexmap::{IndexMap, IndexSet};
-use regulaer::{re::CharRegex, RegLang};
+use regulaer::{
+    re::{self, CharRegex, Regex},
+    RegLang,
+};
 
 use crate::{
     instance::Instance,
@@ -625,6 +628,22 @@ impl IndependetVarSubstitutions {
     }
 
     fn for_eq(&mut self, lhs: &Pattern, rhs: &Pattern, sign: bool) -> bool {
+        // Check if we have a pattern of the form `x = y` where `x` and `y` are indepented variables
+        if lhs.len() == 1 && rhs.len() == 1 && self.is_independent(lhs) && self.is_independent(rhs)
+        {
+            if let Some(Symbol::Variable(l)) = lhs.first() {
+                if let Some(Symbol::Variable(r)) = rhs.first() {
+                    self.substitutions.set(l, StringTerm::constant("").into());
+                    if sign {
+                        self.substitutions.set(r, StringTerm::constant("").into());
+                    } else {
+                        self.substitutions.set(r, StringTerm::constant("a").into());
+                    }
+                    return true;
+                }
+            }
+        }
+
         if self.is_independent(lhs)
             && !lhs.is_empty()
             && rhs.is_constant()
@@ -836,6 +855,91 @@ impl Preprocessor for TrivialREReducer {
 
     fn get_substitution(&self) -> Option<Substitution> {
         None
+    }
+}
+
+/// For regular constraints of the form `axb in R` with a,b constant words, reduces the problem to `x in R'`, where `R'` is a regular expression constructed by stripping away the prefix a (suffix b) using Brzozowski derivatives.
+pub struct RegexConstStrip {}
+
+impl RegexConstStrip {
+    fn strip_prefix(&self, pattern: &Pattern, regex: &Regex<char>) -> (Pattern, Regex<char>) {
+        let mut stripped = regex.clone();
+        let mut remainder = Pattern::empty();
+        let mut collect = false;
+        for sym in pattern.iter() {
+            match sym {
+                Symbol::Constant(c) => {
+                    if collect {
+                        remainder.append(sym);
+                    } else {
+                        stripped = regulaer::re::deriv(regex, *c);
+                    }
+                }
+                Symbol::Variable(v) => {
+                    remainder.append(sym);
+                    collect = true;
+                }
+            }
+        }
+        (remainder, stripped)
+    }
+
+    fn strip_suffix(&self, pattern: &Pattern, regex: &Regex<char>) -> (Pattern, Regex<char>) {
+        let pat_rev = pattern.reversed();
+        let regex_rev = regex.reverse();
+        let (p, r) = self.strip_prefix(&pat_rev, &regex_rev);
+        (p.reversed(), r.reverse())
+    }
+
+    fn strip(&self, pattern: &Pattern, regex: &Regex<char>) -> (Pattern, Regex<char>) {
+        let (p, r) = self.strip_prefix(pattern, regex);
+        self.strip_suffix(&p, &r)
+    }
+}
+
+impl Preprocessor for RegexConstStrip {
+    fn get_substitution(&self) -> Option<Substitution> {
+        None
+    }
+
+    fn get_name(&self) -> String {
+        "RegexConstStrip".to_string()
+    }
+
+    fn apply_literal(
+        &mut self,
+        literal: Literal,
+        _is_asserted: bool,
+        _instance: &mut Instance,
+    ) -> PreprocessingResult {
+        if let Atom::Predicate(Predicate::In(Term::String(pat), Term::Regular(r))) = literal.atom()
+        {
+            let regex = Regex::try_from(r.clone()).unwrap();
+            let word = Pattern::from(pat.clone());
+
+            let (p, r) = self.strip(&word, &regex);
+            if p != word {
+                let new_regex = ReTerm::from_regex(&r);
+                let new_pat = Term::String(p.into());
+                let new_atom = Atom::Predicate(Predicate::In(new_pat, Term::Regular(new_regex)));
+                let new_literal = if literal.is_pos() {
+                    Literal::Pos(new_atom)
+                } else {
+                    Literal::Neg(new_atom)
+                };
+                return PreprocessingResult::Changed(NNFFormula::Literal(new_literal));
+            } else {
+                return PreprocessingResult::Unchanged(NNFFormula::Literal(literal));
+            }
+        }
+        PreprocessingResult::Unchanged(NNFFormula::Literal(literal))
+    }
+
+    fn new() -> Self
+    where
+        Self: Sized,
+    {
+        Self {}
     }
 }
 
