@@ -54,7 +54,7 @@ impl AbstractionSolver {
             let chr = char::from_u32(next_chr).unwrap();
             alphabet.insert(chr);
         }
-        log::debug!("Alphabet: {:?}", alphabet);
+        log::info!("Alphabet: {:?}", alphabet);
 
         // Instantiate the Domain encoder
         let dom_encoder = DomainEncoder::new(alphabet.clone());
@@ -279,6 +279,7 @@ impl Solver for AbstractionSolver {
                                     time_encoding,
                                     time_solving
                                 );
+
                                 return Ok(SolverResult::Sat(model));
                             }
                             Some(false) => {

@@ -506,13 +506,7 @@ impl AlignmentEncoder {
         res
     }
 
-    /// Encodes the matching of each segment of the pattern with the factor of candidate solution word as the respective position.
-    fn match_candidate(
-        &mut self,
-        dom: &DomainEncoding,
-        bounds: &Bounds,
-        side: &EqSide,
-    ) -> EncodingResult {
+    fn equal_length(&self, dom: &DomainEncoding, bounds: &Bounds, side: &EqSide) -> EncodingResult {
         let mut clauses = Cnf::new();
         let mut assumptions = indexset! {};
         // Need to clone due to mutable borrow later
@@ -520,7 +514,6 @@ impl AlignmentEncoder {
         let subs = dom.string();
         let last_bound = self.last_bound.unwrap_or(0);
         let word = self.candidates.encoder_for(side);
-
         // Last segment cannot over-extend the bound
         let i = segments.length() - 1;
         let s = segments.get(i);
@@ -554,6 +547,23 @@ impl AlignmentEncoder {
                 }
             }
         }
+        EncodingResult::Cnf(vec![], assumptions)
+    }
+
+    /// Encodes the matching of each segment of the pattern with the factor of candidate solution word as the respective position.
+    fn match_candidate(
+        &mut self,
+        dom: &DomainEncoding,
+        bounds: &Bounds,
+        side: &EqSide,
+    ) -> EncodingResult {
+        let mut clauses = Cnf::new();
+
+        // Need to clone due to mutable borrow later
+        let segments = self.segments(side).clone();
+        let subs = dom.string();
+        let last_bound = self.last_bound.unwrap_or(0);
+        let word = self.candidates.encoder_for(side);
 
         for (i, s) in segments.iter().enumerate() {
             match s {
@@ -685,7 +695,7 @@ impl AlignmentEncoder {
                 }
             }
         }
-        EncodingResult::Cnf(clauses, assumptions)
+        EncodingResult::cnf(clauses)
     }
 
     /// Encodes that after the last segment, the solution word must be lambda.
@@ -758,6 +768,7 @@ impl AlignmentEncoder {
             }
             let lhs_lambda = lhs.char_at(b, LAMBDA);
             let rhs_lambda = rhs.char_at(b, LAMBDA);
+
             result.add_clause(vec![neg(v), neg(lhs_lambda), neg(rhs_lambda)]);
         }
 
@@ -884,30 +895,34 @@ impl ConstraintEncoder for AlignmentEncoder {
             suffix_enc_rhs.clauses()
         );
         res.join(suffix_enc_rhs);
+        let ts = Instant::now();
+        let vars_match_lhs_enc = self.match_candidate(substitution, bounds, &EqSide::Lhs);
+
+        log::trace!(
+            "Clauses for variable matching LHS: {} ({} ms)",
+            vars_match_lhs_enc.clauses(),
+            ts.elapsed().as_millis()
+        );
+        res.join(vars_match_lhs_enc);
+
+        let ts = Instant::now();
+        let vars_match_rhs_enc = self.match_candidate(substitution, bounds, &EqSide::Rhs);
+        log::trace!(
+            "Clauses for variable matching RHS: {} ({} ms)",
+            vars_match_rhs_enc.clauses(),
+            ts.elapsed().as_millis()
+        );
+        res.join(vars_match_rhs_enc);
 
         if !self.candidates.is_equality() {
             let mismatch_enc = self.encode_mismatch(substitution);
             log::trace!("Clauses for mismatch: {}", mismatch_enc.clauses());
             res.join(mismatch_enc);
         } else {
-            let ts = Instant::now();
-            let vars_match_lhs_enc = self.match_candidate(substitution, bounds, &EqSide::Lhs);
-
-            log::trace!(
-                "Clauses for variable matching LHS: {} ({} ms)",
-                vars_match_lhs_enc.clauses(),
-                ts.elapsed().as_millis()
-            );
-            res.join(vars_match_lhs_enc);
-
-            let ts = Instant::now();
-            let vars_match_rhs_enc = self.match_candidate(substitution, bounds, &EqSide::Rhs);
-            log::trace!(
-                "Clauses for variable matching RHS: {} ({} ms)",
-                vars_match_rhs_enc.clauses(),
-                ts.elapsed().as_millis()
-            );
-            res.join(vars_match_rhs_enc);
+            // On the equality case, both sides must be of length bound
+            // If one filled patter is longer than the other, then the bound must be limited to the shorter one
+            res.join(self.equal_length(substitution, bounds, &EqSide::Lhs));
+            res.join(self.equal_length(substitution, bounds, &EqSide::Rhs));
         }
 
         // Store variable bounds for next round
@@ -924,6 +939,23 @@ impl ConstraintEncoder for AlignmentEncoder {
         let new = Self::new(self.equation.clone());
         // Reset everything except the equation
         *self = new;
+    }
+
+    fn print_debug(&self, solver: &cadical::Solver, dom: &DomainEncoding) {
+        let lhs = self.candidates.lhs_encoder();
+        let rhs = self.candidates.rhs_encoder();
+        let mut lhs_sol = String::new();
+        let mut rhs_sol = String::new();
+        for pos in 0..self.bound {
+            for c in dom.alphabet() {
+                if let Some(true) = solver.value(as_lit(lhs.char_at(pos, *c))) {
+                    lhs_sol.push(*c);
+                }
+                if let Some(true) = solver.value(as_lit(rhs.char_at(pos, *c))) {
+                    rhs_sol.push(*c);
+                }
+            }
+        }
     }
 }
 

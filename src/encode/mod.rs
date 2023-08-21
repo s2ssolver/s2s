@@ -229,4 +229,6 @@ pub trait ConstraintEncoder {
         bounds: &Bounds,
         substitution: &DomainEncoding,
     ) -> Result<EncodingResult, Error>;
+
+    fn print_debug(&self, _solver: &cadical::Solver, _dom: &DomainEncoding) {}
 }
