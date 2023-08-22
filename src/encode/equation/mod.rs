@@ -1,14 +1,26 @@
-mod bindep;
+mod alignment;
+mod assign;
 mod iwoorpje;
+mod vareq;
 mod woorpje;
-pub use bindep::BindepEncoder;
-pub use iwoorpje::IWoorpjeEncoder;
-pub use woorpje::WoorpjeEncoder;
+use alignment::AlignmentEncoder;
 
-use crate::model::words::WordEquation;
+use crate::model::constraints::WordEquation;
 
-use super::PredicateEncoder;
+use self::{assign::AssignmentEncoder, vareq::VareqEncoder};
 
-pub trait WordEquationEncoder: PredicateEncoder {
-    fn new(equation: WordEquation) -> Self;
+use super::ConstraintEncoder;
+
+pub fn get_encoder(equation: &WordEquation) -> Box<dyn ConstraintEncoder> {
+    match equation {
+        WordEquation::VarEquality { lhs, rhs, eq_type } => {
+            Box::new(VareqEncoder::new(lhs, rhs, eq_type.is_equality()))
+        }
+        WordEquation::Assignment { lhs, rhs, eq_type } => Box::new(AssignmentEncoder::new(
+            lhs.clone(),
+            rhs.clone(),
+            eq_type.is_equality(),
+        )),
+        WordEquation::Generic { .. } => Box::new(AlignmentEncoder::new(equation.clone())),
+    }
 }

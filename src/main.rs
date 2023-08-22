@@ -1,21 +1,27 @@
-use std::{path::Path, process::exit};
+use std::{path::Path, process::exit, time::Instant};
 
 use clap::{Parser as ClapParser, ValueEnum};
 
-use satstr::{preprocess, Bindep, IWoorpje, Parser, Solver, Woorpje};
+use satstr::{model::Evaluable, solve, Parser, SolverResult};
+
+/// The command line interface for the solver
 #[derive(ClapParser, Debug)]
 #[command(author, version, about, long_about = None)] // Read from `Cargo.toml`
 struct Options {
-    /// What mode to run the program in
-    #[arg(long, short, value_enum, default_value = "woorpje")]
-    solver: SolverType,
     /// The format of the input file
     #[arg(short, long, value_enum, default_value = "auto")]
     format: Format,
 
-    /// Skip the verification of the solution. If this is set to true, the solver will not check if the model is correct.
-    #[arg(short = 'x', long)]
-    skip_verify: bool,
+    #[arg(long)]
+    skip_preprocess: bool,
+
+    /// If this is set to true, the solver will double-check that the found model is correct.
+    #[arg(long)]
+    verify_model: bool,
+
+    /// If this is set to true, the solver will not actually solve the instance, but terminate after preprocessing.
+    #[arg(long)]
+    dry: bool,
 
     /// The maximum variable bound to check before returning `unsat`
     #[arg(short = 'b', long, value_enum, default_value = None)]
@@ -33,14 +39,6 @@ struct Options {
 }
 
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum, Debug)]
-enum SolverType {
-    Woorpje,
-    Iwoorpje,
-    Bindep,
-    Full,
-}
-
-#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum, Debug)]
 enum Format {
     Woorpje,
     Smt,
@@ -48,18 +46,19 @@ enum Format {
     Auto,
 }
 
+/// The main function of the solver. Parses the command line arguments and runs the solver.
 fn main() {
     env_logger::init();
-    let ts = std::time::Instant::now();
+    let ts = Instant::now();
     let cli = Options::parse();
     let parser = match cli.format {
         Format::Woorpje => Parser::WoorpjeParser,
         Format::Smt => Parser::Smt2Parser,
         Format::Auto => {
-            let ext = cli.file.split(".").last();
+            let ext = cli.file.split('.').last();
             match ext {
                 Some("eq") => Parser::WoorpjeParser,
-                Some("smt2") | Some("smt") => Parser::Smt2Parser,
+                Some("smt2") | Some("smt") | Some("smt25") | Some("smt26") => Parser::Smt2Parser,
                 Some(other) => {
                     log::error!(
                         "Format set to 'auto', but the file extension is no supported: {}",
@@ -91,34 +90,39 @@ fn main() {
         instance.set_print_model(true);
     }
     instance.set_lbound(cli.min_bound);
-    instance.set_formula(preprocess(instance.get_formula()));
+    instance.set_dry_run(cli.dry);
+    if cli.skip_preprocess {
+        instance.set_preprocess(false);
+    }
+    // Keep a copy of the formula since the solver might modify it during preprocessing
+    // We want to validate the model against the original formula
+    let original_formula = instance.get_formula().clone();
 
-    let mut solver = match cli.solver {
-        SolverType::Woorpje => Box::new(Woorpje::new(&instance).unwrap()) as Box<dyn Solver>,
-        SolverType::Iwoorpje => Box::new(IWoorpje::new(&instance).unwrap()) as Box<dyn Solver>,
-        SolverType::Bindep => Box::new(Bindep::new(&instance).unwrap()) as Box<dyn Solver>,
-        SolverType::Full => unimplemented!("Full solver not implemented yet"),
+    let res = match solve(&mut instance) {
+        Ok(res) => res,
+        Err(e) => {
+            log::error!("{}", e);
+            println!("error");
+            exit(-1);
+        }
     };
 
-    let res = solver.solve();
     log::info!("Done ({}ms).", ts.elapsed().as_millis());
-
     match res {
-        satstr::SolverResult::Sat(m) => {
-            if !cli.skip_verify {
-                match instance.get_formula().evaluate(&m) {
-                    Some(true) => println!("sat\n{}", m),
-                    Some(false) => panic!("Model is incorrect"),
-                    None => panic!("Model is incomplete"),
-                }
-            } else {
-                println!("sat");
-                if instance.get_print_model() {
-                    println!("{}", m);
+        SolverResult::Sat(model) => {
+            if cli.verify_model {
+                match original_formula.eval(&model) {
+                    Some(true) => {}
+                    Some(false) => panic!("Model is incorrect ({})", model),
+                    None => panic!("Model is incomplete ({})", model),
                 }
             }
+            println!("sat");
+            if instance.get_print_model() {
+                println!("{}", model);
+            }
         }
-        satstr::SolverResult::Unsat => println!("unsat"),
-        satstr::SolverResult::Unknown => println!("unknown"),
+        SolverResult::Unsat => println!("unsat"),
+        SolverResult::Unknown => println!("unknown"),
     }
 }

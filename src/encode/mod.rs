@@ -1,132 +1,35 @@
-use std::{cmp::min, collections::HashMap, ops::Index, slice::Iter};
+use std::{fmt::Display, ops::Index, slice::Iter};
 
 use crate::{
+    bounds::Bounds,
+    error::Error,
     model::{
-        words::{Pattern, Symbol},
-        Variable,
+        constraints::{Pattern, Symbol},
+        Constraint, Variable,
     },
     sat::{Clause, Cnf, PLit},
 };
 
-use self::substitution::SubstitutionEncoding;
+use self::{
+    boolvar::BoolVarEncoder, domain::DomainEncoding, linear::MddEncoder, re::build_re_encoder,
+};
 
 /// Facilities for encoding cardinality constraints
 mod card;
+/// Encoder for substitutions
+pub mod domain;
 /// Encoder for word equations
 mod equation;
-/// Encoder for substitutions
-pub mod substitution;
 
-pub use equation::{BindepEncoder, IWoorpjeEncoder, WoorpjeEncoder, WordEquationEncoder};
+mod boolvar;
+
+/// Encoder for regular constraints
+mod re;
+
+/// Encoder for linear constraints
+mod linear;
+
 use indexmap::IndexSet;
-
-/// Bound for each variable
-#[derive(Clone, Debug)]
-pub struct VariableBounds {
-    bounds: HashMap<Variable, usize>,
-    default: usize,
-}
-
-impl VariableBounds {
-    pub fn new(default: usize) -> Self {
-        Self {
-            bounds: HashMap::new(),
-            default,
-        }
-    }
-
-    pub fn get(&self, var: &Variable) -> usize {
-        self.bounds.get(var).cloned().unwrap_or(self.default)
-    }
-
-    #[allow(dead_code)]
-    pub fn set(&mut self, var: &Variable, bound: usize) {
-        self.bounds.insert(var.clone(), bound);
-    }
-
-    #[allow(dead_code)]
-    pub fn set_default(&mut self, bound: usize) {
-        self.default = bound;
-    }
-
-    /// Updates the bounds of the variables by calling the given function on each bound, including the default bound.
-    /// Additionally, an optional clamp can be provided to limit the maximum value of the bounds.
-    /// If no clamp is provided, the bounds are limited by `usize::MAX`.
-    /// Returns true if any bound was changed and false otherwise.
-    pub fn update(&mut self, updater: impl Fn(usize) -> usize, clamp: Option<usize>) -> bool {
-        let clamp = clamp.unwrap_or(usize::MAX);
-        let mut any_changed = false;
-        for (_, bound) in self.bounds.iter_mut() {
-            let new_bound = min(updater(*bound), clamp);
-            if new_bound != *bound {
-                *bound = new_bound;
-                any_changed = true;
-            }
-        }
-        let new_default = min(updater(self.default), clamp);
-        if new_default != self.default {
-            self.default = new_default;
-            any_changed = true;
-        }
-        any_changed
-    }
-
-    /// Doubles the bounds of all variables, including the default bound.
-    /// The optional clamp can be used to limit the maximum value of the bounds.
-    /// Returns true if any bound was changed and false otherwise.
-    #[allow(dead_code)]
-    pub fn double(&mut self, clamp: Option<usize>) -> bool {
-        self.update(|b| b * 2, clamp)
-    }
-
-    /// Returns true if the bounds are less than or equal the given value.
-    #[allow(unused)]
-    pub fn leq(&self, value: usize) -> bool {
-        if self.default > value {
-            return false;
-        }
-        for (_, bound) in self.bounds.iter() {
-            if *bound > value {
-                return false;
-            }
-        }
-        true
-    }
-
-    /// Updates the bounds of all variables such that they are the next square number greater than the current value.
-    pub fn next_square(&mut self, clamp: Option<usize>) -> bool {
-        self.update(|b| ((b as f64).sqrt() + 1f64).powi(2) as usize, clamp)
-    }
-}
-
-impl std::fmt::Display for VariableBounds {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{{")?;
-        for (var, bound) in self.bounds.iter() {
-            write!(f, ", {}: {}", var, bound)?;
-        }
-        write!(f, ", default: {}}}", self.default)?;
-        Ok(())
-    }
-}
-
-impl std::cmp::PartialEq for VariableBounds {
-    fn eq(&self, other: &Self) -> bool {
-        if self.default != other.default {
-            return false;
-        }
-        // Check if all vars known by any of the bounds have the same bound
-        let mut all_vars = IndexSet::new();
-        all_vars.extend(self.bounds.keys());
-        all_vars.extend(other.bounds.keys());
-        for var in all_vars {
-            if self.get(var) != other.get(var) {
-                return false;
-            }
-        }
-        true
-    }
-}
 
 /// The character used to represent unused positions
 const LAMBDA: char = char::REPLACEMENT_CHARACTER;
@@ -145,19 +48,20 @@ struct FilledPattern {
 }
 
 impl FilledPattern {
-    fn fill(pattern: &Pattern, bounds: &VariableBounds) -> Self {
+    fn fill(pattern: &Pattern, bounds: &Bounds) -> Self {
         Self {
             positions: Self::convert(pattern, bounds),
         }
     }
 
-    fn convert(pattern: &Pattern, bounds: &VariableBounds) -> Vec<FilledPos> {
+    fn convert(pattern: &Pattern, bounds: &Bounds) -> Vec<FilledPos> {
         let mut positions = vec![];
         for symbol in pattern.symbols() {
             match symbol {
                 Symbol::Constant(c) => positions.push(FilledPos::Const(*c)),
                 Symbol::Variable(v) => {
-                    let len = bounds.get(v);
+                    let len_var = &v.len_var().unwrap();
+                    let len = bounds.get_upper(len_var).unwrap() as usize;
                     for i in 0..len {
                         positions.push(FilledPos::FilledPos(v.clone(), i))
                     }
@@ -233,11 +137,27 @@ impl EncodingResult {
         }
     }
 
+    pub fn assumptions(&self) -> IndexSet<PLit> {
+        match self {
+            EncodingResult::Cnf(_, asms) => asms.clone(),
+            EncodingResult::Trivial(_) => IndexSet::new(),
+        }
+    }
+
     /// Returns the number of clauses in the encoding, not counting assumptions
     pub fn clauses(&self) -> usize {
         match self {
             EncodingResult::Cnf(cnf, _) => cnf.len(),
             EncodingResult::Trivial(_) => 0,
+        }
+    }
+
+    /// Returns an iterator over mutable references of the clauses in the encoding
+    /// If the encoding is trivial, returns an empty iterator
+    pub fn iter_clauses_mut(&mut self) -> impl Iterator<Item = &mut Clause> {
+        match self {
+            EncodingResult::Cnf(cnf, _) => cnf.iter_mut(),
+            EncodingResult::Trivial(_) => [].iter_mut(),
         }
     }
 
@@ -258,6 +178,26 @@ impl EncodingResult {
     }
 }
 
+impl Display for EncodingResult {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            EncodingResult::Cnf(cnf, assmp) => {
+                for clause in cnf {
+                    writeln!(f, "{:?}", clause)?;
+                }
+                write!(f, "c assumptions: ")?;
+                for asm in assmp {
+                    write!(f, "{} ", asm)?;
+                }
+                writeln!(f)
+            }
+            EncodingResult::Trivial(v) => {
+                write!(f, "c trivially {}", if *v { "sat" } else { "unsat" })
+            }
+        }
+    }
+}
+
 /// This trait is implemented by structs that encode predicates. It is a general trait that is
 /// subtyped for specific predicates.
 /// Moreover, it serves as an indicator of whether or not the encoder performs an incremental encoding of the problem, when called with increased variable bounds.
@@ -265,7 +205,7 @@ impl EncodingResult {
 /// the SAT solver will lead to a speedup.
 ///
 /// Note that if an incremental encoder can be used in a non-incremental way by simply resetting its state when updating the bounds.
-pub trait PredicateEncoder {
+pub trait ConstraintEncoder {
     /// Returns true if the encoder performs incremental encoding.
     fn is_incremental(&self) -> bool;
     /// Resets the encoder to the initial state.
@@ -275,7 +215,18 @@ pub trait PredicateEncoder {
 
     fn encode(
         &mut self,
-        bounds: &VariableBounds,
-        substitution: &SubstitutionEncoding,
-    ) -> EncodingResult;
+        bounds: &Bounds,
+        substitution: &DomainEncoding,
+    ) -> Result<EncodingResult, Error>;
+
+    fn print_debug(&self, _solver: &cadical::Solver, _dom: &DomainEncoding) {}
+}
+
+pub fn get_encoder(constraint: &Constraint) -> Box<dyn ConstraintEncoder> {
+    match constraint {
+        Constraint::WordEquation(eq) => equation::get_encoder(eq),
+        Constraint::LinearConstraint(lc) => Box::new(MddEncoder::new(lc.clone())),
+        Constraint::RegularConstraint(rec) => build_re_encoder(rec.clone()).unwrap(),
+        Constraint::BoolVarConstraint(v, pol) => Box::new(BoolVarEncoder::new(v.clone(), *pol)),
+    }
 }

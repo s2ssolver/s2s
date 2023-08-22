@@ -1,102 +1,27 @@
-use std::{
-    collections::{HashMap, HashSet},
-    path::PathBuf,
-};
+use std::path::PathBuf;
 
 use indexmap::IndexSet;
-mod smt;
+mod smt2;
+mod util;
 
 use crate::{
-    formula::{Atom, Formula},
-    model::{
-        words::{Pattern, Symbol, WordEquation},
-        Variable,
-    },
+    instance::Instance,
+    model::{formula::Formula, Sort, Variable},
+    model::{formula::Predicate, terms::StringTerm},
 };
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum ParseError {
     /// Syntax error, optionally with line and column number
-    SyntaxError(String, Option<(usize, usize)>),
+    SyntaxError(String),
     /// Other error, optionally with line and column number
-    Other(String, Option<(usize, usize)>),
+    Other(String),
     /// Unsupported feature
     Unsupported(String),
     /// Unknown identifier
     UnknownIdentifier(String),
     /// File not found
     FileNotFound(String),
-}
-
-/// A problem instance, consisting of a formula and a set of variables
-/// Should be created using the `parse` module
-#[derive(Clone, Debug)]
-pub struct Instance {
-    /// The formula to solve
-    formula: Formula,
-    /// The set of all variables
-    vars: IndexSet<Variable>,
-    /// The maximum bound for any variable to check.
-    /// If `None`, no bound is set, which will might in an infinite search if the instance is not satisfiable.
-    /// If `Some(n)`, the solver will only check for a solution with a bound of `n`.
-    /// If no solution is found with every variable bound to `n`, the solver will return `Unsat`.
-    ubound: Option<usize>,
-
-    lbound: usize,
-
-    print_model: bool,
-}
-
-impl Instance {
-    pub fn new(formula: Formula, vars: IndexSet<Variable>) -> Self {
-        Instance {
-            formula,
-            vars,
-            ubound: None,
-            lbound: 1,
-            print_model: false,
-        }
-    }
-
-    pub fn set_ubound(&mut self, bound: usize) {
-        self.ubound = Some(bound);
-    }
-
-    pub fn set_lbound(&mut self, bound: usize) {
-        self.lbound = bound;
-    }
-
-    pub fn set_formula(&mut self, formula: Formula) {
-        self.formula = formula;
-    }
-
-    pub fn remove_bound(&mut self) {
-        self.ubound = None;
-    }
-
-    pub fn get_formula(&self) -> &Formula {
-        &self.formula
-    }
-
-    pub fn get_vars(&self) -> &IndexSet<Variable> {
-        &self.vars
-    }
-
-    pub fn get_lower_bound(&self) -> usize {
-        self.lbound
-    }
-
-    pub fn get_upper_bound(&self) -> Option<usize> {
-        self.ubound
-    }
-
-    pub fn set_print_model(&mut self, arg: bool) {
-        self.print_model = arg;
-    }
-
-    pub fn get_print_model(&self) -> bool {
-        self.print_model
-    }
 }
 
 pub enum Parser {
@@ -109,62 +34,56 @@ impl Parser {
         match std::fs::read_to_string(input) {
             Ok(input) => match self {
                 Parser::WoorpjeParser => parse_woorpje(&input),
-                Parser::Smt2Parser => smt::parse_smt(input.as_bytes()),
+                Parser::Smt2Parser => smt2::parse_smt(input.as_bytes()),
             },
-            Err(e) => Err(ParseError::Other(e.to_string(), None)),
+            Err(e) => Err(ParseError::Other(e.to_string())),
         }
     }
 }
 
 fn parse_woorpje(input: &str) -> Result<Instance, ParseError> {
-    let mut vars = HashMap::new();
+    let mut instance = Instance::default();
     let mut alphabet = IndexSet::new();
-    let mut formula = Formula::True;
+    let mut formula = Formula::ttrue();
 
     for line in input.lines() {
         let mut tokens = line.split_ascii_whitespace();
         let first = tokens
             .next()
-            .ok_or(ParseError::SyntaxError("empty line".to_string(), None))?;
+            .ok_or(ParseError::SyntaxError("empty line".to_string()))?;
         if first.starts_with('#') {
             // comment
             continue;
         }
         match first {
             "Variables" => {
-                let second = tokens.next().ok_or(ParseError::SyntaxError(
-                    "missing variables".to_string(),
-                    None,
-                ))?;
+                let second = tokens
+                    .next()
+                    .ok_or(ParseError::SyntaxError("missing variables".to_string()))?;
                 let varsnames = second
                     .strip_prefix('{')
                     .and_then(|r| r.strip_suffix('}'))
-                    .ok_or(ParseError::SyntaxError(
-                        "Invalid variables".to_string(),
-                        None,
-                    ))?;
+                    .ok_or(ParseError::SyntaxError("Invalid variables".to_string()))?;
                 for v in varsnames.chars() {
                     if alphabet.contains(&v) {
                         panic!("Alphabet cannot contain variables with same name");
                     }
-                    let var = Variable::new(v.to_string(), crate::model::Sort::String);
-                    vars.insert(v, var.clone());
+                    let v = Variable::new(v.to_string(), Sort::String);
+                    instance.add_var(v);
                 }
             }
             "Terminals" => {
                 let second = tokens.next().ok_or(ParseError::SyntaxError(
                     "Missing alphabet definition".to_string(),
-                    None,
                 ))?;
                 let alph = second
                     .strip_prefix('{')
                     .and_then(|r| r.strip_suffix('}'))
                     .ok_or(ParseError::SyntaxError(
                         "Invalid alphabet definition".to_string(),
-                        None,
                     ))?;
                 alph.chars().for_each(|c| {
-                    if vars.contains_key(&c) {
+                    if instance.var_by_name(c.to_string().as_str()).is_some() {
                         panic!("Alphabet cannot contain variables with same name");
                     }
                     alphabet.insert(c);
@@ -178,37 +97,40 @@ fn parse_woorpje(input: &str) -> Result<Instance, ParseError> {
                     "Must have exactly one '=' in an equation. Was: '{}'",
                     second
                 );
-                let mut lhs = Pattern::empty();
+                let mut lhs = StringTerm::empty();
                 for c in sides[0].chars() {
                     if alphabet.contains(&c) {
-                        lhs.append(&Symbol::Constant(c));
-                    } else if let Some(v) = vars.get(&c) {
-                        lhs.append(&Symbol::Variable(v.clone()));
+                        lhs = StringTerm::concat_const(lhs, String::from(c).as_str());
+                    } else if let Some(v) = instance.var_by_name(c.to_string().as_str()) {
+                        lhs = StringTerm::concat_var(lhs, v);
                     } else {
                         panic!("Unknown symbol in equation '{}'", c);
                     }
                 }
-                let mut rhs = Pattern::empty();
+                let mut rhs = StringTerm::empty();
                 for c in sides[1].chars() {
                     if alphabet.contains(&c) {
-                        rhs.append(&Symbol::Constant(c));
-                    } else if let Some(v) = vars.get(&c) {
-                        rhs.append(&Symbol::Variable(v.clone()));
+                        rhs = StringTerm::concat_const(rhs, String::from(c).as_str());
+                    } else if let Some(v) = instance.var_by_name(c.to_string().as_str()) {
+                        rhs = StringTerm::concat_var(rhs, v);
                     } else {
                         panic!("Unknown symbol in equation '{}'", c);
                     }
                 }
-                formula = Formula::Atom(Atom::word_equation(WordEquation::new(lhs, rhs)));
+                formula = Formula::predicate(Predicate::Equality(lhs.into(), rhs.into()));
             }
             _ => {}
         }
     }
-
-    Ok(Instance::new(formula, vars.values().cloned().collect()))
+    instance.set_formula(formula);
+    Ok(instance)
 }
 
 #[cfg(test)]
 mod tests {
+
+    use crate::model::{terms::StringTerm, Sort};
+
     use super::*;
 
     #[test]
@@ -218,16 +140,21 @@ Terminals {ab}
 Equation: aX = ab"#;
 
         let instance = parse_woorpje(input).unwrap();
-        assert_eq!(instance.get_vars().len(), 1);
-        let expected_lhs = Pattern::from(vec![
-            Symbol::Constant('a'),
-            Symbol::Variable(Variable::new("X".to_string(), crate::model::Sort::String)),
-        ]);
-        let expected_rhs = Pattern::constant("ab");
-        let expected_eq = WordEquation::new(expected_lhs, expected_rhs);
+
+        assert_eq!(instance.vars_of_sort(Sort::String).count(), 1);
+
+        let expected_lhs = StringTerm::concat_var(
+            StringTerm::constant("a"),
+            instance.var_by_name("X").unwrap(),
+        );
+        let expected_rhs = StringTerm::constant("ab");
+
         assert_eq!(
             *instance.get_formula(),
-            Formula::Atom(Atom::word_equation(expected_eq))
+            Formula::predicate(Predicate::Equality(
+                expected_lhs.into(),
+                expected_rhs.into()
+            ))
         );
     }
 
