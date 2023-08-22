@@ -57,7 +57,7 @@ impl VareqEncoder {
             let rhs_lambda = dom.string().get(&self.rhs, next_bound + 1, LAMBDA).unwrap();
             res.add_assumption(as_lit(rhs_lambda))
         }
-
+        self.last_bounds = Some(next_bound);
         Ok(res)
     }
 
@@ -127,6 +127,7 @@ impl VareqEncoder {
 
             res.add_clause(clause);
         }
+        self.last_bounds = Some(next_bound);
 
         Ok(res)
     }
