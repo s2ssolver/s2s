@@ -78,9 +78,18 @@ impl VareqEncoder {
         let rhs_bound = bounds.get_upper(&rhs_len).unwrap() as usize;
         let next_bound = min(lhs_bound, rhs_bound);
 
-        let last_bound = self.last_bounds.unwrap_or(0);
+        if let Some(b) = self.last_bounds {
+            assert!(next_bound >= b);
 
-        assert!(next_bound >= last_bound);
+            if b == next_bound {
+                // Just return the same assumption again, the encoding stays the same
+                if let Some(a) = self.selector {
+                    let mut res = EncodingResult::empty();
+                    res.add_assumption(as_lit(a));
+                    return Ok(res);
+                }
+            }
+        }
 
         let alph = dom.alphabet();
         let mut res = EncodingResult::empty();
@@ -93,19 +102,20 @@ impl VareqEncoder {
         self.selector = Some(selector);
 
         let mut def_clause = vec![neg(selector)];
+        res.add_assumption(as_lit(selector));
         match lhs_bound.cmp(&rhs_bound) {
             Ordering::Less => {
-                let rhs_lambda = dom.string().get(&self.rhs, next_bound + 1, LAMBDA).unwrap();
+                let rhs_lambda = dom.string().get(&self.rhs, next_bound, LAMBDA).unwrap();
                 def_clause.push(neg(rhs_lambda));
             }
             Ordering::Greater => {
-                let lhs_lambda = dom.string().get(&self.lhs, next_bound + 1, LAMBDA).unwrap();
+                let lhs_lambda = dom.string().get(&self.lhs, next_bound, LAMBDA).unwrap();
                 def_clause.push(neg(lhs_lambda));
             }
             _ => (),
         }
 
-        for pos in 0..=next_bound {
+        for pos in 0..next_bound {
             for c in alph {
                 let p = pvar();
                 def_clause.push(as_lit(p));
@@ -115,8 +125,8 @@ impl VareqEncoder {
 
                 // p --> (-h(x[pos]) = a /\ h(y[pos]) = a)
                 // <==> (-p \/ -h(x[pos]) = a) /\ (-p \/ h(y[pos]) = a)
-                let clause_lhs = vec![neg(p), neg(rhs_pos_c)];
-                let clause_rhs = vec![neg(p), as_lit(lhs_pos_c)];
+                let clause_lhs = vec![neg(p), neg(lhs_pos_c)];
+                let clause_rhs = vec![neg(p), as_lit(rhs_pos_c)];
                 res.add_clause(clause_lhs);
                 res.add_clause(clause_rhs);
 
@@ -129,8 +139,8 @@ impl VareqEncoder {
             let p = pvar();
             let lhs_pos_c = dom.string().get(&self.lhs, pos, LAMBDA).unwrap();
             let rhs_pos_c = dom.string().get(&self.rhs, pos, LAMBDA).unwrap();
-            let clause_lhs = vec![neg(p), neg(rhs_pos_c)];
-            let clause_rhs = vec![neg(p), as_lit(lhs_pos_c)];
+            let clause_lhs = vec![neg(p), neg(lhs_pos_c)];
+            let clause_rhs = vec![neg(p), as_lit(rhs_pos_c)];
             res.add_clause(clause_lhs);
             res.add_clause(clause_rhs);
             let clause = vec![as_lit(lhs_pos_c), neg(rhs_pos_c), as_lit(p)];
