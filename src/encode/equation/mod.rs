@@ -7,7 +7,7 @@ use alignment::AlignmentEncoder;
 
 use crate::model::constraints::WordEquation;
 
-use self::vareq::VareqEncoder;
+use self::{assign::AssignmentEncoder, vareq::VareqEncoder};
 
 use super::ConstraintEncoder;
 
@@ -16,8 +16,11 @@ pub fn get_encoder(equation: &WordEquation) -> Box<dyn ConstraintEncoder> {
         WordEquation::VarEquality { lhs, rhs, eq_type } => {
             Box::new(VareqEncoder::new(lhs, rhs, eq_type.is_equality()))
         }
-        WordEquation::Generic { .. } | WordEquation::Assignment { .. } => {
-            Box::new(AlignmentEncoder::new(equation.clone()))
-        }
+        WordEquation::Assignment { lhs, rhs, eq_type } => Box::new(AssignmentEncoder::new(
+            lhs.clone(),
+            rhs.clone(),
+            eq_type.is_equality(),
+        )),
+        WordEquation::Generic { .. } => Box::new(AlignmentEncoder::new(equation.clone())),
     }
 }
