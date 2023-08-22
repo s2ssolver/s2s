@@ -39,12 +39,12 @@ impl VareqEncoder {
         for pos in last_bound..next_bound {
             for c in alph {
                 let lhs_pos_c = dom.string().get(&self.lhs, pos, *c).unwrap();
-                let rhs_pos_c = dom.string().get(&self.lhs, pos, *c).unwrap();
+                let rhs_pos_c = dom.string().get(&self.rhs, pos, *c).unwrap();
                 let clause = vec![neg(lhs_pos_c), as_lit(rhs_pos_c)];
                 res.add_clause(clause);
             }
             let lhs_pos_c = dom.string().get(&self.lhs, pos, LAMBDA).unwrap();
-            let rhs_pos_c = dom.string().get(&self.lhs, pos, LAMBDA).unwrap();
+            let rhs_pos_c = dom.string().get(&self.rhs, pos, LAMBDA).unwrap();
             let clause = vec![neg(lhs_pos_c), as_lit(rhs_pos_c)];
             res.add_clause(clause);
         }
@@ -101,7 +101,7 @@ impl VareqEncoder {
                 def_clause.push(as_lit(p));
 
                 let lhs_pos_c = dom.string().get(&self.lhs, pos, *c).unwrap();
-                let rhs_pos_c = dom.string().get(&self.lhs, pos, *c).unwrap();
+                let rhs_pos_c = dom.string().get(&self.rhs, pos, *c).unwrap();
 
                 // p --> (-h(x[pos]) = a /\ h(y[pos]) = a)
                 // <==> (-p \/ -h(x[pos]) = a) /\ (-p \/ h(y[pos]) = a)
@@ -118,7 +118,7 @@ impl VareqEncoder {
             // Repeat for lambda
             let p = pvar();
             let lhs_pos_c = dom.string().get(&self.lhs, pos, LAMBDA).unwrap();
-            let rhs_pos_c = dom.string().get(&self.lhs, pos, LAMBDA).unwrap();
+            let rhs_pos_c = dom.string().get(&self.rhs, pos, LAMBDA).unwrap();
             let clause_lhs = vec![neg(p), neg(rhs_pos_c)];
             let clause_rhs = vec![neg(p), as_lit(lhs_pos_c)];
             res.add_clause(clause_lhs);
