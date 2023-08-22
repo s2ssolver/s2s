@@ -1,3 +1,8 @@
+//! Encoder for `assignment` type equations.
+//! Assignments are of the form `x = w` where `x` is a variable and `w` is a constant word.
+
+use std::cmp::Ordering;
+
 use crate::{
     bounds::Bounds,
     encode::{domain::DomainEncoding, ConstraintEncoder, EncodingResult, LAMBDA},
@@ -5,9 +10,6 @@ use crate::{
     model::Variable,
     sat::{as_lit, neg, pvar},
 };
-
-///! Encoder for `assignment` type equations.
-///! Assignments are of the form `x = w` where `x` is a variable and `w` is a constant word.
 
 pub struct AssignmentEncoder {
     lhs: Variable,
@@ -46,21 +48,25 @@ impl AssignmentEncoder {
 
         let last_bound = self.last_bound.unwrap_or(0);
         // Haven't encoded anything yet, was trivially unsatisfiable in previous call
-        if last_bound < len_rhs {
-            for i in 0..len_rhs {
-                let chr = self.rhs[i];
-                let sub_var = dom.string().get(&self.lhs, i, chr).unwrap();
-                result.add_clause(vec![as_lit(sub_var)]);
+        match last_bound.cmp(&len_rhs) {
+            Ordering::Less => {
+                for i in 0..len_rhs {
+                    let chr = self.rhs[i];
+                    let sub_var = dom.string().get(&self.lhs, i, chr).unwrap();
+                    result.add_clause(vec![as_lit(sub_var)]);
+                }
+                if bound >= len_rhs {
+                    // Make sure the rest of lhs is empty
+                    let lambda_sub = dom.string().get(&self.lhs, len_rhs, LAMBDA).unwrap();
+                    result.add_clause(vec![as_lit(lambda_sub)]);
+                }
             }
-            if bound >= len_rhs {
-                // Make sure the rest of lhs is empty
+            Ordering::Equal => {
+                // Make sure the rest of lhs is empty, was not encoded in previous call due to bound exacly equal to rhs length
                 let lambda_sub = dom.string().get(&self.lhs, len_rhs, LAMBDA).unwrap();
                 result.add_clause(vec![as_lit(lambda_sub)]);
             }
-        } else if last_bound == len_rhs {
-            // Make sure the rest of lhs is empty, was not encoded in previous call due to bound exacly equal to rhs length
-            let lambda_sub = dom.string().get(&self.lhs, len_rhs, LAMBDA).unwrap();
-            result.add_clause(vec![as_lit(lambda_sub)]);
+            Ordering::Greater => (),
         }
 
         self.last_bound = Some(bound);
@@ -92,17 +98,21 @@ impl AssignmentEncoder {
                 let sub_var = dom.string().get(&self.lhs, i, chr).unwrap();
                 clause.push(neg(sub_var));
             }
-            if len_rhs < bound {
-                // lhs might also be longer than rhs
-                let lambda_sub = dom.string().get(&self.lhs, len_rhs, LAMBDA).unwrap();
-                clause.push(neg(lambda_sub));
-                result.add_clause(clause);
-            } else if bound == len_rhs {
-                // Select the clause, in next iteration we will make sure the rest of lhs can also be non-empty
-                let selector = pvar();
-                clause.push(neg(selector));
-                result.add_clause(clause);
-                result.add_assumption(as_lit(selector));
+            match len_rhs.cmp(&bound) {
+                Ordering::Less => {
+                    // lhs might also be longer than rhs
+                    let lambda_sub = dom.string().get(&self.lhs, len_rhs, LAMBDA).unwrap();
+                    clause.push(neg(lambda_sub));
+                    result.add_clause(clause);
+                }
+                Ordering::Equal => {
+                    // Select the clause, in next iteration we will make sure the rest of lhs can also be non-empty
+                    let selector = pvar();
+                    clause.push(neg(selector));
+                    result.add_clause(clause);
+                    result.add_assumption(as_lit(selector));
+                }
+                Ordering::Greater => (),
             }
         }
 

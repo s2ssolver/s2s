@@ -1,6 +1,6 @@
 //! Encoder for word equations of the form `x=y` where `x` and `y` are variables.
 
-use std::cmp::min;
+use std::cmp::{min, Ordering};
 
 use crate::{
     bounds::Bounds,
@@ -50,13 +50,18 @@ impl VareqEncoder {
         }
 
         // Make sure the rest of the longer string is empty
-        if lhs_bound > rhs_bound {
-            let lhs_lambda = dom.string().get(&self.lhs, next_bound + 1, LAMBDA).unwrap();
-            res.add_assumption(as_lit(lhs_lambda))
-        } else if rhs_bound > lhs_bound {
-            let rhs_lambda = dom.string().get(&self.rhs, next_bound + 1, LAMBDA).unwrap();
-            res.add_assumption(as_lit(rhs_lambda))
+        match lhs_bound.cmp(&rhs_bound) {
+            Ordering::Less => {
+                let rhs_lambda = dom.string().get(&self.rhs, next_bound + 1, LAMBDA).unwrap();
+                res.add_assumption(as_lit(rhs_lambda))
+            }
+            Ordering::Greater => {
+                let lhs_lambda = dom.string().get(&self.lhs, next_bound + 1, LAMBDA).unwrap();
+                res.add_assumption(as_lit(lhs_lambda))
+            }
+            _ => (),
         }
+
         self.last_bounds = Some(next_bound);
         Ok(res)
     }
@@ -88,13 +93,18 @@ impl VareqEncoder {
         self.selector = Some(selector);
 
         let mut def_clause = vec![neg(selector)];
-        if lhs_bound > rhs_bound {
-            let lhs_lambda = dom.string().get(&self.lhs, next_bound + 1, LAMBDA).unwrap();
-            def_clause.push(neg(lhs_lambda));
-        } else if rhs_bound > lhs_bound {
-            let rhs_lambda = dom.string().get(&self.rhs, next_bound + 1, LAMBDA).unwrap();
-            def_clause.push(neg(rhs_lambda));
+        match lhs_bound.cmp(&rhs_bound) {
+            Ordering::Less => {
+                let rhs_lambda = dom.string().get(&self.rhs, next_bound + 1, LAMBDA).unwrap();
+                def_clause.push(neg(rhs_lambda));
+            }
+            Ordering::Greater => {
+                let lhs_lambda = dom.string().get(&self.lhs, next_bound + 1, LAMBDA).unwrap();
+                def_clause.push(neg(lhs_lambda));
+            }
+            _ => (),
         }
+
         for pos in 0..=next_bound {
             for c in alph {
                 let p = pvar();
