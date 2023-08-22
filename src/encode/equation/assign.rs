@@ -55,7 +55,7 @@ impl AssignmentEncoder {
                     let sub_var = dom.string().get(&self.lhs, i, chr).unwrap();
                     result.add_clause(vec![as_lit(sub_var)]);
                 }
-                if bound >= len_rhs {
+                if bound > len_rhs {
                     // Make sure the rest of lhs is empty
                     let lambda_sub = dom.string().get(&self.lhs, len_rhs, LAMBDA).unwrap();
                     result.add_clause(vec![as_lit(lambda_sub)]);
