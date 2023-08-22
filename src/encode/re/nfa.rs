@@ -252,7 +252,7 @@ impl ConstraintEncoder for NFAEncoder {
         }
 
         let bound = bounds
-            .get(&self.var.len_var().unwrap())
+            .get_with_default(&self.var.len_var().unwrap())
             .get_upper()
             .unwrap_or(0) as usize;
         log::trace!("Bound: {}", bound);

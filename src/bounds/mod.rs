@@ -144,8 +144,8 @@ impl IntDomain {
         match (&self, &other) {
             (IntDomain::Empty, other) | (other, IntDomain::Empty) => *(*other),
             (IntDomain::Bounded(l1, u1), IntDomain::Bounded(l2, u2)) => {
-                let l = *l1.max(l2);
-                let u = *u1.min(u2);
+                let l = *l1.min(l2);
+                let u = *u1.max(u2);
                 if l > u {
                     IntDomain::Empty
                 } else {
@@ -166,7 +166,7 @@ impl IntDomain {
             (_, IntDomain::Unbounded) | (IntDomain::Unbounded, _) => IntDomain::Unbounded,
 
             (IntDomain::LowerBounded(l1), IntDomain::LowerBounded(l2)) => {
-                let l = *l1.max(l2);
+                let l = *l1.min(l2);
                 IntDomain::LowerBounded(l)
             }
             (IntDomain::LowerBounded(l), _) | (_, IntDomain::LowerBounded(l)) => {
@@ -174,7 +174,7 @@ impl IntDomain {
             }
 
             (IntDomain::UpperBounded(u), IntDomain::UpperBounded(u2)) => {
-                let u = *u.min(u2);
+                let u = *u.max(u2);
                 IntDomain::UpperBounded(u)
             }
         }
@@ -224,7 +224,8 @@ impl Bounds {
     }
 
     /// Gets the domain of a variable.
-    pub fn get(&self, var: &Variable) -> IntDomain {
+    /// If no domain is set for the variable, returns the default domain.
+    pub fn get_with_default(&self, var: &Variable) -> IntDomain {
         debug_assert!(
             var.is_int(),
             "Cannot get bounds for non-integer variable {}.",
@@ -245,15 +246,24 @@ impl Bounds {
         }
     }
 
+    pub fn get(&self, var: &Variable) -> Option<&IntDomain> {
+        debug_assert!(
+            var.is_int(),
+            "Cannot get bounds for non-integer variable {}.",
+            var
+        );
+        self.domains.get(var)
+    }
+
     /// Returns the upper bound of a variable.
     /// Returns `None` if the variable is unbounded.
     pub fn get_upper(&self, var: &Variable) -> Option<isize> {
-        self.get(var).get_upper()
+        self.get_with_default(var).get_upper()
     }
 
     /// Sets the upper bound of a variable, see [IntDomain::set_upper].
     pub fn set_upper(&mut self, var: &Variable, upper: isize) {
-        let mut domain = self.get(var);
+        let mut domain = self.get_with_default(var);
         domain.set_upper(upper);
         self.set(var, domain);
     }
@@ -261,11 +271,11 @@ impl Bounds {
     /// Returns the lower bound of a variable, if it is bounded from below.
     /// Returns `None` if the variable is unbounded.
     pub fn get_lower(&self, var: &Variable) -> Option<isize> {
-        self.get(var).get_lower()
+        self.get_with_default(var).get_lower()
     }
 
     pub fn set_lower(&mut self, var: &Variable, lower: isize) {
-        let mut domain = self.get(var);
+        let mut domain = self.get_with_default(var);
         domain.set_lower(lower);
         self.set(var, domain);
     }
@@ -277,7 +287,11 @@ impl Bounds {
         let mut result = Self::new();
         let decls = self.domains.keys().chain(other.domains.keys());
         for var in decls {
-            result.set(var, self.get(var).intersect(&other.get(var)));
+            result.set(
+                var,
+                self.get_with_default(var)
+                    .intersect(&other.get_with_default(var)),
+            );
         }
 
         result.default = self.default.intersect(&other.default);
@@ -597,7 +611,7 @@ mod tests {
         let var = Variable::temp(Sort::Int);
         let mut bounds = Bounds::new();
         bounds.set(&var, domain);
-        assert_eq!(bounds.get(&var), domain);
+        assert_eq!(bounds.get_with_default(&var), domain);
     }
 
     #[test]

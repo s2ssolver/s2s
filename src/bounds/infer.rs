@@ -205,6 +205,7 @@ fn refine(partition: &ConstraintPartition, mut bounds: Bounds) -> Result<Bounds,
             linears.push(LinearConstraint::from_word_equation(eq));
         }
     }
+
     for re in &partition.regulars {
         if re.get_type().is_in() {
             linears.push(LinearConstraint::from_regular_constraint_lower(re));
@@ -301,6 +302,7 @@ fn propagate_bounds(lincon: &LinearConstraint, bounds: &Bounds) -> Bounds {
                         if *coeff < 0 {
                             std::mem::swap(&mut new_upper, &mut new_lower);
                         }
+
                         match (new_lower, new_upper) {
                             (None, None) => {}
                             (None, Some(u)) => {
@@ -454,7 +456,6 @@ fn propagate_bounds(lincon: &LinearConstraint, bounds: &Bounds) -> Bounds {
         }
         LinearConstraintType::Ineq => { /* Can'f infer anything */ }
     }
-
     new_bounds
 }
 

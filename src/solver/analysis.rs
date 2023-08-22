@@ -55,14 +55,24 @@ fn join(b1: Bounds, b2: Bounds) -> Bounds {
     let vars = b1
         .iter()
         .map(|(v, _)| v)
-        .chain(b1.iter().map(|(v, _)| v))
+        .chain(b2.iter().map(|(v, _)| v))
         .collect::<Vec<_>>();
+
     for v in vars {
         let b1 = b1.get(v);
         let b2 = b2.get(v);
-        let maxb = b1.join(&b2);
-
-        max.set(v, maxb);
+        match (b1, b2) {
+            (None, None) => (), // Keep default
+            (None, Some(a)) | (Some(a), None) => {
+                // Keep the one set
+                max.set(v, a.clone());
+            }
+            (Some(b1), Some(b2)) => {
+                // Join the bounds of both
+                let maxb = b1.join(&b2);
+                max.set(v, maxb);
+            }
+        }
     }
     let def = b1.get_default().join(&b2.get_default());
     max.set_default(def);
@@ -72,7 +82,10 @@ fn join(b1: Bounds, b2: Bounds) -> Bounds {
 /// Returns false if the bounds of at least one variable in `current_bounds` are greater than the bounds in `last`.
 fn limit_reached(current_bounds: &Bounds, last: &Bounds) -> bool {
     for v in last.iter().map(|(v, _)| v) {
-        match (current_bounds.get(v).get_upper(), last.get(v).get_upper()) {
+        match (
+            current_bounds.get_with_default(v).get_upper(),
+            last.get_with_default(v).get_upper(),
+        ) {
             (Some(c), Some(l)) => {
                 if c > l {
                     return false;
@@ -165,7 +178,7 @@ pub(super) fn next_bounds(
     let mut next = last.clone();
     let mut was_updated = false;
     for v in vars_to_update.iter() {
-        let mut updated = last.get(v);
+        let mut updated = last.get_with_default(v);
 
         if let Some(u) = updated.get_upper() {
             // Clamp to threshold
@@ -195,7 +208,7 @@ pub(super) fn next_bounds(
             let new_lower = max(0, limit_bounds.get_lower(v).unwrap_or(l));
             updated.set_lower(new_lower);
         }
-        assert!(next.get(v).get_upper().is_some());
+        assert!(next.get_with_default(v).get_upper().is_some());
         next.set(v, updated);
     }
 

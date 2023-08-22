@@ -329,7 +329,9 @@ impl IntegerEncoder {
     }
 
     fn get_last_dom(&self, var: &Variable) -> Option<IntDomain> {
-        self.last_domains.as_ref().map(|doms| doms.get(var))
+        self.last_domains
+            .as_ref()
+            .map(|doms| doms.get_with_default(var))
     }
 
     pub fn encode_str_lengths(

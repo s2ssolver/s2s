@@ -84,24 +84,29 @@ impl AssignmentEncoder {
         let bound = bounds.get_upper(&len_var).unwrap() as usize;
 
         let mut result = EncodingResult::empty();
+
         if bound < len_rhs {
             // Trivially satisfiable
+
             return Ok(result);
         }
 
         let last_bound = self.last_bound.unwrap_or(0);
         // Haven't encoded anything yet, was trivially unsatisfiable in previous call
-        if last_bound < len_rhs {
+
+        if self.last_bound.is_none() || last_bound <= len_rhs {
             let mut clause = Vec::with_capacity(len_rhs);
             for i in 0..len_rhs {
                 let chr = self.rhs[i];
                 let sub_var = dom.string().get(&self.lhs, i, chr).unwrap();
                 clause.push(neg(sub_var));
             }
+
             match len_rhs.cmp(&bound) {
                 Ordering::Less => {
                     // lhs might also be longer than rhs
                     let lambda_sub = dom.string().get(&self.lhs, len_rhs, LAMBDA).unwrap();
+
                     clause.push(neg(lambda_sub));
                     result.add_clause(clause);
                 }
