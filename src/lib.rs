@@ -81,9 +81,6 @@ pub fn solve(instance: &mut Instance) -> Result<SolverResult, Error> {
             Ok(SolverResult::Sat(model))
         }
         SolverResult::Unsat => Ok(SolverResult::Unsat),
-        SolverResult::Unknown => {
-            log::warn!("Solver returned unknown");
-            Ok(SolverResult::Unknown)
-        }
+        SolverResult::Unknown => Ok(SolverResult::Unknown),
     }
 }

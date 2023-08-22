@@ -126,9 +126,7 @@ pub(super) fn init_bounds(
         };
     }
     if let Some(th) = instance.get_upper_threshold() {
-        if bounds.uppers_geq(th as isize) {
-            return Ok(BoundUpdate::ThresholdReached);
-        }
+        bounds.clamp_uppers(th as isize);
     }
 
     Ok(BoundUpdate::Next(bounds))
@@ -172,17 +170,29 @@ pub(super) fn next_bounds(
             }
         }));
     }
+    let mut th_reached = true;
     let mut next = last.clone();
     let mut was_updated = false;
     for v in vars_to_update.iter() {
         let mut updated = last.get(v);
 
         if let Some(u) = updated.get_upper() {
+            // Clamp to threshold
+            if let Some(th) = threshold {
+                if u >= th as isize {
+                    continue;
+                }
+            }
+            th_reached = false;
             // next square
             let mut new_upper = ((u as f64).sqrt() + 1f64).powi(2) as isize;
             if let Some(limit) = limit_bounds.get_upper(v) {
                 new_upper = min(new_upper, limit);
             }
+            if let Some(lower) = limit_bounds.get_lower(v) {
+                new_upper = max(new_upper, lower);
+            }
+
             if new_upper > u {
                 updated.set_upper(new_upper);
                 was_updated = true
@@ -197,11 +207,13 @@ pub(super) fn next_bounds(
         assert!(next.get(v).get_upper().is_some());
         next.set(v, updated);
     }
+
     if !was_updated {
-        return Ok(BoundUpdate::LimitReached);
-    }
-    if let Some(th) = threshold {
-        next.clamp_uppers(th as isize);
+        if th_reached {
+            return Ok(BoundUpdate::ThresholdReached);
+        } else {
+            return Ok(BoundUpdate::LimitReached);
+        }
     }
 
     Ok(BoundUpdate::Next(next))

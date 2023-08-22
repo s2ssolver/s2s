@@ -127,7 +127,7 @@ impl AbstractionSolver {
             for assm in res.assumptions() {
                 assumptions.entry(ctx.clone()).or_default().push(assm);
             }
-            log::info!(
+            log::debug!(
                 "Encoded: {}. ({} clauses, {} ms)",
                 ctx.constraint(),
                 res.clauses(),
@@ -310,7 +310,7 @@ impl Solver for AbstractionSolver {
             }
 
             // Prepare next round
-            // self.next_bounds(Some(&current_bounds), &limit_bounds) {
+            let ts = Instant::now();
             current_bounds = match next_bounds(
                 &self.encoding_mng,
                 &cadical,
@@ -329,7 +329,7 @@ impl Solver for AbstractionSolver {
             };
             // Sanitize bounds
             self.sanitize_bounds(&mut current_bounds);
-
+            log::info!("Inferred new bounds ({} ms)", ts.elapsed().as_millis());
             if self
                 .encoding_mng
                 .iter_mut()
