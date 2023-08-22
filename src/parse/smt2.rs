@@ -532,7 +532,7 @@ impl<'a> Visitor<ALL> for StringTermBuilder<'a> {
 
     fn visit_const(&mut self, constant: &IConst) -> ControlFlow<Self::BreakTy> {
         match constant.as_ref() {
-            Constant::String(s) => match unescape(s, true) {
+            Constant::String(s) => match unescape(s, false) {
                 Ok(s) => ControlFlow::Break(Ok(StringTerm::Constant(s))),
                 Err(e) => ControlFlow::Break(Err(e)),
             },
