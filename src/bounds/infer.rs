@@ -2,7 +2,6 @@ use indexmap::{IndexMap, IndexSet};
 
 use crate::{
     error::Error,
-    instance::Instance,
     model::{
         constraints::{
             LinearArithFactor, LinearConstraint, LinearConstraintType, RegularConstraint, Symbol,
@@ -44,10 +43,6 @@ impl ConstraintPartition {
 
     fn contains_eq(&self) -> bool {
         !self.eqs.is_empty()
-    }
-
-    fn contains_regulars(&self) -> bool {
-        !self.regulars.is_empty()
     }
 
     fn all_regulars(&self) -> bool {

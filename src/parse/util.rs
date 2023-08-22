@@ -54,24 +54,7 @@ pub fn unescape(s: &str, legacy: bool) -> Result<Vec<char>, ParseError> {
                     ))
                 }
             }
-        }
-        /*else if c == '"' {
-            match chars.next() {
-                Some('"') => res.push('"'),
-                Some(c) => {
-                    return Err(ParseError::SyntaxError(format!(
-                        "Invalid character after quote: {} ('{}')",
-                        c, s
-                    )))
-                }
-                None => {
-                    return Err(ParseError::SyntaxError(
-                        "Invalid escape sequence".to_string(),
-                    ))
-                }
-            }
-        }*/
-        else {
+        } else {
             res.push(c);
         }
     }

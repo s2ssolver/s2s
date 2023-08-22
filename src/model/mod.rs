@@ -127,7 +127,7 @@ impl Variable {
     }
 
     pub fn len_str_var(&self) -> Option<Variable> {
-        let mut split = self.name().split("$");
+        let mut split = self.name().split('$');
         let name = split.next()?;
         if split.next() == Some("len") {
             Some(Variable::String {

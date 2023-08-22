@@ -10,8 +10,6 @@ use crate::model::constraints::WordEquation;
 use crate::sat::{as_lit, neg, pvar, Cnf, PVar};
 use indexmap::IndexSet;
 
-use super::WordEquationEncoder;
-
 /// The incremental version of the Woorpje encoding.
 pub struct IWoorpjeEncoder {
     /// The original word equation
@@ -39,6 +37,21 @@ pub struct IWoorpjeEncoder {
 }
 
 impl IWoorpjeEncoder {
+    fn new(equation: WordEquation) -> Self {
+        if equation.eq_type().is_inequality() {
+            panic!("IWoorpjeEncoder does not support inequalities")
+        }
+        Self {
+            state_vars: Vec::new(),
+            equation,
+            subs_lhs: HashMap::new(),
+            subs_rhs: HashMap::new(),
+            filled_equation: None,
+            previous_filled_equation: None,
+            selector: None,
+            round: 0,
+        }
+    }
     /// Returns the length of the pattern in the previous round.
     /// Is (0, 0) is the first round.
     fn prev_lens(&self) -> (usize, usize) {
@@ -524,24 +537,6 @@ impl IWoorpjeEncoder {
     fn encode_accepting_state(&self) -> EncodingResult {
         let (n, m) = self.lens();
         EncodingResult::assumption(as_lit(self.state_vars[n][m]))
-    }
-}
-
-impl WordEquationEncoder for IWoorpjeEncoder {
-    fn new(equation: WordEquation) -> Self {
-        if equation.eq_type().is_inequality() {
-            panic!("IWoorpjeEncoder does not support inequalities")
-        }
-        Self {
-            state_vars: Vec::new(),
-            equation,
-            subs_lhs: HashMap::new(),
-            subs_rhs: HashMap::new(),
-            filled_equation: None,
-            previous_filled_equation: None,
-            selector: None,
-            round: 0,
-        }
     }
 }
 

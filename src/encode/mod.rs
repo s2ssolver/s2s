@@ -5,12 +5,14 @@ use crate::{
     error::Error,
     model::{
         constraints::{Pattern, Symbol},
-        Variable,
+        Constraint, Variable,
     },
     sat::{Clause, Cnf, PLit},
 };
 
-use self::domain::DomainEncoding;
+use self::{
+    boolvar::BoolVarEncoder, domain::DomainEncoding, linear::MddEncoder, re::build_re_encoder,
+};
 
 /// Facilities for encoding cardinality constraints
 mod card;
@@ -27,11 +29,7 @@ mod re;
 /// Encoder for linear constraints
 mod linear;
 
-pub use boolvar::BoolVarEncoder;
-pub use equation::{AlignmentEncoder, IWoorpjeEncoder, WoorpjeEncoder, WordEquationEncoder};
 use indexmap::IndexSet;
-pub use linear::MddEncoder;
-pub use re::build_re_encoder;
 
 /// The character used to represent unused positions
 const LAMBDA: char = char::REPLACEMENT_CHARACTER;
@@ -124,15 +122,6 @@ impl EncodingResult {
             EncodingResult::Cnf(ref mut clauses, _) => clauses.push(clause),
             EncodingResult::Trivial(true) => *self = EncodingResult::cnf(vec![clause]),
             EncodingResult::Trivial(false) => {}
-        }
-    }
-
-    pub fn clear_assumptions(&mut self) {
-        match self {
-            EncodingResult::Cnf(_, ref mut asms) => {
-                asms.clear();
-            }
-            EncodingResult::Trivial(_) => {}
         }
     }
 
@@ -231,4 +220,13 @@ pub trait ConstraintEncoder {
     ) -> Result<EncodingResult, Error>;
 
     fn print_debug(&self, _solver: &cadical::Solver, _dom: &DomainEncoding) {}
+}
+
+pub fn get_encoder(constraint: &Constraint) -> Box<dyn ConstraintEncoder> {
+    match constraint {
+        Constraint::WordEquation(eq) => equation::get_encoder(eq),
+        Constraint::LinearConstraint(lc) => Box::new(MddEncoder::new(lc.clone())),
+        Constraint::RegularConstraint(rec) => build_re_encoder(rec.clone()).unwrap(),
+        Constraint::BoolVarConstraint(v, pol) => Box::new(BoolVarEncoder::new(v.clone(), *pol)),
+    }
 }

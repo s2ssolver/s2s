@@ -1,14 +1,12 @@
-use std::char::{from_u32, EscapeUnicode};
 use std::cmp::max;
 use std::collections::HashSet;
 
 use indexmap::{IndexMap, IndexSet};
-use regulaer::re;
 
 use std::time::Instant;
 
 use crate::abstr::Abstraction;
-use crate::bounds::{infer, Bounds, IntDomain};
+use crate::bounds::Bounds;
 
 use crate::encode::EncodingResult;
 use crate::model::constraints::{Symbol, WordEquation};
@@ -22,8 +20,8 @@ use crate::instance::Instance;
 
 use crate::model::formula::Alphabet;
 
+use crate::model::Sort;
 use crate::model::Substitution;
-use crate::model::{Sort, Variable};
 
 use crate::encode::domain::{get_substitutions, DomainEncoder};
 
@@ -54,7 +52,7 @@ impl AbstractionSolver {
             let chr = char::from_u32(next_chr).unwrap();
             alphabet.insert(chr);
         }
-        log::info!("Alphabet: {:?}", alphabet);
+        log::debug!("Alphabet: {:?}", alphabet);
 
         // Instantiate the Domain encoder
         let dom_encoder = DomainEncoder::new(alphabet.clone());
@@ -94,7 +92,7 @@ impl AbstractionSolver {
 
         // Encode the domain
         let ts = Instant::now();
-        let subs_cnf = self.domain_encoder.encode(&bounds, &self.instance);
+        let subs_cnf = self.domain_encoder.encode(bounds, &self.instance);
         log::debug!(
             "Encoded domain for all variables with {} clauses ({} ms)",
             subs_cnf.clauses(),
@@ -106,7 +104,7 @@ impl AbstractionSolver {
         let mut assumptions: IndexMap<EncodingContext, Vec<PLit>> = IndexMap::new();
         for (ctx, enc) in self.encoding_mng.iter_mut() {
             let ts = Instant::now();
-            let mut res = enc.encode(&bounds, dom)?;
+            let mut res = enc.encode(bounds, dom)?;
 
             let def_lit = ctx.definitional();
             let watcher = ctx.watcher();
@@ -188,25 +186,16 @@ impl Solver for AbstractionSolver {
         // Sanitize bounds
         self.sanitize_bounds(&mut current_bounds);
 
-        log::info!(
-            "Started solving loop for system of {} equations, alphabet size {}",
-            self.instance.get_formula().num_atoms(),
-            self.alphabet.len()
-        );
-        log::debug!("{}", self.instance.get_formula());
+        log::debug!("Solving formula {}", self.instance.get_formula());
 
         let mut cadical: cadical::Solver = cadical::Solver::new();
 
         // Convert the skeleton to cnf and add it to the solver
-        let ts = Instant::now();
+
         if !self.instance.get_formula().is_conjunctive() {
-            log::info!("Skeleton {}", self.abstraction.get_skeleton());
+            log::debug!("Skeleton {}", self.abstraction.get_skeleton());
             let cnf = to_cnf(self.abstraction.get_skeleton(), &mut self.instance)?;
-            log::info!(
-                "Converted Boolean skeleton into cnf ({} clauses) in {} ms",
-                cnf.len(),
-                ts.elapsed().as_millis()
-            );
+
             log::trace!("CNF: {:?}", cnf);
             for clause in cnf.into_iter() {
                 cadical.add_clause(clause);
@@ -217,7 +206,7 @@ impl Solver for AbstractionSolver {
                 return Ok(SolverResult::Unsat);
             }
         } else {
-            log::info!("Formula is conjunctive, skipping skeleton encoding");
+            log::debug!("Formula is conjunctive, skipping skeleton encoding");
         }
 
         let mut time_encoding = 0;
@@ -225,88 +214,85 @@ impl Solver for AbstractionSolver {
         let mut fm = Cnf::new();
 
         loop {
-            log::info!("Current bounds {}", current_bounds);
-            if !current_bounds.any_empty() {
-                let ts = Instant::now();
+            log::debug!("Current bounds {}", current_bounds);
 
-                let encoding = self.encode_bounded(&current_bounds)?;
-                let elapsed = ts.elapsed().as_millis();
-                log::info!("Encoding took {} ms", elapsed);
-                time_encoding += elapsed;
+            let ts = Instant::now();
+            self.encoding_mng.clear_assumptions();
+            let encoding = self.encode_bounded(&current_bounds)?;
+            let elapsed = ts.elapsed().as_millis();
+            log::info!("Encoded in {} ms", elapsed);
+            time_encoding += elapsed;
 
-                match encoding {
-                    EncodingResult::Cnf(clauses, assms) => {
-                        let n_clauses = clauses.len();
-                        let ts = Instant::now();
-                        fm.extend(clauses.clone());
+            match encoding {
+                EncodingResult::Cnf(clauses, assms) => {
+                    let n_clauses = clauses.len();
+                    let ts = Instant::now();
+                    fm.extend(clauses.clone());
 
-                        for clause in clauses.into_iter() {
-                            cadical.add_clause(clause);
-                        }
-
-                        let t_adding = ts.elapsed().as_millis();
-                        log::info!(
-                            "Added {} (total {}) clauses in {} ms",
-                            n_clauses,
-                            cadical.num_clauses(),
-                            t_adding
-                        );
-
-                        time_encoding += t_adding;
-                        let ts = Instant::now();
-
-                        let res = cadical.solve_with(assms.iter().cloned());
-
-                        let t_solving = ts.elapsed().as_millis();
-                        log::info!(
-                            "Done SAT solving: {} ({}ms)",
-                            res.unwrap_or(false),
-                            t_solving
-                        );
-                        time_solving += t_solving;
-                        match res {
-                            Some(true) => {
-                                let mut model = Substitution::from(get_substitutions(
-                                    self.domain_encoder.encoding(),
-                                    &self.instance,
-                                    &cadical,
-                                ));
-                                // Map variables that were removed in preprocessing to their default value
-                                model.use_defaults();
-
-                                log::info!(
-                                    "Done. Total time encoding/solving: {}/{} ms",
-                                    time_encoding,
-                                    time_solving
-                                );
-                                //self.encoding_mng
-                                //    .print_debug(&cadical, self.domain_encoder.encoding());
-                                return Ok(SolverResult::Sat(model));
-                            }
-                            Some(false) => {
-                                for asm in assms {
-                                    if cadical.failed(asm) {
-                                        //pr!intln!("Failed assumption {}", asm);
-                                    }
-                                }
-                                // Do nothing, continue with next round
-                            }
-                            None => {
-                                return Err(Error::SolverError(
-                                    "SAT Solver returned unknown".to_string(),
-                                ))
-                            }
-                        }
+                    for clause in clauses.into_iter() {
+                        cadical.add_clause(clause);
                     }
-                    EncodingResult::Trivial(false) => return Ok(SolverResult::Unsat),
-                    EncodingResult::Trivial(true) => {
-                        let mut model = Substitution::new();
-                        model.use_defaults();
-                        return Ok(SolverResult::Sat(model));
+
+                    let t_adding = ts.elapsed().as_millis();
+                    log::info!(
+                        "Added {} (total {}) clauses in {} ms",
+                        n_clauses,
+                        cadical.num_clauses(),
+                        t_adding
+                    );
+
+                    time_encoding += t_adding;
+                    let ts = Instant::now();
+
+                    let res = cadical.solve_with(assms.iter().cloned());
+
+                    let t_solving = ts.elapsed().as_millis();
+                    log::info!(
+                        "Done SAT solving: {} ({}ms)",
+                        res.unwrap_or(false),
+                        t_solving
+                    );
+                    time_solving += t_solving;
+                    match res {
+                        Some(true) => {
+                            let mut model = Substitution::from(get_substitutions(
+                                self.domain_encoder.encoding(),
+                                &self.instance,
+                                &cadical,
+                            ));
+                            // Map variables that were removed in preprocessing to their default value
+                            model.use_defaults();
+
+                            log::info!(
+                                "Done. Total time encoding/solving: {}/{} ms",
+                                time_encoding,
+                                time_solving
+                            );
+                            //self.encoding_mng
+                            //    .print_debug(&cadical, self.domain_encoder.encoding());
+                            return Ok(SolverResult::Sat(model));
+                        }
+                        Some(false) => {
+                            for asm in assms {
+                                if cadical.failed(asm) {
+                                    //pr!intln!("Failed assumption {}", asm);
+                                }
+                            }
+                            // Do nothing, continue with next round
+                        }
+                        None => {
+                            return Err(Error::SolverError(
+                                "SAT Solver returned unknown".to_string(),
+                            ))
+                        }
                     }
                 }
-            } else {
-                log::info!("Empty bounds, skipping");
+                EncodingResult::Trivial(false) => return Ok(SolverResult::Unsat),
+                EncodingResult::Trivial(true) => {
+                    let mut model = Substitution::new();
+                    model.use_defaults();
+                    return Ok(SolverResult::Sat(model));
+                }
             }
 
             // Prepare next round

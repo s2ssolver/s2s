@@ -1,10 +1,7 @@
 use indexmap::{IndexMap, IndexSet};
 
 use crate::{
-    encode::{
-        build_re_encoder, domain::DomainEncoding, AlignmentEncoder, BoolVarEncoder,
-        ConstraintEncoder, MddEncoder, WordEquationEncoder,
-    },
+    encode::{domain::DomainEncoding, get_encoder, ConstraintEncoder},
     error::Error,
     instance::Instance,
     model::{
@@ -117,19 +114,16 @@ impl EncodingManager {
 
         let watcher = as_lit(pvar());
 
-        let ctx = EncodingContext::new(con.clone(), def, watcher.clone(), is_asserted);
+        let ctx = EncodingContext::new(con.clone(), def, watcher, is_asserted);
         self.add_context(ctx.clone(), lit);
 
-        let encoder = Self::encoder_for_constraint(&con)?;
+        let encoder = get_encoder(&con);
         self.encoders.insert(ctx, encoder);
         Ok(())
     }
 
     pub fn register_assumptions(&mut self, ctx: &EncodingContext, lit: &PLit) {
-        self.watchers
-            .entry(ctx.clone())
-            .or_default()
-            .push(lit.clone());
+        self.watchers.entry(ctx.clone()).or_default().push(*lit);
     }
     pub fn clear_assumptions(&mut self) {
         self.watchers = IndexMap::new();
@@ -141,6 +135,7 @@ impl EncodingManager {
         watchers
     }
 
+    #[allow(dead_code)]
     pub fn print_debug(&self, solver: &cadical::Solver, dom: &DomainEncoding) {
         for (ctx, enc) in self.iter() {
             if solver.value(ctx.definitional).unwrap_or(false) {
@@ -151,22 +146,6 @@ impl EncodingManager {
 
     pub fn num_constraints(&self) -> usize {
         self.contexts.len()
-    }
-
-    /// Instatiates a new encoder for the given constraint.
-    fn encoder_for_constraint(con: &Constraint) -> Result<Box<dyn ConstraintEncoder>, Error> {
-        match con {
-            Constraint::WordEquation(eq) => Ok(Box::new(AlignmentEncoder::new(eq.clone()))),
-            Constraint::LinearConstraint(lc) => Ok(Box::new(MddEncoder::new(lc.clone()))),
-            Constraint::RegularConstraint(rc) => build_re_encoder(rc.clone()),
-            Constraint::BoolVarConstraint(v, pol) => {
-                Ok(Box::new(BoolVarEncoder::new(v.clone(), *pol)))
-            }
-        }
-    }
-
-    pub fn for_literal(&self, lit: &Literal) -> Option<&EncodingContext> {
-        self.ctx_by_literal.get(lit)
     }
 
     pub fn iter_mut(

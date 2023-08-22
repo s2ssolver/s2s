@@ -2,7 +2,7 @@ use crate::{
     bounds::Bounds,
     error::Error,
     model::Variable,
-    sat::{as_lit, neg, PLit, PVar},
+    sat::{as_lit, neg, PLit},
 };
 
 use super::{domain::DomainEncoding, ConstraintEncoder, EncodingResult};
@@ -46,7 +46,7 @@ impl ConstraintEncoder for BoolVarEncoder {
         _substitution: &DomainEncoding,
     ) -> Result<EncodingResult, Error> {
         if self.encoded {
-            return Ok(EncodingResult::Trivial(true));
+            Ok(EncodingResult::Trivial(true))
         } else {
             self.encoded = true;
             Ok(EncodingResult::cnf(vec![vec![self.lit]]))

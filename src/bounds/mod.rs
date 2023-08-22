@@ -142,7 +142,7 @@ impl IntDomain {
     /// The join of two bounded domains is the smallest bounded domain that contains both domains.
     pub fn join(&self, other: &Self) -> Self {
         match (&self, &other) {
-            (IntDomain::Empty, other) | (other, IntDomain::Empty) => *other.clone(),
+            (IntDomain::Empty, other) | (other, IntDomain::Empty) => *(*other),
             (IntDomain::Bounded(l1, u1), IntDomain::Bounded(l2, u2)) => {
                 let l = *l1.max(l2);
                 let u = *u1.min(u2);
@@ -234,7 +234,7 @@ impl Bounds {
             Some(d) => *d,
             None => {
                 if var.is_len_var() {
-                    let mut df = self.get_default().clone();
+                    let mut df = self.get_default();
                     // Set lower bound to 0 for length variables by default
                     df.set_lower(0);
                     df

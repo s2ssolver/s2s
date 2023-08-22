@@ -20,8 +20,6 @@ use crate::error::Error;
 use crate::model::constraints::WordEquation;
 use crate::sat::{as_lit, neg, pvar, Clause, Cnf, PVar};
 
-use super::WordEquationEncoder;
-
 /// Encoder that uses the original Woorpje encoding for word equations.
 pub struct WoorpjeEncoder {
     equation: WordEquation,
@@ -29,6 +27,16 @@ pub struct WoorpjeEncoder {
 }
 
 impl WoorpjeEncoder {
+    #[allow(dead_code)]
+    fn new(equation: WordEquation) -> Self {
+        if equation.eq_type().is_inequality() {
+            panic!("WoorpjeEncoder does not support inequalities")
+        }
+        Self {
+            equation,
+            state_vars: None,
+        }
+    }
     fn match_vars(
         &self,
         lhs: &FilledPattern,
@@ -289,18 +297,6 @@ impl ConstraintEncoder for WoorpjeEncoder {
         cnf.push(vec![as_lit(state_vars[n][m])]);
         self.state_vars = Some(state_vars);
         Ok(EncodingResult::cnf(cnf))
-    }
-}
-
-impl WordEquationEncoder for WoorpjeEncoder {
-    fn new(equation: WordEquation) -> Self {
-        if equation.eq_type().is_inequality() {
-            panic!("WoorpjeEncoder does not support inequalities")
-        }
-        Self {
-            equation,
-            state_vars: None,
-        }
     }
 }
 

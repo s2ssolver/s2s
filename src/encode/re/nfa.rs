@@ -15,9 +15,7 @@ use regulaer::{
 
 use crate::{
     bounds::Bounds,
-    encode::{
-        domain::DomainEncoding, ConstraintEncoder, EncodingResult, WordEquationEncoder, LAMBDA,
-    },
+    encode::{domain::DomainEncoding, ConstraintEncoder, EncodingResult, LAMBDA},
     error::Error,
     model::{
         constraints::{RegularConstraint, RegularConstraintType, Symbol},
@@ -317,22 +315,6 @@ impl NFAEncoder {
             bound_selector: None,
         }
     }
-
-    fn from_constraint(con: &RegularConstraint) -> Result<Self, Error> {
-        if con.get_pattern().len() == 1 {
-            if let Some(Symbol::Variable(v)) = con.get_pattern().symbols().next() {
-                return Ok(Self::new(
-                    &v,
-                    con.get_automaton().unwrap(),
-                    con.get_re(),
-                    con.get_type(),
-                ));
-            }
-        }
-        return Err(Error::EncodingError(
-            "Can only encode single variable patterns".to_string(),
-        ));
-    }
 }
 
 impl From<AutomatonError> for Error {
@@ -345,7 +327,7 @@ pub fn build_re_encoder(rec: RegularConstraint) -> Result<Box<dyn ConstraintEnco
     let encoder: Box<dyn ConstraintEncoder> = if rec.get_pattern().len() == 1 {
         if let Some(Symbol::Variable(v)) = rec.get_pattern().symbols().next() {
             Box::new(NFAEncoder::new(
-                &v,
+                v,
                 rec.get_automaton().unwrap(),
                 rec.get_re(),
                 rec.get_type(),
@@ -380,6 +362,22 @@ mod test {
         },
     };
 
+    fn from_constraint(con: &RegularConstraint) -> Result<NFAEncoder, Error> {
+        if con.get_pattern().len() == 1 {
+            if let Some(Symbol::Variable(v)) = con.get_pattern().symbols().next() {
+                return Ok(NFAEncoder::new(
+                    v,
+                    con.get_automaton().unwrap(),
+                    con.get_re(),
+                    con.get_type(),
+                ));
+            }
+        }
+        Err(Error::EncodingError(
+            "Can only encode single variable patterns".to_string(),
+        ))
+    }
+
     fn solve_with_bounds(var: &Variable, re: Regex<char>, bounds: &[Bounds]) -> Option<bool> {
         let mut instance = Instance::default();
         instance.add_var(var.clone());
@@ -393,7 +391,7 @@ mod test {
             RegularConstraintType::In,
         );
         constraint.compile(None).unwrap();
-        let mut encoder = NFAEncoder::from_constraint(&constraint).unwrap();
+        let mut encoder = from_constraint(&constraint).unwrap();
         let mut dom_encoder = DomainEncoder::new(alph);
         let mut solver: Solver = cadical::Solver::default();
 

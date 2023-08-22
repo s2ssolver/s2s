@@ -1,4 +1,4 @@
-use std::cmp::{max, min};
+use std::cmp::min;
 
 use std::fmt::Display;
 use std::time::Instant;
@@ -13,8 +13,6 @@ use crate::model::constraints::{Pattern, Symbol, WordEquation};
 use crate::model::Variable;
 use crate::sat::{as_lit, neg, pvar, Cnf, PVar};
 use indexmap::{indexset, IndexMap};
-
-use super::WordEquationEncoder;
 
 /// A segment of a pattern, i.e., a string constant or a variable.
 /// A factor of a pattern is called a *segment* iff
@@ -283,6 +281,35 @@ pub struct AlignmentEncoder {
 }
 
 impl AlignmentEncoder {
+    pub fn new(equation: WordEquation) -> Self {
+        let lhs_segs = SegmentedPattern::new(&equation.lhs());
+        let rhs_segs = SegmentedPattern::new(&equation.rhs());
+
+        let eq_type = if equation.eq_type().is_equality() {
+            SolutionWord::Equality(WordEncoder::new())
+        } else {
+            SolutionWord::Inequality(WordEncoder::new(), WordEncoder::new())
+        };
+
+        Self {
+            equation,
+            bound_selector: None,
+            round: 0,
+            bound: 0,
+            candidates: eq_type,
+            last_bound: None,
+            last_var_bounds: None,
+            starts_lhs: IndexMap::new(),
+            starts_rhs: IndexMap::new(),
+            segs_starts_amo: IndexMap::new(),
+            segments_lsh: lhs_segs,
+            segments_rhs: rhs_segs,
+            var_cand_match_cache: IndexMap::new(),
+            mismatch_alo: IncrementalALO::new(),
+            var_matches: IndexMap::new(),
+        }
+    }
+
     fn segments(&self, side: &EqSide) -> &SegmentedPattern {
         match side {
             EqSide::Lhs => &self.segments_lsh,
@@ -772,37 +799,6 @@ impl AlignmentEncoder {
         result.join(self.mismatch_alo.add(&new_mismatch_selectors));
 
         result
-    }
-}
-
-impl WordEquationEncoder for AlignmentEncoder {
-    fn new(equation: WordEquation) -> Self {
-        let lhs_segs = SegmentedPattern::new(&equation.lhs());
-        let rhs_segs = SegmentedPattern::new(&equation.rhs());
-
-        let eq_type = if equation.eq_type().is_equality() {
-            SolutionWord::Equality(WordEncoder::new())
-        } else {
-            SolutionWord::Inequality(WordEncoder::new(), WordEncoder::new())
-        };
-
-        Self {
-            equation,
-            bound_selector: None,
-            round: 0,
-            bound: 0,
-            candidates: eq_type,
-            last_bound: None,
-            last_var_bounds: None,
-            starts_lhs: IndexMap::new(),
-            starts_rhs: IndexMap::new(),
-            segs_starts_amo: IndexMap::new(),
-            segments_lsh: lhs_segs,
-            segments_rhs: rhs_segs,
-            var_cand_match_cache: IndexMap::new(),
-            mismatch_alo: IncrementalALO::new(),
-            var_matches: IndexMap::new(),
-        }
     }
 }
 

@@ -4,7 +4,7 @@ use std::{cmp::min, collections::HashMap, fmt::Display};
 
 use indexmap::{IndexMap, IndexSet};
 use regulaer::{
-    re::{self, CharRegex, Regex},
+    re::{CharRegex, Regex},
     RegLang,
 };
 
@@ -683,8 +683,8 @@ impl IndependetVarSubstitutions {
     fn calculate_occurrences(&mut self, formula: &NNFFormula) {
         match formula {
             NNFFormula::Literal(l) => {
-                match l.atom() {
-                    Atom::Predicate(p) => match p {
+                if let Atom::Predicate(p) = l.atom() {
+                    match p {
                         Predicate::Equality(Term::String(lhs), Term::String(rhs)) => {
                             for s in Pattern::from(lhs.clone()) {
                                 if let Symbol::Variable(v) = s {
@@ -730,8 +730,7 @@ impl IndependetVarSubstitutions {
                             }
                         }
                         _ => unreachable!(),
-                    },
-                    _ => (),
+                    }
                 }
                 for v in l.atom().vars() {
                     // Map str-length-vars back to the original vars
@@ -752,7 +751,7 @@ impl IndependetVarSubstitutions {
     fn is_independent(&self, pat: &Pattern) -> bool {
         pat.vars()
             .iter()
-            .all(|v| self.var_occurrences.get(&v).unwrap_or(&0) == &1)
+            .all(|v| self.var_occurrences.get(v).unwrap_or(&0) == &1)
     }
 }
 
@@ -875,7 +874,7 @@ impl RegexConstStrip {
                         stripped = regulaer::re::deriv(regex, *c);
                     }
                 }
-                Symbol::Variable(v) => {
+                Symbol::Variable(_v) => {
                     remainder.append(sym);
                     collect = true;
                 }

@@ -35,7 +35,7 @@ impl Definitions {
     /// If the negation of the literal is already defined, the negation of the already created variable/literal is returned.
     fn define(&mut self, literal: &Literal) -> PLit {
         let negated = literal.negated();
-        let var = if let Some(var) = self.literal2def.get(&literal) {
+        let var = if let Some(var) = self.literal2def.get(literal) {
             *var
         } else if let Some(var) = self.literal2def.get(&negated) {
             let var = -*var;
@@ -83,7 +83,7 @@ impl Abstraction {
                 let var = instance
                     .vars_of_sort(Sort::Bool)
                     .find(|v| match v {
-                        Variable::Bool { value, .. } => *value == defv.abs() as u32,
+                        Variable::Bool { value, .. } => *value == defv.unsigned_abs(),
                         _ => unreachable!(),
                     })
                     .cloned();
@@ -91,7 +91,7 @@ impl Abstraction {
                     None => {
                         let v = Variable::Bool {
                             name: format!("def_{}", defv.abs()),
-                            value: defv.abs() as u32,
+                            value: defv.unsigned_abs(),
                         };
                         instance.add_var(v.clone());
                         v

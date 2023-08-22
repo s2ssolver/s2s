@@ -21,18 +21,6 @@ pub(super) enum BoundUpdate {
     ThresholdReached,
 }
 
-impl BoundUpdate {
-    pub fn unwrap(self) -> Bounds {
-        match self {
-            BoundUpdate::Next(b) => b,
-            BoundUpdate::LimitReached => panic!("Called unwarp on BoundUpdate::LimitReached"),
-            BoundUpdate::ThresholdReached => {
-                panic!("Called unwarp on BoundUpdate::ThresholdReached")
-            }
-        }
-    }
-}
-
 pub(super) fn collect_failed(
     mngr: &EncodingManager,
     solver: &cadical::Solver,
@@ -139,7 +127,10 @@ pub(super) fn next_bounds(
     threshold: Option<usize>,
 ) -> Result<BoundUpdate, Error> {
     let failed = collect_failed(mngr, solver);
-    assert!(failed.len() > 0, "Formula cannot be unsat with empty core");
+    assert!(
+        !failed.is_empty(),
+        "Formula cannot be unsat with empty core"
+    );
     let limit_bounds = if failed.len() < 10 {
         underapprox(&failed)?
     } else {
@@ -263,7 +254,6 @@ fn underapprox(constraints: &Vec<EncodingContext>) -> Result<Bounds, Error> {
             new_set.insert(ctx);
             let these = infer_for(&new_set)?;
 
-            for s in &new_set {}
             if these.any_empty() {
                 continue;
             } else {
