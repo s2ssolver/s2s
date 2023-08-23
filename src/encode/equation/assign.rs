@@ -66,7 +66,7 @@ impl AssignmentEncoder {
                 let lambda_sub = dom.string().get(&self.lhs, len_rhs, LAMBDA).unwrap();
                 result.add_clause(vec![as_lit(lambda_sub)]);
             }
-            Ordering::Greater => (),
+            Ordering::Greater => (), // Already encoded that remainder of lhs is empty
         }
 
         self.last_bound = Some(bound);
