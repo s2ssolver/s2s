@@ -1035,7 +1035,7 @@ mod tests {
 
     use crate::{
         bounds::IntDomain,
-        encode::domain::{get_substitutions, DomainEncoder},
+        encode::domain::{get_str_substitutions, DomainEncoder},
         model::{constraints::Pattern, Sort, Substitution},
     };
 
@@ -1121,7 +1121,7 @@ mod tests {
         }
         let res = solver.solve_with(assumptions.into_iter());
         if let Some(true) = res {
-            let solution = get_substitutions(dom_encoder.encoding(), &instance, &solver);
+            let solution = get_str_substitutions(dom_encoder.encoding(), &instance, &solver);
             let solution = Substitution::from(solution);
             println!("\n========================\n");
             for i in 0..encoder.segments(&EqSide::Rhs).length() {
@@ -1199,7 +1199,7 @@ mod tests {
             bounds.clamp_uppers(limit as isize);
         }
         if let Some(true) = result {
-            let solution = get_substitutions(dom_encoder.encoding(), &instance, &solver);
+            let solution = get_str_substitutions(dom_encoder.encoding(), &instance, &solver);
             let solution = Substitution::from(solution);
 
             for i in 0..encoder.segments(&EqSide::Rhs).length() {

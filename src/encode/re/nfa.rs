@@ -354,7 +354,7 @@ mod test {
 
     use crate::{
         bounds::IntDomain,
-        encode::domain::{get_substitutions, DomainEncoder},
+        encode::domain::{get_str_substitutions, DomainEncoder},
         instance::Instance,
         model::{
             constraints::{Pattern, RegularConstraintType},
@@ -409,7 +409,8 @@ mod test {
                     }
                     result = solver.solve_with(assms.into_iter());
                     if let Some(true) = result {
-                        let _model = get_substitutions(dom_encoder.encoding(), &instance, &solver);
+                        let _model =
+                            get_str_substitutions(dom_encoder.encoding(), &instance, &solver);
                         let var_model = _model.get(var).unwrap();
                         assert!(
                             re.contains(var_model),

@@ -80,14 +80,26 @@ fn join(b1: Bounds, b2: Bounds) -> Bounds {
 }
 
 /// Returns false if the bounds of at least one variable in `current_bounds` are greater than the bounds in `last`.
-fn limit_reached(current_bounds: &Bounds, last: &Bounds) -> bool {
-    for v in last.iter().map(|(v, _)| v) {
+fn limit_reached(limit: &Bounds, other: &Bounds) -> bool {
+    for v in other.iter().map(|(v, _)| v) {
         match (
-            current_bounds.get_with_default(v).get_upper(),
-            last.get_with_default(v).get_upper(),
+            limit.get_with_default(v).get_upper(),
+            other.get_with_default(v).get_upper(),
         ) {
-            (Some(c), Some(l)) => {
-                if c > l {
+            (Some(ul), Some(u)) => {
+                if ul > u {
+                    return false;
+                }
+            }
+            (Some(_), None) => (),
+            (None, _) => return false, // Unbounded
+        }
+        match (
+            limit.get_with_default(v).get_lower(),
+            other.get_with_default(v).get_lower(),
+        ) {
+            (Some(ul), Some(l)) => {
+                if ul < l {
                     return false;
                 }
             }
@@ -95,6 +107,7 @@ fn limit_reached(current_bounds: &Bounds, last: &Bounds) -> bool {
             (None, _) => return false, // Unbounded
         }
     }
+
     true
 }
 
@@ -123,7 +136,7 @@ pub(super) fn init_bounds(
     for v in instance.vars_of_sort(Sort::Int) {
         match base_bounds.get_lower(v) {
             Some(b) => bounds.set(v, IntDomain::Bounded(b, b)),
-            None => bounds.set(v, IntDomain::Bounded(def_bounds, def_bounds)),
+            None => bounds.set(v, IntDomain::Bounded(0, def_bounds)),
         };
     }
     if let Some(th) = instance.get_upper_threshold() {
@@ -205,10 +218,35 @@ pub(super) fn next_bounds(
             panic!("No upper bound for variable {} ({})", v, last);
         }
         if let Some(l) = updated.get_lower() {
-            let new_lower = max(0, limit_bounds.get_lower(v).unwrap_or(l));
-            updated.set_lower(new_lower);
+            if v.is_len_var() {
+                let new_lower = max(0, limit_bounds.get_lower(v).unwrap_or(l));
+                updated.set_lower(new_lower);
+            } else {
+                let mut new_lower: isize = ((l.abs() as f64).sqrt() + 1f64).powi(2) as isize;
+                if l <= 0 {
+                    new_lower *= -1;
+                }
+                // Clamp to threshold
+                if let Some(th) = threshold {
+                    if l <= -(th as isize) as isize {
+                        continue;
+                    }
+                }
+
+                if let Some(lower) = limit_bounds.get_lower(v) {
+                    new_lower = max(new_lower, lower);
+                }
+
+                if new_lower < l {
+                    updated.set_lower(new_lower);
+                    was_updated = true
+                }
+            };
+        } else {
+            panic!("No lower bound for variable {} ({})", v, last);
         }
-        assert!(next.get_with_default(v).get_upper().is_some());
+        assert!(next.get(v).and_then(|b| b.get_upper()).is_some());
+        assert!(next.get(v).and_then(|b| b.get_lower()).is_some());
         next.set(v, updated);
     }
 

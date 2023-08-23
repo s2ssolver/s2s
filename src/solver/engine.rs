@@ -23,7 +23,7 @@ use crate::model::formula::Alphabet;
 use crate::model::Sort;
 use crate::model::Substitution;
 
-use crate::encode::domain::{get_substitutions, DomainEncoder};
+use crate::encode::domain::{get_int_substitutions, get_str_substitutions, DomainEncoder};
 
 use crate::sat::{to_cnf, Cnf, PLit};
 
@@ -101,6 +101,7 @@ impl AbstractionSolver {
 
         encoding.join(subs_cnf);
         let dom = self.domain_encoder.encoding();
+
         let mut assumptions: IndexMap<EncodingContext, Vec<PLit>> = IndexMap::new();
         for (ctx, enc) in self.encoding_mng.iter_mut() {
             let ts = Instant::now();
@@ -114,6 +115,7 @@ impl AbstractionSolver {
             if !self.instance.get_formula().is_conjunctive() {
                 log::debug!("Distributing neg. defintional {}", -def_lit);
             }
+
             for ref mut clause in res.iter_clauses_mut() {
                 clause.push(-watcher);
                 if !self.instance.get_formula().is_conjunctive() {
@@ -255,11 +257,16 @@ impl Solver for AbstractionSolver {
                     time_solving += t_solving;
                     match res {
                         Some(true) => {
-                            let mut model = Substitution::from(get_substitutions(
+                            let mut model = Substitution::from(get_str_substitutions(
                                 self.domain_encoder.encoding(),
                                 &self.instance,
                                 &cadical,
                             ));
+                            let int_model = Substitution::from(get_int_substitutions(
+                                self.domain_encoder.encoding(),
+                                &cadical,
+                            ));
+                            model = model.compose(&int_model);
                             // Map variables that were removed in preprocessing to their default value
                             model.use_defaults();
 

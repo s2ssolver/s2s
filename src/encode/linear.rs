@@ -99,13 +99,18 @@ impl ConstraintEncoder for MddEncoder {
         while let Some((level, value, node_var)) = queue.pop_front() {
             match &self.linear.lhs()[level] {
                 LinearArithFactor::VarCoeff(v, coeff) => {
-                    let last_bound = match self.last_bound(v) {
-                        0 => 0,
-                        b => b + 1,
-                    };
+                    let current_u_bound = bounds.get_upper(v).expect("Unbounded variable");
+                    let current_l_bound = bounds.get_lower(v).expect("Unbounded variable");
 
-                    let current_bound = bounds.get_upper(v).expect("Unbounded variable");
-                    for l in last_bound..=current_bound {
+                    for l in current_l_bound..=current_u_bound {
+                        if let Some(last_bounds) = self.last_bounds.as_ref() {
+                            if last_bounds.get_lower(v).map(|ll| l >= ll).unwrap_or(false)
+                                && last_bounds.get_upper(v).map(|uu| l <= uu).unwrap_or(false)
+                            {
+                                // Already encoded
+                                continue;
+                            }
+                        }
                         let len_assign_var = dom.int().get(v, l).unwrap();
                         let new_value = value + l * coeff;
                         if level + 1 < self.linear.lhs.len() {

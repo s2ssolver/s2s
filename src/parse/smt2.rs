@@ -106,8 +106,8 @@ impl<'a> FormulaBuilder<'a> {
         let mut sorts = Vec::with_capacity(ts.len());
 
         for t in ts {
-            if let Term::Variable(v) = t {
-                match v.as_ref() {
+            match t {
+                Term::Variable(v) => match v.as_ref() {
                     aws_smt_ir::QualIdentifier::Simple { identifier }
                     | aws_smt_ir::QualIdentifier::Sorted { identifier, .. } => {
                         match self.instance.var_by_name(&identifier.to_string()) {
@@ -115,18 +115,57 @@ impl<'a> FormulaBuilder<'a> {
                             None => todo!(),
                         }
                     }
-                }
-            } else {
-                let sort = match t.sort(&mut self.context) {
-                    Ok(s) => match isort2sort(&s) {
-                        Ok(s) => s,
-                        Err(s) => return Err(s),
+                },
+                Term::OtherOp(op) => match op.as_ref() {
+                    Op::Arith(s) => match s {
+                        ArithOp::Plus(_) => sorts.push(NSort::Int),
+                        ArithOp::Neg(_) => sorts.push(NSort::Int),
+                        ArithOp::Minus(_) => sorts.push(NSort::Int),
+                        ArithOp::Mul(_) => todo!(),
+                        ArithOp::IntDiv(_) => sorts.push(NSort::Int),
+                        ArithOp::RealDiv(_) => todo!(),
+                        ArithOp::Divisible(_, _) => sorts.push(NSort::Bool),
+                        ArithOp::Mod(_, _) => sorts.push(NSort::Int),
+                        ArithOp::Abs(_) => sorts.push(NSort::Int),
+                        ArithOp::Gte(_) | ArithOp::Gt(_) | ArithOp::Lte(_) | ArithOp::Lt(_) => {
+                            sorts.push(NSort::Bool)
+                        }
+                        ArithOp::ToReal(_) => todo!(),
+                        ArithOp::ToInt(_) => sorts.push(NSort::Int),
+                        ArithOp::IsInt(_) => sorts.push(NSort::Bool),
                     },
-                    Err(s) => return Err(ParseError::Other(format!("{}", s))),
-                };
-                sorts.push(sort);
+                    _ => {
+                        let sort = match t.sort(&mut self.context) {
+                            Ok(s) => match isort2sort(&s) {
+                                Ok(s) => s,
+                                Err(s) => {
+                                    return Err(s);
+                                }
+                            },
+                            Err(s) => {
+                                return Err(ParseError::Other(format!("{}", s)));
+                            }
+                        };
+                        sorts.push(sort);
+                    }
+                },
+                _ => {
+                    let sort = match t.sort(&mut self.context) {
+                        Ok(s) => match isort2sort(&s) {
+                            Ok(s) => s,
+                            Err(s) => {
+                                return Err(s);
+                            }
+                        },
+                        Err(s) => {
+                            return Err(ParseError::Other(format!("{}", s)));
+                        }
+                    };
+                    sorts.push(sort);
+                }
             }
         }
+
         Ok(sorts)
     }
 }

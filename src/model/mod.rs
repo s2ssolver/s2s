@@ -236,6 +236,16 @@ impl From<HashMap<Variable, Vec<char>>> for Substitution {
     }
 }
 
+impl From<HashMap<Variable, isize>> for Substitution {
+    fn from(value: HashMap<Variable, isize>) -> Self {
+        let mut sub = Self::new();
+        for (var, val) in value {
+            sub.set(&var, Term::Int(IntTerm::Const(val)));
+        }
+        sub
+    }
+}
+
 pub trait Substitutable {
     // TODO: Return Result<Self, Error>
     fn apply_substitution(&self, sub: &Substitution) -> Self;
