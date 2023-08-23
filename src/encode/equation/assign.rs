@@ -47,6 +47,11 @@ impl AssignmentEncoder {
         }
 
         let last_bound = self.last_bound.unwrap_or(0);
+        if last_bound == bound {
+            // Already encoded for this bound
+            return Ok(result);
+        }
+
         // Haven't encoded anything yet, was trivially unsatisfiable in previous call
         match last_bound.cmp(&len_rhs) {
             Ordering::Less => {
@@ -62,8 +67,9 @@ impl AssignmentEncoder {
                 }
             }
             Ordering::Equal => {
-                // Make sure the rest of lhs is empty, was not encoded in previous call due to bound exacly equal to rhs length
+                // Already encoded up to rhs length in previous iteration, make sure the rest of lhs is empty.
                 let lambda_sub = dom.string().get(&self.lhs, len_rhs, LAMBDA).unwrap();
+
                 result.add_clause(vec![as_lit(lambda_sub)]);
             }
             Ordering::Greater => (),
