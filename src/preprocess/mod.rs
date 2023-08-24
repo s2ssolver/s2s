@@ -10,7 +10,7 @@ use crate::{
         Substitutable, Substitution,
     },
     preprocess::{
-        formula::ConjunctionSimplifier,
+        formula::{ConjunctionSimplifier, FixedAssertions},
         int::{ConstIntReducer, IntSubstitutions},
         string::{
             IndependetVarSubstitutions, RegexConstStrip, SplitPatternRegularConstraints,
@@ -160,6 +160,7 @@ pub fn preprocess(instance: &mut Instance) -> (PreprocessingResult, Substitution
             Box::new(TrivialREReducer::new()),
             Box::new(ConjunctionSimplifier::new()),
             Box::new(IntSubstitutions::new()),
+            Box::new(FixedAssertions::new()),
             Box::new(RegexConstStrip::new()),
         ];
 

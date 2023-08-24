@@ -1,9 +1,11 @@
 //! Preprocessors for formulas
 
+use std::collections::HashSet;
+
 use crate::{
     instance::Instance,
     model::{
-        formula::{Formula, NNFFormula},
+        formula::{Formula, Literal, NNFFormula},
         Evaluable, Substitution,
     },
     preprocess::Preprocessor,
@@ -96,6 +98,51 @@ impl Preprocessor for ConjunctionSimplifier {
                     PreprocessingResult::Unchanged(new_fm)
                 }
             }
+        }
+    }
+}
+
+#[derive(Default)]
+pub struct FixedAssertions {
+    asserted: HashSet<Literal>,
+}
+
+impl Preprocessor for FixedAssertions {
+    fn get_substitution(&self) -> Option<Substitution> {
+        None
+    }
+
+    fn get_name(&self) -> String {
+        String::from("Fixed assertions")
+    }
+
+    fn new() -> Self
+    where
+        Self: Sized,
+    {
+        Self::default()
+    }
+
+    fn init(&mut self, _formula: &NNFFormula) {
+        self.asserted = HashSet::from_iter(_formula.asserted_literals().into_iter().cloned());
+    }
+
+    fn apply_literal(
+        &mut self,
+        literal: Literal,
+        is_asserted: bool,
+        _instance: &mut Instance,
+    ) -> PreprocessingResult {
+        if !is_asserted {
+            if self.asserted.contains(&literal) {
+                PreprocessingResult::Changed(Formula::ttrue().into())
+            } else if self.asserted.contains(&literal.negated()) {
+                PreprocessingResult::Changed(Formula::ffalse().into())
+            } else {
+                PreprocessingResult::Unchanged(NNFFormula::Literal(literal))
+            }
+        } else {
+            PreprocessingResult::Unchanged(NNFFormula::Literal(literal))
         }
     }
 }
