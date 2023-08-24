@@ -72,13 +72,13 @@ impl SegmentedPattern {
 
     /// Returns the minimal length of the suffix of the pattern starting at segment before position i (not including segment i).
     /// The minimal prefix length is the sum of the lower bounds of all variables and length of all constants in the prefix.
-    fn prefix_min_len(&self, i: usize, bounds: &Bounds) -> usize {
+    fn prefix_min_len(&self, i: usize, _bounds: &Bounds) -> usize {
         let mut pos = 0;
         for j in 0..i {
             match self.get(j) {
-                PatternSegment::Variable(v) => {
-                    pos += bounds.get_lower(&v.len_var().unwrap()).unwrap_or(0) as usize
-                }
+                PatternSegment::Variable(_v) => pos += 0, /*  {
+                pos += bounds.get_lower(&v.len_var().unwrap()).unwrap_or(0) as usize
+                }*/
                 PatternSegment::Word(w) => pos += w.len(),
             }
         }
@@ -88,14 +88,12 @@ impl SegmentedPattern {
     /// Returns the minimal length of the suffix of the pattern starting at segment after position i (not including segment i).
     /// The minimal suffix length is the sum of the lower bounds of all variables and length of all constants in the suffix.
     // TODO: How does this affect the encoding if the LOWER bound of a variable changes? Is this why we need to keep lower bounds at 0 to avoid soundness errors?
-    fn suffix_min_len(&self, i: usize, bounds: &Bounds) -> usize {
+    fn suffix_min_len(&self, i: usize, _bounds: &Bounds) -> usize {
         let mut f = 0;
 
         for j in i + 1..self.length() {
             match self.get(j) {
-                PatternSegment::Variable(v) => {
-                    f += bounds.get_lower(&v.len_var().unwrap()).unwrap_or(0) as usize
-                }
+                PatternSegment::Variable(_v) => f += 0,
                 PatternSegment::Word(w) => f += w.len(),
             }
         }
@@ -810,11 +808,6 @@ impl ConstraintEncoder for AlignmentEncoder {
     ) -> Result<EncodingResult, Error> {
         self.round += 1;
 
-        if self.candidates.is_equality() {
-            log::debug!("Encoding {}", self.equation);
-        } else {
-            log::debug!("Encoding not {}", self.equation);
-        }
         let mut res = EncodingResult::empty();
 
         // Must be larger than 0
@@ -828,15 +821,26 @@ impl ConstraintEncoder for AlignmentEncoder {
 
         // If the bound stays the same, the previous rounds' encoding is still correct.
         // In this case, we need to return the same set of assumptions.
-        if bound == self.bound && self.last_var_bounds.as_ref() == Some(bounds) {
-            if let Some(v) = self.bound_selector {
-                res.add_assumption(as_lit(v));
+        if bound == self.bound {
+            let mut same_bounds = true;
+
+            if let Some(last_bounds) = self.last_var_bounds.as_ref() {
+                for v in self.equation.variables() {
+                    if last_bounds.get_upper(&v.len_var().unwrap())
+                        != bounds.get_upper(&v.len_var().unwrap())
+                    {
+                        same_bounds = false;
+                        break;
+                    }
+                }
             }
-            log::trace!(
-                "Bound did not change ({}), returning assumption from previous round",
-                bounds
-            );
-            return Ok(res);
+            if same_bounds {
+                if let Some(v) = self.bound_selector {
+                    res.add_assumption(as_lit(v));
+                }
+                log::trace!("Bound did not change, returning assumption from previous round",);
+                return Ok(res);
+            }
         }
 
         if let Some(v) = self.bound_selector {

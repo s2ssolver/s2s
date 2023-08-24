@@ -225,7 +225,11 @@ impl Display for Constraint {
             Constraint::WordEquation(eq) => write!(f, "{}", eq),
             Constraint::LinearConstraint(l) => write!(f, "{}", l),
             Constraint::RegularConstraint(re) => {
-                write!(f, "{} in {}", re.get_pattern(), re.get_re())
+                if re.get_type().is_in() {
+                    write!(f, "{} in {}", re.get_pattern(), re.get_re())
+                } else {
+                    write!(f, "{} notin {}", re.get_pattern(), re.get_re())
+                }
             }
             Constraint::BoolVarConstraint(c, p) => {
                 if *p {
