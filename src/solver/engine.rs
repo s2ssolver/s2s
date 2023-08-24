@@ -16,8 +16,6 @@ use crate::error::Error;
 
 use crate::instance::Instance;
 
-use crate::model::formula::Alphabet;
-
 use crate::model::Sort;
 use crate::model::Substitution;
 
@@ -34,20 +32,6 @@ pub(super) struct AbstractionSolver {
 
 impl AbstractionSolver {
     pub fn new(mut instance: Instance) -> Result<Self, Error> {
-        let mut alphabet = instance.get_formula().alphabet();
-        // Make sure the alphabet contains at least one character
-
-        let mut next_chr: u32 = 'a' as u32;
-
-        for _ in 0..instance.get_formula().vars().len() {
-            while alphabet.contains(&char::from_u32(next_chr).unwrap()) {
-                next_chr += 1;
-            }
-            let chr = char::from_u32(next_chr).unwrap();
-            alphabet.insert(chr);
-        }
-        log::debug!("Alphabet: {:?}", alphabet);
-
         // Create the abstraction
         let abstraction = Abstraction::new(&mut instance);
         let mut cm = EncodingManager::new(&instance);
@@ -104,13 +88,17 @@ impl Solver for AbstractionSolver {
 
         // Convert the skeleton to cnf and add it to the solver
 
-        if !self.instance.get_formula().is_conjunctive() {
+        let skeleton_cnf = if !self.instance.get_formula().is_conjunctive() {
             log::debug!("Skeleton {}", self.abstraction.get_skeleton());
-            let cnf = to_cnf(self.abstraction.get_skeleton(), &mut self.instance)?;
-
-            log::trace!("CNF: {:?}", cnf);
+            let cnf: Vec<Vec<i32>> = to_cnf(self.abstraction.get_skeleton(), &mut self.instance)?;
+            Some(cnf)
+        } else {
+            None
+        };
+        if let Some(cnf) = &skeleton_cnf {
+            log::trace!("Skeleton CNF: {:?}", cnf);
             for clause in cnf.into_iter() {
-                cadical.add_clause(clause);
+                cadical.add_clause(clause.clone());
             }
             // Check if the skeleton is unsat
             if let Some(false) = cadical.solve() {
@@ -215,11 +203,12 @@ impl Solver for AbstractionSolver {
 
             // Prepare next round
             let ts = Instant::now();
-            current_bounds = match next_bounds(
+            let mut next_bounds = match next_bounds(
                 &self.encoding_mng,
                 &cadical,
                 &current_bounds,
-                self.instance.get_upper_threshold(),
+                &self.instance,
+                skeleton_cnf.as_ref(),
             )? {
                 BoundUpdate::Next(b) => b,
                 BoundUpdate::LimitReached => {
@@ -232,7 +221,13 @@ impl Solver for AbstractionSolver {
                 }
             };
             // Sanitize bounds
-            self.sanitize_bounds(&mut current_bounds);
+            self.sanitize_bounds(&mut next_bounds);
+            if next_bounds == current_bounds {
+                return Ok(SolverResult::Unknown);
+            } else {
+                current_bounds = next_bounds;
+            }
+
             log::info!("Inferred new bounds ({} ms)", ts.elapsed().as_millis());
             if self
                 .encoding_mng

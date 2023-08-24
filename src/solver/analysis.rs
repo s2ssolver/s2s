@@ -1,4 +1,7 @@
-use std::cmp::{max, min};
+use std::{
+    cmp::{max, min},
+    collections::HashSet,
+};
 
 use indexmap::{indexset, IndexSet};
 
@@ -7,6 +10,7 @@ use crate::{
     error::Error,
     instance::Instance,
     model::Sort,
+    sat::Cnf,
 };
 
 use super::manager::{EncodingContext, EncodingManager};
@@ -140,7 +144,7 @@ pub(super) fn init_bounds(
         };
     }
     if let Some(th) = instance.get_upper_threshold() {
-        bounds.clamp_uppers(th as isize);
+        bounds.clamp(-(th as isize), th as isize);
     }
 
     Ok(BoundUpdate::Next(bounds))
@@ -150,22 +154,34 @@ pub(super) fn next_bounds(
     mngr: &EncodingManager,
     solver: &cadical::Solver,
     last: &Bounds,
-    threshold: Option<usize>,
+    instance: &Instance,
+    skeleton: Option<&Cnf>,
 ) -> Result<BoundUpdate, Error> {
     let failed = collect_failed(mngr, solver);
+    for c in failed.iter() {
+        log::debug!("Failed: {}", c.constraint());
+    }
     assert!(
         !failed.is_empty(),
         "Formula cannot be unsat with empty core"
     );
-    let limit_bounds = if failed.len() < 10 {
-        underapprox(&failed)?
+    let limit_bounds = if failed.len() <= 10 {
+        match underapprox(&failed, skeleton)? {
+            Some(bounds) => bounds,
+            None => return Ok(BoundUpdate::LimitReached),
+        }
     } else {
         let mut new = last.clone();
         new.next_square_uppers();
+        if let Some(th) = instance.get_upper_threshold() {
+            if !new.clamp(-(th as isize), th as isize) {
+                return Ok(BoundUpdate::ThresholdReached);
+            }
+        }
         return Ok(BoundUpdate::Next(new));
     };
     log::debug!("Upper Bounds for core: {}", limit_bounds);
-    if let Some(th) = threshold {
+    if let Some(th) = instance.get_upper_threshold() {
         if last.uppers_geq(th as isize) {
             return Ok(BoundUpdate::ThresholdReached);
         }
@@ -202,7 +218,7 @@ pub(super) fn next_bounds(
 
         if let Some(u) = updated.get_upper() {
             // Clamp to threshold
-            if let Some(th) = threshold {
+            if let Some(th) = instance.get_upper_threshold() {
                 if u >= th as isize {
                     continue;
                 }
@@ -215,6 +231,9 @@ pub(super) fn next_bounds(
             }
             if let Some(lower) = limit_bounds.get_lower(v) {
                 new_upper = max(new_upper, lower);
+            }
+            if let Some(th) = instance.get_upper_threshold() {
+                new_upper = min(new_upper, th as isize);
             }
 
             if new_upper > u {
@@ -234,7 +253,7 @@ pub(super) fn next_bounds(
                     new_lower *= -1;
                 }
                 // Clamp to threshold
-                if let Some(th) = threshold {
+                if let Some(th) = instance.get_upper_threshold() {
                     if l <= -(th as isize) as isize {
                         continue;
                     }
@@ -242,6 +261,9 @@ pub(super) fn next_bounds(
 
                 if let Some(lower) = limit_bounds.get_lower(v) {
                     new_lower = max(new_lower, lower);
+                }
+                if let Some(th) = instance.get_upper_threshold() {
+                    new_lower = max(new_lower, th as isize);
                 }
 
                 if new_lower < l {
@@ -268,7 +290,36 @@ pub(super) fn next_bounds(
     Ok(BoundUpdate::Next(next))
 }
 
-fn underapprox(constraints: &Vec<EncodingContext>) -> Result<Bounds, Error> {
+fn check_feasible(skeleton: Option<&Cnf>, cs: &IndexSet<&EncodingContext>) -> bool {
+    let mut assmpts = HashSet::new();
+    for ctx in cs {
+        let def = ctx.definitional();
+        if assmpts.contains(&(-def)) {
+            return false;
+        } else {
+            assmpts.insert(def);
+        }
+    }
+    // Check if the skeleton is satisfiable when the constraints are asserted
+    if let Some(skel) = skeleton {
+        let mut cadical: cadical::Solver = cadical::Solver::new();
+        for clause in skel.iter() {
+            cadical.add_clause(clause.clone());
+        }
+
+        match cadical.solve_with(assmpts.into_iter()) {
+            Some(false) => return false,
+            Some(true) | None => return true,
+        }
+    }
+
+    false
+}
+
+fn underapprox(
+    constraints: &Vec<EncodingContext>,
+    skeleton: Option<&Cnf>,
+) -> Result<Option<Bounds>, Error> {
     // Build powerset of the constraints, which is an underapproximation of the DNF.
     // If a constraint is asserted, move it to all subsets insteads, i.e., remove all subsets that do not contain all asserted constraints.
 
@@ -288,11 +339,14 @@ fn underapprox(constraints: &Vec<EncodingContext>) -> Result<Bounds, Error> {
             log::debug!("Unasserted: {}", c.constraint());
         }
     }
+    if !check_feasible(skeleton, &base) {
+        return Ok(None);
+    }
     let mut bounds = infer_for(&base)?;
 
     if bounds.any_empty() {
         log::debug!("Empty bounds on asserted constraints: {:?}", base);
-        return Ok(bounds);
+        return Ok(Some(bounds));
     }
 
     powerset.push(base);
@@ -310,19 +364,23 @@ fn underapprox(constraints: &Vec<EncodingContext>) -> Result<Bounds, Error> {
         for set in powerset.iter() {
             let mut new_set = set.clone();
             new_set.insert(ctx);
-            let these = infer_for(&new_set)?;
+            if check_feasible(skeleton, &new_set) {
+                let these = infer_for(&new_set)?;
 
-            if these.any_empty() {
-                continue;
+                if these.any_empty() {
+                    continue;
+                } else {
+                    bounds = join(bounds, these);
+                }
+
+                // TODO: Filter sets with empty bounds
+                new_sets.push(new_set);
             } else {
-                bounds = join(bounds, these);
+                log::error!("INFEASIBLE: {:?}", new_set);
             }
-
-            // TODO: Filter sets with empty bounds
-            new_sets.push(new_set);
         }
         powerset.extend(new_sets);
     }
 
-    Ok(bounds)
+    Ok(Some(bounds))
 }

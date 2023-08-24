@@ -679,7 +679,7 @@ mod tests {
             done = bounds.uppers_geq(limit as isize);
 
             bounds.next_square_uppers();
-            bounds.clamp_uppers(limit as isize);
+            bounds.clamp(0, limit as isize);
         }
         if let Some(true) = result {
             let sol = get_str_substitutions(dom_encoder.encoding(), &instance, &solver);

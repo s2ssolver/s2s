@@ -356,8 +356,25 @@ impl Bounds {
 
     /// Clamps the upper bounds of all variables to the given limit.
     /// Returns true if any bound was changed and false otherwise.
-    pub fn clamp_uppers(&mut self, limit: isize) -> bool {
-        self.update_uppers(|b| min(b, limit))
+    pub fn clamp(&mut self, lower_limit: isize, upper_limit: isize) -> bool {
+        let mut updated = false;
+        for dom in self.domains.iter_mut().map(|b| b.1) {
+            if let Some(upper) = dom.get_upper() {
+                let new_upper = min(upper, upper_limit);
+                if new_upper < upper {
+                    updated = true;
+                    dom.set_upper(new_upper);
+                }
+            }
+            if let Some(lower) = dom.get_lower() {
+                let new_lower = max(lower, lower_limit);
+                if new_lower > lower {
+                    updated = true;
+                    dom.set_lower(new_lower);
+                }
+            }
+        }
+        updated
     }
 
     /// Doubles the bounds of all variables, including the default bound.
