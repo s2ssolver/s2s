@@ -128,7 +128,7 @@ impl AbstractionSolver {
                 assumptions.entry(ctx.clone()).or_default().push(assm);
             }
             log::debug!(
-                "Encoded: {}. ({} clauses, {} ms)",
+                "Encoded: {} ({} clauses, {} ms)",
                 ctx.constraint(),
                 res.clauses(),
                 ts.elapsed().as_millis()
@@ -169,7 +169,7 @@ impl AbstractionSolver {
                     bounds.set_upper(&len_var, 1);
                 }
             }
-            bounds.set_lower(&len_var, 0);
+            //bounds.set_lower(&len_var, 0);
         }
     }
 }

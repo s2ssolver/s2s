@@ -178,20 +178,29 @@ pub(super) fn next_bounds(
         return Ok(BoundUpdate::LimitReached);
     }
     let mut vars_to_update = indexset! {};
+
     for c in failed {
-        vars_to_update.extend(c.constraint().vars().iter().map(|x| {
+        vars_to_update.extend(c.constraint().vars().iter().filter_map(|x| {
             if x.is_string() {
-                x.len_var().unwrap()
+                x.len_var()
+            } else if x.is_int() {
+                Some(x.clone())
             } else {
-                x.clone()
+                None
             }
         }));
     }
+
+    if vars_to_update.is_empty() {
+        // No length-dependent constraints in the core, conclude that the instance is unsatisfiable
+        return Ok(BoundUpdate::LimitReached);
+    }
+
     let mut th_reached = true;
     let mut next = last.clone();
     let mut was_updated = false;
     for v in vars_to_update.iter() {
-        let mut updated = last.get_with_default(v);
+        let mut updated = last.get(v).unwrap().clone();
 
         if let Some(u) = updated.get_upper() {
             // Clamp to threshold

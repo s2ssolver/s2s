@@ -88,13 +88,13 @@ impl SegmentedPattern {
     /// Returns the minimal length of the suffix of the pattern starting at segment after position i (not including segment i).
     /// The minimal suffix length is the sum of the lower bounds of all variables and length of all constants in the suffix.
     // TODO: How does this affect the encoding if the LOWER bound of a variable changes? Is this why we need to keep lower bounds at 0 to avoid soundness errors?
-    fn suffix_min_len(&self, i: usize, bounds: &Bounds) -> usize {
+    fn suffix_min_len(&self, i: usize, _bounds: &Bounds) -> usize {
         let mut f = 0;
 
         for j in i + 1..self.length() {
             match self.get(j) {
-                PatternSegment::Variable(v) => {
-                    f += bounds.get_lower(&v.len_var().unwrap()).unwrap_or(0) as usize
+                PatternSegment::Variable(_v) => {
+                    f += 0 // bounds.get_lower(&v.len_var().unwrap()).unwrap_or(0) as usize
                 }
                 PatternSegment::Word(w) => f += w.len(),
             }
@@ -155,6 +155,7 @@ impl WordEncoder {
     /// Encodes the possible candidates for the solution word up to bound `self.bound`.
     pub fn encode(&mut self, dom: &DomainEncoding, bound: usize) -> EncodingResult {
         assert!(bound >= self.last_bound, "Bound cannot shrink");
+
         let mut res = EncodingResult::empty();
         let last_bound = self.last_bound;
         for pos in last_bound..bound {
@@ -412,8 +413,8 @@ impl AlignmentEncoder {
 
             match s {
                 PatternSegment::Variable(v) => {
-                    let start_pos = segments.prefix_min_len(i, bounds);
-                    // Incremental either: Length is longer OR start position is later OR Both
+                    let start_pos = 0; //segments.prefix_min_len(i, bounds);
+                                       // Incremental either: Length is longer OR start position is later OR Both
                     for pos in start_pos..self.bound {
                         // TODO: Put all "disabled" start-length-pairs is a list and process on next iteration instead of iterating over all pairs and checking the condition
                         let last_vbound = self.get_last_var_bound(v).unwrap_or(0);
@@ -636,7 +637,14 @@ impl AlignmentEncoder {
                                     }
                                     n if n > 1 => {
                                         let m_var = pvar();
-                                        let pred_m_var = self.var_matches[&(x.clone(), p, l - 1)];
+                                        let pred_m_var = if let Some(v) =
+                                            self.var_matches.get(&(x.clone(), p, l - 1))
+                                        {
+                                            *v
+                                        } else {
+                                            // Cannot start here
+                                            continue;
+                                        };
                                         clauses.push(vec![neg(m_var), as_lit(pred_m_var)]);
                                         self.var_matches.insert((x.clone(), p, l), m_var);
                                         // Cache this with variable
@@ -810,11 +818,6 @@ impl ConstraintEncoder for AlignmentEncoder {
     ) -> Result<EncodingResult, Error> {
         self.round += 1;
 
-        if self.candidates.is_equality() {
-            log::debug!("Encoding {}", self.equation);
-        } else {
-            log::debug!("Encoding not {}", self.equation);
-        }
         let mut res = EncodingResult::empty();
 
         // Must be larger than 0
@@ -822,21 +825,46 @@ impl ConstraintEncoder for AlignmentEncoder {
             FilledPattern::fill(&self.equation.lhs(), bounds).length(),
             FilledPattern::fill(&self.equation.rhs(), bounds).length(),
         ) + 1;
-
+        if self.candidates.is_equality() {
+            log::debug!(
+                "Encoding {} for bound {} (last bound: {})",
+                self.equation,
+                bound,
+                self.bound
+            );
+        } else {
+            log::debug!(
+                "Encoding not {} for bound {} (last bound: {})",
+                self.equation,
+                bound,
+                self.bound
+            );
+        }
         assert!(bound >= self.bound, "Bound cannot shrink");
         assert!(bound > 0);
 
         // If the bound stays the same, the previous rounds' encoding is still correct.
         // In this case, we need to return the same set of assumptions.
-        if bound == self.bound && self.last_var_bounds.as_ref() == Some(bounds) {
-            if let Some(v) = self.bound_selector {
-                res.add_assumption(as_lit(v));
+        if bound == self.bound {
+            let mut same_bounds = true;
+
+            if let Some(last_bounds) = self.last_var_bounds.as_ref() {
+                for v in self.equation.variables() {
+                    if last_bounds.get_upper(&v.len_var().unwrap())
+                        != bounds.get_upper(&v.len_var().unwrap())
+                    {
+                        same_bounds = false;
+                        break;
+                    }
+                }
             }
-            log::trace!(
-                "Bound did not change ({}), returning assumption from previous round",
-                bounds
-            );
-            return Ok(res);
+            if same_bounds {
+                if let Some(v) = self.bound_selector {
+                    res.add_assumption(as_lit(v));
+                }
+                log::trace!("Bound did not change, returning assumption from previous round",);
+                return Ok(res);
+            }
         }
 
         if let Some(v) = self.bound_selector {
