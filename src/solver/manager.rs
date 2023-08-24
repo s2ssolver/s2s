@@ -1,4 +1,4 @@
-use std::time::Instant;
+use std::{collections::HashSet, time::Instant};
 
 use indexmap::{IndexMap, IndexSet};
 
@@ -87,7 +87,8 @@ pub(super) struct EncodingManager {
 
 impl EncodingManager {
     pub fn new(instance: &Instance) -> Self {
-        let dom_encoder = DomainEncoder::new(instance.alphabet());
+        let dom_encoder = DomainEncoder::new(Self::calc_alphabet(instance));
+
         Self {
             contexts: IndexSet::new(),
             ctx_by_constraint: IndexMap::new(),
@@ -97,6 +98,23 @@ impl EncodingManager {
             watchers: IndexMap::new(),
             domain_encoder: dom_encoder,
         }
+    }
+
+    fn calc_alphabet(instance: &Instance) -> IndexSet<char> {
+        let mut alphabet = instance.get_formula().alphabet();
+        // Make sure the alphabet contains at least one character
+
+        let mut next_chr: u32 = 'a' as u32;
+
+        for _ in 0..instance.get_formula().vars().len() {
+            while alphabet.contains(&char::from_u32(next_chr).unwrap()) {
+                next_chr += 1;
+            }
+            let chr = char::from_u32(next_chr).unwrap();
+            alphabet.insert(chr);
+        }
+        log::debug!("Alphabet: {:?}", alphabet);
+        alphabet
     }
 
     fn add_context(&mut self, ctx: EncodingContext, lit: &Literal) {
