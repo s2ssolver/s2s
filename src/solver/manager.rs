@@ -1,12 +1,18 @@
+use std::time::Instant;
+
 use indexmap::{IndexMap, IndexSet};
 
 use crate::{
-    encode::{domain::DomainEncoding, get_encoder, ConstraintEncoder},
+    bounds::Bounds,
+    encode::{
+        domain::{get_int_substitutions, get_str_substitutions, DomainEncoder, DomainEncoding},
+        get_encoder, ConstraintEncoder, EncodingResult,
+    },
     error::Error,
     instance::Instance,
     model::{
         formula::{Alphabet, Literal},
-        Constraint,
+        Constraint, Substitution,
     },
     sat::{as_lit, pvar, PLit},
 };
@@ -75,10 +81,13 @@ pub(super) struct EncodingManager {
     encoders: IndexMap<EncodingContext, Box<dyn ConstraintEncoder>>,
 
     watchers: IndexMap<EncodingContext, Vec<PLit>>,
+
+    domain_encoder: DomainEncoder,
 }
 
 impl EncodingManager {
-    pub fn new() -> Self {
+    pub fn new(instance: &Instance) -> Self {
+        let dom_encoder = DomainEncoder::new(instance.alphabet());
         Self {
             contexts: IndexSet::new(),
             ctx_by_constraint: IndexMap::new(),
@@ -86,6 +95,7 @@ impl EncodingManager {
             ctx_by_literal: IndexMap::new(),
             encoders: IndexMap::new(),
             watchers: IndexMap::new(),
+            domain_encoder: dom_encoder,
         }
     }
 
@@ -133,6 +143,99 @@ impl EncodingManager {
         let mut watchers = self.watchers.get(ctx).cloned().unwrap_or(Vec::new());
         watchers.push(ctx.watcher());
         watchers
+    }
+
+    /// Encodes the problem instance with the given bounds.
+    /// Returns the encoding result.
+    pub fn encode_bounded(
+        &mut self,
+        bounds: &Bounds,
+        instance: &Instance,
+    ) -> Result<EncodingResult, Error> {
+        let mut encoding = EncodingResult::empty();
+        if self.num_constraints() == 0 {
+            return Ok(EncodingResult::Trivial(true));
+        }
+
+        // Check if the only constraint is a single (positive) word equation adn call sharpen_bounds
+
+        // Encode the domain
+        let ts = Instant::now();
+        let domain_clauses = self.domain_encoder.encode(bounds, instance);
+        log::debug!(
+            "Encoded domain for all variables with {} clauses ({} ms)",
+            domain_clauses.clauses(),
+            ts.elapsed().as_millis()
+        );
+
+        encoding.join(domain_clauses);
+        let dom = self.domain_encoder.encoding().clone().clone();
+
+        let mut assumptions: IndexMap<EncodingContext, Vec<PLit>> = IndexMap::new();
+        for (ctx, enc) in self.encoders.iter_mut() {
+            let ts = Instant::now();
+            let mut res = enc.encode(bounds, &dom)?;
+
+            let def_lit = ctx.definitional();
+            let watcher = ctx.watcher();
+            // def_lit -> encoding
+            // watcher -> (def_lit -> encoding)
+            // Insert the negation of def_lit and watcher into all clauses
+
+            for ref mut clause in res.iter_clauses_mut() {
+                clause.push(-watcher);
+                if !instance.get_formula().is_conjunctive() {
+                    clause.push(-def_lit);
+                }
+            }
+
+            // Register the assumptions
+            for assm in res.assumptions() {
+                assumptions.entry(ctx.clone()).or_default().push(assm);
+            }
+            log::debug!(
+                "Encoded: {} ({} clauses, {} ms)",
+                ctx.constraint(),
+                res.clauses(),
+                ts.elapsed().as_millis()
+            );
+            // Append encoding to results
+            encoding.join(res);
+            encoding.add_assumption(watcher);
+        }
+        // Register assumptions
+        for (ctx, asms) in assumptions.into_iter() {
+            for asm in asms.into_iter() {
+                self.register_assumptions(&ctx, &asm);
+            }
+        }
+
+        Ok(encoding)
+    }
+
+    pub fn reset(&mut self) {
+        // Reset domain encoder
+        self.domain_encoder.reset();
+        // Reset encoders
+        for (_, en) in self.iter_mut() {
+            en.as_mut().reset();
+        }
+    }
+
+    pub fn construct_model(&self, solver: &cadical::Solver, instance: &Instance) -> Substitution {
+        let mut model = Substitution::from(get_str_substitutions(
+            self.domain_encoder.encoding(),
+            &instance,
+            solver,
+        ));
+        let int_model = Substitution::from(get_int_substitutions(
+            self.domain_encoder.encoding(),
+            solver,
+        ));
+        model = model.compose(&int_model);
+        // Map variables that were removed in preprocessing to their default value
+        model.use_defaults();
+        model
     }
 
     #[allow(dead_code)]

@@ -109,7 +109,7 @@ fn main() {
 
     log::info!("Done ({}ms).", ts.elapsed().as_millis());
     match res {
-        SolverResult::Sat(model) => {
+        SolverResult::Sat(Some(model)) => {
             if cli.verify_model {
                 match original_formula.eval(&model) {
                     Some(true) => {}
@@ -120,6 +120,12 @@ fn main() {
             println!("sat");
             if instance.get_print_model() {
                 println!("{}", model);
+            }
+        }
+        SolverResult::Sat(None) => {
+            println!("sat");
+            if instance.get_print_model() {
+                log::error!("No model found");
             }
         }
         SolverResult::Unsat => println!("unsat"),

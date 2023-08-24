@@ -57,7 +57,7 @@ pub fn solve(instance: &mut Instance) -> Result<SolverResult, Error> {
         Some(true) => {
             log::info!("Formula is trivially true");
             subs.use_defaults();
-            return Ok(SolverResult::Sat(subs));
+            return Ok(SolverResult::Sat(Some(subs)));
         }
         Some(false) => {
             log::info!("Formula is trivially false");
@@ -75,11 +75,12 @@ pub fn solve(instance: &mut Instance) -> Result<SolverResult, Error> {
     let mut solver = get_solver(instance.clone())?;
 
     match solver.solve()? {
-        SolverResult::Sat(m) => {
+        SolverResult::Sat(Some(m)) => {
             let mut model = subs.compose(&m);
             model.use_defaults();
-            Ok(SolverResult::Sat(model))
+            Ok(SolverResult::Sat(Some(model)))
         }
+        SolverResult::Sat(None) => Ok(SolverResult::Sat(None)),
         SolverResult::Unsat => Ok(SolverResult::Unsat),
         SolverResult::Unknown => Ok(SolverResult::Unknown),
     }

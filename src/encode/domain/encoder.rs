@@ -11,9 +11,8 @@ use crate::{
     },
     instance::Instance,
     model::{Sort, Variable},
-    sat::{as_lit, neg, pvar, Cnf, PLit, PVar},
+    sat::{as_lit, neg, pvar, Cnf},
 };
-use std::collections::HashMap;
 
 /// Encoder for the domains of all variables.
 pub struct DomainEncoder {
@@ -51,6 +50,12 @@ impl DomainEncoder {
     pub fn encoding(&self) -> &DomainEncoding {
         self.encoding.as_ref().unwrap()
     }
+
+    pub fn reset(&mut self) {
+        self.strings.reset();
+        self.integers.reset();
+        self.encoding = None;
+    }
 }
 
 pub struct SubstitutionEncoder {
@@ -68,6 +73,10 @@ impl SubstitutionEncoder {
             last_bounds: None,
             singular: false,
         }
+    }
+
+    pub fn reset(&mut self) {
+        self.last_bounds = None;
     }
 
     pub fn encode(
@@ -145,6 +154,11 @@ impl IntegerEncoder {
             last_domains: None,
             var_len_eo_encoders: IndexMap::new(),
         }
+    }
+
+    pub fn reset(&mut self) {
+        self.last_domains = None;
+        self.var_len_eo_encoders.clear();
     }
 
     pub fn encode(

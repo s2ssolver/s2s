@@ -1,8 +1,6 @@
 use std::cmp::max;
 use std::collections::HashSet;
 
-use indexmap::{IndexMap, IndexSet};
-
 use std::time::Instant;
 
 use crate::abstr::Abstraction;
@@ -11,7 +9,7 @@ use crate::bounds::Bounds;
 use crate::encode::EncodingResult;
 use crate::model::constraints::{Symbol, WordEquation};
 use crate::solver::analysis::{init_bounds, next_bounds};
-use crate::solver::manager::EncodingContext;
+
 use crate::{Solver, SolverResult};
 
 use crate::error::Error;
@@ -23,19 +21,15 @@ use crate::model::formula::Alphabet;
 use crate::model::Sort;
 use crate::model::Substitution;
 
-use crate::encode::domain::{get_int_substitutions, get_str_substitutions, DomainEncoder};
-
-use crate::sat::{to_cnf, Cnf, PLit};
+use crate::sat::{to_cnf, Cnf};
 
 use super::analysis::BoundUpdate;
 use super::manager::EncodingManager;
 
 pub(super) struct AbstractionSolver {
     instance: Instance,
-    alphabet: IndexSet<char>,
     encoding_mng: EncodingManager,
     abstraction: Abstraction,
-    domain_encoder: DomainEncoder,
 }
 
 impl AbstractionSolver {
@@ -54,12 +48,9 @@ impl AbstractionSolver {
         }
         log::debug!("Alphabet: {:?}", alphabet);
 
-        // Instantiate the Domain encoder
-        let dom_encoder = DomainEncoder::new(alphabet.clone());
-
         // Create the abstraction
         let abstraction = Abstraction::new(&mut instance);
-        let mut cm = EncodingManager::new();
+        let mut cm = EncodingManager::new(&instance);
         let fm = instance.get_formula().to_nnf();
         let asserted_lits = fm
             .asserted_literals()
@@ -73,86 +64,9 @@ impl AbstractionSolver {
         Ok(Self {
             instance,
             encoding_mng: cm,
-            alphabet,
 
             abstraction,
-            domain_encoder: dom_encoder,
         })
-    }
-
-    /// Encodes the problem instance with the given bounds.
-    /// Returns the encoding result.
-    fn encode_bounded(&mut self, bounds: &Bounds) -> Result<EncodingResult, Error> {
-        let mut encoding = EncodingResult::empty();
-        if self.encoding_mng.num_constraints() == 0 {
-            return Ok(EncodingResult::Trivial(true));
-        }
-
-        // Check if the only constraint is a single (positive) word equation adn call sharpen_bounds
-
-        // Encode the domain
-        let ts = Instant::now();
-        let subs_cnf = self.domain_encoder.encode(bounds, &self.instance);
-        log::debug!(
-            "Encoded domain for all variables with {} clauses ({} ms)",
-            subs_cnf.clauses(),
-            ts.elapsed().as_millis()
-        );
-
-        encoding.join(subs_cnf);
-        let dom = self.domain_encoder.encoding();
-
-        let mut assumptions: IndexMap<EncodingContext, Vec<PLit>> = IndexMap::new();
-        for (ctx, enc) in self.encoding_mng.iter_mut() {
-            let ts = Instant::now();
-            let mut res = enc.encode(bounds, dom)?;
-
-            let def_lit = ctx.definitional();
-            let watcher = ctx.watcher();
-            // def_lit -> encoding
-            // watcher -> (def_lit -> encoding)
-            // Insert the negation of def_lit and watcher into all clauses
-            if !self.instance.get_formula().is_conjunctive() {
-                log::debug!("Distributing neg. defintional {}", -def_lit);
-            }
-
-            for ref mut clause in res.iter_clauses_mut() {
-                clause.push(-watcher);
-                if !self.instance.get_formula().is_conjunctive() {
-                    clause.push(-def_lit);
-                }
-            }
-
-            // Register the assumptions
-            for assm in res.assumptions() {
-                assumptions.entry(ctx.clone()).or_default().push(assm);
-            }
-            log::debug!(
-                "Encoded: {} ({} clauses, {} ms)",
-                ctx.constraint(),
-                res.clauses(),
-                ts.elapsed().as_millis()
-            );
-            // Append encoding to results
-            encoding.join(res);
-            encoding.add_assumption(watcher);
-        }
-        // Register assumptions
-        for (ctx, asms) in assumptions.into_iter() {
-            for asm in asms.into_iter() {
-                self.encoding_mng.register_assumptions(&ctx, &asm);
-            }
-        }
-
-        Ok(encoding)
-    }
-
-    // Reset all states
-    fn reset(&mut self) {
-        self.domain_encoder = DomainEncoder::new(self.alphabet.clone());
-        for (_, encoder) in self.encoding_mng.iter_mut() {
-            encoder.reset();
-        }
     }
 
     /// Makes sure that the upper bounds for string variables are at least 1.
@@ -216,7 +130,11 @@ impl Solver for AbstractionSolver {
 
             let ts = Instant::now();
             self.encoding_mng.clear_assumptions();
-            let encoding = self.encode_bounded(&current_bounds)?;
+
+            let encoding = self
+                .encoding_mng
+                .encode_bounded(&current_bounds, &self.instance)?;
+
             let elapsed = ts.elapsed().as_millis();
             log::info!("Encoded in {} ms", elapsed);
             time_encoding += elapsed;
@@ -253,19 +171,6 @@ impl Solver for AbstractionSolver {
                     time_solving += t_solving;
                     match res {
                         Some(true) => {
-                            let mut model = Substitution::from(get_str_substitutions(
-                                self.domain_encoder.encoding(),
-                                &self.instance,
-                                &cadical,
-                            ));
-                            let int_model = Substitution::from(get_int_substitutions(
-                                self.domain_encoder.encoding(),
-                                &cadical,
-                            ));
-                            model = model.compose(&int_model);
-                            // Map variables that were removed in preprocessing to their default value
-                            model.use_defaults();
-
                             log::info!(
                                 "Done. Total time encoding/solving: {}/{} ms",
                                 time_encoding,
@@ -273,6 +178,11 @@ impl Solver for AbstractionSolver {
                             );
                             //self.encoding_mng
                             //    .print_debug(&cadical, self.domain_encoder.encoding());
+                            let model = if self.instance.get_print_model() {
+                                Some(self.encoding_mng.construct_model(&cadical, &self.instance))
+                            } else {
+                                None
+                            };
                             return Ok(SolverResult::Sat(model));
                         }
                         Some(false) => {
@@ -292,8 +202,13 @@ impl Solver for AbstractionSolver {
                 }
                 EncodingResult::Trivial(false) => return Ok(SolverResult::Unsat),
                 EncodingResult::Trivial(true) => {
-                    let mut model = Substitution::new();
-                    model.use_defaults();
+                    let model = if self.instance.get_print_model() {
+                        let mut model = Substitution::new();
+                        model.use_defaults();
+                        Some(model)
+                    } else {
+                        None
+                    };
                     return Ok(SolverResult::Sat(model));
                 }
             }
@@ -326,7 +241,7 @@ impl Solver for AbstractionSolver {
                 .any(|enc| !enc.is_incremental())
             {
                 // reset states if at least one solver is not incremental
-                self.reset();
+                self.encoding_mng.reset();
                 cadical = cadical::Solver::new();
                 log::debug!("Reset state");
             }

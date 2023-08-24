@@ -7,7 +7,7 @@ use crate::{
     error::Error,
     model::{
         constraints::{LinearArithFactor, LinearConstraint, LinearConstraintType},
-        Evaluable, Sort, Substitution, Variable,
+        Evaluable, Substitution,
     },
     sat::{as_lit, neg, pvar, PVar},
 };
@@ -64,16 +64,12 @@ impl ConstraintEncoder for MddEncoder {
         self.round += 1;
         let mut res = EncodingResult::empty();
 
-        log::debug!("Encoding {}", self.linear);
-
         // Check if trivial
         match self.linear.eval(&Substitution::new()) {
             Some(true) => {
-                log::debug!("Trivially true");
                 return Ok(res);
             }
             Some(false) => {
-                log::debug!("Trivially false");
                 res.add_clause(vec![neg(self.mdd_root), as_lit(self.mdd_false)]);
                 return Ok(res);
             }

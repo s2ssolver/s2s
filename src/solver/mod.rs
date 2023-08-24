@@ -12,8 +12,8 @@ mod manager;
 
 /// The result of a satisfiability check
 pub enum SolverResult {
-    /// The instance is satisfiable with the given model
-    Sat(Substitution),
+    /// The instance is satisfiable. The model, if given, is a solution to the instance.
+    Sat(Option<Substitution>),
     /// The instance is unsatisfiable
     Unsat,
     /// The solver could not determine the satisfiability of the instance
@@ -29,7 +29,7 @@ impl SolverResult {
     /// Returns the model if the instance is satisfiable
     pub fn get_model(&self) -> Option<&Substitution> {
         match self {
-            SolverResult::Sat(model) => Some(model),
+            SolverResult::Sat(model) => model.as_ref(),
             _ => None,
         }
     }
