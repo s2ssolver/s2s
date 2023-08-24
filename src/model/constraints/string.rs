@@ -810,11 +810,7 @@ impl Display for Pattern {
 
 impl Display for WordEquation {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        if self.eq_type().is_equality() {
-            write!(f, "{} = {}", self.lhs(), self.rhs())
-        } else {
-            write!(f, "{} != {}", self.lhs(), self.rhs())
-        }
+        write!(f, "{} = {}", self.lhs(), self.rhs())
     }
 }
 

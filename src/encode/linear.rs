@@ -49,6 +49,18 @@ impl MddEncoder {
             last_bounds: None,
         }
     }
+
+    fn last_bound(&self, var: &Variable) -> isize {
+        let v = if var.sort() == Sort::String {
+            var.len_var().unwrap()
+        } else {
+            var.clone()
+        };
+        self.last_bounds
+            .as_ref()
+            .map(|b| b.get_upper(&v).unwrap_or(0))
+            .unwrap_or(0)
+    }
 }
 
 impl ConstraintEncoder for MddEncoder {
@@ -173,7 +185,6 @@ impl ConstraintEncoder for MddEncoder {
             res.add_clause(vec![as_lit(self.mdd_root)]);
             res.add_clause(vec![neg(self.mdd_false)]);
         }
-        self.last_bounds = Some(bounds.clone());
         Ok(res)
     }
 }
