@@ -139,7 +139,7 @@ pub(super) fn init_bounds(
     let def_bounds = instance.get_start_bound() as isize;
     for v in instance.vars_of_sort(Sort::Int) {
         match base_bounds.get_lower(v) {
-            Some(b) => bounds.set(v, IntDomain::Bounded(b, b)),
+            Some(b) => bounds.set(v, IntDomain::Bounded(b, max(b, def_bounds))),
             None => bounds.set(v, IntDomain::Bounded(0, def_bounds)),
         };
     }
