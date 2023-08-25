@@ -313,7 +313,7 @@ fn check_feasible(skeleton: Option<&Cnf>, cs: &IndexSet<&EncodingContext>) -> bo
         }
     }
 
-    false
+    true
 }
 
 fn underapprox(
