@@ -150,14 +150,10 @@ pub(super) fn init_bounds(
     Ok(BoundUpdate::Next(bounds))
 }
 
-pub(super) fn next_bounds(
-    mngr: &EncodingManager,
-    solver: &cadical::Solver,
-    last: &Bounds,
-    instance: &Instance,
+fn get_limit_bound(
+    failed: &Vec<EncodingContext>,
     skeleton: Option<&Cnf>,
 ) -> Result<BoundUpdate, Error> {
-    let failed = collect_failed(mngr, solver);
     for c in failed.iter() {
         log::debug!("Failed: {}", c.constraint());
     }
@@ -171,28 +167,38 @@ pub(super) fn next_bounds(
             None => return Ok(BoundUpdate::LimitReached),
         }
     } else {
-        let mut new = last.clone();
-        new.next_square_uppers();
-        if let Some(th) = instance.get_upper_threshold() {
-            if !new.clamp(-(th as isize), th as isize) {
-                return Ok(BoundUpdate::ThresholdReached);
-            }
-        }
-        return Ok(BoundUpdate::Next(new));
+        // Unbounded for all variables
+        Bounds::new()
     };
+    Ok(BoundUpdate::Next(limit_bounds))
+}
+pub(super) fn next_bounds(
+    mngr: &EncodingManager,
+    solver: &cadical::Solver,
+    last: &Bounds,
+    instance: &Instance,
+    skeleton: Option<&Cnf>,
+) -> Result<BoundUpdate, Error> {
+    // TODO: Check here if Threshold was reached
+
+    let failed = collect_failed(mngr, solver);
+    let limit_bounds = match get_limit_bound(&failed, skeleton)? {
+        BoundUpdate::Next(b) => b,
+        BoundUpdate::LimitReached => return Ok(BoundUpdate::LimitReached),
+        BoundUpdate::ThresholdReached => return Ok(BoundUpdate::ThresholdReached),
+    };
+
     log::debug!("Upper Bounds for core: {}", limit_bounds);
     if let Some(th) = instance.get_upper_threshold() {
         if last.uppers_geq(th as isize) {
             return Ok(BoundUpdate::ThresholdReached);
         }
     }
+    if limit_bounds.any_empty() || limit_reached(&limit_bounds, last) {
+        return Ok(BoundUpdate::LimitReached);
+    }
 
-    if limit_bounds.any_empty() {
-        return Ok(BoundUpdate::LimitReached);
-    }
-    if limit_reached(&limit_bounds, last) {
-        return Ok(BoundUpdate::LimitReached);
-    }
+    // Collect the variables that need to be updated
     let mut vars_to_update = indexset! {};
     for c in failed {
         vars_to_update.extend(c.constraint().vars().iter().filter_map(|x| {
@@ -213,67 +219,84 @@ pub(super) fn next_bounds(
     let mut th_reached = true;
     let mut next = last.clone();
     let mut was_updated = false;
+    let avg_upper = vars_to_update
+        .iter()
+        .map(|v| last.get_upper(v).unwrap())
+        .sum::<isize>()
+        / vars_to_update.len() as isize;
+    let avg_lower = vars_to_update
+        .iter()
+        .map(|v| last.get_lower(v).unwrap())
+        .sum::<isize>()
+        / vars_to_update.len() as isize;
+
     for v in vars_to_update.iter() {
         let mut updated = last.get(v).unwrap().clone();
+        let last_upper = last.get_upper(v).unwrap();
+        let last_lower = last.get_lower(v).unwrap();
 
-        if let Some(u) = updated.get_upper() {
+        // Clamp to threshold
+        if let Some(th) = instance.get_upper_threshold() {
+            if last_upper >= th as isize {
+                continue;
+            }
+        }
+        th_reached = false;
+        // next square
+        let mut new_upper = if last_upper <= avg_upper * 2 {
+            ((last_upper as f64).sqrt() + 1f64).powi(2) as isize
+        } else {
+            // If the upper bound is already above the average, increase by 1. This is to avoid growing the bounds too quickly.
+            last_upper + 1
+        };
+        if let Some(limit) = limit_bounds.get_upper(v) {
+            new_upper = min(new_upper, limit);
+        }
+        if let Some(lower) = limit_bounds.get_lower(v) {
+            new_upper = max(new_upper, lower);
+        }
+        if let Some(th) = instance.get_upper_threshold() {
+            new_upper = min(new_upper, th as isize);
+        }
+
+        if new_upper > last_upper {
+            updated.set_upper(new_upper);
+            was_updated = true
+        }
+
+        if v.is_len_var() {
+            let new_lower = max(0, limit_bounds.get_lower(v).unwrap_or(last_lower));
+            updated.set_lower(new_lower);
+        } else {
+            let mut new_lower: isize = if last_lower >= 2 * avg_lower {
+                ((last_lower.abs() as f64).sqrt() + 1f64).powi(2) as isize
+            } else {
+                // If the lower bound is already below the average, decrease by 1. This is to avoid growing the bounds too quickly.
+                last_lower - 1
+            };
+            if last_lower <= 0 {
+                new_lower *= -1;
+            }
             // Clamp to threshold
             if let Some(th) = instance.get_upper_threshold() {
-                if u >= th as isize {
+                if last_lower <= -(th as isize) as isize {
                     continue;
                 }
             }
-            th_reached = false;
-            // next square
-            let mut new_upper = ((u as f64).sqrt() + 1f64).powi(2) as isize;
-            if let Some(limit) = limit_bounds.get_upper(v) {
-                new_upper = min(new_upper, limit);
-            }
+
             if let Some(lower) = limit_bounds.get_lower(v) {
-                new_upper = max(new_upper, lower);
+                new_lower = max(new_lower, lower);
             }
             if let Some(th) = instance.get_upper_threshold() {
-                new_upper = min(new_upper, th as isize);
+                new_lower = max(new_lower, th as isize);
             }
 
-            if new_upper > u {
-                updated.set_upper(new_upper);
+            if new_lower < last_lower {
+                updated.set_lower(new_lower);
                 was_updated = true
             }
-        } else {
-            panic!("No upper bound for variable {} ({})", v, last);
         }
-        if let Some(l) = updated.get_lower() {
-            if v.is_len_var() {
-                let new_lower = max(0, limit_bounds.get_lower(v).unwrap_or(l));
-                updated.set_lower(new_lower);
-            } else {
-                let mut new_lower: isize = ((l.abs() as f64).sqrt() + 1f64).powi(2) as isize;
-                if l <= 0 {
-                    new_lower *= -1;
-                }
-                // Clamp to threshold
-                if let Some(th) = instance.get_upper_threshold() {
-                    if l <= -(th as isize) as isize {
-                        continue;
-                    }
-                }
 
-                if let Some(lower) = limit_bounds.get_lower(v) {
-                    new_lower = max(new_lower, lower);
-                }
-                if let Some(th) = instance.get_upper_threshold() {
-                    new_lower = max(new_lower, th as isize);
-                }
-
-                if new_lower < l {
-                    updated.set_lower(new_lower);
-                    was_updated = true
-                }
-            };
-        } else {
-            panic!("No lower bound for variable {} ({})", v, last);
-        }
         assert!(next.get(v).and_then(|b| b.get_upper()).is_some());
         assert!(next.get(v).and_then(|b| b.get_lower()).is_some());
         next.set(v, updated);
