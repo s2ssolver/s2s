@@ -77,7 +77,6 @@ impl VareqEncoder {
         let lhs_bound = bounds.get_upper(&lhs_len).unwrap() as usize;
         let rhs_bound = bounds.get_upper(&rhs_len).unwrap() as usize;
         let next_bound = min(lhs_bound, rhs_bound);
-
         if let Some(b) = self.last_bounds {
             assert!(next_bound >= b);
 
@@ -119,7 +118,6 @@ impl VareqEncoder {
             for c in alph {
                 let p = pvar();
                 def_clause.push(as_lit(p));
-
                 let lhs_pos_c = dom.string().get(&self.lhs, pos, *c).unwrap();
                 let rhs_pos_c = dom.string().get(&self.rhs, pos, *c).unwrap();
 
@@ -147,6 +145,7 @@ impl VareqEncoder {
 
             res.add_clause(clause);
         }
+        res.add_clause(def_clause);
         self.last_bounds = Some(next_bound);
 
         Ok(res)
