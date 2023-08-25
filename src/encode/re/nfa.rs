@@ -90,7 +90,7 @@ impl NFAEncoder {
         let mut res = EncodingResult::empty();
         let last_bound = self.last_bound.unwrap_or(0);
 
-        for l in last_bound..bound {
+        for l in last_bound.saturating_sub(1)..bound {
             for state in self.nfa.states() {
                 let reach_var = self.reach_vars[&(state, l)];
 
@@ -141,9 +141,9 @@ impl NFAEncoder {
         dom: &DomainEncoding,
     ) -> Result<EncodingResult, Error> {
         let mut res = EncodingResult::empty();
-        let last_bound = self.last_bound.unwrap_or(0);
+        let last_bound = self.last_bound.unwrap_or(1);
 
-        for l in (last_bound + 1)..=bound {
+        for l in last_bound..=bound {
             for state in self.nfa.states() {
                 let reach_var = self.reach_vars[&(state, l)];
                 let mut alo_clause = vec![neg(reach_var)];
@@ -253,10 +253,7 @@ impl ConstraintEncoder for NFAEncoder {
             log::debug!("Encoding `{} notin {}` ", self.var, self.regex,);
         }
 
-        let bound = bounds
-            .get_with_default(&self.var.len_var().unwrap())
-            .get_upper()
-            .unwrap_or(0) as usize;
+        let bound = bounds.get_upper(&self.var.len_var().unwrap()).unwrap_or(0) as usize;
 
         log::trace!("Bound: {}", bound);
         if Some(bound) == self.last_bound {
@@ -276,32 +273,32 @@ impl ConstraintEncoder for NFAEncoder {
         // Create reachability vars for this bound
         self.create_reach_vars(bound);
 
-        let effective_bound = if self.nfa.acyclic() {
-            let effective_bound = min(bound, max(self.nfa.states().len(), 1));
-            if self.sign {
-                // If the automaton is acyclic and constraint is positive, then lhs cannot be longer than the number of states
-                // We use the number of states as the effective bound
-                for l in effective_bound + 1..bound {
-                    // Var cannot have this length
-                    let len_var = self.var.len_var().unwrap();
-                    let len_var = substitution.int().get(&len_var, l as isize).unwrap();
-                    res.add_clause(vec![neg(len_var)]);
-                }
+        let effective_bound = bound; /*if self.nfa.acyclic() {
+                                         let effective_bound = min(bound, max(self.nfa.states().len(), 1));
+                                         if self.sign {
+                                             // If the automaton is acyclic and constraint is positive, then lhs cannot be longer than the number of states
+                                             // We use the number of states as the effective bound
+                                             for l in effective_bound + 1..bound {
+                                                 // Var cannot have this length
+                                                 let len_var = self.var.len_var().unwrap();
+                                                 let len_var = substitution.int().get(&len_var, l as isize).unwrap();
+                                                 res.add_clause(vec![neg(len_var)]);
+                                             }
 
-                if self.last_bound.unwrap_or(0) >= effective_bound {
-                    // If the last bound was greater than the effective bound, the automaton is already fully encoded
+                                             if self.last_bound.unwrap_or(0) >= effective_bound {
+                                                 // If the last bound was greater than the effective bound, the automaton is already fully encoded
 
-                    return Ok(res);
-                }
-                effective_bound
-            } else {
-                // If the automaton is acyclic and constraint is negative, then any lhs longer than the number of states trivially satisfies the constraint
-                // We use the number of states +1  as the effective bound
-                min(bound, effective_bound + 1)
-            }
-        } else {
-            bound
-        };
+                                                 return Ok(res);
+                                             }
+                                             effective_bound
+                                         } else {
+                                             // If the automaton is acyclic and constraint is negative, then any lhs longer than the number of states trivially satisfies the constraint
+                                             // We use the number of states +1  as the effective bound
+                                             min(bound, effective_bound + 1)
+                                         }
+                                     } else {
+                                         bound
+                                     };*/
 
         let e_init = self.encode_intial();
         log::trace!("Encoded initial state: {} clauses", e_init.clauses());
