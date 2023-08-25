@@ -52,11 +52,11 @@ impl VareqEncoder {
         // Make sure the rest of the longer string is empty
         match lhs_bound.cmp(&rhs_bound) {
             Ordering::Less => {
-                let rhs_lambda = dom.string().get(&self.rhs, next_bound + 1, LAMBDA).unwrap();
+                let rhs_lambda = dom.string().get(&self.rhs, next_bound, LAMBDA).unwrap();
                 res.add_assumption(as_lit(rhs_lambda))
             }
             Ordering::Greater => {
-                let lhs_lambda = dom.string().get(&self.lhs, next_bound + 1, LAMBDA).unwrap();
+                let lhs_lambda = dom.string().get(&self.lhs, next_bound, LAMBDA).unwrap();
                 res.add_assumption(as_lit(lhs_lambda))
             }
             _ => (),
