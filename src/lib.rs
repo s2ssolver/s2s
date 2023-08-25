@@ -32,7 +32,7 @@ pub fn solve(instance: &mut Instance) -> Result<SolverResult, Error> {
     // Preprocess the formula
 
     log::trace!("Solving formula {}", instance.get_formula());
-
+    let fm_original = instance.get_formula().clone();
     let ts = Instant::now();
 
     let mut subs = Substitution::new();
@@ -53,12 +53,23 @@ pub fn solve(instance: &mut Instance) -> Result<SolverResult, Error> {
     log::debug!("Solving formula {}", instance.get_formula());
 
     // Check if the formula is trivial
-    match instance.get_formula().eval(&subs) {
+    match instance.get_formula().eval(&Substitution::defaults()) {
         Some(true) => {
             log::info!("Formula is trivially true");
             subs.use_defaults();
             return Ok(SolverResult::Sat(Some(subs)));
         }
+        _ => (),
+    }
+    match instance.get_formula().eval(&Substitution::new()) {
+        Some(false) => {
+            log::info!("Formula is trivially false");
+            return Ok(SolverResult::Unsat);
+        }
+        _ => (),
+    }
+    // check if the formula is trivially false
+    match fm_original.eval(&subs) {
         Some(false) => {
             log::info!("Formula is trivially false");
             return Ok(SolverResult::Unsat);

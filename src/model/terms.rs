@@ -461,6 +461,12 @@ impl IntTerm {
     }
 }
 
+impl Default for IntTerm {
+    fn default() -> Self {
+        Self::Const(0)
+    }
+}
+
 impl From<isize> for IntTerm {
     fn from(value: isize) -> Self {
         Self::Const(value)

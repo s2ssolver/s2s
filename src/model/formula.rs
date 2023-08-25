@@ -783,7 +783,7 @@ impl Evaluable for Formula {
             Formula::Or(fs) => {
                 let mut is_falses = true;
                 for f in fs {
-                    match f.eval(&Substitution::new()) {
+                    match f.eval(sub) {
                         Some(true) => return Some(true),
                         Some(false) => (),
                         None => is_falses = false,
@@ -798,7 +798,7 @@ impl Evaluable for Formula {
             Formula::And(fs) => {
                 let mut is_true = true;
                 for f in fs {
-                    match f.eval(&Substitution::new()) {
+                    match f.eval(sub) {
                         Some(false) => return Some(false),
                         Some(true) => (),
                         None => is_true = false,
@@ -810,7 +810,7 @@ impl Evaluable for Formula {
                     None
                 }
             }
-            Formula::Not(f) => match f.eval(&Substitution::new()) {
+            Formula::Not(f) => match f.eval(sub) {
                 Some(true) => Some(false),
                 Some(false) => Some(true),
                 None => None,
@@ -823,12 +823,14 @@ impl Evaluable for Predicate {
     fn eval(&self, sub: &Substitution) -> Option<bool> {
         let res = match self {
             Predicate::Equality(Term::String(lhs), Term::String(rhs)) => {
-                match (
-                    lhs.apply_substitution(sub).is_const(),
-                    rhs.apply_substitution(sub).is_const(),
-                ) {
+                let lhs_sub = lhs.apply_substitution(sub);
+                let rhs_sub = rhs.apply_substitution(sub);
+
+                match (lhs_sub.is_const(), rhs_sub.is_const()) {
                     (Some(l), Some(r)) => l == r,
-                    (_, _) => return None,
+                    (_, _) => {
+                        return None;
+                    }
                 }
             }
             Predicate::Equality(Term::Int(lhs), Term::Int(rhs)) => {
@@ -858,7 +860,7 @@ impl Evaluable for Predicate {
                     lhs.apply_substitution(sub).is_const(),
                     rhs.apply_substitution(sub).is_const(),
                 ) {
-                    (Some(l), Some(r)) => l <= r,
+                    (Some(l), Some(r)) => l < r,
                     (_, _) => return None,
                 }
             }

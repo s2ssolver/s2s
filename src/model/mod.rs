@@ -7,7 +7,10 @@ use crate::{
     sat::{pvar, PVar},
 };
 
-use self::terms::{IntTerm, StringTerm, Term};
+use self::{
+    formula::Formula,
+    terms::{IntTerm, StringTerm, Term},
+};
 
 pub mod constraints;
 pub mod formula;
@@ -143,16 +146,29 @@ impl Variable {
 pub struct Substitution {
     subs: IndexMap<Variable, Term>,
     use_defaults: bool,
+
+    defaults: HashMap<Sort, Term>,
 }
 
 /// A substitution of [variables](Variable) by terms.
 /// A variable of sort [string](Sort::String) can be substituted by [Pattern], a variable of sort [int](Sort::Int) can be substituted by an [IntArithTerm].
 impl Substitution {
     pub fn new() -> Self {
+        let mut defaults = HashMap::new();
+        defaults.insert(Sort::String, Term::String(StringTerm::default()));
+        defaults.insert(Sort::Int, Term::Int(IntTerm::default()));
+        defaults.insert(Sort::Bool, Term::Bool(Box::new(Formula::ttrue())));
         Self {
             subs: IndexMap::new(),
             use_defaults: false,
+            defaults,
         }
+    }
+
+    pub fn defaults() -> Self {
+        let mut sub = Self::new();
+        sub.use_defaults();
+        sub
     }
 
     pub fn use_defaults(&mut self) {
@@ -175,7 +191,13 @@ impl Substitution {
     }
 
     pub fn get(&self, var: &Variable) -> Option<&Term> {
-        self.subs.get(var)
+        let r = self.subs.get(var);
+
+        if r.is_none() && self.use_defaults {
+            self.defaults.get(&var.sort())
+        } else {
+            r
+        }
     }
 
     pub fn set(&mut self, var: &Variable, term: Term) {
