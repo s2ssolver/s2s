@@ -1,4 +1,4 @@
-use std::{collections::HashSet, time::Instant};
+use std::time::Instant;
 
 use indexmap::{IndexMap, IndexSet};
 
@@ -241,6 +241,9 @@ impl EncodingManager {
     }
 
     pub fn construct_model(&self, solver: &cadical::Solver, instance: &Instance) -> Substitution {
+        for (_, e) in self.encoders.iter() {
+            e.print_debug(solver, self.domain_encoder.encoding());
+        }
         let mut model = Substitution::from(get_str_substitutions(
             self.domain_encoder.encoding(),
             &instance,

@@ -600,8 +600,10 @@ impl AlignmentEncoder {
                                     < last_bound.saturating_sub(segments.suffix_min_len(i, bounds))
                             {
                                 // Already encoded
+
                                 continue;
                             }
+
                             if l + p
                                 <= self
                                     .bound
@@ -661,11 +663,12 @@ impl AlignmentEncoder {
                                                         neg(sub_c),
                                                     ]);
                                                 }
+                                                self.var_cand_match_cache
+                                                    .insert((x.clone(), l - 1, p + (l - 1)), mv);
                                                 mv
                                             }
                                         };
-                                        self.var_cand_match_cache
-                                            .insert((x.clone(), l - 1, p + (l - 1)), mv);
+
                                         clauses.push(vec![neg(m_var), as_lit(mv)]);
 
                                         clauses.push(vec![
@@ -778,8 +781,9 @@ impl AlignmentEncoder {
         let lhs = self.candidates.lhs_encoder();
         let rhs = self.candidates.rhs_encoder();
         let mut new_mismatch_selectors = vec![];
-
-        for b in last_bound..self.bound {
+        println!("Alphabet: {:?}", dom.alphabet());
+        println!("Bound: {}", self.bound);
+        for b in last_bound.saturating_sub(1)..self.bound {
             let v = pvar();
             new_mismatch_selectors.push(v);
             // If v is true, then there is a mismatch at position b
