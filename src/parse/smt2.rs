@@ -110,9 +110,15 @@ impl<'a> FormulaBuilder<'a> {
                 Term::Variable(v) => match v.as_ref() {
                     aws_smt_ir::QualIdentifier::Simple { identifier }
                     | aws_smt_ir::QualIdentifier::Sorted { identifier, .. } => {
-                        match self.instance.var_by_name(&identifier.to_string()) {
+                        let name = identifier.to_string().clone();
+                        let name = name
+                            .strip_prefix("|")
+                            .and_then(|s| s.strip_suffix("|"))
+                            .map(|s| s.to_string())
+                            .unwrap_or(identifier.to_string());
+                        match self.instance.var_by_name(&name) {
                             Some(vv) => sorts.push(vv.sort()),
-                            None => todo!(),
+                            None => panic!("Unknown sort of {}", v),
                         }
                     }
                 },
@@ -121,7 +127,7 @@ impl<'a> FormulaBuilder<'a> {
                         ArithOp::Plus(_) => sorts.push(NSort::Int),
                         ArithOp::Neg(_) => sorts.push(NSort::Int),
                         ArithOp::Minus(_) => sorts.push(NSort::Int),
-                        ArithOp::Mul(_) => todo!(),
+                        ArithOp::Mul(_) => sorts.push(NSort::Int),
                         ArithOp::IntDiv(_) => sorts.push(NSort::Int),
                         ArithOp::RealDiv(_) => todo!(),
                         ArithOp::Divisible(_, _) => sorts.push(NSort::Bool),
@@ -636,7 +642,9 @@ impl<'a> Visitor<ALL> for ReTermBuilder<'a> {
                         let mut res = Vec::with_capacity(rs.len());
                         for r in rs {
                             match r.visit_with(self) {
-                                ControlFlow::Continue(_) => unreachable!(),
+                                ControlFlow::Continue(_) => {
+                                    unreachable!("Unexpected Continue on: {} ({})", r, term)
+                                }
                                 ControlFlow::Break(Ok(t)) => res.push(t),
                                 ControlFlow::Break(Err(e)) => return ControlFlow::Break(Err(e)),
                             }
