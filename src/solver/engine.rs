@@ -35,7 +35,7 @@ impl AbstractionSolver {
         // Create the abstraction
         let abstraction = Abstraction::new(&mut instance);
         let mut cm = EncodingManager::new(&instance);
-        let fm = instance.get_formula().to_nnf();
+        let fm = instance.get_script().to_nnf();
         let asserted_lits = fm
             .asserted_literals()
             .iter()
@@ -82,13 +82,13 @@ impl Solver for AbstractionSolver {
         // Sanitize bounds
         self.sanitize_bounds(&mut current_bounds);
 
-        log::debug!("Solving formula {}", self.instance.get_formula());
+        log::debug!("Solving formula {}", self.instance.get_script());
 
         let mut cadical: cadical::Solver = cadical::Solver::new();
 
         // Convert the skeleton to cnf and add it to the solver
 
-        let skeleton_cnf = if !self.instance.get_formula().is_conjunctive() {
+        let skeleton_cnf = if !self.instance.get_script().is_conjunctive() {
             log::debug!("Skeleton {}", self.abstraction.get_skeleton());
             let cnf: Vec<Vec<i32>> = to_cnf(self.abstraction.get_skeleton(), &mut self.instance)?;
             Some(cnf)

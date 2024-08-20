@@ -1,16 +1,5 @@
 use indexmap::{IndexMap, IndexSet};
 
-use crate::{
-    error::Error,
-    model::{
-        constraints::{
-            LinearArithFactor, LinearConstraint, LinearConstraintType, RegularConstraint, Symbol,
-            WordEquation,
-        },
-        Constraint,
-    },
-};
-
 use super::{Bounds, IntDomain};
 
 struct ConstraintPartition {

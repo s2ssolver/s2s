@@ -20,6 +20,8 @@ bimap = "0.6.3"
 num-bigint = "0.3.3"
 regulaer = {path = "ext/regulaer"}
 smallvec = "1.10.0"
+thiserror = "1.0.63"
+num-traits = "0.2.19"
 
 
 [dev-dependencies]

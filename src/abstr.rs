@@ -66,7 +66,7 @@ impl Abstraction {
     pub fn new(instance: &mut Instance) -> Self {
         let mut defs = Definitions::new();
 
-        let skeleton = Self::build(&mut defs, &instance.get_formula().clone().into(), instance);
+        let skeleton = Self::build(&mut defs, &instance.get_script().clone().into(), instance);
 
         Self {
             definitions: defs,

@@ -1032,8 +1032,8 @@ impl Display for EqSide {
 #[cfg(test)]
 mod tests {
     use crate::{
+        ast::{Evaluable, Substitutable},
         instance::Instance,
-        model::{Evaluable, Substitutable},
     };
     use std::collections::HashSet;
 
@@ -1042,9 +1042,9 @@ mod tests {
     use indexmap::IndexSet;
 
     use crate::{
+        ast::{constraints::Pattern, Sort, Substitution},
         bounds::IntDomain,
         encode::domain::{get_str_substitutions, DomainEncoder},
-        model::{constraints::Pattern, Sort, Substitution},
     };
 
     #[test]

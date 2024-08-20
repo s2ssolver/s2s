@@ -4,13 +4,13 @@ use indexmap::{IndexMap, IndexSet};
 
 use super::encoding::DomainEncoding;
 use crate::{
+    ast::{Sort, Variable},
     bounds::{Bounds, IntDomain},
     encode::{
         card::{exactly_one, IncrementalEO},
         EncodingResult, LAMBDA,
     },
     instance::Instance,
-    model::{Sort, Variable},
     sat::{as_lit, neg, pvar, Cnf},
 };
 
@@ -289,13 +289,13 @@ mod tests {
     use quickcheck_macros::quickcheck;
 
     use crate::{
+        ast::{Sort, Variable},
         bounds::{Bounds, IntDomain},
         encode::{
             domain::{encoding::DomainEncoding, get_str_substitutions},
             LAMBDA,
         },
         instance::Instance,
-        model::{Sort, Variable},
         sat::as_lit,
     };
 

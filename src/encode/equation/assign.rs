@@ -4,10 +4,10 @@
 use std::cmp::Ordering;
 
 use crate::{
+    ast::Variable,
     bounds::Bounds,
     encode::{domain::DomainEncoding, ConstraintEncoder, EncodingResult, LAMBDA},
     error::Error,
-    model::Variable,
     sat::{as_lit, neg, pvar},
 };
 

@@ -101,12 +101,12 @@ impl EncodingManager {
     }
 
     fn calc_alphabet(instance: &Instance) -> IndexSet<char> {
-        let mut alphabet = instance.get_formula().alphabet();
+        let mut alphabet = instance.get_script().alphabet();
         // Make sure the alphabet contains at least one character
 
         let mut next_chr: u32 = 'a' as u32;
 
-        for _ in 0..instance.get_formula().vars().len() {
+        for _ in 0..instance.get_script().vars().len() {
             while alphabet.contains(&char::from_u32(next_chr).unwrap()) {
                 next_chr += 1;
             }
@@ -202,7 +202,7 @@ impl EncodingManager {
 
             for ref mut clause in res.iter_clauses_mut() {
                 clause.push(-watcher);
-                if !instance.get_formula().is_conjunctive() {
+                if !instance.get_script().is_conjunctive() {
                     clause.push(-def_lit);
                 }
             }

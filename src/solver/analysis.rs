@@ -6,10 +6,10 @@ use std::{
 use indexmap::{indexset, IndexSet};
 
 use crate::{
+    ast::Sort,
     bounds::{infer, Bounds, IntDomain},
-    error::Error,
+    error::ErrorRepr as Error,
     instance::Instance,
-    model::Sort,
     sat::Cnf,
 };
 

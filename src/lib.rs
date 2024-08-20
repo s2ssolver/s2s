@@ -8,74 +8,74 @@
 //! Note however, that the solver does not guarantee that unsatisfiability is detected and thus might not terminate.
 
 mod abstr;
+mod ast;
 mod bounds;
 mod encode;
 pub mod error;
 mod instance;
-pub mod model;
-mod parse;
+// pub mod model;
+// mod parse;
+mod context;
+mod ir;
 mod preprocess;
 mod sat;
 mod solver;
 
 use std::time::Instant;
 
-use error::Error;
+use error::PublicError as Error;
 use instance::Instance;
-pub use parse::Parser;
-pub use preprocess::{preprocess, PreprocessingResult};
-pub use solver::{get_solver, Solver, SolverResult};
 
-use crate::model::{Evaluable, Substitution};
+pub use solver::{get_solver, Solver, SolverResult};
 
 pub fn solve(instance: &mut Instance) -> Result<SolverResult, Error> {
     // Preprocess the formula
 
-    log::trace!("Solving formula {}", instance.get_formula());
-    let fm_original = instance.get_formula().clone();
+    log::trace!("Solving formula {}", instance.get_script());
+    let fm_original = instance.get_script().clone();
     let ts = Instant::now();
 
-    let mut subs = Substitution::new();
+    // let mut subs = Substitution::new();
 
-    if instance.preprocess() {
-        match preprocess(instance) {
-            (PreprocessingResult::Unchanged(_), s) => {
-                assert!(s.is_empty());
-                log::debug!("No preprocessing applied.");
-            }
-            (PreprocessingResult::Changed(c), s) => {
-                subs = s;
-                instance.set_formula(c.into())
-            }
-        }
-        log::info!("Preprocessing done ({}ms).", ts.elapsed().as_millis());
-    }
-    log::debug!("Solving formula {}", instance.get_formula());
+    // if instance.preprocess() {
+    //     match preprocess(instance) {
+    //         (PreprocessingResult::Unchanged(_), s) => {
+    //             assert!(s.is_empty());
+    //             log::debug!("No preprocessing applied.");
+    //         }
+    //         (PreprocessingResult::Changed(c), s) => {
+    //             subs = s;
+    //             instance.set_formula(c.into())
+    //         }
+    //     }
+    //     log::info!("Preprocessing done ({}ms).", ts.elapsed().as_millis());
+    // }
+    log::debug!("Solving formula {}", instance.get_script());
 
     // Check if the formula is trivial
-    match instance.get_formula().eval(&Substitution::defaults()) {
-        Some(true) => {
-            log::info!("Formula is trivially true");
-            subs.use_defaults();
-            return Ok(SolverResult::Sat(Some(subs)));
-        }
-        _ => (),
-    }
-    match instance.get_formula().eval(&Substitution::new()) {
-        Some(false) => {
-            log::info!("Formula is trivially false");
-            return Ok(SolverResult::Unsat);
-        }
-        _ => (),
-    }
+    // match instance.get_script().eval(&Substitution::defaults()) {
+    //     Some(true) => {
+    //         log::info!("Formula is trivially true");
+    //         subs.use_defaults();
+    //         return Ok(SolverResult::Sat(Some(subs)));
+    //     }
+    //     _ => (),
+    // }
+    // match instance.get_script().eval(&Substitution::new()) {
+    //     Some(false) => {
+    //         log::info!("Formula is trivially false");
+    //         return Ok(SolverResult::Unsat);
+    //     }
+    //     _ => (),
+    // }
     // check if the formula is trivially false
-    match fm_original.eval(&subs) {
-        Some(false) => {
-            log::info!("Formula is trivially false");
-            return Ok(SolverResult::Unsat);
-        }
-        _ => (),
-    }
+    // match fm_original.eval(&subs) {
+    //     Some(false) => {
+    //         log::info!("Formula is trivially false");
+    //         return Ok(SolverResult::Unsat);
+    //     }
+    //     _ => (),
+    // }
 
     if instance.dry_run() {
         log::info!("Dry run, terminating.");

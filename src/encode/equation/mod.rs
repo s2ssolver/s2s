@@ -1,11 +1,11 @@
 mod alignment;
 mod assign;
-mod iwoorpje;
+// mod iwoorpje;
 mod vareq;
-mod woorpje;
+// mod woorpje;
 use alignment::AlignmentEncoder;
 
-use crate::model::constraints::WordEquation;
+// use crate::model::constraints::WordEquation;
 
 use self::{assign::AssignmentEncoder, vareq::VareqEncoder};
 

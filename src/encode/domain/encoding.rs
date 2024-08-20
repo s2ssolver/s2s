@@ -3,10 +3,10 @@ use std::collections::HashMap;
 use indexmap::{IndexMap, IndexSet};
 
 use crate::{
+    ast::{Sort, Variable},
     bounds::Bounds,
     encode::LAMBDA,
     instance::Instance,
-    model::{Sort, Variable},
     sat::{as_lit, PLit, PVar},
 };
 

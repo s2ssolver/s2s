@@ -2,16 +2,13 @@ use std::cmp::max;
 
 use indexmap::IndexMap;
 
-use crate::model::{
-    formula::{Alphabet, Formula},
-    Sort, Variable,
-};
+use crate::ast::{Script, Sort, Sorted, Variable};
 
-/// A problem instance, consisting of a formula, a set of managed variables, and congigurations.
+/// A problem instance, consisting of a script and options.
 #[derive(Clone, Debug)]
 pub struct Instance {
-    /// The formula to solve
-    formula: Formula,
+    /// The SMT script to solve
+    script: Script,
 
     /// The maximum bound for any variable to check.
     /// If `None`, no bound is set, which will might in an infinite search if the instance is not satisfiable.
@@ -33,24 +30,10 @@ pub struct Instance {
     vars: IndexMap<String, Variable>,
 }
 
-impl Default for Instance {
-    fn default() -> Self {
-        Instance {
-            formula: Formula::ttrue(),
-            ubound: None,
-            start_bound: 1,
-            preprocess: true,
-            vars: IndexMap::new(),
-            print_model: false,
-            dry: false,
-        }
-    }
-}
-
 impl Instance {
-    pub fn new(formula: Formula) -> Self {
+    pub fn new(script: Script) -> Self {
         Instance {
-            formula,
+            script,
             ubound: None,
             start_bound: 1,
             preprocess: true,
@@ -68,16 +51,6 @@ impl Instance {
         self.start_bound = bound;
     }
 
-    /// Sets the formula of the instance.
-    /// This will replace the current formula.
-    /// This will add all variables in the formula to the instance.
-    pub fn set_formula(&mut self, formula: Formula) {
-        for v in formula.vars() {
-            self.add_var(v.clone());
-        }
-        self.formula = formula;
-    }
-
     pub fn preprocess(&self) -> bool {
         self.preprocess
     }
@@ -90,12 +63,12 @@ impl Instance {
         self.ubound = None;
     }
 
-    pub fn get_formula(&self) -> &Formula {
-        &self.formula
+    pub fn get_script(&self) -> &Script {
+        &self.script
     }
 
-    pub fn get_formula_mut(&mut self) -> &mut Formula {
-        &mut self.formula
+    pub fn get_script_mut(&mut self) -> &mut Script {
+        &mut self.script
     }
 
     pub fn get_start_bound(&self) -> usize {
@@ -159,11 +132,5 @@ impl Instance {
 
     pub fn set_dry_run(&mut self, dry: bool) {
         self.dry = dry;
-    }
-}
-
-impl Alphabet for Instance {
-    fn alphabet(&self) -> indexmap::IndexSet<char> {
-        self.formula.alphabet()
     }
 }
