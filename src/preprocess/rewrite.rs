@@ -4,9 +4,9 @@ use itertools::Itertools;
 use regulaer::re::{ReBuilder, Regex};
 
 use crate::{
-    ast::{Sort, Variable},
     context::Context,
-    ir::{AtomType, Formula, Literal, Pattern},
+    repr::ir::{AtomType, Formula, Literal, Pattern},
+    repr::{Sort, Variable},
 };
 
 use super::PreprocessingError;

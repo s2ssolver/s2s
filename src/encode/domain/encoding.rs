@@ -7,7 +7,7 @@ use crate::{
     bounds::Bounds,
     encode::LAMBDA,
     instance::Instance,
-    sat::{as_lit, PLit, PVar},
+    sat::{plit, PLit, PVar},
 };
 
 pub struct DomainEncoding {
@@ -124,7 +124,7 @@ impl SubstitutionEncoding {
     }
 
     pub fn get_lit(&self, var: &Variable, pos: usize, chr: char) -> Option<PLit> {
-        self.get(var, pos, chr).map(as_lit)
+        self.get(var, pos, chr).map(plit)
     }
 
     pub(super) fn add(&mut self, var: &Variable, pos: usize, chr: char, v: PVar) {
@@ -165,7 +165,7 @@ pub fn get_str_substitutions(
         );
     }
     for (var, pos, chr, v) in domain_encoding.string().iter() {
-        if let Some(true) = solver.value(as_lit(*v)) {
+        if let Some(true) = solver.value(plit(*v)) {
             let sub = subs.get_mut(var).unwrap();
             // This could be more efficient by going over the positions only once, however, this way we can check for invalid substitutions
             assert!(
@@ -205,7 +205,7 @@ pub fn get_int_substitutions(
     }
     let mut subs = HashMap::new();
     for (var, l, v) in domain_encoding.int().iter() {
-        if let Some(true) = solver.value(as_lit(*v)) {
+        if let Some(true) = solver.value(plit(*v)) {
             let ok = subs.insert(var.clone(), l);
             assert!(ok.is_none());
         }

@@ -8,6 +8,7 @@ mod string;
 mod substitution;
 pub use int::{LinearArithTerm, LinearOperator};
 pub use string::Pattern;
+pub use substitution::*;
 
 use super::Variable;
 

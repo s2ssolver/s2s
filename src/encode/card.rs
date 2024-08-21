@@ -4,7 +4,7 @@ use std::fmt::Display;
 
 use indexmap::IndexSet;
 
-use crate::sat::{as_lit, neg, pvar, Cnf, PLit, PVar};
+use crate::sat::{plit, nlit, pvar, Cnf, PLit, PVar};
 
 use super::EncodingResult;
 
@@ -26,7 +26,7 @@ pub fn amo(vars: &[PVar]) -> Cnf {
 fn eo_naive(vars: &[PVar]) -> Cnf {
     let mut cnf = Cnf::new();
     // At least one
-    let as_lits: Vec<PLit> = vars.iter().copied().map(as_lit).collect();
+    let as_lits: Vec<PLit> = vars.iter().copied().map(plit).collect();
     cnf.push(as_lits.clone());
     // At most one
     for (i, x) in as_lits.iter().enumerate() {
@@ -40,7 +40,7 @@ fn eo_naive(vars: &[PVar]) -> Cnf {
 /// Binomial (i.e. naive pairwise) encoding of at most one constraints.
 fn amo_binomial(vars: &[PVar]) -> Cnf {
     let mut cnf = Cnf::new();
-    let as_lits: Vec<PLit> = vars.iter().copied().map(as_lit).collect();
+    let as_lits: Vec<PLit> = vars.iter().copied().map(plit).collect();
     for (i, x) in as_lits.iter().enumerate() {
         for y in as_lits.iter().skip(i + 1) {
             cnf.push(vec![-(*x), -(*y)]);
@@ -70,8 +70,8 @@ impl IncrementalAMO {
         cnf.extend(amo_binomial(vars));
 
         // At most one between the old and the new ones
-        let as_lits_old: Vec<PLit> = self.vars.iter().copied().map(as_lit).collect();
-        let as_lits_new: Vec<PLit> = vars.iter().copied().map(as_lit).collect();
+        let as_lits_old: Vec<PLit> = self.vars.iter().copied().map(plit).collect();
+        let as_lits_new: Vec<PLit> = vars.iter().copied().map(plit).collect();
         for x in as_lits_old.iter() {
             for y in as_lits_new.iter() {
                 cnf.push(vec![-(*x), -(*y)]);
@@ -105,15 +105,15 @@ impl IncrementalALO {
         let mut cnf = Cnf::new();
         self.vars.extend(vars);
         let selector = pvar();
-        let mut clause = [neg(selector)].to_vec();
-        clause.extend(self.vars.iter().copied().map(as_lit));
+        let mut clause = [nlit(selector)].to_vec();
+        clause.extend(self.vars.iter().copied().map(plit));
         cnf.push(clause);
 
         if let Some(old_selector) = self.selector {
-            cnf.push(vec![neg(old_selector)]);
+            cnf.push(vec![nlit(old_selector)]);
         }
         self.selector = Some(selector);
-        let assm = IndexSet::from([as_lit(self.selector.unwrap())]);
+        let assm = IndexSet::from([plit(self.selector.unwrap())]);
         EncodingResult::Cnf(cnf, assm)
     }
 }

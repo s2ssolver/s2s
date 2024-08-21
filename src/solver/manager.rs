@@ -14,7 +14,7 @@ use crate::{
         formula::{Alphabet, Literal},
         Constraint, Substitution,
     },
-    sat::{as_lit, pvar, PLit},
+    sat::{plit, pvar, PLit},
 };
 
 /// A definitional literal is a literal that is defines a constraint.
@@ -140,7 +140,7 @@ impl EncodingManager {
             rc.compile(Some(&alphabet))?;
         }
 
-        let watcher = as_lit(pvar());
+        let watcher = plit(pvar());
 
         let ctx = EncodingContext::new(con.clone(), def, watcher, is_asserted);
         self.add_context(ctx.clone(), lit);

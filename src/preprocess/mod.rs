@@ -4,7 +4,7 @@ mod rewrite;
 
 use thiserror::Error;
 
-use crate::ast::Sort;
+use crate::repr::Sort;
 
 // TODO: Make struct with type for each error, and a field for the Expression/ExpressionType that caused the error
 #[derive(Error, Debug)]

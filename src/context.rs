@@ -4,10 +4,7 @@ use std::{
     rc::Rc,
 };
 
-use crate::{
-    ast::{AstBuilder, Sort, Sorted, Variable},
-    ir::IrBuilder,
-};
+use crate::repr::{ast::AstBuilder, ir::IrBuilder, Sort, Sorted, Variable};
 
 #[derive(Default)]
 pub struct Context {

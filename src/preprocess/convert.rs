@@ -3,9 +3,10 @@
 use std::rc::Rc;
 
 use crate::{
-    ast::{nf::expression_to_nnf, CoreExpr, ExprType, Expression, Script, Sort, Sorted, StrExpr},
     context::Context,
-    ir::{Atom, Formula, IrBuilder, Pattern},
+    repr::ast::{nf::expression_to_nnf, CoreExpr, ExprType, Expression, Script, StrExpr},
+    repr::ir::{Atom, Formula, IrBuilder, Pattern},
+    repr::{Sort, Sorted},
 };
 
 use super::PreprocessingError;

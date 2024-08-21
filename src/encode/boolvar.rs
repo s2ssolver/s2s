@@ -2,7 +2,7 @@ use crate::{
     bounds::Bounds,
     error::Error,
     model::Variable,
-    sat::{as_lit, neg, PLit},
+    sat::{plit, nlit, PLit},
 };
 
 use super::{domain::DomainEncoding, ConstraintEncoder, EncodingResult};
@@ -17,9 +17,9 @@ impl BoolVarEncoder {
         let lit = match boolvar {
             Variable::Bool { value, .. } => {
                 if pol {
-                    as_lit(value)
+                    plit(value)
                 } else {
-                    neg(value)
+                    nlit(value)
                 }
             }
             _ => panic!("Expected a boolean variable, got {}", boolvar),

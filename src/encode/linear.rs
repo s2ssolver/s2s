@@ -9,7 +9,7 @@ use crate::{
         constraints::{LinearArithFactor, LinearConstraint, LinearConstraintType},
         Evaluable, Substitution,
     },
-    sat::{as_lit, neg, pvar, PVar},
+    sat::{plit, nlit, pvar, PVar},
 };
 
 use super::{domain::DomainEncoding, ConstraintEncoder, EncodingResult};
@@ -70,7 +70,7 @@ impl ConstraintEncoder for MddEncoder {
                 return Ok(res);
             }
             Some(false) => {
-                res.add_clause(vec![neg(self.mdd_root), as_lit(self.mdd_false)]);
+                res.add_clause(vec![nlit(self.mdd_root), plit(self.mdd_false)]);
                 return Ok(res);
             }
             None => {}
@@ -105,9 +105,9 @@ impl ConstraintEncoder for MddEncoder {
                                 .entry(new_value)
                                 .or_insert_with(pvar);
                             res.add_clause(vec![
-                                neg(node_var),
-                                neg(len_assign_var),
-                                as_lit(child_pvar),
+                                nlit(node_var),
+                                nlit(len_assign_var),
+                                plit(child_pvar),
                             ]);
 
                             queue.push_back((level + 1, new_value, child_pvar));
@@ -156,7 +156,7 @@ impl ConstraintEncoder for MddEncoder {
                                     }
                                 }
                             };
-                            res.add_clause(vec![neg(node_var), neg(len_assign_var), as_lit(node)]);
+                            res.add_clause(vec![nlit(node_var), nlit(len_assign_var), plit(node)]);
                         }
                     }
                 }
@@ -166,8 +166,8 @@ impl ConstraintEncoder for MddEncoder {
             }
         }
         if self.round == 1 {
-            res.add_clause(vec![as_lit(self.mdd_root)]);
-            res.add_clause(vec![neg(self.mdd_false)]);
+            res.add_clause(vec![plit(self.mdd_root)]);
+            res.add_clause(vec![nlit(self.mdd_false)]);
         }
         // TODO: This leads to soundness errors, need to investigate!
         //self.last_bounds = Some(bounds.clone());

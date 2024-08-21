@@ -7,7 +7,7 @@ use crate::{
     encode::{domain::DomainEncoding, ConstraintEncoder, EncodingResult, LAMBDA},
     error::Error,
     model::Variable,
-    sat::{as_lit, neg, pvar, PVar},
+    sat::{nlit, plit, pvar, PVar},
 };
 
 pub struct VareqEncoder {
@@ -40,12 +40,12 @@ impl VareqEncoder {
             for c in alph {
                 let lhs_pos_c = dom.string().get(&self.lhs, pos, *c).unwrap();
                 let rhs_pos_c = dom.string().get(&self.rhs, pos, *c).unwrap();
-                let clause = vec![neg(lhs_pos_c), as_lit(rhs_pos_c)];
+                let clause = vec![nlit(lhs_pos_c), plit(rhs_pos_c)];
                 res.add_clause(clause);
             }
             let lhs_pos_c = dom.string().get(&self.lhs, pos, LAMBDA).unwrap();
             let rhs_pos_c = dom.string().get(&self.rhs, pos, LAMBDA).unwrap();
-            let clause = vec![neg(lhs_pos_c), as_lit(rhs_pos_c)];
+            let clause = vec![nlit(lhs_pos_c), plit(rhs_pos_c)];
             res.add_clause(clause);
         }
 
@@ -53,11 +53,11 @@ impl VareqEncoder {
         match lhs_bound.cmp(&rhs_bound) {
             Ordering::Less => {
                 let rhs_lambda = dom.string().get(&self.rhs, next_bound, LAMBDA).unwrap();
-                res.add_assumption(as_lit(rhs_lambda))
+                res.add_assumption(plit(rhs_lambda))
             }
             Ordering::Greater => {
                 let lhs_lambda = dom.string().get(&self.lhs, next_bound, LAMBDA).unwrap();
-                res.add_assumption(as_lit(lhs_lambda))
+                res.add_assumption(plit(lhs_lambda))
             }
             _ => (),
         }
@@ -84,7 +84,7 @@ impl VareqEncoder {
                 // Just return the same assumption again, the encoding stays the same
                 if let Some(a) = self.selector {
                     let mut res = EncodingResult::empty();
-                    res.add_assumption(as_lit(a));
+                    res.add_assumption(plit(a));
                     return Ok(res);
                 }
             }
@@ -95,21 +95,21 @@ impl VareqEncoder {
 
         // Deactivate selector from last iteration and create a new one
         if let Some(s) = self.selector {
-            res.add_clause(vec![neg(s)]);
+            res.add_clause(vec![nlit(s)]);
         }
         let selector = pvar();
         self.selector = Some(selector);
 
-        let mut def_clause = vec![neg(selector)];
-        res.add_assumption(as_lit(selector));
+        let mut def_clause = vec![nlit(selector)];
+        res.add_assumption(plit(selector));
         match lhs_bound.cmp(&rhs_bound) {
             Ordering::Less => {
                 let rhs_lambda = dom.string().get(&self.rhs, next_bound, LAMBDA).unwrap();
-                def_clause.push(neg(rhs_lambda));
+                def_clause.push(nlit(rhs_lambda));
             }
             Ordering::Greater => {
                 let lhs_lambda = dom.string().get(&self.lhs, next_bound, LAMBDA).unwrap();
-                def_clause.push(neg(lhs_lambda));
+                def_clause.push(nlit(lhs_lambda));
             }
             _ => (),
         }
@@ -117,31 +117,31 @@ impl VareqEncoder {
         for pos in 0..next_bound {
             for c in alph {
                 let p = pvar();
-                def_clause.push(as_lit(p));
+                def_clause.push(plit(p));
                 let lhs_pos_c = dom.string().get(&self.lhs, pos, *c).unwrap();
                 let rhs_pos_c = dom.string().get(&self.rhs, pos, *c).unwrap();
 
                 // p --> (-h(x[pos]) = a /\ h(y[pos]) = a)
                 // <==> (-p \/ -h(x[pos]) = a) /\ (-p \/ h(y[pos]) = a)
-                let clause_lhs = vec![neg(p), neg(lhs_pos_c)];
-                let clause_rhs = vec![neg(p), as_lit(rhs_pos_c)];
+                let clause_lhs = vec![nlit(p), nlit(lhs_pos_c)];
+                let clause_rhs = vec![nlit(p), plit(rhs_pos_c)];
                 res.add_clause(clause_lhs);
                 res.add_clause(clause_rhs);
 
                 // (-h(x[pos]) = a /\ h(y[pos]) = a) --> p
                 // <==> (h(x[pos]) = a \/ -h(y[pos]) = a \/ p)
-                let clause = vec![as_lit(lhs_pos_c), neg(rhs_pos_c), as_lit(p)];
+                let clause = vec![plit(lhs_pos_c), nlit(rhs_pos_c), plit(p)];
                 res.add_clause(clause);
             }
             // Repeat for lambda
             let p = pvar();
             let lhs_pos_c = dom.string().get(&self.lhs, pos, LAMBDA).unwrap();
             let rhs_pos_c = dom.string().get(&self.rhs, pos, LAMBDA).unwrap();
-            let clause_lhs = vec![neg(p), neg(lhs_pos_c)];
-            let clause_rhs = vec![neg(p), as_lit(rhs_pos_c)];
+            let clause_lhs = vec![nlit(p), nlit(lhs_pos_c)];
+            let clause_rhs = vec![nlit(p), plit(rhs_pos_c)];
             res.add_clause(clause_lhs);
             res.add_clause(clause_rhs);
-            let clause = vec![as_lit(lhs_pos_c), neg(rhs_pos_c), as_lit(p)];
+            let clause = vec![plit(lhs_pos_c), nlit(rhs_pos_c), plit(p)];
 
             res.add_clause(clause);
         }

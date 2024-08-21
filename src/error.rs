@@ -1,6 +1,6 @@
 use thiserror::Error;
 
-use crate::ast::AstError;
+use crate::repr::ast::AstError;
 
 #[derive(Error, Debug)]
 #[error(transparent)]

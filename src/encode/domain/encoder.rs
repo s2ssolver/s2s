@@ -11,7 +11,7 @@ use crate::{
         EncodingResult, LAMBDA,
     },
     instance::Instance,
-    sat::{as_lit, neg, pvar, Cnf},
+    sat::{plit, nlit, pvar, Cnf},
 };
 
 /// Encoder for the domains of all variables.
@@ -115,10 +115,10 @@ impl SubstitutionEncoder {
                     // If previous position is lambda, then so is this one
                     if b > 0 {
                         let clause = vec![
-                            neg(subs.get(str_var, b - 1, LAMBDA).unwrap_or_else(|| {
+                            nlit(subs.get(str_var, b - 1, LAMBDA).unwrap_or_else(|| {
                                 panic!("{:?}[{}] = {} undefined", str_var, b - 1, LAMBDA)
                             })),
-                            as_lit(subvar_lambda),
+                            plit(subvar_lambda),
                         ];
                         cnf.push(clause);
                     }
@@ -243,7 +243,7 @@ impl IntegerEncoder {
                 len_choices.push(choice);
                 // Deactive this lenght if it is less than the lower bound
                 if len < lower {
-                    res.add_clause(vec![neg(choice)]);
+                    res.add_clause(vec![nlit(choice)]);
                 }
                 encoding.int.insert(str_len_var.clone(), len, choice);
                 // If the variable has this length, then only lambdas follow, and no lambdas precede
@@ -253,14 +253,14 @@ impl IntegerEncoder {
                             .string()
                             .get(str_var, len as usize, LAMBDA)
                             .unwrap();
-                        res.add_clause(vec![neg(choice), as_lit(lambda_suffix)]);
+                        res.add_clause(vec![nlit(choice), plit(lambda_suffix)]);
                     }
                     if len > 0 {
                         let not_lambda_prefix = encoding
                             .string()
                             .get(str_var, len as usize - 1, LAMBDA)
                             .unwrap();
-                        res.add_clause(vec![neg(choice), neg(not_lambda_prefix)]);
+                        res.add_clause(vec![nlit(choice), nlit(not_lambda_prefix)]);
                     }
                 }
             }
@@ -296,7 +296,7 @@ mod tests {
             LAMBDA,
         },
         instance::Instance,
-        sat::as_lit,
+        sat::plit,
     };
 
     use super::SubstitutionEncoder;
@@ -444,7 +444,7 @@ mod tests {
                 );
             }
             for (var, pos, chr, v) in domain_encoding.string().iter() {
-                if let Some(true) = solver.value(as_lit(*v)) {
+                if let Some(true) = solver.value(plit(*v)) {
                     let sub = subs.get_mut(var).unwrap();
                     // This could be more efficient by going over the positions only once, however, this way we can check for invalid substitutions
                     assert!(

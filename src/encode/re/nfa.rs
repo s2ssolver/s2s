@@ -23,7 +23,7 @@ use crate::{
         constraints::{RegularConstraint, RegularConstraintType, Symbol},
         Variable,
     },
-    sat::{as_lit, neg, pvar, PVar},
+    sat::{plit, nlit, pvar, PVar},
 };
 
 const NFA_NOT_EPSILON_FREE_MSG: &str = "NFA must be epsilon-free";
@@ -68,11 +68,11 @@ impl NFAEncoder {
             for state in self.nfa.states() {
                 if Some(state) == self.nfa.initial() {
                     // Initial state is reachable after reading 0 characters
-                    res.add_clause(vec![as_lit(self.reach_vars[&(state, 0)])]);
+                    res.add_clause(vec![plit(self.reach_vars[&(state, 0)])]);
                 } else {
                     // All other states are not reachable after reading 0 characters
 
-                    res.add_clause(vec![neg(self.reach_vars[&(state, 0)])]);
+                    res.add_clause(vec![nlit(self.reach_vars[&(state, 0)])]);
                 }
             }
             res
@@ -100,14 +100,14 @@ impl NFAEncoder {
                         TransitionType::Symbol(c) => {
                             // Follow transition if we read the given character
                             let sub_var = dom.string().get(&self.var, l, *c).unwrap();
-                            let clause = vec![neg(reach_var), neg(sub_var), as_lit(reach_next)];
+                            let clause = vec![nlit(reach_var), nlit(sub_var), plit(reach_next)];
                             res.add_clause(clause);
                         }
                         TransitionType::Range(lb, ub) => {
                             // Follow transition if we read a character in the given range
                             for c in *lb..=*ub {
                                 let sub_var = dom.string().get(&self.var, l, c).unwrap();
-                                let clause = vec![neg(reach_var), neg(sub_var), as_lit(reach_next)];
+                                let clause = vec![nlit(reach_var), nlit(sub_var), plit(reach_next)];
                                 res.add_clause(clause);
                             }
                         }
@@ -115,7 +115,7 @@ impl NFAEncoder {
                             // Follow transition if we do not read lambda
                             let lambda_sub_var = dom.string().get(&self.var, l, LAMBDA).unwrap();
                             let clause =
-                                vec![neg(reach_var), as_lit(lambda_sub_var), as_lit(reach_next)];
+                                vec![nlit(reach_var), plit(lambda_sub_var), plit(reach_next)];
                             res.add_clause(clause);
                         }
                         TransitionType::Epsilon => {
@@ -128,7 +128,7 @@ impl NFAEncoder {
                 // Allow lambda self-transitions
                 let reach_next = self.reach_vars[&(state, l + 1)];
                 let lambda_sub_var = dom.string().get(&self.var, l, LAMBDA).unwrap();
-                let clause = vec![neg(reach_var), neg(lambda_sub_var), as_lit(reach_next)];
+                let clause = vec![nlit(reach_var), nlit(lambda_sub_var), plit(reach_next)];
                 res.add_clause(clause);
             }
         }
@@ -146,35 +146,35 @@ impl NFAEncoder {
         for l in last_bound..=bound {
             for state in self.nfa.states() {
                 let reach_var = self.reach_vars[&(state, l)];
-                let mut alo_clause = vec![neg(reach_var)];
+                let mut alo_clause = vec![nlit(reach_var)];
 
                 for pred in self.nfa.predecessors_for(&state)? {
                     let reach_prev = self.reach_vars[&(pred.get_dest(), l - 1)];
                     // Tseitin on-the-fly
                     let def_var = pvar();
-                    alo_clause.push(as_lit(def_var));
+                    alo_clause.push(plit(def_var));
                     match pred.get_type() {
                         TransitionType::Symbol(c) => {
                             // Is predecessor if we read the given character
                             let sub_var = dom.string().get(&self.var, l - 1, *c).unwrap();
-                            res.add_clause(vec![neg(def_var), as_lit(reach_prev)]);
-                            res.add_clause(vec![neg(def_var), as_lit(sub_var)]);
+                            res.add_clause(vec![nlit(def_var), plit(reach_prev)]);
+                            res.add_clause(vec![nlit(def_var), plit(sub_var)]);
                         }
                         TransitionType::Range(lb, ub) => {
                             // Is predecessor if we read a character in the given range
-                            res.add_clause(vec![neg(def_var), as_lit(reach_prev)]);
-                            let mut range_clause = vec![neg(def_var)];
+                            res.add_clause(vec![nlit(def_var), plit(reach_prev)]);
+                            let mut range_clause = vec![nlit(def_var)];
                             for c in *lb..=*ub {
                                 let sub_var = dom.string().get(&self.var, l - 1, c).unwrap();
-                                range_clause.push(as_lit(sub_var));
+                                range_clause.push(plit(sub_var));
                             }
                             res.add_clause(range_clause);
                         }
                         TransitionType::Any => {
                             // Is predecessor if we do not read lambda
                             let sub_var = dom.string().get(&self.var, l - 1, LAMBDA).unwrap();
-                            res.add_clause(vec![neg(def_var), as_lit(reach_prev)]);
-                            res.add_clause(vec![neg(def_var), neg(sub_var)]);
+                            res.add_clause(vec![nlit(def_var), plit(reach_prev)]);
+                            res.add_clause(vec![nlit(def_var), nlit(sub_var)]);
                         }
                         TransitionType::Epsilon => {
                             return Err(Error::EncodingError(NFA_NOT_EPSILON_FREE_MSG.to_string()))
@@ -186,9 +186,9 @@ impl NFAEncoder {
                 let reach_prev = self.reach_vars[&(state, l - 1)];
                 let lambda_sub_var = dom.string().get(&self.var, l - 1, LAMBDA).unwrap();
                 let def_var = pvar();
-                alo_clause.push(as_lit(def_var));
-                res.add_clause(vec![neg(def_var), as_lit(reach_prev)]);
-                res.add_clause(vec![neg(def_var), as_lit(lambda_sub_var)]);
+                alo_clause.push(plit(def_var));
+                res.add_clause(vec![nlit(def_var), plit(reach_prev)]);
+                res.add_clause(vec![nlit(def_var), plit(lambda_sub_var)]);
 
                 res.add_clause(alo_clause);
             }
@@ -209,10 +209,10 @@ impl NFAEncoder {
         let mut res = EncodingResult::empty();
         let selector = self.bound_selector.unwrap();
 
-        let mut clause = vec![neg(selector)];
+        let mut clause = vec![nlit(selector)];
         for qf in self.nfa.finals() {
             let reach_var = self.reach_vars[&(*qf, bound)];
-            clause.push(as_lit(reach_var));
+            clause.push(plit(reach_var));
         }
         res.add_clause(clause);
         res
@@ -224,7 +224,7 @@ impl NFAEncoder {
 
         for qf in self.nfa.finals() {
             let reach_var = self.reach_vars[&(*qf, bound)];
-            res.add_clause(vec![neg(selector), neg(reach_var)]);
+            res.add_clause(vec![nlit(selector), nlit(reach_var)]);
         }
 
         res
@@ -259,7 +259,7 @@ impl ConstraintEncoder for NFAEncoder {
         if Some(bound) == self.last_bound {
             log::trace!("Upper bound did not change, skipping encoding");
             if let Some(s) = self.bound_selector {
-                return Ok(EncodingResult::assumption(as_lit(s)));
+                return Ok(EncodingResult::assumption(plit(s)));
             } else {
                 return Ok(EncodingResult::Trivial(true));
             }
@@ -269,7 +269,7 @@ impl ConstraintEncoder for NFAEncoder {
         // Create new selector for this bound
         let selector = pvar();
         self.bound_selector = Some(selector);
-        res.add_assumption(as_lit(selector));
+        res.add_assumption(plit(selector));
         // Create reachability vars for this bound
         self.create_reach_vars(bound);
 

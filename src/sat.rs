@@ -4,14 +4,7 @@ use std::sync::atomic::{AtomicU32, Ordering};
 
 use indexmap::IndexMap;
 
-use crate::{
-    error::Error,
-    instance::Instance,
-    model::{
-        formula::{Atom, Literal, NNFFormula},
-        Sort, Variable,
-    },
-};
+use crate::instance::Instance;
 
 /// A global counter for propositional variables.
 /// The counter is used to generate new propositional variables.
@@ -22,15 +15,33 @@ static PVAR_COUNTER: AtomicU32 = AtomicU32::new(1);
 pub type PVar = u32;
 /// A propositional literal, i.e., a variable or its negation
 pub type PLit = i32;
+
+/// A propositional formula in negation normal form
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub enum PFormula {
+    And(Vec<PFormula>),
+    Or(Vec<PFormula>),
+    Lit(PLit),
+}
+impl PFormula {
+    pub fn plit(var: PVar) -> Self {
+        PFormula::Lit(plit(var))
+    }
+
+    pub fn nlit(var: PVar) -> Self {
+        PFormula::Lit(nlit(var))
+    }
+}
+
 /// A clause, i.e., a disjunction of literals
 pub type Clause = Vec<PLit>;
 /// A formula in conjunctive normal form, i.e., a conjunction of clauses
 pub type Cnf = Vec<Clause>;
 
-pub fn neg(var: PVar) -> PLit {
-    -as_lit(var)
+pub fn nlit(var: PVar) -> PLit {
+    -plit(var)
 }
-pub fn as_lit(var: PVar) -> PLit {
+pub fn plit(var: PVar) -> PLit {
     var as i32
 }
 
@@ -59,57 +70,48 @@ pub fn pvar() -> PVar {
 /// - the formula contains a variable that is mapped to a propositional variable of a different sort
 /// - the formula is not propositional
 /// - the formula is not in negation normal form
-pub fn to_cnf(formula: &NNFFormula, instance: &mut Instance) -> Result<Cnf, Error> {
+pub fn to_cnf(formula: &PFormula, instance: &mut Instance) -> Cnf {
     fn maincnf(
-        fm: &NNFFormula,
-        defs: &mut IndexMap<NNFFormula, Variable>,
+        fm: &PFormula,
+        defs: &mut IndexMap<PFormula, PVar>,
         instance: &mut Instance,
-    ) -> Result<NNFFormula, Error> {
+    ) -> PFormula {
         match fm {
-            NNFFormula::And(fs) | NNFFormula::Or(fs) => {
+            PFormula::And(fs) | PFormula::Or(fs) => {
                 if fs.len() == 1 {
                     maincnf(&fs[0], defs, instance)
                 } else {
                     defstep(fm, defs, instance)
                 }
             }
-            NNFFormula::Literal(lit) => {
-                if matches!(lit.atom(), Atom::BoolVar(_)) {
-                    Ok(fm.clone())
-                } else {
-                    Err(Error::EncodingError(
-                        "Formula not propositional".to_string(),
-                    ))
-                }
-            }
+            PFormula::Lit(_) => fm.clone(),
         }
     }
 
     fn defstep(
-        fm: &NNFFormula,
-        defs: &mut IndexMap<NNFFormula, Variable>,
+        fm: &PFormula,
+        defs: &mut IndexMap<PFormula, PVar>,
         instance: &mut Instance,
-    ) -> Result<NNFFormula, Error> {
+    ) -> PFormula {
         match fm {
-            NNFFormula::And(fs) | NNFFormula::Or(fs) => {
+            PFormula::And(fs) | PFormula::Or(fs) => {
                 let mut res = Vec::with_capacity(fs.len());
                 for f in fs {
-                    res.push(maincnf(f, defs, instance)?);
+                    res.push(maincnf(f, defs, instance));
                 }
-                let res_fm = if matches!(fm, NNFFormula::And(_)) {
-                    NNFFormula::And(res)
-                } else if matches!(fm, NNFFormula::Or(_)) {
-                    NNFFormula::Or(res)
+                let res_fm = if matches!(fm, PFormula::And(_)) {
+                    PFormula::And(res)
+                } else if matches!(fm, PFormula::Or(_)) {
+                    PFormula::Or(res)
                 } else {
                     unreachable!()
                 };
                 match defs.get(&res_fm) {
-                    Some(v) => Ok(NNFFormula::boolvar(v.clone(), true)),
+                    Some(v) => PFormula::plit(*v),
                     None => {
-                        let v = Variable::temp(Sort::Bool);
-                        instance.add_var(v.clone());
-                        defs.insert(res_fm, v.clone());
-                        Ok(NNFFormula::boolvar(v, true))
+                        let v = pvar();
+                        defs.insert(res_fm, v);
+                        PFormula::plit(v)
                     }
                 }
             }
@@ -119,62 +121,36 @@ pub fn to_cnf(formula: &NNFFormula, instance: &mut Instance) -> Result<Cnf, Erro
 
     let mut defs = IndexMap::new();
 
-    let res: NNFFormula = maincnf(formula, &mut defs, instance)?;
-    let mut cnf = cnf_to_clause(&res);
-    // TODO: Move to function `cnf_to_clauses(fm: &Formula) -> Result<Cnf, Error>`
+    let res: PFormula = maincnf(formula, &mut defs, instance);
+    let mut cnf = cnf_to_clauses(&res);
 
     // Add definitional clauses
-    for (f, d) in defs {
-        let def_var = if let Variable::Bool { value, .. } = d {
-            value
-        } else {
-            unreachable!()
-        };
+    for (f, def_var) in defs {
         match f {
-            NNFFormula::Or(fs) => {
+            PFormula::Or(fs) => {
                 // d -> \/fs and \/fs -> d
                 let mut clause = Vec::with_capacity(fs.len() + 1);
-                clause.push(neg(def_var));
+                clause.push(nlit(def_var));
                 for f in fs {
                     match f {
-                        NNFFormula::Literal(Literal::Pos(Atom::BoolVar(Variable::Bool {
-                            value,
-                            ..
-                        }))) => {
-                            clause.push(as_lit(value));
-                            cnf.push(vec![neg(value), as_lit(def_var)]);
-                        }
-                        NNFFormula::Literal(Literal::Neg(Atom::BoolVar(Variable::Bool {
-                            value,
-                            ..
-                        }))) => {
-                            clause.push(neg(value));
-                            cnf.push(vec![as_lit(value), as_lit(def_var)]);
+                        PFormula::Lit(val) => {
+                            clause.push(val);
+                            cnf.push(vec![-val, plit(def_var)]);
                         }
                         _ => unreachable!(),
                     }
                 }
                 cnf.push(clause)
             }
-            NNFFormula::And(fs) => {
+            PFormula::And(fs) => {
                 // d -> /\fs and /\fs -> d
                 let mut clause = Vec::with_capacity(fs.len() + 1);
-                clause.push(as_lit(def_var));
+                clause.push(plit(def_var));
                 for f in fs {
                     match f {
-                        NNFFormula::Literal(Literal::Pos(Atom::BoolVar(Variable::Bool {
-                            value,
-                            ..
-                        }))) => {
-                            clause.push(neg(value));
-                            cnf.push(vec![neg(def_var), as_lit(value)]);
-                        }
-                        NNFFormula::Literal(Literal::Neg(Atom::BoolVar(Variable::Bool {
-                            value,
-                            ..
-                        }))) => {
-                            clause.push(as_lit(value));
-                            cnf.push(vec![neg(def_var), neg(value)]);
+                        PFormula::Lit(val) => {
+                            clause.push(-val);
+                            cnf.push(vec![nlit(def_var), val]);
                         }
                         _ => unreachable!(),
                     }
@@ -184,64 +160,41 @@ pub fn to_cnf(formula: &NNFFormula, instance: &mut Instance) -> Result<Cnf, Erro
             _ => unreachable!(),
         }
     }
-    Ok(cnf)
+    cnf
 }
 
 /// Converts a formula in conjunctive normal form to a [Clause].
 /// Panics if the formula is not in conjunctive normal form.
-fn cnf_to_clause(fm: &NNFFormula) -> Cnf {
+fn cnf_to_clauses(fm: &PFormula) -> Cnf {
     let mut cnf = Cnf::new();
+
+    fn to_clause(lits: &[PFormula]) -> Clause {
+        lits.iter()
+            .map(|f| match f {
+                PFormula::Lit(val) => *val,
+                _ => panic!("Not a CNF formula"),
+            })
+            .collect()
+    }
+
     match fm {
-        NNFFormula::Literal(Literal::Neg(Atom::False))
-        | NNFFormula::Literal(Literal::Pos(Atom::True)) => (),
-        NNFFormula::Literal(Literal::Pos(Atom::False))
-        | NNFFormula::Literal(Literal::Neg(Atom::True)) => cnf.push(vec![]),
-        NNFFormula::Literal(Literal::Pos(a)) => match a {
-            Atom::BoolVar(Variable::Bool { value, .. }) => {
-                cnf.push(vec![as_lit(*value)]);
-            }
-            Atom::True => (),
-            Atom::False => cnf.push(vec![]),
-            _ => unreachable!(),
-        },
-        NNFFormula::Literal(Literal::Neg(a)) => match a {
-            Atom::BoolVar(Variable::Bool { value, .. }) => {
-                cnf.push(vec![neg(*value)]);
-            }
-            Atom::True => cnf.push(vec![]),
-            Atom::False => (),
-            _ => unreachable!(),
-        },
-        NNFFormula::Or(fs) => {
-            let mut clause = Vec::with_capacity(fs.len());
-            for f in fs {
-                match f {
-                    NNFFormula::Literal(Literal::Pos(Atom::BoolVar(Variable::Bool {
-                        value,
-                        ..
-                    }))) => clause.push(as_lit(*value)),
-                    NNFFormula::Literal(Literal::Neg(Atom::BoolVar(Variable::Bool {
-                        value,
-                        ..
-                    }))) => clause.push(neg(*value)),
-                    _ => panic!("Not a CNF formula"),
-                }
-            }
-            cnf.push(clause);
+        PFormula::Lit(v) => cnf.push(vec![*v]),
+        PFormula::Or(fs) => {
+            cnf.push(to_clause(fs));
         }
-        NNFFormula::And(fs) => {
+        PFormula::And(fs) => {
             for f in fs {
                 match f {
-                    NNFFormula::Literal(Literal::Pos(Atom::BoolVar(Variable::Bool {
-                        value,
-                        ..
-                    }))) => cnf.push(vec![as_lit(*value)]),
-                    NNFFormula::Literal(Literal::Neg(Atom::BoolVar(Variable::Bool {
-                        value,
-                        ..
-                    }))) => cnf.push(vec![neg(*value)]),
-                    NNFFormula::Or(_) => cnf.extend(cnf_to_clause(f)),
-                    _ => panic!("Not a CNF formula"),
+                    PFormula::And(fs) => {
+                        for f in fs {
+                            let subcnf = cnf_to_clauses(f);
+                            cnf.extend(subcnf);
+                        }
+                    }
+                    PFormula::Or(fs) => {
+                        cnf.push(to_clause(fs));
+                    }
+                    PFormula::Lit(l) => cnf.push(vec![*l]),
                 }
             }
         }
@@ -273,51 +226,30 @@ mod tests {
     fn test_neg() {
         let v = pvar();
 
-        assert_eq!(neg(v), -(v as i32));
+        assert_eq!(nlit(v), -(v as i32));
     }
 
     #[test]
     fn test_as_lit() {
         let v = pvar();
-        assert_eq!(as_lit(v), v as i32);
+        assert_eq!(plit(v), v as i32);
     }
 
     #[test]
     fn test_cnf_to_clause1() {
         // (A || B) && (!C || D || E)
-        let fm = NNFFormula::And(vec![
-            NNFFormula::Or(vec![
-                NNFFormula::Literal(Literal::Pos(Atom::BoolVar(Variable::Bool {
-                    value: 1,
-                    name: "1".to_string(),
-                }))),
-                NNFFormula::Literal(Literal::Pos(Atom::BoolVar(Variable::Bool {
-                    value: 2,
-                    name: "2".to_string(),
-                }))),
-            ]),
-            NNFFormula::Or(vec![
-                NNFFormula::Literal(Literal::Neg(Atom::BoolVar(Variable::Bool {
-                    value: 3,
-                    name: "3".to_string(),
-                }))),
-                NNFFormula::Literal(Literal::Pos(Atom::BoolVar(Variable::Bool {
-                    value: 4,
-                    name: "4".to_string(),
-                }))),
-                NNFFormula::Literal(Literal::Pos(Atom::BoolVar(Variable::Bool {
-                    value: 5,
-                    name: "5".to_string(),
-                }))),
+        let fm = PFormula::And(vec![
+            PFormula::Or(vec![PFormula::plit(1), PFormula::plit(2)]),
+            PFormula::Or(vec![
+                PFormula::nlit(3),
+                PFormula::plit(4),
+                PFormula::plit(5),
             ]),
         ]);
 
-        let expected_cnf = vec![
-            vec![as_lit(1), as_lit(2)],
-            vec![neg(3), as_lit(4), as_lit(5)],
-        ];
+        let expected_cnf = vec![vec![plit(1), plit(2)], vec![nlit(3), plit(4), plit(5)]];
 
-        assert_eq!(cnf_to_clause(&fm), expected_cnf);
+        assert_eq!(cnf_to_clauses(&fm), expected_cnf);
     }
 
     #[test]
@@ -325,68 +257,32 @@ mod tests {
     fn test_cnf_to_clause_not_cnf() {
         // Test case 2: CNF formula with base cases
         // (!F) && (A && B)
-        let fm = NNFFormula::And(vec![
-            NNFFormula::Literal(Literal::Neg(Atom::BoolVar(Variable::Bool {
-                value: 1,
-                name: "1".to_string(),
-            }))),
-            NNFFormula::And(vec![
-                NNFFormula::Literal(Literal::Pos(Atom::BoolVar(Variable::Bool {
-                    value: 2,
-                    name: "2".to_string(),
-                }))),
-                NNFFormula::Literal(Literal::Pos(Atom::BoolVar(Variable::Bool {
-                    value: 3,
-                    name: "3".to_string(),
-                }))),
-            ]),
+        let fm = PFormula::And(vec![
+            PFormula::nlit(1),
+            PFormula::And(vec![PFormula::plit(2), PFormula::plit(3)]),
         ]);
 
-        cnf_to_clause(&fm);
+        cnf_to_clauses(&fm);
     }
 
     #[test]
     fn test_cnf_to_clause_with_base() {
         // CNF formula with base cases
         // (A || B) /\ (C || D) /\ (!E) && (!F)
-        let fm = NNFFormula::And(vec![
-            NNFFormula::Or(vec![
-                NNFFormula::Literal(Literal::Pos(Atom::BoolVar(Variable::Bool {
-                    value: 1,
-                    name: "1".to_string(),
-                }))),
-                NNFFormula::Literal(Literal::Pos(Atom::BoolVar(Variable::Bool {
-                    value: 2,
-                    name: "2".to_string(),
-                }))),
-            ]),
-            NNFFormula::Or(vec![
-                NNFFormula::Literal(Literal::Pos(Atom::BoolVar(Variable::Bool {
-                    value: 3,
-                    name: "3".to_string(),
-                }))),
-                NNFFormula::Literal(Literal::Pos(Atom::BoolVar(Variable::Bool {
-                    value: 4,
-                    name: "4".to_string(),
-                }))),
-            ]),
-            NNFFormula::Literal(Literal::Neg(Atom::BoolVar(Variable::Bool {
-                value: 5,
-                name: "5".to_string(),
-            }))),
-            NNFFormula::Literal(Literal::Neg(Atom::BoolVar(Variable::Bool {
-                value: 6,
-                name: "6".to_string(),
-            }))),
+        let fm = PFormula::And(vec![
+            PFormula::Or(vec![PFormula::plit(1), PFormula::plit(2)]),
+            PFormula::Or(vec![PFormula::plit(3), PFormula::plit(4)]),
+            PFormula::nlit(5),
+            PFormula::nlit(6),
         ]);
 
         let expected_cnf = vec![
-            vec![as_lit(1), as_lit(2)],
-            vec![as_lit(3), as_lit(4)],
-            vec![neg(5)],
-            vec![neg(6)],
+            vec![plit(1), plit(2)],
+            vec![plit(3), plit(4)],
+            vec![nlit(5)],
+            vec![nlit(6)],
         ];
 
-        assert_eq!(cnf_to_clause(&fm), expected_cnf);
+        assert_eq!(cnf_to_clauses(&fm), expected_cnf);
     }
 }

@@ -11,7 +11,7 @@ use crate::encode::{ConstraintEncoder, EncodingResult, FilledPattern, LAMBDA};
 use crate::error::Error;
 use crate::model::constraints::{Pattern, Symbol, WordEquation};
 use crate::model::Variable;
-use crate::sat::{as_lit, neg, pvar, Cnf, PVar};
+use crate::sat::{plit, nlit, pvar, Cnf, PVar};
 use indexmap::{indexset, IndexMap};
 
 /// A segment of a pattern, i.e., a string constant or a variable.
@@ -173,8 +173,8 @@ impl WordEncoder {
             if pos > 0 {
                 let last_lambda = self.char_at(pos - 1, LAMBDA);
                 res.join(EncodingResult::cnf(vec![vec![
-                    neg(last_lambda),
-                    as_lit(v_lambda),
+                    nlit(last_lambda),
+                    plit(v_lambda),
                 ]]));
             }
         }
@@ -389,9 +389,9 @@ impl AlignmentEncoder {
             let var = self.start_position(0, pos, side);
             if pos == 0 {
                 // Segment 0 must start at position 0, and at no other position
-                res.add_clause(vec![as_lit(var)]);
+                res.add_clause(vec![plit(var)]);
             } else {
-                res.add_clause(vec![neg(var)]);
+                res.add_clause(vec![nlit(var)]);
             }
         }
 
@@ -404,7 +404,7 @@ impl AlignmentEncoder {
             for p in last_bound..segments.prefix_min_len(i, bounds) {
                 if p < self.bound {
                     let var = self.start_position(i, p, side);
-                    res.add_clause(vec![neg(var)]);
+                    res.add_clause(vec![nlit(var)]);
                 }
             }
 
@@ -448,14 +448,14 @@ impl AlignmentEncoder {
 
                                         let succ = self.start_position(i + 1, pos + len, side);
 
-                                        res.add_clause(vec![neg(svar), neg(len_var), as_lit(succ)]);
+                                        res.add_clause(vec![nlit(svar), nlit(len_var), plit(succ)]);
                                     } else {
                                         // Still not viable, disable again
                                         let selector = self.bound_selector.unwrap();
                                         res.add_clause(vec![
-                                            neg(selector),
-                                            neg(svar),
-                                            neg(len_var),
+                                            nlit(selector),
+                                            nlit(svar),
+                                            nlit(len_var),
                                         ]);
                                     }
                                 }
@@ -470,12 +470,12 @@ impl AlignmentEncoder {
                             {
                                 let succ = self.start_position(i + 1, pos + len, side);
 
-                                res.add_clause(vec![neg(svar), neg(len_var), as_lit(succ)]);
+                                res.add_clause(vec![nlit(svar), nlit(len_var), plit(succ)]);
                             } else {
                                 // Cannot start here with length l with current bound
                                 let selector = self.bound_selector.unwrap();
 
-                                res.add_clause(vec![neg(selector), neg(svar), neg(len_var)]);
+                                res.add_clause(vec![nlit(selector), nlit(svar), nlit(len_var)]);
                             }
                         }
                     }
@@ -499,10 +499,10 @@ impl AlignmentEncoder {
                                         .saturating_sub(segments.suffix_min_len(i, bounds))
                                 {
                                     let succ = self.start_position(i + 1, pos + len, side);
-                                    res.add_clause(vec![neg(svar), as_lit(succ)]);
+                                    res.add_clause(vec![nlit(svar), plit(succ)]);
                                 } else {
                                     // Still not viable, disable again
-                                    res.add_assumption(neg(svar));
+                                    res.add_assumption(nlit(svar));
                                 }
                             }
                             // Does not extend over the last bound, so we already encoded it and can continue
@@ -517,11 +517,11 @@ impl AlignmentEncoder {
                             // S_i^p /\ len_var -> S_{i+1}^(p+len)
                             let succ = self.start_position(i + 1, pos + len, side);
 
-                            res.add_clause(vec![neg(svar), as_lit(succ)]);
+                            res.add_clause(vec![nlit(svar), plit(succ)]);
                         } else {
                             // Cannot start here. Deactivate by means of an assumption, as we might be able to activate it later, when the bound increases
 
-                            res.add_assumption(neg(svar));
+                            res.add_assumption(nlit(svar));
                         }
                     }
                 }
@@ -553,7 +553,7 @@ impl AlignmentEncoder {
                             let svar = self.start_position(i, pos, side);
 
                             let clause =
-                                vec![neg(self.bound_selector.unwrap()), neg(svar), neg(lenvar)];
+                                vec![nlit(self.bound_selector.unwrap()), nlit(svar), nlit(lenvar)];
 
                             clauses.push(clause);
                         }
@@ -564,7 +564,7 @@ impl AlignmentEncoder {
                 for pos in start_pos..self.bound {
                     if pos + w.len() > self.bound {
                         let svar = self.start_position(i, pos, side);
-                        assumptions.insert(neg(svar));
+                        assumptions.insert(nlit(svar));
                     }
                 }
             }
@@ -618,26 +618,26 @@ impl AlignmentEncoder {
                                             let cand_c = word.char_at(p, *c);
                                             let sub_c = subs.get(x, 0, *c).unwrap();
                                             clauses.push(vec![
-                                                neg(m_var),
-                                                neg(cand_c),
-                                                as_lit(sub_c),
+                                                nlit(m_var),
+                                                nlit(cand_c),
+                                                plit(sub_c),
                                             ]);
                                             clauses.push(vec![
-                                                neg(m_var),
-                                                as_lit(cand_c),
-                                                neg(sub_c),
+                                                nlit(m_var),
+                                                plit(cand_c),
+                                                nlit(sub_c),
                                             ]);
                                         }
                                         clauses.push(vec![
-                                            neg(start_var),
-                                            neg(len_var),
-                                            as_lit(m_var),
+                                            nlit(start_var),
+                                            nlit(len_var),
+                                            plit(m_var),
                                         ]);
                                     }
                                     n if n > 1 => {
                                         let m_var = pvar();
                                         let pred_m_var = self.var_matches[&(x.clone(), p, l - 1)];
-                                        clauses.push(vec![neg(m_var), as_lit(pred_m_var)]);
+                                        clauses.push(vec![nlit(m_var), plit(pred_m_var)]);
                                         self.var_matches.insert((x.clone(), p, l), m_var);
                                         // Cache this with variable
                                         // I.e., match(x[l-1], cand[p+l-1]) -> EX c. such that they match
@@ -653,14 +653,14 @@ impl AlignmentEncoder {
                                                     let cand_c = word.char_at(p + (l - 1), *c);
                                                     let sub_c = subs.get(x, l - 1, *c).unwrap();
                                                     clauses.push(vec![
-                                                        neg(mv),
-                                                        neg(cand_c),
-                                                        as_lit(sub_c),
+                                                        nlit(mv),
+                                                        nlit(cand_c),
+                                                        plit(sub_c),
                                                     ]);
                                                     clauses.push(vec![
-                                                        neg(mv),
-                                                        as_lit(cand_c),
-                                                        neg(sub_c),
+                                                        nlit(mv),
+                                                        plit(cand_c),
+                                                        nlit(sub_c),
                                                     ]);
                                                 }
                                                 self.var_cand_match_cache
@@ -669,12 +669,12 @@ impl AlignmentEncoder {
                                             }
                                         };
 
-                                        clauses.push(vec![neg(m_var), as_lit(mv)]);
+                                        clauses.push(vec![nlit(m_var), plit(mv)]);
 
                                         clauses.push(vec![
-                                            neg(start_var),
-                                            neg(len_var),
-                                            as_lit(m_var),
+                                            nlit(start_var),
+                                            nlit(len_var),
+                                            plit(m_var),
                                         ]);
                                     }
                                     _ => {}
@@ -688,7 +688,7 @@ impl AlignmentEncoder {
                             // If variable is assigned length l, then the position x[l] (and implicitly all following) must be lambda
                             let sub_lambda = subs.get(x, l, LAMBDA).unwrap();
 
-                            clauses.push(vec![neg(len_var), as_lit(sub_lambda)]);
+                            clauses.push(vec![nlit(len_var), plit(sub_lambda)]);
                         }
                     }
                 }
@@ -714,7 +714,7 @@ impl AlignmentEncoder {
 
                         for (k, c) in w.iter().enumerate() {
                             let cand_var = word.char_at(p + k, *c);
-                            clauses.push(vec![neg(start_var), as_lit(cand_var)]);
+                            clauses.push(vec![nlit(start_var), plit(cand_var)]);
                         }
                     }
                 }
@@ -755,7 +755,7 @@ impl AlignmentEncoder {
                             let len_var = dom.int().get(&x.len_var().unwrap(), l as isize).unwrap();
                             let cand_var = word.char_at(p + l, LAMBDA);
 
-                            clauses.push(vec![neg(start_var), neg(len_var), as_lit(cand_var)]);
+                            clauses.push(vec![nlit(start_var), nlit(len_var), plit(cand_var)]);
                         }
                     }
                 }
@@ -767,7 +767,7 @@ impl AlignmentEncoder {
                     if p + w.len() >= last_bound && p + w.len() < self.bound {
                         let start_var = self.start_position(last, p, side);
                         let cand_var = word.char_at(p + w.len(), LAMBDA);
-                        clauses.push(vec![neg(start_var), as_lit(cand_var)]);
+                        clauses.push(vec![nlit(start_var), plit(cand_var)]);
                     }
                 }
             }
@@ -790,12 +790,12 @@ impl AlignmentEncoder {
             for c in dom.alphabet() {
                 let lhs_c = lhs.char_at(b, *c);
                 let rhs_c = rhs.char_at(b, *c);
-                result.add_clause(vec![neg(v), neg(lhs_c), neg(rhs_c)]);
+                result.add_clause(vec![nlit(v), nlit(lhs_c), nlit(rhs_c)]);
             }
             let lhs_lambda = lhs.char_at(b, LAMBDA);
             let rhs_lambda = rhs.char_at(b, LAMBDA);
 
-            result.add_clause(vec![neg(v), neg(lhs_lambda), neg(rhs_lambda)]);
+            result.add_clause(vec![nlit(v), nlit(lhs_lambda), nlit(rhs_lambda)]);
         }
 
         result.join(self.mismatch_alo.add(&new_mismatch_selectors));
@@ -840,7 +840,7 @@ impl ConstraintEncoder for AlignmentEncoder {
             }
             if same_bounds {
                 if let Some(v) = self.bound_selector {
-                    res.add_assumption(as_lit(v));
+                    res.add_assumption(plit(v));
                 }
                 log::trace!("Bound did not change, returning assumption from previous round",);
                 return Ok(res);
@@ -849,14 +849,14 @@ impl ConstraintEncoder for AlignmentEncoder {
 
         if let Some(v) = self.bound_selector {
             // Deactivate all clauses that were only valid for the previous bound
-            res.join(EncodingResult::cnf(vec![vec![neg(v)]]));
+            res.join(EncodingResult::cnf(vec![vec![nlit(v)]]));
         }
         self.bound = bound;
 
         // New selector for this round
         let selector = pvar();
         self.bound_selector = Some(selector);
-        res.add_assumption(as_lit(selector));
+        res.add_assumption(plit(selector));
 
         // Encode the candidates
         let cand_enc = self.candidates.encode(bound, substitution);
@@ -949,10 +949,10 @@ impl ConstraintEncoder for AlignmentEncoder {
         let mut rhs_sol = String::new();
         for pos in 0..self.bound {
             for c in dom.alphabet() {
-                if let Some(true) = solver.value(as_lit(lhs.char_at(pos, *c))) {
+                if let Some(true) = solver.value(plit(lhs.char_at(pos, *c))) {
                     lhs_sol.push(*c);
                 }
-                if let Some(true) = solver.value(as_lit(rhs.char_at(pos, *c))) {
+                if let Some(true) = solver.value(plit(rhs.char_at(pos, *c))) {
                     rhs_sol.push(*c);
                 }
             }
@@ -963,14 +963,14 @@ impl ConstraintEncoder for AlignmentEncoder {
         println!(
             "\t Bound selector {} is {}",
             self.bound_selector.unwrap(),
-            solver.value(as_lit(self.bound_selector.unwrap())).unwrap()
+            solver.value(plit(self.bound_selector.unwrap())).unwrap()
         );
         println!("\tLHS POSITIONS:");
         for i in 0..self.segments(&EqSide::Lhs).length() {
             for p in 0..self.bound {
                 let v = self.start_position(i, p, &EqSide::Lhs);
 
-                if let Some(true) = solver.value(as_lit(v)) {
+                if let Some(true) = solver.value(plit(v)) {
                     println!(
                         "\t\t- {} starts at {} ({})",
                         self.segments(&EqSide::Lhs).segments[i],
@@ -984,7 +984,7 @@ impl ConstraintEncoder for AlignmentEncoder {
         for i in 0..self.segments(&EqSide::Rhs).length() {
             for p in 0..self.bound {
                 let v = self.start_position(i, p, &EqSide::Rhs);
-                if let Some(true) = solver.value(as_lit(v)) {
+                if let Some(true) = solver.value(plit(v)) {
                     println!(
                         "\t\t- {} starts at {} ({})",
                         self.segments(&EqSide::Rhs).segments[i],
@@ -1001,7 +1001,7 @@ impl ConstraintEncoder for AlignmentEncoder {
             for l in 0..=self.last_var_bounds.as_ref().unwrap().get_upper(v).unwrap() {
                 let lvar = dom.int().get(v, l).unwrap();
 
-                if let Some(true) = solver.value(as_lit(lvar)) {
+                if let Some(true) = solver.value(plit(lvar)) {
                     println!("\t\t- |{}| = {} ({})", v, l, lvar);
                 }
             }
@@ -1135,7 +1135,7 @@ mod tests {
             for i in 0..encoder.segments(&EqSide::Rhs).length() {
                 for p in 0..encoder.bound {
                     let v = encoder.start_position(i, p, &EqSide::Rhs);
-                    if let Some(true) = solver.value(as_lit(v)) {
+                    if let Some(true) = solver.value(plit(v)) {
                         println!(
                             "{} starts at {}",
                             encoder.segments(&EqSide::Rhs).segments[i],
@@ -1150,7 +1150,7 @@ mod tests {
                 for l in 0..=bounds.get_upper(v).unwrap() {
                     let lvar = dom_encoder.encoding().int().get(v, l).unwrap();
 
-                    if let Some(true) = solver.value(as_lit(lvar)) {
+                    if let Some(true) = solver.value(plit(lvar)) {
                         println!("|{}| = {}", v, bounds.get_upper(v).unwrap());
                     }
                 }
@@ -1213,7 +1213,7 @@ mod tests {
             for i in 0..encoder.segments(&EqSide::Rhs).length() {
                 for p in 0..encoder.bound {
                     let v = encoder.start_position(i, p, &EqSide::Rhs);
-                    if let Some(true) = solver.value(as_lit(v)) {
+                    if let Some(true) = solver.value(plit(v)) {
                         println!(
                             "{} starts at {}",
                             encoder.segments(&EqSide::Rhs).segments[i],
@@ -1225,7 +1225,7 @@ mod tests {
             for i in 0..encoder.segments(&EqSide::Lhs).length() {
                 for p in 0..encoder.bound {
                     let v = encoder.start_position(i, p, &EqSide::Lhs);
-                    if let Some(true) = solver.value(as_lit(v)) {
+                    if let Some(true) = solver.value(plit(v)) {
                         println!(
                             "{} starts at {}",
                             encoder.segments(&EqSide::Lhs).segments[i],
@@ -1241,7 +1241,7 @@ mod tests {
                 for l in 0..=bounds.get_upper(v).unwrap() {
                     let lvar = dom_encoder.encoding().int().get(v, l).unwrap();
 
-                    if let Some(true) = solver.value(as_lit(lvar)) {
+                    if let Some(true) = solver.value(plit(lvar)) {
                         println!("|{}| = {}", v, bounds.get_upper(v).unwrap());
                     }
                 }
