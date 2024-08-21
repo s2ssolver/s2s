@@ -172,11 +172,11 @@ impl Display for Formula {
 }
 
 #[derive(Default)]
-pub struct FormulaBuilder {
+pub struct IrBuilder {
     registry: HashMap<AtomType, Rc<Atom>>,
 }
 
-impl FormulaBuilder {
+impl IrBuilder {
     fn register_atom(&mut self, atom: AtomType) -> Rc<Atom> {
         if let Some(atom) = self.registry.get(&atom) {
             return atom.clone();

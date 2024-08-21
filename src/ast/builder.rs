@@ -9,13 +9,13 @@ use super::{CoreExpr, ExprType, Expression, IntExpr, StrExpr, Variable};
 /// Two syntactically equal expressions created by different builders are not guaranteed to be equal.
 /// Thus, it is a logical error to compare expressions created by different builders.
 #[derive(Default)]
-pub struct ExpressionBuilder {
+pub struct AstBuilder {
     next_id: usize,
     fm_registry: HashMap<ExprType, Rc<Expression>>,
     re_buider: OptReBuilder,
 }
 
-impl ExpressionBuilder {
+impl AstBuilder {
     /// Interns an expression, ensuring it is unique.
     fn intern(&mut self, op: ExprType) -> Rc<Expression> {
         if let Some(existing) = self.fm_registry.get(&op) {
@@ -367,7 +367,7 @@ mod tests {
     fn test_var() {
         let mut ctx = Context::default();
         let var = ctx.new_var("x".to_string(), Sort::String).unwrap();
-        let mut builder = ExpressionBuilder::default();
+        let mut builder = AstBuilder::default();
 
         let expr = builder.var(var.clone());
         assert_eq!(*expr.get_type(), ExprType::Core(CoreExpr::Var(var)));
@@ -376,7 +376,7 @@ mod tests {
     #[test]
     fn test_not() {
         let mut ctx = Context::default();
-        let mut builder = ExpressionBuilder::default();
+        let mut builder = AstBuilder::default();
         let var = ctx.new_var("x".to_string(), Sort::String).unwrap();
 
         let expr = builder.var(var.clone());
@@ -387,7 +387,7 @@ mod tests {
     #[test]
     fn test_and() {
         let mut ctx = Context::default();
-        let mut builder = ExpressionBuilder::default();
+        let mut builder = AstBuilder::default();
         let var1 = ctx.new_var("x".to_string(), Sort::String).unwrap();
         let var2 = ctx.new_var("y".to_string(), Sort::String).unwrap();
         let expr1 = builder.var(var1.clone());
@@ -405,7 +405,7 @@ mod tests {
 
         let var1 = ctx.new_var("x".to_string(), Sort::String).unwrap();
         let var2 = ctx.new_var("y".to_string(), Sort::String).unwrap();
-        let mut builder = ExpressionBuilder::default();
+        let mut builder = AstBuilder::default();
         let expr1 = builder.var(var1.clone());
         let expr2 = builder.var(var2.clone());
         let or_expr = builder.or(vec![expr1.clone(), expr2.clone()]);
@@ -421,7 +421,7 @@ mod tests {
         let var1 = ctx.new_var("x".to_string(), Sort::String).unwrap();
         let var2 = ctx.new_var("y".to_string(), Sort::String).unwrap();
 
-        let mut builder = ExpressionBuilder::default();
+        let mut builder = AstBuilder::default();
         let expr1 = builder.var(var1.clone());
         let expr2 = builder.var(var2.clone());
         let equal_expr = builder.eq(expr1.clone(), expr2.clone());
@@ -438,7 +438,7 @@ mod tests {
         let var1 = ctx.new_var("x".to_string(), Sort::String).unwrap();
         let var2 = ctx.new_var("y".to_string(), Sort::String).unwrap();
 
-        let mut builder = ExpressionBuilder::default();
+        let mut builder = AstBuilder::default();
         let expr1 = builder.var(var1.clone());
         let expr2 = builder.var(var2.clone());
         let imp_expr = builder.imp(expr1.clone(), expr2.clone());
@@ -456,7 +456,7 @@ mod tests {
         let var2 = ctx.new_var("y".to_string(), Sort::String).unwrap();
 
         let var3 = ctx.new_var("z".to_string(), Sort::String).unwrap();
-        let mut builder = ExpressionBuilder::default();
+        let mut builder = AstBuilder::default();
 
         let expr1 = builder.var(var1.clone());
         let expr2 = builder.var(var2.clone());

@@ -7,7 +7,7 @@ pub mod parse;
 mod script;
 
 mod error;
-pub use builder::ExpressionBuilder;
+pub use builder::AstBuilder;
 pub use error::*;
 pub use expr::*;
 pub use script::*;

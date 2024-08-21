@@ -8,11 +8,11 @@ use nf::expression_to_nnf;
 use thiserror::Error;
 
 use crate::{
-    ast::{ExpressionBuilder, Script, Sort},
+    ast::{Script, Sort},
     context::Context,
-    ir::{Formula, FormulaBuilder},
+    ir::Formula,
 };
-
+// TODO: Make struct with type for each error, and a field for the Expression/ExpressionType that caused the error
 #[derive(Error, Debug)]
 pub enum NormalizationError {
     #[error("Unsupported: {0}")]
@@ -30,19 +30,13 @@ pub enum NormalizationError {
 }
 
 /// Converts the script to a formula.
-pub fn convert(
-    script: &Script,
-    builder: &mut ExpressionBuilder,
-    ctx: &mut Context,
-) -> Result<Formula, NormalizationError> {
-    let mut fm_builder = FormulaBuilder::default();
-
+pub fn convert(script: &Script, ctx: &mut Context) -> Result<Formula, NormalizationError> {
     let mut conjuncts = vec![];
     for expr in script.iter_asserts() {
-        let as_nnf = expression_to_nnf(expr, builder)?;
-        let fm = convert_expr(&as_nnf, ctx, &mut fm_builder)?;
+        let as_nnf = expression_to_nnf(expr, ctx.ast_builder())?;
+        let fm = convert_expr(&as_nnf, ctx)?;
         conjuncts.push(fm);
     }
-    let res = fm_builder.and(conjuncts);
+    let res = ctx.ir_builder().and(conjuncts);
     Ok(res)
 }

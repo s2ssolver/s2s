@@ -7,9 +7,7 @@ use crate::{
     context::Context,
 };
 
-use super::{
-    int::Summand, string::Symbol, AtomType, Formula, FormulaBuilder, LinearArithTerm, Pattern,
-};
+use super::{int::Summand, string::Symbol, AtomType, Formula, LinearArithTerm, Pattern};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Substitute {
@@ -155,34 +153,34 @@ impl VarSubstitution {
         buf
     }
 
-    pub fn apply(&self, fm: Formula, builder: &mut FormulaBuilder) -> Formula {
+    pub fn apply(&self, fm: Formula, ctx: &mut Context) -> Formula {
         match fm {
             Formula::Literal(lit) => {
                 let pol = lit.polarity();
                 let new_lit = match &lit.atom().ttype {
                     AtomType::InRe(p, r) => {
                         let new_p = self.apply_pattern(&p);
-                        let new_in_re = builder.in_re(new_p, r.clone());
-                        builder.literal(new_in_re, pol)
+                        let new_in_re = ctx.ir_builder().in_re(new_p, r.clone());
+                        ctx.ir_builder().literal(new_in_re, pol)
                     }
                     AtomType::WordEquation(l, r) => {
                         let new_l = self.apply_pattern(&l);
                         let new_r = self.apply_pattern(&r);
-                        let new_eq = builder.word_equation(new_l, new_r);
-                        builder.literal(new_eq, pol)
+                        let new_eq = ctx.ir_builder().word_equation(new_l, new_r);
+                        ctx.ir_builder().literal(new_eq, pol)
                     }
                     AtomType::LinearConstraint(l, o, r) => {
                         let new_l = self.apply_arith_term(&l);
-                        let new_eq = builder.linear_constraint(new_l, *o, *r);
-                        builder.literal(new_eq, pol)
+                        let new_eq = ctx.ir_builder().linear_constraint(new_l, *o, *r);
+                        ctx.ir_builder().literal(new_eq, pol)
                     }
                     AtomType::BoolVar(bv) => {
-                        let v = builder.bool_var(bv.clone());
-                        builder.literal(v, pol)
+                        let v = ctx.ir_builder().bool_var(bv.clone());
+                        ctx.ir_builder().literal(v, pol)
                     }
                     AtomType::BoolConst(b) => {
-                        let v = builder.bool_const(*b);
-                        builder.literal(v, pol)
+                        let v = ctx.ir_builder().bool_const(*b);
+                        ctx.ir_builder().literal(v, pol)
                     }
                     AtomType::PrefixOf(_, _) => todo!(),
                     AtomType::SuffixOf(_, _) => todo!(),
@@ -193,16 +191,16 @@ impl VarSubstitution {
             Formula::And(rs) => {
                 let mut new_rs = Vec::new();
                 for r in rs {
-                    new_rs.push(self.apply(r, builder));
+                    new_rs.push(self.apply(r, ctx));
                 }
-                builder.and(new_rs)
+                ctx.ir_builder().and(new_rs)
             }
             Formula::Or(rs) => {
                 let mut new_rs = Vec::new();
                 for r in rs {
-                    new_rs.push(self.apply(r, builder));
+                    new_rs.push(self.apply(r, ctx));
                 }
-                builder.or(new_rs)
+                ctx.ir_builder().or(new_rs)
             }
         }
     }

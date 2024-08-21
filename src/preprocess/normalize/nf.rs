@@ -2,14 +2,14 @@
 
 use std::rc::Rc;
 
-use crate::ast::{CoreExpr, ExprType, Expression, ExpressionBuilder, Script, Sorted};
+use crate::ast::{AstBuilder, CoreExpr, ExprType, Expression, Script, Sorted};
 
 use super::NormalizationError;
 
 /// Transforms a script into negation normal form.
 pub fn script_to_nnf(
     script: &Script,
-    builder: &mut ExpressionBuilder,
+    builder: &mut AstBuilder,
 ) -> Result<Script, NormalizationError> {
     let mut new_assertions = Vec::with_capacity(script.iter_asserts().count());
     for assertion in script.iter_asserts() {
@@ -24,7 +24,7 @@ pub fn script_to_nnf(
 /// Expression that are not in BNF are first converted to BNF before converting to NNF.
 pub fn expression_to_nnf(
     expr: &Rc<Expression>,
-    builder: &mut ExpressionBuilder,
+    builder: &mut AstBuilder,
 ) -> Result<Rc<Expression>, NormalizationError> {
     match expr.get_type() {
         ExprType::Core(e) => match e {
@@ -99,7 +99,7 @@ pub fn expression_to_nnf(
 /// An expression is in Boolean normal form if it only uses the operators `and`, `or`, and `not`.
 pub fn expression_to_bnf(
     expr: &Rc<Expression>,
-    builder: &mut ExpressionBuilder,
+    builder: &mut AstBuilder,
 ) -> Result<Rc<Expression>, NormalizationError> {
     match expr.get_type() {
         ExprType::Core(e) => match e {
@@ -144,13 +144,13 @@ pub fn expression_to_bnf(
 mod tests {
     use super::*;
     use crate::{
-        ast::{ExpressionBuilder, Sort},
+        ast::{AstBuilder, Sort},
         context::Context,
     };
 
     #[test]
     fn test_bnf_var() {
-        let mut builder = ExpressionBuilder::default();
+        let mut builder = AstBuilder::default();
         let mut ctx = Context::default();
         let v = ctx.new_var("x".to_string(), Sort::Bool).unwrap();
         let var = builder.var(v);
@@ -162,7 +162,7 @@ mod tests {
 
     #[test]
     fn test_nnf_var() {
-        let mut builder = ExpressionBuilder::default();
+        let mut builder = AstBuilder::default();
         let mut ctx = Context::default();
         let v = ctx.new_var("x".to_string(), Sort::Bool).unwrap();
         let var = builder.var(v);
@@ -174,7 +174,7 @@ mod tests {
 
     #[test]
     fn test_bnf_and() {
-        let mut builder = ExpressionBuilder::default();
+        let mut builder = AstBuilder::default();
         let mut ctx = Context::default();
         let vx = ctx.new_var("x".to_string(), Sort::Bool).unwrap();
         let var_x = builder.var(vx);
@@ -190,7 +190,7 @@ mod tests {
 
     #[test]
     fn test_nnf_and() {
-        let mut builder = ExpressionBuilder::default();
+        let mut builder = AstBuilder::default();
         let mut ctx = Context::default();
         let vx = ctx.new_var("x".to_string(), Sort::Bool).unwrap();
         let var_x = builder.var(vx);
@@ -205,7 +205,7 @@ mod tests {
 
     #[test]
     fn test_bnf_not() {
-        let mut builder = ExpressionBuilder::default();
+        let mut builder = AstBuilder::default();
         let mut ctx = Context::default();
         let v = ctx.new_var("x".to_string(), Sort::Bool).unwrap();
         let var = builder.var(v);
@@ -218,7 +218,7 @@ mod tests {
 
     #[test]
     fn test_nnf_not() {
-        let mut builder = ExpressionBuilder::default();
+        let mut builder = AstBuilder::default();
         let mut ctx = Context::default();
         let v = ctx.new_var("x".to_string(), Sort::Bool).unwrap();
         let var = builder.var(v);
@@ -231,7 +231,7 @@ mod tests {
 
     #[test]
     fn test_bnf_or() {
-        let mut builder = ExpressionBuilder::default();
+        let mut builder = AstBuilder::default();
         let mut ctx = Context::default();
         let vx = ctx.new_var("x".to_string(), Sort::Bool).unwrap();
         let var_x = builder.var(vx);
@@ -246,7 +246,7 @@ mod tests {
 
     #[test]
     fn test_nnf_or() {
-        let mut builder = ExpressionBuilder::default();
+        let mut builder = AstBuilder::default();
         let mut ctx = Context::default();
         let vx = ctx.new_var("x".to_string(), Sort::Bool).unwrap();
         let var_x = builder.var(vx);
@@ -261,7 +261,7 @@ mod tests {
 
     #[test]
     fn test_bnf_implies() {
-        let mut builder = ExpressionBuilder::default();
+        let mut builder = AstBuilder::default();
         let mut ctx = Context::default();
         let vx = ctx.new_var("x".to_string(), Sort::Bool).unwrap();
         let var_x = builder.var(vx);
@@ -278,7 +278,7 @@ mod tests {
 
     #[test]
     fn test_bnf_equivalence() {
-        let mut builder = ExpressionBuilder::default();
+        let mut builder = AstBuilder::default();
         let mut ctx = Context::default();
         let vx = ctx.new_var("x".to_string(), Sort::Bool).unwrap();
         let var_x = builder.var(vx);
@@ -298,7 +298,7 @@ mod tests {
 
     #[test]
     fn test_nnf_double_negation() {
-        let mut builder = ExpressionBuilder::default();
+        let mut builder = AstBuilder::default();
         let mut ctx = Context::default();
         let v = ctx.new_var("x".to_string(), Sort::Bool).unwrap();
         let var = builder.var(v);
@@ -313,7 +313,7 @@ mod tests {
 
     #[test]
     fn test_nnf_negation_of_and() {
-        let mut builder = ExpressionBuilder::default();
+        let mut builder = AstBuilder::default();
         let mut ctx = Context::default();
         let vx = ctx.new_var("x".to_string(), Sort::Bool).unwrap();
         let var_x = builder.var(vx);
@@ -333,7 +333,7 @@ mod tests {
 
     #[test]
     fn test_nnf_negation_of_or() {
-        let mut builder = ExpressionBuilder::default();
+        let mut builder = AstBuilder::default();
         let mut ctx = Context::default();
         let vx = ctx.new_var("x".to_string(), Sort::Bool).unwrap();
         let var_x = builder.var(vx);

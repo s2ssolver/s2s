@@ -1,15 +1,24 @@
 use std::{
+    //cell::{RefCell, RefMut},
     collections::{HashMap, HashSet},
     rc::Rc,
 };
 
-use crate::ast::{Sort, Sorted, Variable};
+use crate::{
+    ast::{AstBuilder, Sort, Sorted, Variable},
+    ir::IrBuilder,
+};
 
 #[derive(Default)]
 pub struct Context {
     /// Manages the variables
     variables: HashMap<String, Rc<Variable>>,
     temp_vars: HashSet<Rc<Variable>>,
+
+    //ast_builder: RefCell<AstBuilder>,
+    ast_builder: AstBuilder,
+    //ir_builder: RefCell<IrBuilder>,
+    ir_builder: IrBuilder,
 }
 
 impl Context {
@@ -64,4 +73,26 @@ impl Context {
     pub fn get_var(&self, name: &str) -> Option<Rc<Variable>> {
         self.variables.get(name).cloned()
     }
+
+    // /// Returns the instance of the [AstBuilder] that is shared by this context.
+    // /// The [AstBuilder] is used to create AST nodes.
+    // /// The builder also allows access to the [ReBuilder] that is used to create regular expressions.
+    // /// Regular expressions built using the [ReBuilder] are used in both the AST as well as in the IR.
+    pub fn ast_builder(&mut self) -> &mut AstBuilder {
+        &mut self.ast_builder
+    }
+
+    // pub fn ast_builder(&self) -> RefMut<AstBuilder> {
+    //     self.ast_builder.borrow_mut()
+    // }
+
+    // /// Returns the instance of the [IrBuilder] that is shared by this context.
+    // /// The [IrBuilder] is used to create IR nodes.
+    pub fn ir_builder(&mut self) -> &mut IrBuilder {
+        &mut self.ir_builder
+    }
+
+    // pub fn ir_builder(&self) -> RefMut<IrBuilder> {
+    //     self.ir_builder.borrow_mut()
+    // }
 }

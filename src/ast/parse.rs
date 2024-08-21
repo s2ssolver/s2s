@@ -6,7 +6,7 @@ use super::{
     expr::{ExprType, Expression, Sort, StrExpr, Variable},
     script::Script,
 };
-use super::{AstError, ExpressionBuilder};
+use super::{AstBuilder, AstError};
 
 use itertools::Itertools;
 
@@ -22,7 +22,7 @@ use smt2parser::{
 pub fn parse_script_file(
     path: &Path,
     ctx: &mut Context,
-    builder: &mut ExpressionBuilder,
+    builder: &mut AstBuilder,
 ) -> Result<Script, AstError> {
     let file = std::fs::File::open(path)?;
     let reader = std::io::BufReader::new(file);
@@ -32,7 +32,7 @@ pub fn parse_script_file(
 pub fn parse_script(
     input: impl std::io::BufRead,
     ctx: &mut Context,
-    builder: &mut ExpressionBuilder,
+    builder: &mut AstBuilder,
 ) -> Result<Script, AstError> {
     let cmds = CommandStream::new(input, SyntaxBuilder, None);
     let mut script = Script::default();
@@ -78,7 +78,7 @@ pub fn parse_script(
 fn convert_term(
     term: &Term,
     ctx: &mut Context,
-    builder: &mut ExpressionBuilder,
+    builder: &mut AstBuilder,
 ) -> Result<Rc<Expression>, AstError> {
     match term {
         Term::Constant(c) => match c {
@@ -210,7 +210,7 @@ fn convert_application(
     qual_identifier: &QualIdentifier,
     arguments: &[Term],
     ctx: &mut Context,
-    builder: &mut ExpressionBuilder,
+    builder: &mut AstBuilder,
 ) -> Result<Rc<Expression>, AstError> {
     let identifier = match qual_identifier {
         QualIdentifier::Simple { identifier } => identifier,
@@ -237,11 +237,7 @@ fn convert_application(
     }
 }
 
-fn convert_re(
-    ctx: &mut Context,
-    term: &Term,
-    builder: &mut ExpressionBuilder,
-) -> Result<Regex, AstError> {
+fn convert_re(ctx: &mut Context, term: &Term, builder: &mut AstBuilder) -> Result<Regex, AstError> {
     match term {
         Term::Application {
             qual_identifier,
@@ -380,7 +376,7 @@ fn convert_re(
 fn smt2expr(
     name: &str,
     args: Vec<Rc<Expression>>,
-    builder: &mut ExpressionBuilder,
+    builder: &mut AstBuilder,
 ) -> Result<Rc<Expression>, AstError> {
     match name {
         // Core

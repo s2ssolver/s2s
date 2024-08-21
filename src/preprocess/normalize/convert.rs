@@ -6,56 +6,53 @@ use super::NormalizationError;
 use crate::{
     ast::{CoreExpr, ExprType, Expression, Sort, Sorted, StrExpr},
     context::Context,
-    ir::{Atom, Formula, FormulaBuilder, Pattern},
+    ir::{Atom, Formula, IrBuilder, Pattern},
 };
 
+/// Converts an AST expression to an IR formula.
 pub fn convert_expr(
     expr: &Rc<Expression>,
     ctx: &mut Context,
-    builder: &mut FormulaBuilder,
 ) -> Result<Formula, NormalizationError> {
     match expr.get_type() {
-        ExprType::Core(CoreExpr::Not(neg)) => match convert_expr(neg, ctx, builder)? {
+        ExprType::Core(CoreExpr::Not(neg)) => match convert_expr(neg, ctx)? {
             Formula::Literal(lit) => {
                 // Flip the polarity of the literal
                 let flipped = !lit.polarity();
-                Ok(builder.literal(lit.into_atom(), flipped))
+                Ok(ctx.ir_builder().literal(lit.into_atom(), flipped))
             }
             Formula::And(_) | Formula::Or(_) => Err(NormalizationError::NotInNNF(expr.to_string())),
         },
         ExprType::Core(CoreExpr::And(es)) => {
             let formulas = es
                 .iter()
-                .map(|e| convert_expr(e, ctx, builder))
+                .map(|e| convert_expr(e, ctx))
                 .collect::<Result<_, _>>()?;
-            Ok(builder.and(formulas))
+            Ok(ctx.ir_builder().and(formulas))
         }
         ExprType::Core(CoreExpr::Or(es)) => {
             let formulas = es
                 .iter()
-                .map(|e| convert_expr(e, ctx, builder))
+                .map(|e| convert_expr(e, ctx))
                 .collect::<Result<_, _>>()?;
-            Ok(builder.or(formulas))
+            Ok(ctx.ir_builder().or(formulas))
         }
         ExprType::Core(_) => Err(NormalizationError::NotInNNF(expr.to_string())),
         ExprType::String(s) => {
-            let atom = convert_string_atom(s, builder)?;
-            Ok(builder.plit(atom))
+            let atom = convert_string_atom(s, ctx)?;
+            Ok(ctx.ir_builder().plit(atom))
         }
         ExprType::Int(_) => todo!(),
     }
 }
 
-fn convert_atom(
-    expr: &Rc<Expression>,
-    builder: &mut FormulaBuilder,
-) -> Result<Rc<Atom>, NormalizationError> {
+fn convert_atom(expr: &Rc<Expression>, ctx: &mut Context) -> Result<Rc<Atom>, NormalizationError> {
     match expr.get_type() {
-        ExprType::Core(CoreExpr::Bool(b)) => Ok(builder.bool_const(*b)),
-        ExprType::Core(CoreExpr::Var(v)) => Ok(builder.bool_var(v.clone())),
+        ExprType::Core(CoreExpr::Bool(b)) => Ok(ctx.ir_builder().bool_const(*b)),
+        ExprType::Core(CoreExpr::Var(v)) => Ok(ctx.ir_builder().bool_var(v.clone())),
         ExprType::Core(CoreExpr::Equal(lhs, rhs)) => match (lhs.get_type(), rhs.get_type()) {
             (ExprType::String(lhs), ExprType::String(rhs)) => {
-                convert_word_equation(lhs, rhs, builder)
+                convert_word_equation(lhs, rhs, ctx.ir_builder())
             }
             (ExprType::Int(_), ExprType::Int(_)) => todo!(),
             (ExprType::Core(_), ExprType::Core(_)) => {
@@ -68,30 +65,27 @@ fn convert_atom(
             }),
         },
         ExprType::Core(_) => Err(NormalizationError::NotInNNF(expr.to_string())),
-        ExprType::String(s) => convert_string_atom(s, builder),
+        ExprType::String(s) => convert_string_atom(s, ctx),
         ExprType::Int(_) => todo!(), //convert_int_atom(i, ctx, builder),
     }
 }
 
-fn convert_string_atom(
-    expr: &StrExpr,
-    builder: &mut FormulaBuilder,
-) -> Result<Rc<Atom>, NormalizationError> {
+fn convert_string_atom(expr: &StrExpr, ctx: &mut Context) -> Result<Rc<Atom>, NormalizationError> {
     match expr {
         StrExpr::InRe(p, r) => match (p.get_type(), r.get_type()) {
-            (ExprType::String(p), ExprType::String(r)) => convert_in_re(p, r, builder),
+            (ExprType::String(p), ExprType::String(r)) => convert_in_re(p, r, ctx.ir_builder()),
             _ => Err(NormalizationError::Unsupported(expr.to_string())),
         },
         StrExpr::PrefixOf(l, r) => match (l.get_type(), r.get_type()) {
-            (ExprType::String(l), ExprType::String(r)) => convert_prefix_of(l, r, builder),
+            (ExprType::String(l), ExprType::String(r)) => convert_prefix_of(l, r, ctx.ir_builder()),
             _ => Err(NormalizationError::Unsupported(expr.to_string())),
         },
         StrExpr::SuffixOf(l, r) => match (l.get_type(), r.get_type()) {
-            (ExprType::String(l), ExprType::String(r)) => convert_suffix_of(l, r, builder),
+            (ExprType::String(l), ExprType::String(r)) => convert_suffix_of(l, r, ctx.ir_builder()),
             _ => Err(NormalizationError::Unsupported(expr.to_string())),
         },
         StrExpr::Contains(l, r) => match (l.get_type(), r.get_type()) {
-            (ExprType::String(l), ExprType::String(r)) => convert_contains(l, r, builder),
+            (ExprType::String(l), ExprType::String(r)) => convert_contains(l, r, ctx.ir_builder()),
             _ => Err(NormalizationError::Unsupported(expr.to_string())),
         },
         _ => Err(NormalizationError::Unsupported(expr.to_string())),
@@ -119,7 +113,7 @@ fn convert_pattern(expr: &StrExpr) -> Option<Pattern> {
 fn convert_word_equation(
     lhs: &StrExpr,
     rhs: &StrExpr,
-    builder: &mut FormulaBuilder,
+    builder: &mut IrBuilder,
 ) -> Result<Rc<Atom>, NormalizationError> {
     let lhs = match convert_pattern(lhs) {
         Some(r) => r,
@@ -135,7 +129,7 @@ fn convert_word_equation(
 fn convert_in_re(
     lhs: &StrExpr,
     rhs: &StrExpr,
-    builder: &mut FormulaBuilder,
+    builder: &mut IrBuilder,
 ) -> Result<Rc<Atom>, NormalizationError> {
     let lhs = match convert_pattern(lhs) {
         Some(r) => r,
@@ -159,7 +153,7 @@ fn convert_in_re(
 fn convert_prefix_of(
     lhs: &StrExpr,
     rhs: &StrExpr,
-    builder: &mut FormulaBuilder,
+    builder: &mut IrBuilder,
 ) -> Result<Rc<Atom>, NormalizationError> {
     let lhs = match convert_pattern(lhs) {
         Some(r) => r,
@@ -183,7 +177,7 @@ fn convert_prefix_of(
 fn convert_suffix_of(
     lhs: &StrExpr,
     rhs: &StrExpr,
-    builder: &mut FormulaBuilder,
+    builder: &mut IrBuilder,
 ) -> Result<Rc<Atom>, NormalizationError> {
     let lhs = match convert_pattern(lhs) {
         Some(r) => r,
@@ -207,7 +201,7 @@ fn convert_suffix_of(
 fn convert_contains(
     lhs: &StrExpr,
     rhs: &StrExpr,
-    builder: &mut FormulaBuilder,
+    builder: &mut IrBuilder,
 ) -> Result<Rc<Atom>, NormalizationError> {
     let lhs = match convert_pattern(lhs) {
         Some(r) => r,
