@@ -98,6 +98,12 @@ impl Pattern {
         alphabet
     }
 
+    /// Returns true iff the pattern is a single variable.
+    /// This is equivalent to `len() == 1 && symbols[0].is_variable()`.
+    pub fn is_variable(&self) -> bool {
+        self.symbols.len() == 1 && self.symbols[0].is_variable()
+    }
+
     /// Returns the first symbol of the pattern, if it exists.
     pub fn first(&self) -> Option<&Symbol> {
         self.symbols.first()
@@ -130,7 +136,7 @@ impl Pattern {
     /// # Panics
     ///
     /// Panics if the given symbol is not of sort String.
-    pub fn append(&mut self, symbol: Symbol) {
+    pub fn push(&mut self, symbol: Symbol) {
         debug_assert!(
             symbol.valid(),
             "Variables in patterns must be of sort String"
@@ -138,13 +144,24 @@ impl Pattern {
         self.symbols.push(symbol)
     }
 
-    pub fn append_var(&mut self, var: Variable) -> &mut Self {
+    pub fn push_var(&mut self, var: Variable) -> &mut Self {
         debug_assert!(
             var.sort() == Sort::String,
             "Variables in patterns must be of sort String"
         );
-        self.append(Symbol::Variable(var.clone()));
+        self.push(Symbol::Variable(var.clone()));
         self
+    }
+
+    pub fn push_word(&mut self, word: &str) -> &mut Self {
+        for c in word.chars() {
+            self.push(Symbol::Constant(c));
+        }
+        self
+    }
+
+    pub fn concat(&mut self, other: Self) {
+        self.symbols.extend(other.symbols)
     }
 
     /// Replaces all occurrences of the given symbol in the pattern with the given replacement and returns the result.
@@ -158,13 +175,6 @@ impl Pattern {
             }
         }
         Self::new(res)
-    }
-
-    pub fn append_word(&mut self, word: &str) -> &mut Self {
-        for c in word.chars() {
-            self.append(Symbol::Constant(c));
-        }
-        self
     }
 
     /// Prepends a symbol to the beginning of the pattern.
@@ -186,6 +196,19 @@ impl Pattern {
             .symbols
             .iter()
             .any(|x| matches!(x, Symbol::Variable(_)))
+    }
+
+    /// Returns the pattern as a constant word, if it is a constant word.
+    /// Returns `None` if the pattern contains any variables.
+    pub fn as_constant(&self) -> Option<String> {
+        let mut res = String::new();
+        for symbol in &self.symbols {
+            match symbol {
+                Symbol::Constant(c) => res.push(*c),
+                _ => return None,
+            }
+        }
+        Some(res)
     }
 
     /// Returns true iff the pattern contains at least one constant word
@@ -368,9 +391,9 @@ mod tests {
     #[test]
     fn is_constant_with_mixed_pattern() {
         let mut pat = Pattern::empty();
-        pat.append_word("foo")
-            .append_var(Variable::new(0, "x".to_string(), Sort::String))
-            .append_word("bar");
+        pat.push_word("foo")
+            .push_var(Variable::new(0, "x".to_string(), Sort::String))
+            .push_word("bar");
         assert!(!pat.is_constant());
     }
 
