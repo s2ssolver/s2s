@@ -4,7 +4,7 @@ use crate::{
         formula::{Atom, Literal, NNFFormula},
         Sort, Variable,
     },
-    sat::{as_lit, neg, pvar, PLit},
+    sat::{plit, nlit, pvar, PLit},
 };
 use std::collections::HashMap;
 
@@ -43,9 +43,9 @@ impl Definitions {
             var
         } else {
             let var = if literal.is_neg() {
-                neg(pvar())
+                nlit(pvar())
             } else {
-                as_lit(pvar())
+                plit(pvar())
             };
             self.insert(literal.clone(), var);
             var
