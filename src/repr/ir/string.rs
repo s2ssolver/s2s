@@ -332,7 +332,7 @@ impl Display for Symbol {
 
 use quickcheck;
 
-use crate::ast::{Sort, Sorted, Variable};
+use crate::repr::{Sort, Sorted, Variable};
 
 impl Arbitrary for Symbol {
     fn arbitrary(g: &mut quickcheck::Gen) -> Self {

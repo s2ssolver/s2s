@@ -2,7 +2,7 @@ use std::{collections::HashMap, fmt::Display, ops::Index};
 
 use indexmap::IndexSet;
 
-use crate::ast::Variable;
+use crate::repr::Variable;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Summand {

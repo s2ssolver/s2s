@@ -3,8 +3,8 @@ use std::collections::HashMap;
 use std::fmt::{Display, Write};
 
 use crate::{
-    ast::{Sort, Sorted, Variable},
     context::Context,
+    repr::{Sort, Sorted, Variable},
 };
 
 use super::{int::Summand, string::Symbol, AtomType, Formula, LinearArithTerm, Pattern};

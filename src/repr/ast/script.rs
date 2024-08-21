@@ -3,9 +3,9 @@ use std::{
     rc::Rc,
 };
 
-use crate::ast::expr::Sorted;
+use crate::repr::{Sorted, Variable};
 
-use super::expr::{Expression, Variable};
+use super::expr::Expression;
 
 #[derive(Debug, Default, Clone)]
 pub struct Script {
