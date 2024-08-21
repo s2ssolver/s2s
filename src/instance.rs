@@ -2,7 +2,7 @@ use std::cmp::max;
 
 use indexmap::IndexMap;
 
-use crate::ast::{Script, Sort, Sorted, Variable};
+use crate::repr::{ast::Script, Sort, Sorted, Variable};
 
 /// A problem instance, consisting of a script and options.
 #[derive(Clone, Debug)]

@@ -1,6 +1,6 @@
 use thiserror::Error;
 
-use crate::repr::ast::AstError;
+use crate::{preprocess::PreprocessingError, repr::ast::AstError};
 
 #[derive(Error, Debug)]
 #[error(transparent)]
@@ -11,6 +11,10 @@ pub enum ErrorRepr {
     /// An error that occured during parsing.
     #[error(transparent)]
     ParseError(AstError),
+
+    /// An error that occured during preprocessing.
+    #[error(transparent)]
+    PreprocessingError(PreprocessingError),
 
     /// An error that occured during encoding.
     #[error("Failed to encode: {0}")]
@@ -27,4 +31,12 @@ pub enum ErrorRepr {
     /// An otherwise unclassified error.
     #[error("Failed: {0}")]
     Other(String),
+}
+
+// Resolve transitive conversion
+
+impl From<PreprocessingError> for PublicError {
+    fn from(err: PreprocessingError) -> Self {
+        PublicError(ErrorRepr::PreprocessingError(err))
+    }
 }

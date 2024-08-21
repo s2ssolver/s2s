@@ -4,14 +4,15 @@ use indexmap::{IndexMap, IndexSet};
 
 use super::encoding::DomainEncoding;
 use crate::{
-    ast::{Sort, Variable},
     bounds::{Bounds, IntDomain},
+    context::Context,
     encode::{
         card::{exactly_one, IncrementalEO},
         EncodingResult, LAMBDA,
     },
     instance::Instance,
-    sat::{plit, nlit, pvar, Cnf},
+    repr::{Sort, Variable},
+    sat::{nlit, plit, pvar, Cnf},
 };
 
 /// Encoder for the domains of all variables.
@@ -33,15 +34,15 @@ impl DomainEncoder {
         }
     }
 
-    pub fn encode(&mut self, bounds: &Bounds, instance: &Instance) -> EncodingResult {
+    pub fn encode(&mut self, bounds: &Bounds, ctx: &Context) -> EncodingResult {
         let mut encoding = self.encoding.take().unwrap_or(DomainEncoding::new(
             self.strings.alphabet.clone(),
             bounds.clone(),
             false,
         ));
         let mut res = EncodingResult::empty();
-        res.join(self.strings.encode(bounds, &mut encoding, instance));
-        res.join(self.integers.encode(bounds, &mut encoding, instance));
+        res.join(self.strings.encode(bounds, &mut encoding, ctx));
+        res.join(self.integers.encode(bounds, &mut encoding, ctx));
         encoding.bounds = bounds.clone();
         self.encoding = Some(encoding);
         res
@@ -83,7 +84,7 @@ impl SubstitutionEncoder {
         &mut self,
         bounds: &Bounds,
         encoding: &mut DomainEncoding,
-        instance: &Instance,
+        ctx: &Context,
     ) -> EncodingResult {
         let mut cnf = Cnf::new();
         let subs = &mut encoding.string;
@@ -165,7 +166,7 @@ impl IntegerEncoder {
         &mut self,
         bounds: &Bounds,
         encoding: &mut DomainEncoding,
-        instance: &Instance,
+        ctx: &Context,
     ) -> EncodingResult {
         let mut res = EncodingResult::empty();
 
@@ -185,7 +186,7 @@ impl IntegerEncoder {
         &mut self,
         bounds: &Bounds,
         encoding: &mut DomainEncoding,
-        instance: &Instance,
+        ctx: &Context,
     ) -> EncodingResult {
         let mut res = EncodingResult::empty();
 
@@ -225,7 +226,7 @@ impl IntegerEncoder {
         &mut self,
         bounds: &Bounds,
         encoding: &mut DomainEncoding,
-        instance: &Instance,
+        ctx: &Context,
     ) -> EncodingResult {
         let mut res = EncodingResult::empty();
 

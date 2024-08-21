@@ -10,7 +10,7 @@ use crate::encode::EncodingResult;
 use crate::model::constraints::{Symbol, WordEquation};
 use crate::solver::analysis::{init_bounds, next_bounds};
 
-use crate::{Solver, SolverResult};
+use crate::{SolverOld, SolverResult};
 
 use crate::error::Error;
 
@@ -68,7 +68,7 @@ impl AbstractionSolver {
     }
 }
 
-impl Solver for AbstractionSolver {
+impl SolverOld for AbstractionSolver {
     fn solve(&mut self) -> Result<SolverResult, Error> {
         log::debug!("Started solving");
 

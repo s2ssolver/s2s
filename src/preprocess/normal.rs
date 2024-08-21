@@ -12,12 +12,12 @@ use crate::{
 use super::PreprocessingError;
 
 #[derive(Default)]
-pub struct Rewriter {
+pub struct Normalizer {
     rewrites: HashMap<Literal, Formula>,
     identities: HashMap<Pattern, Rc<Variable>>,
 }
 
-impl Rewriter {
+impl Normalizer {
     pub fn rewrite(
         &mut self,
         formula: Formula,

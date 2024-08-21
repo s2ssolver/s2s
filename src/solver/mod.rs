@@ -1,10 +1,24 @@
-use crate::repr::ir::{Formula, VarSubstitution};
+use core::panic;
 
-use self::engine::AbstractionSolver;
+use aws_smt_ir::Index;
+use encoder::ProblemEncoder;
+use indexmap::IndexSet;
+use itertools::Itertools;
+
+use crate::{
+    abstraction::{abstract_fm, Abstraction, Definition},
+    bounds::Bounds,
+    context::Context,
+    preprocess::{self, PreprocessingError},
+    repr::ir::{Formula, Literal, VarSubstitution},
+    sat::to_cnf,
+};
+
+use crate::error::PublicError as Error;
 
 mod analysis;
+mod encoder;
 mod engine;
-
 mod manager;
 
 /// The result of a satisfiability check
@@ -72,41 +86,146 @@ pub struct SolverOptions {
 }
 
 /// The solver.
-#[derive(Default)]
-pub struct Solver {
+
+pub struct Solver<'a> {
     options: SolverOptions,
+    context: &'a mut Context,
 }
 
-impl Solver {
-    pub fn with_options(options: SolverOptions) -> Self {
-        Self { options }
+impl<'a> Solver<'a> {
+    pub fn new(context: &'a mut Context) -> Self {
+        Self {
+            options: SolverOptions::default(),
+            context,
+        }
     }
 
-    pub fn solve(&self, fm: Formula) -> SolverResult {
-        // Preprocess:
-        let fm_preprocessed = self.preprocess(&fm);
+    pub fn with_options(context: &'a mut Context, options: SolverOptions) -> Self {
+        Self { options, context }
+    }
+
+    pub fn solve(&mut self, fm: &Formula, ctx: &Context) -> Result<SolverResult, Error> {
+        // Preprocess
+        let fm_preprocessed = self.preprocess(&fm)?;
 
         // Build the Boolean abstraction
+        let abstraction = abstract_fm(&fm_preprocessed);
 
         // Initialize the bounds
+        let init_bounds = self.init_bounds(&fm_preprocessed);
 
         // Initialize the alphabet
+        let alphabet = self.init_alphabet(&fm_preprocessed);
 
         // Start CEGAR loop
-
-        // Start Solving Loop
-        // Encode and Solve
-        // If SAT, check if model is solution. If not, refine the abstraction and repeat.
-        // If UNSAT: Bound Refinement
-        // IF bounds are at max, return UNSAT
-
-        SolverResult::Unknown
+        self.run(fm, abstraction, init_bounds, alphabet, ctx)
     }
 
-    pub fn preprocess(&self, fm: &Formula) -> Formula {
-        // Simplify
-        // Normal-Form
-        // Cegar-Abstraction
+    fn preprocess(&mut self, fm: &Formula) -> Result<Formula, PreprocessingError> {
+        // TODO: Simplify
+        preprocess::normalize(fm, self.context)
+    }
+
+    fn init_bounds(&self, fm: &Formula) -> Bounds {
+        todo!("Initialize the bounds")
+    }
+
+    fn init_alphabet(&self, fm: &Formula) -> IndexSet<char> {
+        todo!("Initialize the alphabet")
+    }
+
+    fn run(
+        &mut self,
+        fm: &Formula,
+        abs: Abstraction,
+        init_bounds: Bounds,
+        alphabet: IndexSet<char>,
+        ctx: &Context,
+    ) -> Result<SolverResult, Error> {
+        // INPUT: Instance (Abstraction(Definition, Skeleton), Init-Bounds, Alphabet, OriginalFormula)
+
+        // Initialize the SAT solver
+        let mut cadical: cadical::Solver = cadical::Solver::default();
+        // Check if skeleton is trivially unsat
+        let skeleton_cnf = to_cnf(abs.skeleton());
+        for clause in skeleton_cnf.into_iter() {
+            cadical.add_clause(clause);
+        }
+        if cadical.solve() == Some(false) {
+            log::info!("Skeleton is unsat");
+            return Ok(SolverResult::Unsat);
+        }
+
+        // Initialize the problem encoder
+
+        // TODO: Filter defintions to only include supported literals
+        let mut defs = abs.definitions().cloned().collect_vec();
+        let mut encoder = ProblemEncoder::new(alphabet);
+
+        // Initialize the bounds
+        let mut bounds = init_bounds;
+
+        // Start Solving Loop
+        loop {
+            // Encode and Solve
+            let encoding = encoder.encode(&defs, &bounds, &ctx);
+            let (cnf, asm) = encoding.into_inner();
+            for clause in cnf {
+                cadical.add_clause(clause);
+            }
+
+            match cadical.solve_with(asm.into_iter()) {
+                Some(true) => {
+                    // If SAT, check if model is a solution for the original formula.
+                    let assign = encoder.get_model(&cadical).unwrap();
+                    if self.check_assignment(fm, &assign) {
+                        return Ok(SolverResult::Sat(Some(assign)));
+                    } else {
+                        let refined_defs = self.refine_abstraction(&defs, &assign, &abs);
+                        if refined_defs.is_empty() {
+                            encoder.block_assignment(&assign);
+                        } else {
+                            // Refine the abstraction
+                            defs.extend(refined_defs);
+                        }
+                    }
+                }
+                Some(false) => {
+                    let failed = encoder.get_failed_literals(&cadical);
+                    // Refine bounds. If bounds are at max, return UNSAT. Otherwise, continue with new bounds.
+                    match self.refine_bounds(&bounds, &failed) {
+                        Some(new_bounds) => {
+                            bounds = new_bounds;
+                        }
+                        None => return Ok(SolverResult::Unsat),
+                    }
+                }
+                None => panic!("Cadical failed to solve"),
+            }
+        }
+    }
+
+    /// Refine the bounds based on the failed literals.
+    /// Returns None if the upper bound of every variable is equal to or greater than the bounds of the smallest model any combination of the failed literals can produce.
+    fn refine_bounds(&self, bounds: &Bounds, failed: &[Literal]) -> Option<Bounds> {
+        todo!("Refine the bounds")
+    }
+
+    /// Check if the assignment is a solution for the formula.
+    fn check_assignment(&self, fm: &Formula, assign: &VarSubstitution) -> bool {
+        todo!("Check if the assignment is a solution for the formula")
+    }
+
+    /// Refines the abstraction by picking new definitions to encode.
+    /// Returns the new definitions to encode.
+    /// If the abstraction is already fully refined, returns an empty vector.
+    fn refine_abstraction(
+        &self,
+        current_defs: &[Definition],
+        assign: &VarSubstitution,
+        abs: &Abstraction,
+    ) -> Vec<Definition> {
+        todo!("Refine the abstraction")
     }
 }
 
@@ -117,9 +236,4 @@ impl Solver {
 pub trait SolverOld {
     /// Solve the given instance.
     fn solve(&mut self) -> Result<SolverResult, Error>;
-}
-
-/// Returns a solver for the given instance.
-pub fn get_solver(inst: Instance) -> Result<Box<dyn SolverOld>, Error> {
-    AbstractionSolver::new(inst).map(|s| Box::new(s) as Box<dyn SolverOld>)
 }

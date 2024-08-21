@@ -4,8 +4,6 @@ use std::sync::atomic::{AtomicU32, Ordering};
 
 use indexmap::IndexMap;
 
-use crate::instance::Instance;
-
 /// A global counter for propositional variables.
 /// The counter is used to generate new propositional variables.
 /// It is incremented whenever a new variable is generated using [pvar()].
@@ -37,6 +35,49 @@ impl PFormula {
 pub type Clause = Vec<PLit>;
 /// A formula in conjunctive normal form, i.e., a conjunction of clauses
 pub type Cnf = Vec<Clause>;
+
+/// A CNF formula with assumptions
+#[derive(Clone, Debug, Default)]
+pub struct CnfA {
+    cnf: Cnf,
+    assumptions: Vec<PLit>,
+}
+
+impl From<Cnf> for CnfA {
+    fn from(cnf: Cnf) -> Self {
+        Self {
+            cnf,
+            assumptions: Vec::new(),
+        }
+    }
+}
+
+impl CnfA {
+    pub fn new(cnf: Cnf, assumptions: Vec<PLit>) -> Self {
+        Self { cnf, assumptions }
+    }
+
+    pub fn add_assumption(&mut self, lit: PLit) {
+        self.assumptions.push(lit);
+    }
+
+    pub fn assumptions(&self) -> &[PLit] {
+        &self.assumptions
+    }
+
+    pub fn cnf(&self) -> &Cnf {
+        &self.cnf
+    }
+
+    pub fn into_inner(self) -> (Cnf, Vec<PLit>) {
+        (self.cnf, self.assumptions)
+    }
+
+    pub fn extend(&mut self, other: CnfA) {
+        self.cnf.extend(other.cnf);
+        self.assumptions.extend(other.assumptions);
+    }
+}
 
 pub fn nlit(var: PVar) -> PLit {
     -plit(var)
@@ -70,34 +111,26 @@ pub fn pvar() -> PVar {
 /// - the formula contains a variable that is mapped to a propositional variable of a different sort
 /// - the formula is not propositional
 /// - the formula is not in negation normal form
-pub fn to_cnf(formula: &PFormula, instance: &mut Instance) -> Cnf {
-    fn maincnf(
-        fm: &PFormula,
-        defs: &mut IndexMap<PFormula, PVar>,
-        instance: &mut Instance,
-    ) -> PFormula {
+pub fn to_cnf(formula: &PFormula) -> Cnf {
+    fn maincnf(fm: &PFormula, defs: &mut IndexMap<PFormula, PVar>) -> PFormula {
         match fm {
             PFormula::And(fs) | PFormula::Or(fs) => {
                 if fs.len() == 1 {
-                    maincnf(&fs[0], defs, instance)
+                    maincnf(&fs[0], defs)
                 } else {
-                    defstep(fm, defs, instance)
+                    defstep(fm, defs)
                 }
             }
             PFormula::Lit(_) => fm.clone(),
         }
     }
 
-    fn defstep(
-        fm: &PFormula,
-        defs: &mut IndexMap<PFormula, PVar>,
-        instance: &mut Instance,
-    ) -> PFormula {
+    fn defstep(fm: &PFormula, defs: &mut IndexMap<PFormula, PVar>) -> PFormula {
         match fm {
             PFormula::And(fs) | PFormula::Or(fs) => {
                 let mut res = Vec::with_capacity(fs.len());
                 for f in fs {
-                    res.push(maincnf(f, defs, instance));
+                    res.push(maincnf(f, defs));
                 }
                 let res_fm = if matches!(fm, PFormula::And(_)) {
                     PFormula::And(res)
@@ -121,7 +154,7 @@ pub fn to_cnf(formula: &PFormula, instance: &mut Instance) -> Cnf {
 
     let mut defs = IndexMap::new();
 
-    let res: PFormula = maincnf(formula, &mut defs, instance);
+    let res: PFormula = maincnf(formula, &mut defs);
     let mut cnf = cnf_to_clauses(&res);
 
     // Add definitional clauses

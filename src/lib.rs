@@ -9,13 +9,12 @@
 
 mod abstr;
 
+mod abstraction;
 mod bounds;
+mod context;
 mod encode;
 pub mod error;
 mod instance;
-// pub mod model;
-// mod parse;
-mod context;
 mod preprocess;
 mod repr;
 mod sat;
@@ -26,7 +25,7 @@ use std::time::Instant;
 use error::PublicError as Error;
 use instance::Instance;
 
-pub use solver::{get_solver, Solver, SolverResult};
+pub use solver::{get_solver, SolverOld, SolverResult};
 
 pub fn solve(instance: &mut Instance) -> Result<SolverResult, Error> {
     // Preprocess the formula

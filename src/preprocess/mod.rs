@@ -1,10 +1,13 @@
 mod convert;
-mod rewrite;
+mod normal;
 //mod simplify;
 
 use thiserror::Error;
 
-use crate::repr::Sort;
+use crate::{
+    context::Context,
+    repr::{ir::Formula, Sort},
+};
 
 // TODO: Make struct with type for each error, and a field for the Expression/ExpressionType that caused the error
 #[derive(Error, Debug)]
@@ -23,6 +26,7 @@ pub enum PreprocessingError {
     NotInNNF(String),
 }
 
-// 1. Convert
-// 2. Simplify
-// 3. Rewrite
+pub fn normalize(fm: &Formula, ctx: &mut Context) -> Result<Formula, PreprocessingError> {
+    let mut normalizer = normal::Normalizer::default();
+    normalizer.rewrite(fm.clone(), ctx)
+}

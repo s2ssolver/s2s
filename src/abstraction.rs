@@ -38,8 +38,12 @@ impl Definition {
         }
     }
 
-    pub fn get_def_var(&self) -> PVar {
+    pub fn def_var(&self) -> PVar {
         self.var
+    }
+
+    pub fn atom(&self) -> &Rc<Atom> {
+        &self.atom
     }
 
     /// Makes the definition equivalent to the atom.
@@ -80,6 +84,16 @@ pub struct Abstraction {
     definitions: HashMap<Rc<Atom>, Definition>, // TODO: Use a Vec instead of a HashMap
 }
 
+impl Abstraction {
+    pub fn skeleton(&self) -> &PFormula {
+        &self.skeleton
+    }
+
+    pub fn definitions(&self) -> impl Iterator<Item = &Definition> {
+        self.definitions.values()
+    }
+}
+
 /// Constructs an abstraction of a formula.
 /// The construction is done using the Plaisted-Greenbaum transformation.
 /// That means that the propositional literal are not equivalent to the atoms, but imply them.
@@ -103,12 +117,12 @@ fn build(fm: &Formula, defs: &mut HashMap<Rc<Atom>, Definition>) -> PFormula {
                     if !def.is_pos() {
                         def.equiv();
                     }
-                    PFormula::plit(def.get_def_var())
+                    PFormula::plit(def.def_var())
                 } else {
                     if !def.is_neg() {
                         def.equiv();
                     }
-                    PFormula::nlit(def.get_def_var())
+                    PFormula::nlit(def.def_var())
                 }
             } else {
                 let def_var = pvar();
