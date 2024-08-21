@@ -2,18 +2,31 @@
 
 use std::rc::Rc;
 
-use super::NormalizationError;
 use crate::{
-    ast::{CoreExpr, ExprType, Expression, Sort, Sorted, StrExpr},
+    ast::{nf::expression_to_nnf, CoreExpr, ExprType, Expression, Script, Sort, Sorted, StrExpr},
     context::Context,
     ir::{Atom, Formula, IrBuilder, Pattern},
 };
+
+use super::PreprocessingError;
+
+/// Converts the script to a formula.
+pub fn convert_script(script: &Script, ctx: &mut Context) -> Result<Formula, PreprocessingError> {
+    let mut conjuncts = vec![];
+    for expr in script.iter_asserts() {
+        let as_nnf = expression_to_nnf(expr, ctx.ast_builder());
+        let fm = convert_expr(&as_nnf, ctx)?;
+        conjuncts.push(fm);
+    }
+    let res = ctx.ir_builder().and(conjuncts);
+    Ok(res)
+}
 
 /// Converts an AST expression to an IR formula.
 pub fn convert_expr(
     expr: &Rc<Expression>,
     ctx: &mut Context,
-) -> Result<Formula, NormalizationError> {
+) -> Result<Formula, PreprocessingError> {
     match expr.get_type() {
         ExprType::Core(CoreExpr::Not(neg)) => match convert_expr(neg, ctx)? {
             Formula::Literal(lit) => {
@@ -21,7 +34,7 @@ pub fn convert_expr(
                 let flipped = !lit.polarity();
                 Ok(ctx.ir_builder().literal(lit.into_atom(), flipped))
             }
-            Formula::And(_) | Formula::Or(_) => Err(NormalizationError::NotInNNF(expr.to_string())),
+            Formula::And(_) | Formula::Or(_) => Err(PreprocessingError::NotInNNF(expr.to_string())),
         },
         ExprType::Core(CoreExpr::And(es)) => {
             let formulas = es
@@ -37,7 +50,7 @@ pub fn convert_expr(
                 .collect::<Result<_, _>>()?;
             Ok(ctx.ir_builder().or(formulas))
         }
-        ExprType::Core(_) => Err(NormalizationError::NotInNNF(expr.to_string())),
+        ExprType::Core(_) => Err(PreprocessingError::NotInNNF(expr.to_string())), // TODO: Handle ITE and Distinct
         ExprType::String(s) => {
             let atom = convert_string_atom(s, ctx)?;
             Ok(ctx.ir_builder().plit(atom))
@@ -46,7 +59,7 @@ pub fn convert_expr(
     }
 }
 
-fn convert_atom(expr: &Rc<Expression>, ctx: &mut Context) -> Result<Rc<Atom>, NormalizationError> {
+fn convert_atom(expr: &Rc<Expression>, ctx: &mut Context) -> Result<Rc<Atom>, PreprocessingError> {
     match expr.get_type() {
         ExprType::Core(CoreExpr::Bool(b)) => Ok(ctx.ir_builder().bool_const(*b)),
         ExprType::Core(CoreExpr::Var(v)) => Ok(ctx.ir_builder().bool_var(v.clone())),
@@ -56,39 +69,39 @@ fn convert_atom(expr: &Rc<Expression>, ctx: &mut Context) -> Result<Rc<Atom>, No
             }
             (ExprType::Int(_), ExprType::Int(_)) => todo!(),
             (ExprType::Core(_), ExprType::Core(_)) => {
-                Err(NormalizationError::NotInNNF(expr.to_string()))
+                Err(PreprocessingError::NotInNNF(expr.to_string()))
             }
-            _ => Err(NormalizationError::InvalidSort {
+            _ => Err(PreprocessingError::InvalidSort {
                 expr: expr.to_string(),
                 expected: lhs.sort(),
                 got: rhs.sort(),
             }),
         },
-        ExprType::Core(_) => Err(NormalizationError::NotInNNF(expr.to_string())),
+        ExprType::Core(_) => Err(PreprocessingError::NotInNNF(expr.to_string())),
         ExprType::String(s) => convert_string_atom(s, ctx),
         ExprType::Int(_) => todo!(), //convert_int_atom(i, ctx, builder),
     }
 }
 
-fn convert_string_atom(expr: &StrExpr, ctx: &mut Context) -> Result<Rc<Atom>, NormalizationError> {
+fn convert_string_atom(expr: &StrExpr, ctx: &mut Context) -> Result<Rc<Atom>, PreprocessingError> {
     match expr {
         StrExpr::InRe(p, r) => match (p.get_type(), r.get_type()) {
             (ExprType::String(p), ExprType::String(r)) => convert_in_re(p, r, ctx.ir_builder()),
-            _ => Err(NormalizationError::Unsupported(expr.to_string())),
+            _ => Err(PreprocessingError::Unsupported(expr.to_string())),
         },
         StrExpr::PrefixOf(l, r) => match (l.get_type(), r.get_type()) {
             (ExprType::String(l), ExprType::String(r)) => convert_prefix_of(l, r, ctx.ir_builder()),
-            _ => Err(NormalizationError::Unsupported(expr.to_string())),
+            _ => Err(PreprocessingError::Unsupported(expr.to_string())),
         },
         StrExpr::SuffixOf(l, r) => match (l.get_type(), r.get_type()) {
             (ExprType::String(l), ExprType::String(r)) => convert_suffix_of(l, r, ctx.ir_builder()),
-            _ => Err(NormalizationError::Unsupported(expr.to_string())),
+            _ => Err(PreprocessingError::Unsupported(expr.to_string())),
         },
         StrExpr::Contains(l, r) => match (l.get_type(), r.get_type()) {
             (ExprType::String(l), ExprType::String(r)) => convert_contains(l, r, ctx.ir_builder()),
-            _ => Err(NormalizationError::Unsupported(expr.to_string())),
+            _ => Err(PreprocessingError::Unsupported(expr.to_string())),
         },
-        _ => Err(NormalizationError::Unsupported(expr.to_string())),
+        _ => Err(PreprocessingError::Unsupported(expr.to_string())),
     }
 }
 
@@ -114,14 +127,14 @@ fn convert_word_equation(
     lhs: &StrExpr,
     rhs: &StrExpr,
     builder: &mut IrBuilder,
-) -> Result<Rc<Atom>, NormalizationError> {
+) -> Result<Rc<Atom>, PreprocessingError> {
     let lhs = match convert_pattern(lhs) {
         Some(r) => r,
-        None => Err(NormalizationError::Unsupported(lhs.to_string()))?,
+        None => Err(PreprocessingError::Unsupported(lhs.to_string()))?,
     };
     let rhs = match convert_pattern(rhs) {
         Some(r) => r,
-        None => Err(NormalizationError::Unsupported(rhs.to_string()))?,
+        None => Err(PreprocessingError::Unsupported(rhs.to_string()))?,
     };
     Ok(builder.word_equation(lhs, rhs))
 }
@@ -130,10 +143,10 @@ fn convert_in_re(
     lhs: &StrExpr,
     rhs: &StrExpr,
     builder: &mut IrBuilder,
-) -> Result<Rc<Atom>, NormalizationError> {
+) -> Result<Rc<Atom>, PreprocessingError> {
     let lhs = match convert_pattern(lhs) {
         Some(r) => r,
-        _ => Err(NormalizationError::InvalidSort {
+        _ => Err(PreprocessingError::InvalidSort {
             expr: lhs.to_string(),
             expected: Sort::String,
             got: lhs.sort(),
@@ -141,7 +154,7 @@ fn convert_in_re(
     };
     let rhs = match rhs {
         StrExpr::Regex(r) => r.clone(),
-        _ => Err(NormalizationError::InvalidSort {
+        _ => Err(PreprocessingError::InvalidSort {
             expr: rhs.to_string(),
             expected: Sort::RegLang,
             got: rhs.sort(),
@@ -154,10 +167,10 @@ fn convert_prefix_of(
     lhs: &StrExpr,
     rhs: &StrExpr,
     builder: &mut IrBuilder,
-) -> Result<Rc<Atom>, NormalizationError> {
+) -> Result<Rc<Atom>, PreprocessingError> {
     let lhs = match convert_pattern(lhs) {
         Some(r) => r,
-        _ => Err(NormalizationError::InvalidSort {
+        _ => Err(PreprocessingError::InvalidSort {
             expr: lhs.to_string(),
             expected: Sort::String,
             got: lhs.sort(),
@@ -165,7 +178,7 @@ fn convert_prefix_of(
     };
     let rhs = match convert_pattern(rhs) {
         Some(r) => r,
-        _ => Err(NormalizationError::InvalidSort {
+        _ => Err(PreprocessingError::InvalidSort {
             expr: rhs.to_string(),
             expected: Sort::String,
             got: rhs.sort(),
@@ -178,10 +191,10 @@ fn convert_suffix_of(
     lhs: &StrExpr,
     rhs: &StrExpr,
     builder: &mut IrBuilder,
-) -> Result<Rc<Atom>, NormalizationError> {
+) -> Result<Rc<Atom>, PreprocessingError> {
     let lhs = match convert_pattern(lhs) {
         Some(r) => r,
-        _ => Err(NormalizationError::InvalidSort {
+        _ => Err(PreprocessingError::InvalidSort {
             expr: lhs.to_string(),
             expected: Sort::String,
             got: lhs.sort(),
@@ -189,7 +202,7 @@ fn convert_suffix_of(
     };
     let rhs = match convert_pattern(rhs) {
         Some(r) => r,
-        _ => Err(NormalizationError::InvalidSort {
+        _ => Err(PreprocessingError::InvalidSort {
             expr: rhs.to_string(),
             expected: Sort::String,
             got: rhs.sort(),
@@ -202,10 +215,10 @@ fn convert_contains(
     lhs: &StrExpr,
     rhs: &StrExpr,
     builder: &mut IrBuilder,
-) -> Result<Rc<Atom>, NormalizationError> {
+) -> Result<Rc<Atom>, PreprocessingError> {
     let lhs = match convert_pattern(lhs) {
         Some(r) => r,
-        _ => Err(NormalizationError::InvalidSort {
+        _ => Err(PreprocessingError::InvalidSort {
             expr: lhs.to_string(),
             expected: Sort::String,
             got: lhs.sort(),
@@ -213,7 +226,7 @@ fn convert_contains(
     };
     let rhs = match convert_pattern(rhs) {
         Some(r) => r,
-        _ => Err(NormalizationError::InvalidSort {
+        _ => Err(PreprocessingError::InvalidSort {
             expr: rhs.to_string(),
             expected: Sort::String,
             got: rhs.sort(),

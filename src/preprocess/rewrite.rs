@@ -9,7 +9,7 @@ use crate::{
     ir::{AtomType, Formula, Literal, Pattern},
 };
 
-use super::NormalizationError;
+use super::PreprocessingError;
 
 #[derive(Default)]
 pub struct Rewriter {
@@ -22,7 +22,7 @@ impl Rewriter {
         &mut self,
         formula: Formula,
         ctx: &mut Context,
-    ) -> Result<Formula, NormalizationError> {
+    ) -> Result<Formula, PreprocessingError> {
         self.reset();
 
         let rewritten = self.rewrite_formula(formula, ctx)?;
@@ -53,7 +53,7 @@ impl Rewriter {
         &mut self,
         formula: Formula,
         ctx: &mut Context,
-    ) -> Result<Formula, NormalizationError> {
+    ) -> Result<Formula, PreprocessingError> {
         // TODO: Check if error type is "Unsupported" and replace with neutral element in order to generate an under-approximation of the formula
         match formula {
             Formula::Literal(lit) => self.rewrite_literal(lit, ctx),
@@ -78,7 +78,7 @@ impl Rewriter {
         &mut self,
         lit: Literal,
         ctx: &mut Context,
-    ) -> Result<Formula, NormalizationError> {
+    ) -> Result<Formula, PreprocessingError> {
         if let Some(rewrite) = self.rewrites.get(&lit) {
             Ok(rewrite.clone())
         } else {
@@ -118,7 +118,7 @@ impl Rewriter {
                         self.rewrites.insert(lit, new_lit.clone());
                         Ok(new_lit)
                     } else {
-                        Err(NormalizationError::InvalidNegationQuantifier(
+                        Err(PreprocessingError::InvalidNegationQuantifier(
                             lit.to_string(),
                         ))
                     }
@@ -143,7 +143,7 @@ impl Rewriter {
                         self.rewrites.insert(lit, new_lit.clone());
                         Ok(new_lit)
                     } else {
-                        Err(NormalizationError::InvalidNegationQuantifier(
+                        Err(PreprocessingError::InvalidNegationQuantifier(
                             lit.to_string(),
                         ))
                     }
@@ -170,7 +170,7 @@ impl Rewriter {
                         self.rewrites.insert(lit, new_lit.clone());
                         Ok(new_lit)
                     } else {
-                        Err(NormalizationError::InvalidNegationQuantifier(
+                        Err(PreprocessingError::InvalidNegationQuantifier(
                             lit.to_string(),
                         ))
                     }

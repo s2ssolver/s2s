@@ -3,10 +3,10 @@
 mod expr;
 
 mod builder;
+mod error;
+pub mod nf;
 pub mod parse;
 mod script;
-
-mod error;
 pub use builder::AstBuilder;
 pub use error::*;
 pub use expr::*;

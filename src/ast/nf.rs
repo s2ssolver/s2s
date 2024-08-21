@@ -4,56 +4,48 @@ use std::rc::Rc;
 
 use crate::ast::{AstBuilder, CoreExpr, ExprType, Expression, Script, Sorted};
 
-use super::NormalizationError;
-
 /// Transforms a script into negation normal form.
-pub fn script_to_nnf(
-    script: &Script,
-    builder: &mut AstBuilder,
-) -> Result<Script, NormalizationError> {
+pub fn script_to_nnf(script: &Script, builder: &mut AstBuilder) -> Script {
     let mut new_assertions = Vec::with_capacity(script.iter_asserts().count());
     for assertion in script.iter_asserts() {
-        let nnf = expression_to_nnf(assertion, builder)?;
+        let nnf = expression_to_nnf(assertion, builder);
         new_assertions.push(nnf);
     }
-    Ok(script.replace_assertions(new_assertions))
+    script.replace_assertions(new_assertions)
 }
 
 /// Transforms an expression into negation normal form.
 /// An expression is in negation normal form if negation is only applied to variables.
 /// Expression that are not in BNF are first converted to BNF before converting to NNF.
-pub fn expression_to_nnf(
-    expr: &Rc<Expression>,
-    builder: &mut AstBuilder,
-) -> Result<Rc<Expression>, NormalizationError> {
+pub fn expression_to_nnf(expr: &Rc<Expression>, builder: &mut AstBuilder) -> Rc<Expression> {
     match expr.get_type() {
         ExprType::Core(e) => match e {
-            CoreExpr::Var(_) | CoreExpr::Bool(_) => Ok(expr.clone()),
+            CoreExpr::Var(_) | CoreExpr::Bool(_) => expr.clone(),
             CoreExpr::Not(inner_e) => match inner_e.get_type() {
                 ExprType::Core(inner) => match inner {
-                    CoreExpr::Bool(v) => Ok(builder.bool(!v)),
+                    CoreExpr::Bool(v) => builder.bool(!v),
                     CoreExpr::Var(v) => {
                         debug_assert!(v.sort().is_bool());
-                        Ok(expr.clone())
+                        expr.clone()
                     }
-                    CoreExpr::Not(dn) => Ok(dn.clone()),
+                    CoreExpr::Not(dn) => dn.clone(),
                     CoreExpr::And(es) => {
                         let new_es = es
                             .iter()
                             .map(|e| expression_to_nnf(&builder.not(e.clone()), builder))
-                            .collect::<Result<Vec<_>, NormalizationError>>()?;
-                        Ok(builder.or(new_es))
+                            .collect();
+                        builder.or(new_es)
                     }
                     CoreExpr::Or(es) => {
                         let new_es = es
                             .iter()
                             .map(|e| expression_to_nnf(&builder.not(e.clone()), builder))
-                            .collect::<Result<Vec<_>, NormalizationError>>()?;
-                        Ok(builder.and(new_es))
+                            .collect();
+                        builder.and(new_es)
                     }
                     CoreExpr::Equal(l, r) => {
                         if !l.sort().is_bool() && !r.sort().is_bool() {
-                            Ok(expr.clone())
+                            expr.clone()
                         } else {
                             panic!("Can only convert BNF to NNF")
                         }
@@ -62,58 +54,48 @@ pub fn expression_to_nnf(
                         panic!("Can only convert BNF to NNF")
                     }
                 },
-                _ => Ok(expr.clone()), // all literals are in NNF
+                _ => expr.clone(), // all literals are in NNF
             },
             CoreExpr::And(es) => {
-                let new_es: Vec<_> = es
-                    .iter()
-                    .map(|e| expression_to_nnf(e, builder))
-                    .collect::<Result<Vec<_>, NormalizationError>>()?;
-                Ok(builder.and(new_es))
+                let new_es: Vec<_> = es.iter().map(|e| expression_to_nnf(e, builder)).collect();
+                builder.and(new_es)
             }
             CoreExpr::Or(es) => {
-                let new_es: Vec<_> = es
-                    .iter()
-                    .map(|e| expression_to_nnf(e, builder))
-                    .collect::<Result<Vec<_>, NormalizationError>>()?;
-                Ok(builder.or(new_es))
+                let new_es: Vec<_> = es.iter().map(|e| expression_to_nnf(e, builder)).collect();
+                builder.or(new_es)
             }
             CoreExpr::Equal(l, r) => {
                 if !l.sort().is_bool() && !r.sort().is_bool() {
-                    Ok(expr.clone())
+                    expr.clone()
                 } else {
-                    let bnf = expression_to_bnf(expr, builder)?;
+                    let bnf = expression_to_bnf(expr, builder);
                     expression_to_nnf(&bnf, builder)
                 }
             }
             CoreExpr::Imp(_, _) | CoreExpr::Ite(_, _, _) | CoreExpr::Distinct(_) => {
-                let bnf = expression_to_bnf(expr, builder)?;
+                let bnf = expression_to_bnf(expr, builder);
                 expression_to_nnf(&bnf, builder)
             }
         },
-        _ => Ok(expr.clone()),
+        _ => expr.clone(),
     }
 }
 
 /// Transforms an expression into Boolean normal form.
 /// An expression is in Boolean normal form if it only uses the operators `and`, `or`, and `not`.
-pub fn expression_to_bnf(
-    expr: &Rc<Expression>,
-    builder: &mut AstBuilder,
-) -> Result<Rc<Expression>, NormalizationError> {
+pub fn expression_to_bnf(expr: &Rc<Expression>, builder: &mut AstBuilder) -> Rc<Expression> {
     match expr.get_type() {
         ExprType::Core(e) => match e {
-            CoreExpr::Var(_) | CoreExpr::Bool(_) => Ok(expr.clone()),
+            CoreExpr::Var(_) | CoreExpr::Bool(_) => expr.clone(),
             CoreExpr::Not(e) => {
-                let inner = expression_to_bnf(e, builder)?;
-                Ok(builder.not(inner))
+                let inner = expression_to_bnf(e, builder);
+                builder.not(inner)
             }
             CoreExpr::And(es) | CoreExpr::Or(es) => {
-                let new_es: Result<Vec<_>, _> =
-                    es.iter().map(|e| expression_to_bnf(e, builder)).collect();
+                let new_es = es.iter().map(|e| expression_to_bnf(e, builder)).collect();
                 match e {
-                    CoreExpr::And(_) => Ok(builder.and(new_es?)),
-                    CoreExpr::Or(_) => Ok(builder.or(new_es?)),
+                    CoreExpr::And(_) => builder.and(new_es),
+                    CoreExpr::Or(_) => builder.or(new_es),
                     _ => unreachable!(),
                 }
             }
@@ -124,7 +106,7 @@ pub fn expression_to_bnf(
                 let conj = builder.and(vec![l2r, r2l]);
                 expression_to_bnf(&conj, builder)
             }
-            CoreExpr::Equal(_, _) => Ok(expr.clone()),
+            CoreExpr::Equal(_, _) => expr.clone(),
             CoreExpr::Imp(l, r) => {
                 // Resolve Boolean implication as (not l or r)
                 debug_assert!(l.sort().is_bool() && r.sort().is_bool());
@@ -132,11 +114,9 @@ pub fn expression_to_bnf(
                 let disj = builder.or(vec![not_l, r.clone()]);
                 expression_to_bnf(&disj, builder)
             }
-            CoreExpr::Ite(_, _, _) | CoreExpr::Distinct(_) => Err(NormalizationError::Unsupported(
-                format!("{:?} expressions", e),
-            )),
+            CoreExpr::Ite(_, _, _) | CoreExpr::Distinct(_) => expr.clone(),
         },
-        _ => Ok(expr.clone()),
+        _ => expr.clone(),
     }
 }
 
@@ -156,7 +136,7 @@ mod tests {
         let var = builder.var(v);
 
         // Variable should remain unchanged in BNF
-        let bnf = expression_to_bnf(&var, &mut builder).unwrap();
+        let bnf = expression_to_bnf(&var, &mut builder);
         assert_eq!(var, bnf);
     }
 
@@ -169,7 +149,7 @@ mod tests {
 
         // Variable should remain unchanged in NNF
         let nnf = expression_to_nnf(&var, &mut builder);
-        assert_eq!(var, nnf.unwrap());
+        assert_eq!(var, nnf);
     }
 
     #[test]
@@ -184,7 +164,7 @@ mod tests {
         let and_expr = builder.and(vec![var_x.clone(), var_y.clone()]);
 
         // AND expression should remain unchanged in BNF
-        let bnf = expression_to_bnf(&and_expr, &mut builder).unwrap();
+        let bnf = expression_to_bnf(&and_expr, &mut builder);
         assert_eq!(and_expr, bnf);
     }
 
@@ -199,7 +179,7 @@ mod tests {
         let and_expr = builder.and(vec![var_x.clone(), var_y.clone()]);
 
         // AND expression should remain unchanged in NNF
-        let nnf = expression_to_nnf(&and_expr, &mut builder).unwrap();
+        let nnf = expression_to_nnf(&and_expr, &mut builder);
         assert_eq!(and_expr, nnf);
     }
 
@@ -212,7 +192,7 @@ mod tests {
         let not_expr = builder.not(var.clone());
 
         // NOT expression should remain unchanged in BNF
-        let bnf = expression_to_bnf(&not_expr, &mut builder).unwrap();
+        let bnf = expression_to_bnf(&not_expr, &mut builder);
         assert_eq!(not_expr, bnf);
     }
 
@@ -225,7 +205,7 @@ mod tests {
         let not_expr = builder.not(var.clone());
 
         // NOT expression should remain unchanged in NNF
-        let nnf = expression_to_nnf(&not_expr, &mut builder).unwrap();
+        let nnf = expression_to_nnf(&not_expr, &mut builder);
         assert_eq!(not_expr, nnf);
     }
 
@@ -240,7 +220,7 @@ mod tests {
         let or_expr = builder.or(vec![var_x.clone(), var_y.clone()]);
 
         // OR expression should remain unchanged in BNF
-        let bnf = expression_to_bnf(&or_expr, &mut builder).unwrap();
+        let bnf = expression_to_bnf(&or_expr, &mut builder);
         assert_eq!(or_expr, bnf);
     }
 
@@ -255,7 +235,7 @@ mod tests {
         let or_expr = builder.or(vec![var_x.clone(), var_y.clone()]);
 
         // OR expression should remain unchanged in NNF
-        let nnf = expression_to_nnf(&or_expr, &mut builder).unwrap();
+        let nnf = expression_to_nnf(&or_expr, &mut builder);
         assert_eq!(or_expr, nnf);
     }
 
@@ -270,7 +250,7 @@ mod tests {
         let implies_expr = builder.imp(var_x.clone(), var_y.clone());
 
         // Implication (x -> y) should be converted to (not x or y) in BNF
-        let bnf = expression_to_bnf(&implies_expr, &mut builder).unwrap();
+        let bnf = expression_to_bnf(&implies_expr, &mut builder);
         let args = vec![builder.not(var_x.clone()), var_y.clone()];
         let expected_bnf = builder.or(args);
         assert_eq!(expected_bnf, bnf);
@@ -287,7 +267,7 @@ mod tests {
         let eq_expr = builder.eq(var_x.clone(), var_y.clone());
 
         // Equivalence (x == y) should be converted to (x -> y) and (y -> x) in BNF
-        let bnf = expression_to_bnf(&eq_expr, &mut builder).unwrap();
+        let bnf = expression_to_bnf(&eq_expr, &mut builder);
         let args = vec![
             builder.imp(var_x.clone(), var_y.clone()),
             builder.imp(var_y.clone(), var_x.clone()),
@@ -307,7 +287,7 @@ mod tests {
         let double_neg = builder.not(neg.clone());
 
         // Double negation should simplify to the original variable
-        let nnf = expression_to_nnf(&double_neg, &mut builder).unwrap();
+        let nnf = expression_to_nnf(&double_neg, &mut builder);
         assert_eq!(var, nnf);
     }
 
@@ -324,7 +304,7 @@ mod tests {
         let neg_and = builder.not(and_expr);
 
         // Negation of (x and y) should convert to (not x or not y) in NNF
-        let nnf = expression_to_nnf(&neg_and, &mut builder).unwrap();
+        let nnf = expression_to_nnf(&neg_and, &mut builder);
 
         let args = vec![builder.not(var_x.clone()), builder.not(var_y.clone())];
         let expected_nnf = builder.or(args);
@@ -344,7 +324,7 @@ mod tests {
         let neg_or = builder.not(or_expr);
 
         // Negation of (x or y) should convert to (not x and not y) in NNF
-        let nnf = expression_to_nnf(&neg_or, &mut builder).unwrap();
+        let nnf = expression_to_nnf(&neg_or, &mut builder);
         let args = vec![builder.not(var_x.clone()), builder.not(var_y.clone())];
         let expected_nnf = builder.and(args);
         assert_eq!(expected_nnf, nnf);
