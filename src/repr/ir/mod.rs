@@ -9,7 +9,7 @@ mod substitution;
 pub use int::{LinearArithTerm, LinearOperator};
 pub use string::Pattern;
 
-use crate::ast::Variable;
+use super::Variable;
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub enum AtomType {

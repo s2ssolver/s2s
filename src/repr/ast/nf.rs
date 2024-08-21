@@ -2,7 +2,10 @@
 
 use std::rc::Rc;
 
-use crate::ast::{AstBuilder, CoreExpr, ExprType, Expression, Script, Sorted};
+use crate::repr::{
+    ast::{AstBuilder, CoreExpr, ExprType, Expression, Script},
+    Sorted,
+};
 
 /// Transforms a script into negation normal form.
 pub fn script_to_nnf(script: &Script, builder: &mut AstBuilder) -> Script {
@@ -124,8 +127,8 @@ pub fn expression_to_bnf(expr: &Rc<Expression>, builder: &mut AstBuilder) -> Rc<
 mod tests {
     use super::*;
     use crate::{
-        ast::{AstBuilder, Sort},
         context::Context,
+        repr::{ast::AstBuilder, Sort},
     };
 
     #[test]

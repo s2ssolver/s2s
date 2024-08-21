@@ -2,7 +2,9 @@ use std::{collections::HashMap, rc::Rc};
 
 use regulaer::re::{OptReBuilder, Regex};
 
-use super::{CoreExpr, ExprType, Expression, IntExpr, StrExpr, Variable};
+use crate::repr::Variable;
+
+use super::{CoreExpr, ExprType, Expression, IntExpr, StrExpr};
 
 /// Manages the creation and interning of expressions and variables.
 /// All expressions should be created through (the same instance of) this builder.
@@ -359,7 +361,7 @@ impl AstBuilder {
 #[cfg(test)]
 mod tests {
 
-    use crate::{ast::Sort, context::Context};
+    use crate::{context::Context, repr::Sort};
 
     use super::*;
 

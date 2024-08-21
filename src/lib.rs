@@ -8,7 +8,7 @@
 //! Note however, that the solver does not guarantee that unsatisfiability is detected and thus might not terminate.
 
 mod abstr;
-mod ast;
+
 mod bounds;
 mod encode;
 pub mod error;
@@ -16,8 +16,8 @@ mod instance;
 // pub mod model;
 // mod parse;
 mod context;
-mod ir;
 mod preprocess;
+mod repr;
 mod sat;
 mod solver;
 

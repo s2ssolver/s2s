@@ -3,10 +3,11 @@ use std::{path::Path, rc::Rc};
 use crate::context::Context;
 
 use super::{
-    expr::{ExprType, Expression, Sort, StrExpr, Variable},
+    expr::{ExprType, Expression, StrExpr},
     script::Script,
 };
 use super::{AstBuilder, AstError};
+use crate::repr::{Sort, Variable};
 
 use itertools::Itertools;
 
