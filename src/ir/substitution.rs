@@ -1,6 +1,6 @@
 use indexmap::IndexMap;
+use std::collections::HashMap;
 use std::fmt::{Display, Write};
-use std::{collections::HashMap, rc::Rc};
 
 use crate::{
     ast::{Sort, Sorted, Variable},
@@ -8,8 +8,7 @@ use crate::{
 };
 
 use super::{
-    int::Summand, string::Symbol, AtomType, Formula, FormulaBuilder, FormulaType, LinearArithTerm,
-    Pattern,
+    int::Summand, string::Symbol, AtomType, Formula, FormulaBuilder, LinearArithTerm, Pattern,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -156,11 +155,11 @@ impl VarSubstitution {
         buf
     }
 
-    pub fn apply(&self, fm: Formula, builder: &mut FormulaBuilder) -> Rc<Formula> {
-        match fm.formula {
-            FormulaType::Literal(lit) => {
+    pub fn apply(&self, fm: Formula, builder: &mut FormulaBuilder) -> Formula {
+        match fm {
+            Formula::Literal(lit) => {
                 let pol = lit.polarity();
-                let new_lit = match &lit.atom().atom {
+                let new_lit = match &lit.atom().ttype {
                     AtomType::InRe(p, r) => {
                         let new_p = self.apply_pattern(&p);
                         let new_in_re = builder.in_re(new_p, r.clone());
@@ -181,20 +180,27 @@ impl VarSubstitution {
                         let v = builder.bool_var(bv.clone());
                         builder.literal(v, pol)
                     }
+                    AtomType::BoolConst(b) => {
+                        let v = builder.bool_const(*b);
+                        builder.literal(v, pol)
+                    }
+                    AtomType::PrefixOf(_, _) => todo!(),
+                    AtomType::SuffixOf(_, _) => todo!(),
+                    AtomType::Contains(_, _) => todo!(),
                 };
                 new_lit
             }
-            FormulaType::And(rs) => {
+            Formula::And(rs) => {
                 let mut new_rs = Vec::new();
                 for r in rs {
-                    new_rs.push(self.apply(r.as_ref().clone(), builder));
+                    new_rs.push(self.apply(r, builder));
                 }
                 builder.and(new_rs)
             }
-            FormulaType::Or(rs) => {
+            Formula::Or(rs) => {
                 let mut new_rs = Vec::new();
                 for r in rs {
-                    new_rs.push(self.apply(r.as_ref().clone(), builder));
+                    new_rs.push(self.apply(r, builder));
                 }
                 builder.or(new_rs)
             }
@@ -205,11 +211,11 @@ impl VarSubstitution {
         let mut new_pat = Pattern::empty();
         for s in pat.iter() {
             match s {
-                Symbol::Constant(c) => new_pat.append(Symbol::Constant(c.clone())),
+                Symbol::Constant(c) => new_pat.push(Symbol::Constant(c.clone())),
                 Symbol::Variable(v) => match self.get(v) {
                     Some(Substitute::String(p)) => new_pat.extend(p.clone()),
                     None => {
-                        new_pat.append_var(v.clone());
+                        new_pat.push_var(v.clone());
                     }
                     _ => panic!("Expected a string term"),
                 },

@@ -1,9 +1,5 @@
 //! Internal representation of the input formula.
-use std::{
-    collections::HashMap,
-    hash::{Hash, Hasher},
-    rc::Rc,
-};
+use std::{collections::HashMap, fmt::Display, hash::Hash, rc::Rc};
 
 use regulaer::re::Regex;
 
@@ -13,156 +9,218 @@ mod substitution;
 pub use int::{LinearArithTerm, LinearOperator};
 pub use string::Pattern;
 
-use crate::ast::{Sort, Sorted, Variable};
+use crate::ast::Variable;
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub enum AtomType {
-    BoolVar(Variable),
+    /// A boolean variable.
+    BoolVar(Rc<Variable>),
+    /// A constant boolean value.
+    BoolConst(bool),
+
+    /// A regular constraint.
     InRe(Pattern, Regex),
+    /// A word equation.
     WordEquation(Pattern, Pattern),
+
+    /// PrefixOf
+    PrefixOf(Pattern, Pattern),
+    /// SuffixOf
+    SuffixOf(Pattern, Pattern),
+    /// Contains
+    Contains(Pattern, Pattern),
+
+    /// A linear constraint.
     LinearConstraint(LinearArithTerm, LinearOperator, isize),
+}
+impl Display for AtomType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            AtomType::BoolVar(v) => write!(f, "{}", v),
+            AtomType::BoolConst(b) => write!(f, "{}", b),
+            AtomType::InRe(p, r) => write!(f, "{} ∈ {}", p, r),
+            AtomType::WordEquation(l, r) => write!(f, "{} = {}", l, r),
+            AtomType::PrefixOf(l, r) => write!(f, "{} ⊑ {}", l, r),
+            AtomType::SuffixOf(l, r) => write!(f, "{} ⊒ {}", l, r),
+            AtomType::Contains(l, r) => write!(f, "{} contains {}", l, r),
+            AtomType::LinearConstraint(l, o, r) => write!(f, "{} {} {}", l, o, r),
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
 pub struct Atom {
+    ttype: AtomType,
     id: usize,
-    atom: AtomType,
 }
-
-impl Atom {
-    fn new(id: usize, atom: AtomType) -> Self {
-        Self { id, atom }
+impl Hash for Atom {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.id.hash(state);
     }
 }
-
 impl PartialEq for Atom {
     fn eq(&self, other: &Self) -> bool {
         self.id == other.id
     }
 }
 impl Eq for Atom {}
-impl Hash for Atom {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.id.hash(state);
+impl Atom {
+    fn new(ttype: AtomType, id: usize) -> Self {
+        Self { ttype, id }
+    }
+    pub fn get_type(&self) -> &AtomType {
+        &self.ttype
+    }
+    pub fn into_type(self) -> AtomType {
+        self.ttype
+    }
+}
+impl Display for Atom {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.ttype)
     }
 }
 
-#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Literal {
-    Pos(Rc<Atom>),
-    Neg(Rc<Atom>),
+    /// A positive literal.
+    Positive(Rc<Atom>),
+    /// A negative literal.
+    Negative(Rc<Atom>),
 }
 impl Literal {
-    pub fn polarity(&self) -> bool {
+    pub fn id(&self) -> isize {
         match self {
-            Self::Pos(_) => true,
-            Self::Neg(_) => false,
+            Literal::Positive(a) => a.id as isize,
+            Literal::Negative(a) => -(a.id as isize),
         }
     }
+
     pub fn atom(&self) -> &Rc<Atom> {
         match self {
-            Self::Pos(a) | Self::Neg(a) => a,
+            Literal::Positive(a) => a,
+            Literal::Negative(a) => a,
+        }
+    }
+
+    pub fn into_atom(self) -> Rc<Atom> {
+        match self {
+            Literal::Positive(a) => a,
+            Literal::Negative(a) => a,
+        }
+    }
+
+    /// The polarity of the literal.
+    pub fn polarity(&self) -> bool {
+        match self {
+            Literal::Positive(_) => true,
+            Literal::Negative(_) => false,
+        }
+    }
+}
+impl Hash for Literal {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.id().hash(state);
+    }
+}
+impl Display for Literal {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Literal::Positive(a) => write!(f, "{}", a),
+            Literal::Negative(a) => write!(f, "¬({})", a),
         }
     }
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
-pub enum FormulaType {
+pub enum Formula {
+    /// A theory literal.
     Literal(Literal),
-    And(Vec<Rc<Formula>>),
-    Or(Vec<Rc<Formula>>),
+    /// A conjunction of subformulas.
+    And(Vec<Formula>),
+    /// A disjunction of subformulas.
+    Or(Vec<Formula>),
 }
-
-#[derive(Clone, Debug)]
-pub struct Formula {
-    id: usize,
-    formula: FormulaType,
-}
-
-impl Formula {
-    fn new(id: usize, formula: FormulaType) -> Self {
-        Self { id, formula }
-    }
-}
-
-impl PartialEq for Formula {
-    fn eq(&self, other: &Self) -> bool {
-        self.id == other.id
-    }
-}
-impl Eq for Formula {}
-impl Hash for Formula {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.id.hash(state);
+impl Display for Formula {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Formula::Literal(lit) => write!(f, "{}", lit),
+            Formula::And(es) => {
+                let mut iter = es.iter();
+                if let Some(e) = iter.next() {
+                    write!(f, "({}", e)?;
+                    for e in iter {
+                        write!(f, " ∧ {}", e)?;
+                    }
+                    write!(f, ")")?;
+                }
+                Ok(())
+            }
+            Formula::Or(es) => {
+                let mut iter = es.iter();
+                if let Some(e) = iter.next() {
+                    write!(f, "({}", e)?;
+                    for e in iter {
+                        write!(f, " ∨ {}", e)?;
+                    }
+                    write!(f, ")")?;
+                }
+                Ok(())
+            }
+        }
     }
 }
 
 #[derive(Default)]
 pub struct FormulaBuilder {
-    registry: HashMap<FormulaType, Rc<Formula>>,
-    lit_registry: HashMap<AtomType, Rc<Atom>>,
-    next_id: usize,
+    registry: HashMap<AtomType, Rc<Atom>>,
 }
 
 impl FormulaBuilder {
-    /// Interns a formula, ensuring it is unique.
-    fn intern(&mut self, ttype: FormulaType) -> Rc<Formula> {
-        if let Some(existing) = self.registry.get(&ttype) {
-            existing.clone()
+    fn register_atom(&mut self, atom: AtomType) -> Rc<Atom> {
+        if let Some(atom) = self.registry.get(&atom) {
+            return atom.clone();
         } else {
-            let fm = Formula::new(self.next_id, ttype.clone());
-            self.next_id += 1;
-            let rc = Rc::new(fm.clone());
-            self.registry.insert(ttype, rc.clone());
-            rc
+            let id = self.registry.len();
+            let atom = Rc::new(Atom::new(atom, id));
+            self.registry.insert(atom.get_type().clone(), atom.clone());
+            atom
         }
     }
 
-    fn intern_atom(&mut self, atom: AtomType) -> Rc<Atom> {
-        if let Some(existing) = self.lit_registry.get(&atom) {
-            existing.clone()
-        } else {
-            let at = Atom::new(self.next_id, atom.clone());
-            self.next_id += 1;
-            let rc = Rc::new(at.clone());
-            self.lit_registry.insert(atom, rc.clone());
-            rc
-        }
+    pub fn bool_var(&mut self, var: Rc<Variable>) -> Rc<Atom> {
+        let bool_var = AtomType::BoolVar(var);
+        self.register_atom(bool_var)
     }
 
-    /// Builds a conjunction of subformulas.
-    pub fn and(&mut self, formulas: Vec<Rc<Formula>>) -> Rc<Formula> {
-        self.intern(FormulaType::And(formulas))
-    }
-
-    /// Builds a disjunction of subformulas.
-    pub fn or(&mut self, formulas: Vec<Rc<Formula>>) -> Rc<Formula> {
-        self.intern(FormulaType::Or(formulas))
-    }
-
-    pub fn literal(&mut self, atom: Rc<Atom>, polarity: bool) -> Rc<Formula> {
-        let lit = if polarity {
-            Literal::Pos(atom)
-        } else {
-            Literal::Neg(atom)
-        };
-        self.intern(FormulaType::Literal(lit))
-    }
-
-    pub fn bool_var(&mut self, var: Variable) -> Rc<Atom> {
-        assert!(var.sort() == Sort::Bool);
-        let atom = AtomType::BoolVar(var);
-        self.intern_atom(atom)
+    pub fn bool_const(&mut self, value: bool) -> Rc<Atom> {
+        let bool_const = AtomType::BoolConst(value);
+        self.register_atom(bool_const)
     }
 
     pub fn word_equation(&mut self, lhs: Pattern, rhs: Pattern) -> Rc<Atom> {
-        let atom = AtomType::WordEquation(lhs, rhs);
-        self.intern_atom(atom)
+        let eq = AtomType::WordEquation(lhs, rhs);
+        self.register_atom(eq)
     }
 
-    pub fn in_re(&mut self, pat: Pattern, re: Regex) -> Rc<Atom> {
-        let atom = AtomType::InRe(pat, re);
-        self.intern_atom(atom)
+    pub fn in_re(&mut self, lhs: Pattern, rhs: Regex) -> Rc<Atom> {
+        let in_re = AtomType::InRe(lhs, rhs);
+        self.register_atom(in_re)
+    }
+
+    pub fn prefix_of(&mut self, lhs: Pattern, rhs: Pattern) -> Rc<Atom> {
+        let prefix_of = AtomType::PrefixOf(lhs, rhs);
+        self.register_atom(prefix_of)
+    }
+
+    pub fn suffix_of(&mut self, lhs: Pattern, rhs: Pattern) -> Rc<Atom> {
+        let suffix_of = AtomType::SuffixOf(lhs, rhs);
+        self.register_atom(suffix_of)
+    }
+
+    pub fn contains(&mut self, lhs: Pattern, rhs: Pattern) -> Rc<Atom> {
+        let contains = AtomType::Contains(lhs, rhs);
+        self.register_atom(contains)
     }
 
     pub fn linear_constraint(
@@ -171,7 +229,32 @@ impl FormulaBuilder {
         op: LinearOperator,
         rhs: isize,
     ) -> Rc<Atom> {
-        let atom = AtomType::LinearConstraint(lhs, op, rhs);
-        self.intern_atom(atom)
+        let linear_constraint = AtomType::LinearConstraint(lhs, op, rhs);
+        self.register_atom(linear_constraint)
+    }
+
+    pub fn and(&self, formulas: Vec<Formula>) -> Formula {
+        Formula::And(formulas)
+    }
+
+    pub fn or(&self, formulas: Vec<Formula>) -> Formula {
+        Formula::Or(formulas)
+    }
+
+    pub fn literal(&self, atom: Rc<Atom>, polarity: bool) -> Formula {
+        let literal = if polarity {
+            Literal::Positive(atom)
+        } else {
+            Literal::Negative(atom)
+        };
+        Formula::Literal(literal)
+    }
+
+    pub fn plit(&self, atom: Rc<Atom>) -> Formula {
+        self.literal(atom, true)
+    }
+
+    pub fn nlit(&self, atom: Rc<Atom>) -> Formula {
+        self.literal(atom, false)
     }
 }
