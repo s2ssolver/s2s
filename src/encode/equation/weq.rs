@@ -4,14 +4,14 @@ use std::fmt::Display;
 use std::time::Instant;
 
 use crate::bounds::Bounds;
+use crate::context::Context;
 use crate::encode::card::{exactly_one, IncrementalALO, IncrementalAMO};
 use crate::encode::domain::DomainEncoding;
-use crate::encode::{ConstraintEncoder, EncodingResult, FilledPattern, LAMBDA};
+use crate::encode::{EncodingError, EncodingResult, FilledPattern, LiteralEncoder, LAMBDA};
 
-use crate::error::Error;
-use crate::model::constraints::{Pattern, Symbol, WordEquation};
-use crate::model::Variable;
-use crate::sat::{plit, nlit, pvar, Cnf, PVar};
+use crate::repr::ir::{Pattern, Symbol, WordEquation};
+use crate::repr::Variable;
+use crate::sat::{nlit, plit, pvar, Cnf, PVar};
 use indexmap::{indexset, IndexMap};
 
 /// A segment of a pattern, i.e., a string constant or a variable.
@@ -231,7 +231,7 @@ impl SolutionWord {
 
 /// The alignment-based encoder for word equations.
 /// This encoder is based on the following idea that segments of the LHS and RHS need to be aligned with a solution word.
-pub struct AlignmentEncoder {
+pub struct WordEquationEncoder {
     /// The original word equation
     equation: WordEquation,
 
@@ -278,7 +278,7 @@ pub struct AlignmentEncoder {
     mismatch_alo: IncrementalALO,
 }
 
-impl AlignmentEncoder {
+impl WordEquationEncoder {
     pub fn new(equation: WordEquation) -> Self {
         let lhs_segs = SegmentedPattern::new(&equation.lhs());
         let rhs_segs = SegmentedPattern::new(&equation.rhs());
@@ -804,20 +804,21 @@ impl AlignmentEncoder {
     }
 }
 
-impl ConstraintEncoder for AlignmentEncoder {
+impl LiteralEncoder for WordEquationEncoder {
     fn encode(
         &mut self,
         bounds: &Bounds,
         substitution: &DomainEncoding,
-    ) -> Result<EncodingResult, Error> {
+        ctx: &Context,
+    ) -> Result<EncodingResult, EncodingError> {
         self.round += 1;
 
         let mut res = EncodingResult::empty();
 
         // Must be larger than 0
         let bound = min(
-            FilledPattern::fill(&self.equation.lhs(), bounds).length(),
-            FilledPattern::fill(&self.equation.rhs(), bounds).length(),
+            FilledPattern::fill(&self.equation.lhs(), bounds, ctx).length(),
+            FilledPattern::fill(&self.equation.rhs(), bounds, ctx).length(),
         ) + 1;
 
         assert!(bound >= self.bound, "Bound cannot shrink");
@@ -1032,8 +1033,8 @@ impl Display for EqSide {
 #[cfg(test)]
 mod tests {
     use crate::{
-        ast::{Evaluable, Substitutable},
         instance::Instance,
+        repr::{ir::VarSubstitution, Sort},
     };
     use std::collections::HashSet;
 
@@ -1042,7 +1043,6 @@ mod tests {
     use indexmap::IndexSet;
 
     use crate::{
-        ast::{constraints::Pattern, Sort, Substitution},
         bounds::IntDomain,
         encode::domain::{get_str_substitutions, DomainEncoder},
     };
@@ -1102,18 +1102,24 @@ mod tests {
         );
     }
 
-    fn solve_align(eq: &WordEquation, bounds: Bounds, alphabet: &IndexSet<char>) -> Option<bool> {
+    fn solve_align(
+        eq: &WordEquation,
+        bounds: Bounds,
+        alphabet: &IndexSet<char>,
+        ctx: &mut Context,
+    ) -> Option<bool> {
         let mut encoding = EncodingResult::empty();
-        let mut instance = Instance::default();
-        eq.variables()
-            .iter()
-            .for_each(|v| instance.add_var(v.clone()));
-        let mut dom_encoder = DomainEncoder::new(alphabet.clone());
-        let subs_cnf = dom_encoder.encode(&bounds, &instance);
-        encoding.join(subs_cnf);
 
-        let mut encoder = AlignmentEncoder::new(eq.clone());
-        encoding.join(encoder.encode(&bounds, dom_encoder.encoding()).unwrap());
+        let mut dom_encoder = DomainEncoder::new(alphabet.clone());
+        let dom_cnf = dom_encoder.encode(&bounds, ctx);
+        encoding.join(dom_cnf);
+
+        let mut encoder = WordEquationEncoder::new(eq.clone());
+        encoding.join(
+            encoder
+                .encode(&bounds, dom_encoder.encoding(), ctx)
+                .unwrap(),
+        );
 
         let mut solver: Solver = Solver::default();
         let mut assumptions = HashSet::new();
@@ -1129,8 +1135,8 @@ mod tests {
         }
         let res = solver.solve_with(assumptions.into_iter());
         if let Some(true) = res {
-            let solution = get_str_substitutions(dom_encoder.encoding(), &instance, &solver);
-            let solution = Substitution::from(solution);
+            let solution = get_str_substitutions(dom_encoder.encoding(), ctx, &solver);
+            let solution = VarSubstitution::from(solution);
             println!("\n========================\n");
             for i in 0..encoder.segments(&EqSide::Rhs).length() {
                 for p in 0..encoder.bound {
@@ -1172,10 +1178,11 @@ mod tests {
         eq: &WordEquation,
         limit: usize,
         alphabet: &IndexSet<char>,
+        ctx: &mut Context,
     ) -> Option<bool> {
         let mut bounds = Bounds::with_defaults(IntDomain::Bounded(0, 1));
 
-        let mut encoder = AlignmentEncoder::new(eq.clone());
+        let mut encoder = WordEquationEncoder::new(eq.clone());
         let mut instance: Instance = Instance::default();
         eq.variables()
             .iter()
@@ -1190,7 +1197,11 @@ mod tests {
             let mut encoding = EncodingResult::empty();
 
             encoding.join(dom_encoder.encode(&bounds, &instance));
-            encoding.join(encoder.encode(&bounds, dom_encoder.encoding()).unwrap());
+            encoding.join(
+                encoder
+                    .encode(&bounds, dom_encoder.encoding(), ctx)
+                    .unwrap(),
+            );
             result = match encoding {
                 EncodingResult::Cnf(cnf, assm) => {
                     for clause in cnf {
@@ -1208,7 +1219,7 @@ mod tests {
         }
         if let Some(true) = result {
             let solution = get_str_substitutions(dom_encoder.encoding(), &instance, &solver);
-            let solution = Substitution::from(solution);
+            let solution = VarSubstitution::from(solution);
 
             for i in 0..encoder.segments(&EqSide::Rhs).length() {
                 for p in 0..encoder.bound {
@@ -1261,142 +1272,202 @@ mod tests {
 
     #[test]
     fn align_incremental_sat() {
-        let eq = WordEquation::parse_simple_equality("abc", "X");
-        let res = solve_align_incremental(&eq, 5, &eq.alphabet());
+        let mut ctx = Context::default();
+        let eq = parse_simple("X", "abc", &mut ctx);
+
+        let res = solve_align_incremental(&eq, 5, &eq.alphabet(), &mut ctx);
         assert!(matches!(res, Some(true)));
     }
 
     #[test]
     fn align_empty_eq() {
+        let mut ctx = Context::default();
         let eq = WordEquation::new_equality(Pattern::from(vec![]), Pattern::from(vec![]));
         let bounds = Bounds::with_defaults(IntDomain::Bounded(0, 10));
-        let res = solve_align(&eq, bounds, &eq.alphabet());
+        let res = solve_align(&eq, bounds, &eq.alphabet(), &mut ctx);
         assert!(matches!(res, Some(true)));
     }
 
     #[test]
     fn align_trivial_sat_consts() {
-        let eq = WordEquation::constant_equality("bar", "bar");
+        let mut ctx = Context::default();
+        let eq = parse_simple("bar", "bar", &mut ctx);
+
         let bounds = Bounds::with_defaults(IntDomain::Bounded(0, 10));
 
-        let res = solve_align(&eq, bounds, &eq.alphabet());
+        let res = solve_align(&eq, bounds, &eq.alphabet(), &mut ctx);
         assert!(matches!(res, Some(true)));
     }
 
     #[test]
     fn align_trivial_unsat_consts() {
-        let eq = WordEquation::constant_equality("bar", "barr");
+        let mut ctx = Context::default();
+        let eq = parse_simple("bar", "barr", &mut ctx);
         let bounds = Bounds::with_defaults(IntDomain::Bounded(0, 10));
 
-        let res = solve_align(&eq, bounds, &eq.alphabet());
+        let res = solve_align(&eq, bounds, &eq.alphabet(), &mut ctx);
+        assert!(matches!(res, Some(false)));
+    }
+
+    #[test]
+    fn align_trivial_unsat_consts_2() {
+        let mut ctx = Context::default();
+        let eq = parse_simple("bar", "foo", &mut ctx);
+
+        let bounds = Bounds::with_defaults(IntDomain::Bounded(0, 10));
+
+        let res = solve_align(&eq, bounds, &eq.alphabet(), &mut ctx);
         assert!(matches!(res, Some(false)));
     }
 
     #[test]
     fn align_trivial_sat_const_var() {
-        let eq = WordEquation::new_equality(
-            Pattern::variable(&Variable::temp(Sort::String)),
-            Pattern::constant("bar"),
-        );
+        let mut ctx = Context::default();
+        let eq = parse_simple("X", "abc", &mut ctx);
 
         let bounds = Bounds::with_defaults(IntDomain::Bounded(0, 5));
 
-        let res = solve_align(&eq, bounds, &eq.alphabet());
+        let res = solve_align(&eq, bounds, &eq.alphabet(), &mut ctx);
         assert!(matches!(res, Some(true)));
     }
 
     #[test]
-    fn align_trivial_sat_vars() {
-        let var = Pattern::variable(&Variable::temp(Sort::String));
-        let eq = WordEquation::new_equality(var.clone(), var);
+    fn align_trivial_sat_var_eq_same_var() {
+        let mut ctx = Context::default();
+        let eq = parse_simple("A", "A", &mut ctx);
+
         let bounds = Bounds::with_defaults(IntDomain::Bounded(0, 10));
-        let res = solve_align(&eq, bounds, &eq.alphabet());
+        let res = solve_align(&eq, bounds, &eq.alphabet(), &mut ctx);
+        assert!(matches!(res, Some(true)));
+    }
+
+    #[test]
+    fn align_trivial_sat_var_eq_other_var() {
+        let mut ctx = Context::default();
+        let eq = parse_simple("A", "B", &mut ctx);
+
+        let bounds = Bounds::with_defaults(IntDomain::Bounded(0, 10));
+        let res = solve_align(&eq, bounds, &eq.alphabet(), &mut ctx);
         assert!(matches!(res, Some(true)));
     }
 
     #[test]
     fn align_sat_commute() {
         // AB = BA
-        let var_a = Variable::temp(Sort::String);
-        let var_b = Variable::temp(Sort::String);
-        let mut lhs = Pattern::empty();
-        lhs.append_var(&var_a).append_var(&var_b);
-        let mut rhs = Pattern::empty();
-        rhs.append_var(&var_b).append_var(&var_a);
-        let eq = WordEquation::new_equality(lhs, rhs);
+        let mut ctx = Context::default();
+
+        let eq = parse_simple("AB", "BA", &mut ctx);
+
         let bounds = Bounds::with_defaults(IntDomain::Bounded(0, 10));
-        let res = solve_align(&eq, bounds, &eq.alphabet());
+        let res = solve_align(&eq, bounds, &eq.alphabet(), &mut ctx);
         assert!(matches!(res, Some(true)));
     }
 
     #[test]
     fn align_sat_pattern_const() {
-        let eq = WordEquation::parse_simple_equality("aXc", "abc");
+        let mut ctx = Context::default();
+        let eq = parse_simple("aXc", "abc", &mut ctx);
+
         let bounds = Bounds::with_defaults(IntDomain::Bounded(0, 1));
-        let res = solve_align(&eq, bounds, &eq.alphabet());
+        let res = solve_align(&eq, bounds, &eq.alphabet(), &mut ctx);
         assert!(matches!(res, Some(true)));
     }
 
     #[test]
-    fn align_test() {
-        let eq = WordEquation::parse_simple_equality("aXb", "YXb");
+    fn align_sat_two_patterns() {
+        let mut ctx = Context::default();
+
+        let eq = parse_simple("aXb", "YXc", &mut ctx);
+
         let bounds = Bounds::with_defaults(IntDomain::Bounded(0, 2));
-        let res = solve_align(&eq, bounds, &eq.alphabet());
+        let res = solve_align(&eq, bounds, &eq.alphabet(), &mut ctx);
         assert!(matches!(res, Some(true)));
     }
 
     #[test]
     fn align_trivial_unsat_const_var_too_small() {
-        let eq = WordEquation::new_equality(
-            Pattern::constant("foo"),
-            Pattern::variable(&Variable::temp(Sort::String)),
-        );
+        let mut ctx = Context::default();
+        let eq = parse_simple("X", "foo", &mut ctx);
 
         let bounds = Bounds::with_defaults(IntDomain::Bounded(0, 1));
 
-        let res = solve_align(&eq, bounds, &eq.alphabet());
+        let res = solve_align(&eq, bounds, &eq.alphabet(), &mut ctx);
         assert!(matches!(res, Some(false)));
     }
 
     #[test]
     fn align_sat_t1i74() {
-        let eq = WordEquation::parse_simple_equality(
+        let mut ctx = Context::default();
+        let eq = parse_simple(
             "A",
             "ebcaeccedbedefbfdFgbagebcbfacgadbefcffcgceeedd",
+            &mut ctx,
         );
         let bounds = Bounds::with_defaults(IntDomain::Bounded(0, 50));
-        let res = solve_align(&eq, bounds, &eq.alphabet());
+        let res = solve_align(&eq, bounds, &eq.alphabet(), &mut ctx);
 
         assert!(matches!(res, Some(true)));
     }
     #[test]
     fn align_sat_t1i74_incremental() {
-        let eq = WordEquation::parse_simple_equality(
+        let mut ctx = Context::default();
+        let eq = parse_simple(
             "A",
             "ebcaeccedbedefbfdFgbagebcbfacgadbefcffcgceeedd",
+            &mut ctx,
         );
-
-        let res = solve_align_incremental(&eq, 50, &eq.alphabet());
+        let res = solve_align_incremental(&eq, 50, &eq.alphabet(), &mut ctx);
 
         assert!(matches!(res, Some(true)));
     }
 
     #[test]
     fn align_sat_t1i1() {
-        let eq = WordEquation::parse_simple_equality(
+        let mut ctx = Context::default();
+        let eq = parse_simple(
             "cfcbbAadeeaecAgebegeecafegebdbagddaadbddcaeeebfabfefabfacdgAgaabg",
             "AfcbbAaIegeeAaD",
+            &mut ctx,
         );
-        let res = solve_align_incremental(&eq, 50, &eq.alphabet());
+
+        let res = solve_align_incremental(&eq, 50, &eq.alphabet(), &mut ctx);
 
         assert!(matches!(res, Some(true)));
     }
 
     #[test]
     fn align_sat_t1i97() {
-        let eq = WordEquation::parse_simple_equality("AccAbccB", "CccAbDbcCcA");
-        let res = solve_align_incremental(&eq, 50, &eq.alphabet());
+        let mut ctx = Context::default();
+        let eq = parse_simple("AccAbccB", "CccAbDbcCcA", &mut ctx);
+        let res = solve_align_incremental(&eq, 50, &eq.alphabet(), &mut ctx);
 
         assert!(matches!(res, Some(true)));
+    }
+
+    /// Parses a word equation from a simple string representation.
+    /// The patterns (lhs and rhs) must be ascii letters. A lowercase letter is a constant, an uppercase letter is a variable.
+    /// Creates a new variable for each uppercase letter on-the-fly.
+    fn parse_simple(lhs: &str, rhs: &str, ctx: &mut Context) -> WordEquation {
+        fn parse_patter(pat: &str, ctx: &mut Context) -> Pattern {
+            let mut parsed = Pattern::empty();
+            for c in pat.chars() {
+                let symbol: Symbol = if c.is_ascii_lowercase() {
+                    c.into()
+                } else if c.is_ascii_uppercase() {
+                    let v = match ctx.get_var(&c.to_string()) {
+                        Some(v) => v,
+                        None => ctx.new_var(c.to_string(), Sort::String).unwrap(),
+                    };
+                    v.into()
+                } else {
+                    panic!("Invalid character in pattern {}: {}", pat, c);
+                };
+                parsed.push_symbol(symbol);
+            }
+            parsed
+        }
+        let lhs = parse_patter(lhs, ctx);
+        let rhs = parse_patter(rhs, ctx);
+        WordEquation::new(lhs, rhs)
     }
 }
