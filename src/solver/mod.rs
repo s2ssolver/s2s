@@ -1,6 +1,5 @@
 use core::panic;
 
-use aws_smt_ir::Index;
 use encoder::ProblemEncoder;
 use indexmap::IndexSet;
 use itertools::Itertools;
@@ -16,10 +15,10 @@ use crate::{
 
 use crate::error::PublicError as Error;
 
-mod analysis;
+//mod analysis;
 mod encoder;
-mod engine;
-mod manager;
+//mod engine;
+//mod manager;
 
 /// The result of a satisfiability check
 pub enum SolverResult {

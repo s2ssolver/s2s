@@ -4,7 +4,7 @@ use std::fmt::Display;
 
 use indexmap::IndexSet;
 
-use crate::sat::{plit, nlit, pvar, Cnf, PLit, PVar};
+use crate::sat::{nlit, plit, pvar, Cnf, PLit, PVar};
 
 use super::EncodingResult;
 
@@ -139,7 +139,7 @@ impl IncrementalEO {
     pub fn add(&mut self, vars: &[PVar]) -> EncodingResult {
         let mut amo = self.amo.add(vars);
         let alo = self.alo.add(vars);
-        amo.join(alo);
+        amo.extend(alo);
         amo
     }
 }

@@ -1,5 +1,5 @@
-mod encoder;
-mod encoding;
+pub(crate) mod encoder;
+pub(crate) mod encoding;
 
 pub use encoder::DomainEncoder;
-pub use encoding::{get_int_substitutions, get_str_substitutions, DomainEncoding};
+pub use encoding::DomainEncoding;

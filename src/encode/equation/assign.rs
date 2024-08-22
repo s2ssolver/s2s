@@ -32,8 +32,9 @@ impl AssignmentEncoder {
         &mut self,
         bounds: &Bounds,
         dom: &DomainEncoding,
+        ctx: &Context,
     ) -> Result<EncodingResult, EncodingError> {
-        let len_var = self.lhs.len_var().unwrap();
+        let len_var = ctx.get_len_var(&self.lhs).as_ref();
         let len_rhs = self.rhs.len();
         let bound = bounds.get_upper(&len_var).unwrap() as usize;
 
@@ -84,8 +85,9 @@ impl AssignmentEncoder {
         &mut self,
         bounds: &Bounds,
         dom: &DomainEncoding,
+        ctx: &Context,
     ) -> Result<EncodingResult, EncodingError> {
-        let len_var = self.lhs.len_var().unwrap();
+        let len_var = ctx.get_len_var(&self.lhs).as_ref();
         let len_rhs = self.rhs.len();
         let bound = bounds.get_upper(&len_var).unwrap() as usize;
 
@@ -146,12 +148,12 @@ impl LiteralEncoder for AssignmentEncoder {
         &mut self,
         bounds: &Bounds,
         substitution: &DomainEncoding,
-        _: &Context,
+        ctx: &Context,
     ) -> Result<EncodingResult, EncodingError> {
         if self.sign {
-            self.encode_eq(bounds, substitution)
+            self.encode_eq(bounds, substitution, ctx)
         } else {
-            self.encode_ineq(bounds, substitution)
+            self.encode_ineq(bounds, substitution, ctx)
         }
     }
 }

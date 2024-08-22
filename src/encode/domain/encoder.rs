@@ -39,8 +39,8 @@ impl DomainEncoder {
             bounds.clone(),
         ));
         let mut res = EncodingResult::empty();
-        res.join(self.strings.encode(bounds, &mut encoding, ctx));
-        res.join(self.integers.encode(bounds, &mut encoding, ctx));
+        res.extend(self.strings.encode(bounds, &mut encoding, ctx));
+        res.extend(self.integers.encode(bounds, &mut encoding, ctx));
         encoding.bounds = bounds.clone();
         self.encoding = Some(encoding);
         res
@@ -164,8 +164,8 @@ impl IntegerEncoder {
     ) -> EncodingResult {
         let mut res = EncodingResult::empty();
 
-        res.join(self.encode_str_lengths(bounds, encoding, ctx));
-        res.join(self.encode_int_vars(bounds, encoding, ctx));
+        res.extend(self.encode_str_lengths(bounds, encoding, ctx));
+        res.extend(self.encode_int_vars(bounds, encoding, ctx));
         self.last_domains = Some(bounds.clone());
         res
     }
@@ -209,7 +209,7 @@ impl IntegerEncoder {
                 .or_default()
                 .add(&len_choices);
 
-            res.join(eo);
+            res.extend(eo);
         }
         res
     }
@@ -263,7 +263,7 @@ impl IntegerEncoder {
                 .or_default()
                 .add(&len_choices);
 
-            res.join(eo);
+            res.extend(eo);
         }
 
         res
@@ -283,7 +283,7 @@ mod tests {
         bounds::{Bounds, IntDomain},
         context::Context,
         encode::{
-            domain::{encoding::DomainEncoding, get_str_substitutions},
+            domain::encoding::{get_str_substitutions, DomainEncoding},
             LAMBDA,
         },
         repr::Sort,

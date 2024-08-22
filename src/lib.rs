@@ -7,7 +7,7 @@
 //! The solver terminates when a model is found or when the bounds are relaxed to the point where the problem is unsatisfiable.
 //! Note however, that the solver does not guarantee that unsatisfiability is detected and thus might not terminate.
 
-mod abstr;
+//mod abstr;
 
 mod abstraction;
 mod bounds;
@@ -25,7 +25,7 @@ use std::time::Instant;
 use error::PublicError as Error;
 use instance::Instance;
 
-pub use solver::{get_solver, SolverOld, SolverResult};
+pub use solver::{SolverOld, SolverResult};
 
 pub fn solve(instance: &mut Instance) -> Result<SolverResult, Error> {
     // Preprocess the formula

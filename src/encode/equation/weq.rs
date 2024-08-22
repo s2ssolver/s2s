@@ -167,12 +167,12 @@ impl WordEncoder {
             self.define_char_at(pos, LAMBDA, v_lambda);
 
             let cnf = exactly_one(&p_choices);
-            res.join(EncodingResult::cnf(cnf));
+            res.extend(EncodingResult::cnf(cnf));
 
             // Symmetry breaking: If a position is lambda, then only lambda may follow
             if pos > 0 {
                 let last_lambda = self.char_at(pos - 1, LAMBDA);
-                res.join(EncodingResult::cnf(vec![vec![
+                res.extend(EncodingResult::cnf(vec![vec![
                     nlit(last_lambda),
                     plit(v_lambda),
                 ]]));
@@ -194,7 +194,7 @@ impl SolutionWord {
             SolutionWord::Equality(w) => w.encode(dom, bound),
             SolutionWord::Inequality(w1, w2) => {
                 let mut res = w1.encode(dom, bound);
-                res.join(w2.encode(dom, bound));
+                res.extend(w2.encode(dom, bound));
                 res
             }
         }
@@ -279,11 +279,11 @@ pub struct WordEquationEncoder {
 }
 
 impl WordEquationEncoder {
-    pub fn new(equation: WordEquation) -> Self {
+    pub fn new(equation: WordEquation, pol: bool) -> Self {
         let lhs_segs = SegmentedPattern::new(&equation.lhs());
         let rhs_segs = SegmentedPattern::new(&equation.rhs());
 
-        let eq_type = if equation.eq_type().is_equality() {
+        let eq_type = if pol {
             SolutionWord::Equality(WordEncoder::new())
         } else {
             SolutionWord::Inequality(WordEncoder::new(), WordEncoder::new())
@@ -334,18 +334,18 @@ impl WordEquationEncoder {
     }
 
     /// Returns the upper bound of the given variable.
-    fn get_var_bound(&self, var: &Variable, bounds: &Bounds) -> usize {
-        bounds
-            .get_upper(&var.len_var().unwrap())
-            .expect("Unbounded variable") as usize
+    fn get_var_bound(&self, var: &Variable, bounds: &Bounds, ctx: &Context) -> usize {
+        let len_var = ctx.get_len_var(var).as_ref();
+        bounds.get_upper(&len_var).expect("Unbounded variable") as usize
     }
 
     /// Returns the variables' bound used in the last round.
     /// Returns None prior to the first round.
-    fn get_last_var_bound(&self, var: &Variable) -> Option<usize> {
+    fn get_last_var_bound(&self, var: &Variable, ctx: &Context) -> Option<usize> {
+        let len_var = ctx.get_len_var(var).as_ref();
         self.last_var_bounds
             .as_ref()
-            .map(|bounds| bounds.get_upper(&var.len_var().unwrap()).unwrap() as usize)
+            .map(|bounds| bounds.get_upper(len_var).unwrap() as usize)
     }
 
     /// Encodes the alignment of a segmented pattern with the solution word by matching the respective lengths.
@@ -354,6 +354,7 @@ impl WordEquationEncoder {
         bounds: &Bounds,
         side: &EqSide,
         dom: &DomainEncoding,
+        ctx: &Context,
     ) -> EncodingResult {
         let mut res = EncodingResult::empty();
 
@@ -380,7 +381,7 @@ impl WordEquationEncoder {
                 .entry((side.clone(), i))
                 .or_default()
                 .add(&starts_i);
-            res.join(amo);
+            res.extend(amo);
         }
 
         // Encode start position needs to be 0 for the first segment
@@ -414,19 +415,14 @@ impl WordEquationEncoder {
                     // Incremental either: Length is longer OR start position is later OR Both
                     for pos in start_pos..self.bound {
                         // TODO: Put all "disabled" start-length-pairs is a list and process on next iteration instead of iterating over all pairs and checking the condition
-                        let last_vbound = self.get_last_var_bound(v).unwrap_or(0);
-                        let vbound = self.get_var_bound(v, bounds);
+                        let last_vbound = self.get_last_var_bound(v, ctx).unwrap_or(0);
+                        let vbound = self.get_var_bound(v, bounds, ctx);
                         for len in 0..=vbound {
                             // Start position of next segment is i+len
-                            let len_var = dom
-                                .int()
-                                .get(&v.len_var().unwrap(), len as isize)
-                                .unwrap_or_else(|| {
-                                    panic!(
-                                        "No length {} for variable {}",
-                                        len,
-                                        v.len_var().unwrap()
-                                    )
+                            let len_var = ctx.get_len_var(v).as_ref();
+                            let has_length =
+                                dom.int().get(len_var, len as isize).unwrap_or_else(|| {
+                                    panic!("No length {} for variable {}", len, len_var)
                                 });
                             // S_i^p /\ len_var -> S_{i+1}^(p+len)
                             let svar = self.start_position(i, pos, side);
@@ -448,14 +444,18 @@ impl WordEquationEncoder {
 
                                         let succ = self.start_position(i + 1, pos + len, side);
 
-                                        res.add_clause(vec![nlit(svar), nlit(len_var), plit(succ)]);
+                                        res.add_clause(vec![
+                                            nlit(svar),
+                                            nlit(has_length),
+                                            plit(succ),
+                                        ]);
                                     } else {
                                         // Still not viable, disable again
                                         let selector = self.bound_selector.unwrap();
                                         res.add_clause(vec![
                                             nlit(selector),
                                             nlit(svar),
-                                            nlit(len_var),
+                                            nlit(has_length),
                                         ]);
                                     }
                                 }
@@ -470,12 +470,12 @@ impl WordEquationEncoder {
                             {
                                 let succ = self.start_position(i + 1, pos + len, side);
 
-                                res.add_clause(vec![nlit(svar), nlit(len_var), plit(succ)]);
+                                res.add_clause(vec![nlit(svar), nlit(has_length), plit(succ)]);
                             } else {
                                 // Cannot start here with length l with current bound
                                 let selector = self.bound_selector.unwrap();
 
-                                res.add_clause(vec![nlit(selector), nlit(svar), nlit(len_var)]);
+                                res.add_clause(vec![nlit(selector), nlit(svar), nlit(has_length)]);
                             }
                         }
                     }
@@ -531,7 +531,13 @@ impl WordEquationEncoder {
         res
     }
 
-    fn equal_length(&self, dom: &DomainEncoding, bounds: &Bounds, side: &EqSide) -> EncodingResult {
+    fn equal_length(
+        &self,
+        dom: &DomainEncoding,
+        bounds: &Bounds,
+        side: &EqSide,
+        ctx: &Context,
+    ) -> EncodingResult {
         let mut clauses = Cnf::new();
         let mut assumptions = indexset! {};
         // Need to clone due to mutable borrow later
@@ -544,16 +550,20 @@ impl WordEquationEncoder {
         match s {
             PatternSegment::Variable(v) => {
                 for pos in 0..self.bound {
-                    let vbound = self.get_var_bound(v, bounds);
+                    let vbound = self.get_var_bound(v, bounds, ctx);
 
                     for len in 0..=vbound {
-                        let lenvar = dom.int().get(&v.len_var().unwrap(), len as isize).unwrap();
+                        let len_var = ctx.get_len_var(v).as_ref();
+                        let has_len = dom.int().get(&len_var, len as isize).unwrap();
 
                         if pos + len > self.bound {
                             let svar = self.start_position(i, pos, side);
 
-                            let clause =
-                                vec![nlit(self.bound_selector.unwrap()), nlit(svar), nlit(lenvar)];
+                            let clause = vec![
+                                nlit(self.bound_selector.unwrap()),
+                                nlit(svar),
+                                nlit(has_len),
+                            ];
 
                             clauses.push(clause);
                         }
@@ -578,6 +588,7 @@ impl WordEquationEncoder {
         dom: &DomainEncoding,
         bounds: &Bounds,
         side: &EqSide,
+        ctx: &Context,
     ) -> EncodingResult {
         let mut clauses = Cnf::new();
 
@@ -590,12 +601,13 @@ impl WordEquationEncoder {
         for (i, s) in segments.iter().enumerate() {
             match s {
                 PatternSegment::Variable(x) => {
-                    for l in 0..=bounds.get_upper(&x.len_var().unwrap()).unwrap() as usize {
-                        let len_var = dom.int().get(&x.len_var().unwrap(), l as isize).unwrap();
+                    let len_var = ctx.get_len_var(x).as_ref();
+                    for l in 0..=bounds.get_upper(len_var).unwrap() as usize {
+                        let has_len = dom.int().get(len_var, l as isize).unwrap();
                         for p in segments.prefix_min_len(i, bounds)..self.bound {
                             let start_var = self.start_position(i, p, side);
                             if p < last_bound
-                                && l < self.get_last_var_bound(x).unwrap_or(0)
+                                && l < self.get_last_var_bound(x, ctx).unwrap_or(0)
                                 && l + p
                                     < last_bound.saturating_sub(segments.suffix_min_len(i, bounds))
                             {
@@ -630,7 +642,7 @@ impl WordEquationEncoder {
                                         }
                                         clauses.push(vec![
                                             nlit(start_var),
-                                            nlit(len_var),
+                                            nlit(has_len),
                                             plit(m_var),
                                         ]);
                                     }
@@ -673,7 +685,7 @@ impl WordEquationEncoder {
 
                                         clauses.push(vec![
                                             nlit(start_var),
-                                            nlit(len_var),
+                                            nlit(has_len),
                                             plit(m_var),
                                         ]);
                                     }
@@ -682,13 +694,13 @@ impl WordEquationEncoder {
                             }
                         }
                         // Next position in variable, if exists, is lambda
-                        if self.get_last_var_bound(x).unwrap_or(0) <= l
-                            && l < bounds.get_upper(&x.len_var().unwrap()).unwrap() as usize
+                        if self.get_last_var_bound(x, ctx).unwrap_or(0) <= l
+                            && l < bounds.get_upper(len_var).unwrap() as usize
                         {
                             // If variable is assigned length l, then the position x[l] (and implicitly all following) must be lambda
                             let sub_lambda = subs.get(x, l, LAMBDA).unwrap();
 
-                            clauses.push(vec![nlit(len_var), plit(sub_lambda)]);
+                            clauses.push(vec![nlit(has_len), plit(sub_lambda)]);
                         }
                     }
                 }
@@ -729,6 +741,7 @@ impl WordEquationEncoder {
         bounds: &Bounds,
         side: &EqSide,
         dom: &DomainEncoding,
+        ctx: &Context,
     ) -> EncodingResult {
         let word = self.candidates.encoder_for(side);
         let segments = self.segments(side);
@@ -742,17 +755,18 @@ impl WordEquationEncoder {
         match &segments.segments[last] {
             PatternSegment::Variable(x) => {
                 for p in 0..self.bound {
-                    for l in 0..=bounds.get_upper(&x.len_var().unwrap()).unwrap() as usize {
+                    let len_var = ctx.get_len_var(x).as_ref();
+                    for l in 0..=bounds.get_upper(len_var).unwrap() as usize {
                         // Filter out l,p pairs that have been encoded already, i.e. p+l < last_bound
                         if p < last_bound
-                            && l < self.get_last_var_bound(x).unwrap_or(0)
+                            && l < self.get_last_var_bound(x, ctx).unwrap_or(0)
                             && p + l < last_bound
                         {
                             continue;
                         }
                         if p + l < self.bound {
                             let start_var = self.start_position(last, p, side);
-                            let len_var = dom.int().get(&x.len_var().unwrap(), l as isize).unwrap();
+                            let len_var = dom.int().get(len_var, l as isize).unwrap();
                             let cand_var = word.char_at(p + l, LAMBDA);
 
                             clauses.push(vec![nlit(start_var), nlit(len_var), plit(cand_var)]);
@@ -798,7 +812,7 @@ impl WordEquationEncoder {
             result.add_clause(vec![nlit(v), nlit(lhs_lambda), nlit(rhs_lambda)]);
         }
 
-        result.join(self.mismatch_alo.add(&new_mismatch_selectors));
+        result.extend(self.mismatch_alo.add(&new_mismatch_selectors));
 
         result
     }
@@ -808,7 +822,7 @@ impl LiteralEncoder for WordEquationEncoder {
     fn encode(
         &mut self,
         bounds: &Bounds,
-        substitution: &DomainEncoding,
+        dom: &DomainEncoding,
         ctx: &Context,
     ) -> Result<EncodingResult, EncodingError> {
         self.round += 1;
@@ -831,9 +845,8 @@ impl LiteralEncoder for WordEquationEncoder {
 
             if let Some(last_bounds) = self.last_var_bounds.as_ref() {
                 for v in self.equation.variables() {
-                    if last_bounds.get_upper(&v.len_var().unwrap())
-                        != bounds.get_upper(&v.len_var().unwrap())
-                    {
+                    let len_var = ctx.get_len_var(&v).as_ref();
+                    if last_bounds.get_upper(len_var) != bounds.get_upper(len_var) {
                         same_bounds = false;
                         break;
                     }
@@ -850,7 +863,7 @@ impl LiteralEncoder for WordEquationEncoder {
 
         if let Some(v) = self.bound_selector {
             // Deactivate all clauses that were only valid for the previous bound
-            res.join(EncodingResult::cnf(vec![vec![nlit(v)]]));
+            res.extend(EncodingResult::cnf(vec![vec![nlit(v)]]));
         }
         self.bound = bound;
 
@@ -860,71 +873,71 @@ impl LiteralEncoder for WordEquationEncoder {
         res.add_assumption(plit(selector));
 
         // Encode the candidates
-        let cand_enc = self.candidates.encode(bound, substitution);
+        let cand_enc = self.candidates.encode(bound, dom);
         log::trace!("Clauses for candidates: {}", cand_enc.clauses());
-        res.join(cand_enc);
+        res.extend(cand_enc);
 
         // Encode alignment of segments with candidates LHS
         let ts = Instant::now();
-        let align_enc = self.encode_alignment(bounds, &EqSide::Lhs, substitution);
+        let align_enc = self.encode_alignment(bounds, &EqSide::Lhs, dom, ctx);
         log::trace!(
             "Clauses for alignments LHS: {} ({} ms)",
             align_enc.clauses(),
             ts.elapsed().as_millis()
         );
-        res.join(align_enc);
+        res.extend(align_enc);
 
         // Encode alignment of segments with candidates RHS
         let ts = Instant::now();
-        let align_enc = self.encode_alignment(bounds, &EqSide::Rhs, substitution);
+        let align_enc = self.encode_alignment(bounds, &EqSide::Rhs, dom, ctx);
         log::trace!(
             "Clauses for alignments RHS: {} ({} ms)",
             align_enc.clauses(),
             ts.elapsed().as_millis()
         );
-        res.join(align_enc);
+        res.extend(align_enc);
 
-        let suffix_enc_lhs = self.lambda_suffix(bounds, &EqSide::Lhs, substitution);
+        let suffix_enc_lhs = self.lambda_suffix(bounds, &EqSide::Lhs, dom, ctx);
         log::trace!(
             "Clauses for lambda suffix lhs: {}",
             suffix_enc_lhs.clauses()
         );
-        res.join(suffix_enc_lhs);
+        res.extend(suffix_enc_lhs);
 
-        let suffix_enc_rhs = self.lambda_suffix(bounds, &EqSide::Rhs, substitution);
+        let suffix_enc_rhs = self.lambda_suffix(bounds, &EqSide::Rhs, dom, ctx);
         log::trace!(
             "Clauses for lambda suffix rhs: {}",
             suffix_enc_rhs.clauses()
         );
-        res.join(suffix_enc_rhs);
+        res.extend(suffix_enc_rhs);
         let ts = Instant::now();
-        let vars_match_lhs_enc = self.match_candidate(substitution, bounds, &EqSide::Lhs);
+        let vars_match_lhs_enc = self.match_candidate(dom, bounds, &EqSide::Lhs, ctx);
 
         log::trace!(
             "Clauses for variable matching LHS: {} ({} ms)",
             vars_match_lhs_enc.clauses(),
             ts.elapsed().as_millis()
         );
-        res.join(vars_match_lhs_enc);
+        res.extend(vars_match_lhs_enc);
 
         let ts = Instant::now();
-        let vars_match_rhs_enc = self.match_candidate(substitution, bounds, &EqSide::Rhs);
+        let vars_match_rhs_enc = self.match_candidate(dom, bounds, &EqSide::Rhs, ctx);
         log::trace!(
             "Clauses for variable matching RHS: {} ({} ms)",
             vars_match_rhs_enc.clauses(),
             ts.elapsed().as_millis()
         );
-        res.join(vars_match_rhs_enc);
+        res.extend(vars_match_rhs_enc);
 
         if !self.candidates.is_equality() {
-            let mismatch_enc = self.encode_mismatch(substitution);
+            let mismatch_enc = self.encode_mismatch(dom);
             log::trace!("Clauses for mismatch: {}", mismatch_enc.clauses());
-            res.join(mismatch_enc);
+            res.extend(mismatch_enc);
         } else {
             // On the equality case, both sides must be of length bound
             // If one filled patter is longer than the other, then the bound must be limited to the shorter one
-            res.join(self.equal_length(substitution, bounds, &EqSide::Lhs));
-            res.join(self.equal_length(substitution, bounds, &EqSide::Rhs));
+            res.extend(self.equal_length(dom, bounds, &EqSide::Lhs, ctx));
+            res.extend(self.equal_length(dom, bounds, &EqSide::Rhs, ctx));
         }
 
         // Store variable bounds for next round
@@ -938,12 +951,10 @@ impl LiteralEncoder for WordEquationEncoder {
     }
 
     fn reset(&mut self) {
-        let new = Self::new(self.equation.clone());
-        // Reset everything except the equation
-        *self = new;
+        todo!()
     }
 
-    fn print_debug(&self, solver: &cadical::Solver, dom: &DomainEncoding) {
+    fn print_debug(&self, solver: &cadical::Solver, dom: &DomainEncoding, ctx: &Context) {
         let lhs = self.candidates.lhs_encoder();
         let rhs = self.candidates.rhs_encoder();
         let mut lhs_sol = String::new();
@@ -997,7 +1008,7 @@ impl LiteralEncoder for WordEquationEncoder {
         }
         println!("\tASSIGNED LENGTHS");
         for v in &self.equation.variables() {
-            let v = &v.len_var().unwrap();
+            let v = ctx.get_len_var(v).as_ref();
 
             for l in 0..=self.last_var_bounds.as_ref().unwrap().get_upper(v).unwrap() {
                 let lvar = dom.int().get(v, l).unwrap();
@@ -1032,28 +1043,29 @@ impl Display for EqSide {
 
 #[cfg(test)]
 mod tests {
-    use crate::{
-        instance::Instance,
-        repr::{ir::VarSubstitution, Sort},
-    };
+    use crate::{encode::domain::encoding::get_str_substitutions, repr::{
+        ir::{ConstReducible, Substitutable, VarSubstitution},
+        Sort,
+    }};
     use std::collections::HashSet;
 
     use super::*;
     use cadical::Solver;
     use indexmap::IndexSet;
 
-    use crate::{
-        bounds::IntDomain,
-        encode::domain::{get_str_substitutions, DomainEncoder},
-    };
+    use crate::{bounds::IntDomain, encode::domain::DomainEncoder};
 
     #[test]
     fn segment_single_var() {
-        let var = Variable::temp(Sort::String);
+        let mut ctx = Context::default();
+        let var = ctx.new_temp_var(Sort::String);
         let p = Pattern::variable(&var);
         let segs = SegmentedPattern::new(&p);
         assert_eq!(segs.length(), 1);
-        assert_eq!(segs.segments[0], PatternSegment::Variable(var));
+        assert_eq!(
+            segs.segments[0],
+            PatternSegment::Variable(var.as_ref().clone())
+        );
     }
 
     #[test]
@@ -1078,15 +1090,17 @@ mod tests {
 
     #[test]
     fn segment_vars_consts() {
-        let var1 = Variable::temp(Sort::String);
-        let var2 = Variable::temp(Sort::String);
+        let mut ctx = Context::default();
+        let var1 = ctx.new_temp_var(Sort::String).as_ref().clone();
+        let var2 = ctx.new_temp_var(Sort::String).as_ref().clone();
+
         let mut p = Pattern::empty();
-        p.append_var(&var1)
-            .append_word("foo")
-            .append_var(&var1)
-            .append_var(&var2)
-            .append_word("foo")
-            .append_word("bar");
+        p.push_var(var1.clone())
+            .push_word("foo")
+            .push_var(var1.clone())
+            .push_var(var2.clone())
+            .push_word("foo")
+            .push_word("bar");
         let segs = SegmentedPattern::new(&p);
         assert_eq!(segs.length(), 5);
         assert_eq!(segs.segments[0], PatternSegment::Variable(var1.clone()));
@@ -1112,10 +1126,10 @@ mod tests {
 
         let mut dom_encoder = DomainEncoder::new(alphabet.clone());
         let dom_cnf = dom_encoder.encode(&bounds, ctx);
-        encoding.join(dom_cnf);
+        encoding.extend(dom_cnf);
 
-        let mut encoder = WordEquationEncoder::new(eq.clone());
-        encoding.join(
+        let mut encoder = WordEquationEncoder::new(eq.clone(), true);
+        encoding.extend(
             encoder
                 .encode(&bounds, dom_encoder.encoding(), ctx)
                 .unwrap(),
@@ -1136,7 +1150,12 @@ mod tests {
         let res = solver.solve_with(assumptions.into_iter());
         if let Some(true) = res {
             let solution = get_str_substitutions(dom_encoder.encoding(), ctx, &solver);
-            let solution = VarSubstitution::from(solution);
+            let mut model = VarSubstitution::empty();
+            for (var, val) in solution {
+                let as_str = val.iter().collect::<String>();
+                let as_pat = Pattern::constant(&as_str);
+                model.set_str(&var, as_pat, &ctx);
+            }
             println!("\n========================\n");
             for i in 0..encoder.segments(&EqSide::Rhs).length() {
                 for p in 0..encoder.bound {
@@ -1151,7 +1170,7 @@ mod tests {
                 }
             }
             for v in &eq.variables() {
-                let v = &v.len_var().unwrap();
+                let v = ctx.get_len_var(v).as_ref();
 
                 for l in 0..=bounds.get_upper(v).unwrap() {
                     let lvar = dom_encoder.encoding().int().get(v, l).unwrap();
@@ -1162,13 +1181,15 @@ mod tests {
                 }
             }
 
-            assert!(
-                eq.eval(&solution).unwrap(),
+            let substituted = eq.apply_substitution(&model).is_constant();
+            assert_eq!(
+                substituted,
+                Some(true),
                 "{} is not a solution for {}: {:?} != {:?}",
-                solution,
+                model,
                 eq,
-                eq.lhs().apply_substitution(&solution),
-                eq.rhs().apply_substitution(&solution)
+                eq.lhs().apply_substitution(&model),
+                eq.rhs().apply_substitution(&model)
             );
         }
         res
@@ -1182,11 +1203,8 @@ mod tests {
     ) -> Option<bool> {
         let mut bounds = Bounds::with_defaults(IntDomain::Bounded(0, 1));
 
-        let mut encoder = WordEquationEncoder::new(eq.clone());
-        let mut instance: Instance = Instance::default();
-        eq.variables()
-            .iter()
-            .for_each(|v| instance.add_var(v.clone()));
+        let mut encoder = WordEquationEncoder::new(eq.clone(), true);
+
         let mut dom_encoder = DomainEncoder::new(alphabet.clone());
 
         let mut result = None;
@@ -1196,8 +1214,8 @@ mod tests {
         while !done {
             let mut encoding = EncodingResult::empty();
 
-            encoding.join(dom_encoder.encode(&bounds, &instance));
-            encoding.join(
+            encoding.extend(dom_encoder.encode(&bounds, &ctx));
+            encoding.extend(
                 encoder
                     .encode(&bounds, dom_encoder.encoding(), ctx)
                     .unwrap(),
@@ -1218,8 +1236,14 @@ mod tests {
             bounds.clamp(-(limit as isize), limit as isize);
         }
         if let Some(true) = result {
-            let solution = get_str_substitutions(dom_encoder.encoding(), &instance, &solver);
-            let solution = VarSubstitution::from(solution);
+            let solution = get_str_substitutions(dom_encoder.encoding(), &ctx, &solver);
+            let solution = get_str_substitutions(dom_encoder.encoding(), ctx, &solver);
+            let mut model = VarSubstitution::empty();
+            for (var, val) in solution {
+                let as_str = val.iter().collect::<String>();
+                let as_pat = Pattern::constant(&as_str);
+                model.set_str(&var, as_pat, &ctx);
+            }
 
             for i in 0..encoder.segments(&EqSide::Rhs).length() {
                 for p in 0..encoder.bound {
@@ -1247,7 +1271,7 @@ mod tests {
             }
             println!("Bounds: {:?}", eq.variables());
             for v in &eq.variables() {
-                let v = &v.len_var().unwrap();
+                let v = ctx.get_len_var(v).as_ref();
 
                 for l in 0..=bounds.get_upper(v).unwrap() {
                     let lvar = dom_encoder.encoding().int().get(v, l).unwrap();
@@ -1258,13 +1282,15 @@ mod tests {
                 }
             }
 
-            assert!(
-                eq.eval(&solution).unwrap(),
+            let substituted = eq.apply_substitution(&model).is_constant();
+            assert_eq!(
+                substituted,
+                Some(true),
                 "{} is not a solution for {}: {:?} != {:?}",
-                solution,
+                model,
                 eq,
-                eq.lhs().apply_substitution(&solution),
-                eq.rhs().apply_substitution(&solution)
+                eq.lhs().apply_substitution(&model),
+                eq.rhs().apply_substitution(&model)
             );
         }
         result
@@ -1275,16 +1301,16 @@ mod tests {
         let mut ctx = Context::default();
         let eq = parse_simple("X", "abc", &mut ctx);
 
-        let res = solve_align_incremental(&eq, 5, &eq.alphabet(), &mut ctx);
+        let res = solve_align_incremental(&eq, 5, &eq.constants(), &mut ctx);
         assert!(matches!(res, Some(true)));
     }
 
     #[test]
     fn align_empty_eq() {
         let mut ctx = Context::default();
-        let eq = WordEquation::new_equality(Pattern::from(vec![]), Pattern::from(vec![]));
+        let eq = WordEquation::new(Pattern::from(vec![]), Pattern::from(vec![]));
         let bounds = Bounds::with_defaults(IntDomain::Bounded(0, 10));
-        let res = solve_align(&eq, bounds, &eq.alphabet(), &mut ctx);
+        let res = solve_align(&eq, bounds, &eq.constants(), &mut ctx);
         assert!(matches!(res, Some(true)));
     }
 
@@ -1295,7 +1321,7 @@ mod tests {
 
         let bounds = Bounds::with_defaults(IntDomain::Bounded(0, 10));
 
-        let res = solve_align(&eq, bounds, &eq.alphabet(), &mut ctx);
+        let res = solve_align(&eq, bounds, &eq.constants(), &mut ctx);
         assert!(matches!(res, Some(true)));
     }
 
@@ -1305,7 +1331,7 @@ mod tests {
         let eq = parse_simple("bar", "barr", &mut ctx);
         let bounds = Bounds::with_defaults(IntDomain::Bounded(0, 10));
 
-        let res = solve_align(&eq, bounds, &eq.alphabet(), &mut ctx);
+        let res = solve_align(&eq, bounds, &eq.constants(), &mut ctx);
         assert!(matches!(res, Some(false)));
     }
 
@@ -1316,7 +1342,7 @@ mod tests {
 
         let bounds = Bounds::with_defaults(IntDomain::Bounded(0, 10));
 
-        let res = solve_align(&eq, bounds, &eq.alphabet(), &mut ctx);
+        let res = solve_align(&eq, bounds, &eq.constants(), &mut ctx);
         assert!(matches!(res, Some(false)));
     }
 
@@ -1327,7 +1353,7 @@ mod tests {
 
         let bounds = Bounds::with_defaults(IntDomain::Bounded(0, 5));
 
-        let res = solve_align(&eq, bounds, &eq.alphabet(), &mut ctx);
+        let res = solve_align(&eq, bounds, &eq.constants(), &mut ctx);
         assert!(matches!(res, Some(true)));
     }
 
@@ -1337,7 +1363,7 @@ mod tests {
         let eq = parse_simple("A", "A", &mut ctx);
 
         let bounds = Bounds::with_defaults(IntDomain::Bounded(0, 10));
-        let res = solve_align(&eq, bounds, &eq.alphabet(), &mut ctx);
+        let res = solve_align(&eq, bounds, &eq.constants(), &mut ctx);
         assert!(matches!(res, Some(true)));
     }
 
@@ -1347,7 +1373,7 @@ mod tests {
         let eq = parse_simple("A", "B", &mut ctx);
 
         let bounds = Bounds::with_defaults(IntDomain::Bounded(0, 10));
-        let res = solve_align(&eq, bounds, &eq.alphabet(), &mut ctx);
+        let res = solve_align(&eq, bounds, &eq.constants(), &mut ctx);
         assert!(matches!(res, Some(true)));
     }
 
@@ -1359,7 +1385,7 @@ mod tests {
         let eq = parse_simple("AB", "BA", &mut ctx);
 
         let bounds = Bounds::with_defaults(IntDomain::Bounded(0, 10));
-        let res = solve_align(&eq, bounds, &eq.alphabet(), &mut ctx);
+        let res = solve_align(&eq, bounds, &eq.constants(), &mut ctx);
         assert!(matches!(res, Some(true)));
     }
 
@@ -1369,7 +1395,7 @@ mod tests {
         let eq = parse_simple("aXc", "abc", &mut ctx);
 
         let bounds = Bounds::with_defaults(IntDomain::Bounded(0, 1));
-        let res = solve_align(&eq, bounds, &eq.alphabet(), &mut ctx);
+        let res = solve_align(&eq, bounds, &eq.constants(), &mut ctx);
         assert!(matches!(res, Some(true)));
     }
 
@@ -1380,7 +1406,7 @@ mod tests {
         let eq = parse_simple("aXb", "YXc", &mut ctx);
 
         let bounds = Bounds::with_defaults(IntDomain::Bounded(0, 2));
-        let res = solve_align(&eq, bounds, &eq.alphabet(), &mut ctx);
+        let res = solve_align(&eq, bounds, &eq.constants(), &mut ctx);
         assert!(matches!(res, Some(true)));
     }
 
@@ -1391,7 +1417,7 @@ mod tests {
 
         let bounds = Bounds::with_defaults(IntDomain::Bounded(0, 1));
 
-        let res = solve_align(&eq, bounds, &eq.alphabet(), &mut ctx);
+        let res = solve_align(&eq, bounds, &eq.constants(), &mut ctx);
         assert!(matches!(res, Some(false)));
     }
 
@@ -1404,7 +1430,7 @@ mod tests {
             &mut ctx,
         );
         let bounds = Bounds::with_defaults(IntDomain::Bounded(0, 50));
-        let res = solve_align(&eq, bounds, &eq.alphabet(), &mut ctx);
+        let res = solve_align(&eq, bounds, &eq.constants(), &mut ctx);
 
         assert!(matches!(res, Some(true)));
     }
@@ -1416,7 +1442,7 @@ mod tests {
             "ebcaeccedbedefbfdFgbagebcbfacgadbefcffcgceeedd",
             &mut ctx,
         );
-        let res = solve_align_incremental(&eq, 50, &eq.alphabet(), &mut ctx);
+        let res = solve_align_incremental(&eq, 50, &eq.constants(), &mut ctx);
 
         assert!(matches!(res, Some(true)));
     }
@@ -1430,7 +1456,7 @@ mod tests {
             &mut ctx,
         );
 
-        let res = solve_align_incremental(&eq, 50, &eq.alphabet(), &mut ctx);
+        let res = solve_align_incremental(&eq, 50, &eq.constants(), &mut ctx);
 
         assert!(matches!(res, Some(true)));
     }
@@ -1439,7 +1465,7 @@ mod tests {
     fn align_sat_t1i97() {
         let mut ctx = Context::default();
         let eq = parse_simple("AccAbccB", "CccAbDbcCcA", &mut ctx);
-        let res = solve_align_incremental(&eq, 50, &eq.alphabet(), &mut ctx);
+        let res = solve_align_incremental(&eq, 50, &eq.constants(), &mut ctx);
 
         assert!(matches!(res, Some(true)));
     }
@@ -1448,26 +1474,30 @@ mod tests {
     /// The patterns (lhs and rhs) must be ascii letters. A lowercase letter is a constant, an uppercase letter is a variable.
     /// Creates a new variable for each uppercase letter on-the-fly.
     fn parse_simple(lhs: &str, rhs: &str, ctx: &mut Context) -> WordEquation {
-        fn parse_patter(pat: &str, ctx: &mut Context) -> Pattern {
-            let mut parsed = Pattern::empty();
-            for c in pat.chars() {
-                let symbol: Symbol = if c.is_ascii_lowercase() {
-                    c.into()
-                } else if c.is_ascii_uppercase() {
-                    let v = match ctx.get_var(&c.to_string()) {
-                        Some(v) => v,
-                        None => ctx.new_var(c.to_string(), Sort::String).unwrap(),
-                    };
-                    v.into()
-                } else {
-                    panic!("Invalid character in pattern {}: {}", pat, c);
-                };
-                parsed.push_symbol(symbol);
-            }
-            parsed
-        }
-        let lhs = parse_patter(lhs, ctx);
-        let rhs = parse_patter(rhs, ctx);
+        let lhs = parse_simple_pattern(lhs, ctx);
+        let rhs = parse_simple_pattern(rhs, ctx);
         WordEquation::new(lhs, rhs)
+    }
+
+    /// Parses a pattern.
+    /// The pattern must be ascii letters. A lowercase letter is a constant, an uppercase letter is a variable.
+    /// Creates a new variable for each uppercase letter on-the-fly.
+    fn parse_simple_pattern(pat: &str, ctx: &mut Context) -> Pattern {
+        let mut parsed = Pattern::empty();
+        for c in pat.chars() {
+            let symbol: Symbol = if c.is_ascii_lowercase() {
+                c.into()
+            } else if c.is_ascii_uppercase() {
+                let v = match ctx.get_var(&c.to_string()) {
+                    Some(v) => v,
+                    None => ctx.new_var(c.to_string(), Sort::String).unwrap(),
+                };
+                v.as_ref().clone().into()
+            } else {
+                panic!("Invalid character in pattern {}: {}", pat, c);
+            };
+            parsed.push(symbol);
+        }
+        parsed
     }
 }

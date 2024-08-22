@@ -116,6 +116,17 @@ impl Pattern {
         self.symbols.len() == 1 && self.symbols[0].is_variable()
     }
 
+    pub fn as_variable(&self) -> Option<Variable> {
+        if self.len() == 1 {
+            match self.first().unwrap() {
+                Symbol::Constant(_) => None,
+                Symbol::Variable(v) => Some(v.clone()),
+            }
+        } else {
+            None
+        }
+    }
+
     /// Returns the first symbol of the pattern, if it exists.
     pub fn first(&self) -> Option<&Symbol> {
         self.symbols.first()
@@ -390,6 +401,13 @@ impl WordEquation {
         let mut vars = self.lhs().vars();
         vars.extend(self.rhs().vars());
         vars
+    }
+
+    /// Returns the set of constants that occur in the word equation.
+    pub fn constants(&self) -> IndexSet<char> {
+        let mut consts = self.lhs().alphabet();
+        consts.extend(self.rhs().alphabet());
+        consts
     }
 }
 impl ConstReducible for WordEquation {

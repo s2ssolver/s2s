@@ -244,7 +244,7 @@ pub trait LiteralEncoder {
         ctx: &Context,
     ) -> Result<EncodingResult, EncodingError>;
 
-    fn print_debug(&self, _solver: &cadical::Solver, _dom: &DomainEncoding) {}
+    fn print_debug(&self, _solver: &cadical::Solver, _dom: &DomainEncoding, _ctx: &Context) {}
 }
 
 pub fn get_encoder(
@@ -255,15 +255,10 @@ pub fn get_encoder(
     match lit.atom().get_type() {
         AtomType::BoolVar(v) => Ok(Box::new(BoolVarEncoder::new(v, pol))),
         AtomType::InRe(inre) => build_inre_encoder(inre, pol, ctx),
-        AtomType::WordEquation(_) => todo!(),
+        AtomType::WordEquation(weq) => Ok(equation::get_encoder(weq, pol)),
         AtomType::PrefixOf(_) => todo!(),
         AtomType::SuffixOf(_) => todo!(),
         AtomType::Contains(_) => todo!(),
-        AtomType::LinearConstraint(lc) => Box::new(MddEncoder::new(lc.clone())),
-        AtomType::BoolConst(_) => todo!(),
-        // Constraint::WordEquation(eq) => equation::get_encoder(eq),
-        // Constraint::LinearConstraint(lc) => Box::new(MddEncoder::new(lc.clone())),
-        // Constraint::RegularConstraint(rec) => ,
-        // Constraint::BoolVarConstraint(v, pol) => Box::new(BoolVarEncoder::new(v.clone(), *pol)),
+        AtomType::LinearConstraint(lc) => Ok(Box::new(MddEncoder::new(lc.clone()))),
     }
 }

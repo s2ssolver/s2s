@@ -99,7 +99,7 @@ impl NFAEncoder {
             for state in self.nfa.states() {
                 let reach_var = self.reach_vars[&(state, l)];
 
-                for transition in self.nfa.get_state(&state)?.transitions() {
+                for transition in self.nfa.get_state(state)?.transitions() {
                     let reach_next = self.reach_vars[&(transition.get_dest(), l + 1)];
                     match transition.get_type() {
                         TransitionType::Range(range) if range_any(&range) => {
@@ -114,7 +114,7 @@ impl NFAEncoder {
                             let ub = range.end();
 
                             // Follow transition if we read a character in the given range
-                            for c in *lb..=*ub {
+                            for c in lb..=ub {
                                 let sub_var = dom.string().get(&self.var, l, c).unwrap();
                                 let clause = vec![nlit(reach_var), nlit(sub_var), plit(reach_next)];
                                 res.add_clause(clause);
@@ -147,21 +147,16 @@ impl NFAEncoder {
 
         for l in last_bound..=bound {
             for (state, preds) in self.delta_inv.iter() {
-                let reach_var = self.reach_vars[&(state, l)];
+                let reach_var = self.reach_vars[&(*state, l)];
                 let mut alo_clause = vec![nlit(reach_var)];
 
-                for (q_pred, trans) in preds {
-                    let reach_prev = self.reach_vars[&(q_pred.get_dest(), l - 1)];
+                for (q_pred, trans) in preds.iter() {
+                    debug_assert!(trans.get_dest() == *state);
+                    let reach_prev = self.reach_vars[&(*q_pred, l - 1)];
                     // Tseitin on-the-fly
                     let def_var = pvar();
                     alo_clause.push(plit(def_var));
                     match trans.get_type() {
-                        TransitionType::Symbol(c) => {
-                            // Is predecessor if we read the given character
-                            let sub_var = dom.string().get(&self.var, l - 1, *c).unwrap();
-                            res.add_clause(vec![nlit(def_var), plit(reach_prev)]);
-                            res.add_clause(vec![nlit(def_var), plit(sub_var)]);
-                        }
                         TransitionType::Range(range) if range_any(range) => {
                             // Is predecessor if we do not read lambda
                             let sub_var = dom.string().get(&self.var, l - 1, LAMBDA).unwrap();
@@ -174,7 +169,7 @@ impl NFAEncoder {
                             let ub = range.end();
                             res.add_clause(vec![nlit(def_var), plit(reach_prev)]);
                             let mut range_clause = vec![nlit(def_var)];
-                            for c in *lb..=*ub {
+                            for c in lb..=ub {
                                 let sub_var = dom.string().get(&self.var, l - 1, c).unwrap();
                                 range_clause.push(plit(sub_var));
                             }
@@ -187,7 +182,7 @@ impl NFAEncoder {
                 }
 
                 // Allow lambda self-transitions
-                let reach_prev = self.reach_vars[&(state, l - 1)];
+                let reach_prev = self.reach_vars[&(*state, l - 1)];
                 let lambda_sub_var = dom.string().get(&self.var, l - 1, LAMBDA).unwrap();
                 let def_var = pvar();
                 alo_clause.push(plit(def_var));
@@ -376,7 +371,7 @@ pub fn build_inre_encoder(
 
 const SMT_MAX_CHAR: u32 = 196607;
 fn range_any(r: &CharRange) -> bool {
-    r.start() == 0 && r.end() == SMT_MAX_CHAR
+    r.start() as u32 == 0 && r.end() as u32 == SMT_MAX_CHAR
 }
 
 fn precompute_delta_inv(
@@ -391,7 +386,7 @@ fn precompute_delta_inv(
         visited.insert(initial);
 
         while let Some(state) = stack.pop() {
-            for transition in nfa.get_state(&state)?.transitions() {
+            for transition in nfa.get_state(state)?.transitions() {
                 let dest = transition.get_dest();
                 let entry = delta_inv.entry(dest).or_insert_with(Vec::new);
                 entry.push((state, transition));
@@ -408,12 +403,13 @@ fn precompute_delta_inv(
 mod test {
     use cadical::Solver;
     use indexmap::IndexSet;
+    use regulaer::re::ReBuilder;
 
     use super::*;
 
     use crate::{
         bounds::IntDomain,
-        encode::domain::{get_str_substitutions, DomainEncoder},
+        encode::domain::{encoding::get_str_substitutions, DomainEncoder},
         repr::Sort,
     };
 
@@ -421,11 +417,11 @@ mod test {
         let mut ctx = Context::default();
         let var = ctx.new_temp_var(Sort::String);
 
-        let mut alph = IndexSet::from_iter(re.alphabet().into_iter());
+        let mut alph = IndexSet::from_iter(re.operator().alphabet().iter_chars());
         alph.insert('a');
 
         let nfa = ctx.get_nfa(&re);
-        let encoder = NFAEncoder::new(&var, nfa, &re, pol);
+        let mut encoder = NFAEncoder::new(&var, nfa, &re, pol);
         let mut dom_encoder = DomainEncoder::new(alph);
         let mut solver: Solver = cadical::Solver::default();
 
@@ -444,9 +440,9 @@ mod test {
                     result = solver.solve_with(assms.into_iter());
                     if let Some(true) = result {
                         let _model = get_str_substitutions(dom_encoder.encoding(), &ctx, &solver);
-                        let var_model = _model.get(&var).unwrap();
+                        let var_model = _model.get(&var).unwrap().iter().collect::<String>();
                         assert!(
-                            re.contains(var_model),
+                            re.accepts(&var_model.clone().into()),
                             "Model {:?} does not match regex {:?}",
                             var_model,
                             re
@@ -463,18 +459,22 @@ mod test {
 
     #[test]
     fn var_in_epsi() {
-        let var = Variable::temp(Sort::String);
-        let re = Regex::epsilon();
+        let mut ctx = Context::default();
+        let var = ctx.new_temp_var(Sort::String);
+        let len_var = ctx.get_len_var(&var).as_ref().clone();
+        let re = ctx.ast_builder().re_builder().epsilon();
         let mut bounds = Bounds::with_defaults(IntDomain::Bounded(0, 0));
-        bounds.set(&var.len_var().unwrap(), IntDomain::Bounded(0, 1));
+        bounds.set(&len_var, IntDomain::Bounded(0, 1));
 
         assert_eq!(solve_with_bounds(re, true, &[bounds]), Some(true));
     }
 
     #[test]
     fn var_in_none() {
-        let var = Variable::temp(Sort::String);
-        let re = Regex::none();
+        let mut ctx = Context::default();
+
+        let re = ctx.ast_builder().re_builder().none();
+
         let bounds = Bounds::with_defaults(IntDomain::Bounded(0, 10));
 
         assert_eq!(solve_with_bounds(re, true, &[bounds]), Some(false));
@@ -482,7 +482,9 @@ mod test {
 
     #[test]
     fn var_in_const() {
-        let re = Regex::word("foo");
+        let mut ctx = Context::default();
+
+        let re = ctx.ast_builder().re_builder().word("foo".into());
         let bounds = Bounds::with_defaults(IntDomain::Bounded(0, 10));
 
         assert_eq!(solve_with_bounds(re, true, &[bounds]), Some(true));
@@ -490,7 +492,12 @@ mod test {
 
     #[test]
     fn var_in_const_concat() {
-        let re = Regex::concat(vec![Regex::word("foo"), Regex::word("bar")]);
+        let mut ctx = Context::default();
+
+        let builder = ctx.ast_builder().re_builder();
+
+        let args = vec![builder.word("foo".into()), builder.word("bar".into())];
+        let re = builder.concat(args);
         let bounds = Bounds::with_defaults(IntDomain::Bounded(0, 10));
 
         assert_eq!(solve_with_bounds(re, true, &[bounds]), Some(true));

@@ -23,9 +23,10 @@ impl VareqEncoder {
         &mut self,
         bounds: &Bounds,
         dom: &DomainEncoding,
+        ctx: &Context,
     ) -> Result<EncodingResult, EncodingError> {
-        let lhs_len = self.lhs.len_var().unwrap();
-        let rhs_len = self.rhs.len_var().unwrap();
+        let lhs_len = ctx.get_len_var(&self.lhs).as_ref();
+        let rhs_len = ctx.get_len_var(&self.rhs).as_ref();
 
         let lhs_bound = bounds.get_upper(&lhs_len).unwrap() as usize;
         let rhs_bound = bounds.get_upper(&rhs_len).unwrap() as usize;
@@ -70,9 +71,10 @@ impl VareqEncoder {
         &mut self,
         bounds: &Bounds,
         dom: &DomainEncoding,
+        ctx: &Context,
     ) -> Result<EncodingResult, EncodingError> {
-        let lhs_len = self.lhs.len_var().unwrap();
-        let rhs_len = self.rhs.len_var().unwrap();
+        let lhs_len = ctx.get_len_var(&self.lhs).as_ref();
+        let rhs_len = ctx.get_len_var(&self.rhs).as_ref();
 
         let lhs_bound = bounds.get_upper(&lhs_len).unwrap() as usize;
         let rhs_bound = bounds.get_upper(&rhs_len).unwrap() as usize;
@@ -175,12 +177,12 @@ impl LiteralEncoder for VareqEncoder {
         &mut self,
         bounds: &Bounds,
         dom: &DomainEncoding,
-        _: &Context,
+        ctx: &Context,
     ) -> Result<EncodingResult, EncodingError> {
         if self.sign {
-            self.encode_eq(bounds, dom)
+            self.encode_eq(bounds, dom, ctx)
         } else {
-            self.encode_ineq(bounds, dom)
+            self.encode_ineq(bounds, dom, ctx)
         }
     }
 }
