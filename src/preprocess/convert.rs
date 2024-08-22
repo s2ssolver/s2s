@@ -36,7 +36,16 @@ pub fn convert_expr(
                 Ok(ctx.ir_builder().literal(lit.into_atom(), flipped))
             }
             Formula::And(_) | Formula::Or(_) => Err(PreprocessingError::NotInNNF(expr.to_string())),
+            Formula::True => Ok(Formula::False),
+            Formula::False => Ok(Formula::True),
         },
+        ExprType::Core(CoreExpr::Bool(b)) => {
+            if *b {
+                Ok(Formula::True)
+            } else {
+                Ok(Formula::False)
+            }
+        }
         ExprType::Core(CoreExpr::And(es)) => {
             let formulas = es
                 .iter()
@@ -57,30 +66,6 @@ pub fn convert_expr(
             Ok(ctx.ir_builder().plit(atom))
         }
         ExprType::Int(_) => todo!(),
-    }
-}
-
-fn convert_atom(expr: &Rc<Expression>, ctx: &mut Context) -> Result<Rc<Atom>, PreprocessingError> {
-    match expr.get_type() {
-        ExprType::Core(CoreExpr::Bool(b)) => Ok(ctx.ir_builder().bool_const(*b)),
-        ExprType::Core(CoreExpr::Var(v)) => Ok(ctx.ir_builder().bool_var(v.clone())),
-        ExprType::Core(CoreExpr::Equal(lhs, rhs)) => match (lhs.get_type(), rhs.get_type()) {
-            (ExprType::String(lhs), ExprType::String(rhs)) => {
-                convert_word_equation(lhs, rhs, ctx.ir_builder())
-            }
-            (ExprType::Int(_), ExprType::Int(_)) => todo!(),
-            (ExprType::Core(_), ExprType::Core(_)) => {
-                Err(PreprocessingError::NotInNNF(expr.to_string()))
-            }
-            _ => Err(PreprocessingError::InvalidSort {
-                expr: expr.to_string(),
-                expected: lhs.sort(),
-                got: rhs.sort(),
-            }),
-        },
-        ExprType::Core(_) => Err(PreprocessingError::NotInNNF(expr.to_string())),
-        ExprType::String(s) => convert_string_atom(s, ctx),
-        ExprType::Int(_) => todo!(), //convert_int_atom(i, ctx, builder),
     }
 }
 

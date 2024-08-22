@@ -71,6 +71,8 @@ impl Normalizer {
                     .collect::<Result<_, _>>()?;
                 Ok(ctx.ir_builder().or(formulas))
             }
+            Formula::True => Ok(Formula::True),
+            Formula::False => Ok(Formula::False),
         }
     }
 
@@ -84,7 +86,9 @@ impl Normalizer {
         } else {
             let pol = lit.polarity();
             match lit.atom().get_type() {
-                AtomType::InRe(lhs, rhs) if !lhs.is_variable() => {
+                AtomType::InRe(inre) if !inre.pattern().is_variable() => {
+                    let lhs = inre.pattern();
+                    let rhs = inre.re();
                     let v = if let Some(v) = self.identities.get(&lhs) {
                         v.clone()
                     } else {
@@ -98,8 +102,9 @@ impl Normalizer {
                     self.rewrites.insert(lit, new_lit.clone());
                     Ok(new_lit)
                 }
-                AtomType::PrefixOf(pr, of) if pr.is_constant() => {
-                    let pref = pr.as_constant().unwrap();
+                AtomType::PrefixOf(pr) if pr.prefix().is_constant() => {
+                    let pref = pr.prefix().as_constant().unwrap();
+                    let of = pr.of();
                     let re = self.prefix_re(&pref, ctx);
                     let as_re = ctx.ir_builder().in_re(of.clone(), re);
                     let new_lit = ctx.ir_builder().literal(as_re, pol);
@@ -108,12 +113,12 @@ impl Normalizer {
                     self.rewrites.insert(lit, cleaned.clone());
                     Ok(cleaned)
                 }
-                AtomType::PrefixOf(pr, of) => {
+                AtomType::PrefixOf(pr) => {
                     if pol {
                         let w2 = ctx.new_temp_var(Sort::String);
-                        let mut rhs = pr.clone();
+                        let mut rhs = pr.prefix().clone();
                         rhs.push_var(w2.as_ref().clone());
-                        let eq = ctx.ir_builder().word_equation(of.clone(), rhs);
+                        let eq = ctx.ir_builder().word_equation(pr.of().clone(), rhs);
                         let new_lit = ctx.ir_builder().plit(eq);
                         self.rewrites.insert(lit, new_lit.clone());
                         Ok(new_lit)
@@ -123,22 +128,22 @@ impl Normalizer {
                         ))
                     }
                 }
-                AtomType::SuffixOf(suf, of) if suf.is_constant() => {
-                    let suffix = suf.as_constant().unwrap();
+                AtomType::SuffixOf(suf) if suf.suffix().is_constant() => {
+                    let suffix = suf.suffix().as_constant().unwrap();
                     let re = self.suffix_re(&suffix, ctx);
-                    let as_re = ctx.ir_builder().in_re(of.clone(), re);
+                    let as_re = ctx.ir_builder().in_re(suf.of().clone(), re);
                     let new_lit = ctx.ir_builder().literal(as_re, pol);
                     // Give it another pass because the new literal might still need rewriting
                     let cleaned = self.rewrite_formula(new_lit, ctx)?;
                     self.rewrites.insert(lit, cleaned.clone());
                     Ok(cleaned)
                 }
-                AtomType::SuffixOf(suf, of) => {
+                AtomType::SuffixOf(suf) => {
                     if pol {
                         let w2 = ctx.new_temp_var(Sort::String);
                         let mut rhs = Pattern::variable(w2.as_ref());
-                        rhs.concat(suf.clone());
-                        let eq = ctx.ir_builder().word_equation(of.clone(), rhs);
+                        rhs.concat(suf.suffix().clone());
+                        let eq = ctx.ir_builder().word_equation(suf.of().clone(), rhs);
                         let new_lit = ctx.ir_builder().plit(eq);
                         self.rewrites.insert(lit, new_lit.clone());
                         Ok(new_lit)
@@ -148,24 +153,24 @@ impl Normalizer {
                         ))
                     }
                 }
-                AtomType::Contains(hay, needle) if needle.is_constant() => {
-                    let needle = needle.as_constant().unwrap();
+                AtomType::Contains(con) if con.needle().is_constant() => {
+                    let needle = con.needle().as_constant().unwrap();
                     let re = self.contains_re(&needle, ctx);
-                    let as_re = ctx.ir_builder().in_re(hay.clone(), re);
+                    let as_re = ctx.ir_builder().in_re(con.haystack().clone(), re);
                     let new_lit = ctx.ir_builder().literal(as_re, pol);
                     // Give it another pass because the new literal might still need rewriting
                     let cleaned = self.rewrite_formula(new_lit, ctx)?;
                     self.rewrites.insert(lit, cleaned.clone());
                     Ok(cleaned)
                 }
-                AtomType::Contains(hay, needle) => {
+                AtomType::Contains(con) => {
                     if pol {
                         let w2 = ctx.new_temp_var(Sort::String);
                         let w3 = ctx.new_temp_var(Sort::String);
                         let mut rhs = Pattern::variable(w2.as_ref());
-                        rhs.concat(needle.clone());
+                        rhs.concat(con.needle().clone());
                         rhs.push_var(w3.as_ref().clone());
-                        let eq = ctx.ir_builder().word_equation(hay.clone(), rhs);
+                        let eq = ctx.ir_builder().word_equation(con.haystack().clone(), rhs);
                         let new_lit = ctx.ir_builder().plit(eq);
                         self.rewrites.insert(lit, new_lit.clone());
                         Ok(new_lit)
@@ -175,7 +180,7 @@ impl Normalizer {
                         ))
                     }
                 }
-                AtomType::LinearConstraint(_, _, _) => todo!("linear constraints"),
+                AtomType::LinearConstraint(_) => todo!("linear constraints"),
                 _ => Ok(Formula::Literal(lit)), // No rewrite required
             }
         }

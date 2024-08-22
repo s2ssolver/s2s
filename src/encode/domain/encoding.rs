@@ -10,6 +10,7 @@ use crate::{
     sat::{plit, PLit, PVar},
 };
 
+#[derive(Clone, Debug)]
 pub struct DomainEncoding {
     /// The encoding of the substitutions
     pub(super) string: SubstitutionEncoding,
