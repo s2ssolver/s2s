@@ -118,6 +118,15 @@ impl Literal {
             Literal::Negative(_) => false,
         }
     }
+
+    /// Returns the inverse of the literal.
+    /// The inverse of a positive literal is a negative literal and vice versa.
+    pub fn inverse(&self) -> Literal {
+        match self {
+            Literal::Positive(a) => Literal::Negative(a.clone()),
+            Literal::Negative(a) => Literal::Positive(a.clone()),
+        }
+    }
 }
 impl Hash for Literal {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
@@ -135,6 +144,10 @@ impl Display for Literal {
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub enum Formula {
+    /// The constant true.
+    True,
+    /// The constant false.
+    False,
     /// A theory literal.
     Literal(Literal),
     /// A conjunction of subformulas.
@@ -142,9 +155,85 @@ pub enum Formula {
     /// A disjunction of subformulas.
     Or(Vec<Formula>),
 }
+impl Formula {
+    /// Reduces the formula by resolving the following Boolean equivalences:
+    /// - `true ∧ x` = `x`
+    /// - `false ∧ x` = `false`
+    /// - `true ∨ x` = `true`
+    /// - `false ∨ x` = `x`
+    /// - `A ∧ A` = `x`
+    /// - `A ∨ A` = `x`
+    /// - `A ∧ ¬A` = `false`
+    /// - `A ∨ ¬A` = `true`
+    pub fn reduce(self) -> Formula {
+        match self {
+            Formula::True | Formula::False | Formula::Literal(_) => self,
+            Formula::And(fs) => Self::reduce_conjunction(fs),
+            Formula::Or(fs) => Self::reduce_disjunction(fs),
+        }
+    }
+
+    fn reduce_conjunction(formulas: Vec<Formula>) -> Formula {
+        let mut reduced = HashSet::new();
+        let mut seen_lits = HashSet::new();
+
+        for f in formulas {
+            let f = f.reduce();
+            match f {
+                Formula::False => return Formula::False, // `false ∧ x` = `false`
+                Formula::True => continue,               // Skip `true`
+                Formula::Literal(ref lit) => {
+                    let inv = lit.inverse();
+                    if seen_lits.contains(&inv) {
+                        return Formula::False; // `A ∧ ¬A` = `false`
+                    }
+                    seen_lits.insert(lit.clone());
+                }
+                _ => {}
+            }
+            reduced.insert(f);
+        }
+
+        match reduced.len() {
+            0 => Formula::True, // If all were `true`, return `true`
+            1 => reduced.into_iter().next().unwrap(),
+            _ => Formula::And(reduced.into_iter().collect()),
+        }
+    }
+
+    fn reduce_disjunction(formulas: Vec<Formula>) -> Formula {
+        let mut reduced = HashSet::new();
+        let mut seen_lits = HashSet::new();
+
+        for f in formulas {
+            let f = f.reduce();
+            match f {
+                Formula::True => return Formula::True, // `true ∨ x` = `true`
+                Formula::False => continue,            // Skip `false`
+                Formula::Literal(ref lit) => {
+                    let inv = lit.inverse();
+                    if seen_lits.contains(&inv) {
+                        return Formula::True; // `A ∨ ¬A` = `true`
+                    }
+                    seen_lits.insert(lit.clone());
+                }
+                _ => {}
+            }
+            reduced.insert(f);
+        }
+
+        match reduced.len() {
+            0 => Formula::False, // If all were `false`, return `false`
+            1 => reduced.into_iter().next().unwrap(),
+            _ => Formula::Or(reduced.into_iter().collect()),
+        }
+    }
+}
 impl Display for Formula {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            Formula::True => write!(f, "⊤"),
+            Formula::False => write!(f, "⊥"),
             Formula::Literal(lit) => write!(f, "{}", lit),
             Formula::And(es) => {
                 let mut iter = es.iter();
@@ -257,5 +346,161 @@ impl IrBuilder {
 
     pub fn nlit(&self, atom: Rc<Atom>) -> Formula {
         self.literal(atom, false)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::repr::Sort;
+
+    use super::*;
+    #[test]
+    fn test_reduce_true() {
+        let formula = Formula::True;
+        assert_eq!(formula.reduce(), Formula::True);
+    }
+
+    #[test]
+    fn test_reduce_false() {
+        let formula = Formula::False;
+        assert_eq!(formula.reduce(), Formula::False);
+    }
+
+    #[test]
+    fn test_reduce_literal() {
+        let mut builder = IrBuilder::default();
+        let var_x = Rc::new(Variable::new(0, "x".to_string(), Sort::Bool));
+        let lit = Literal::Positive(builder.bool_var(var_x));
+
+        let formula = Formula::Literal(lit.clone());
+        assert_eq!(formula.reduce(), Formula::Literal(lit));
+    }
+
+    #[test]
+    fn test_reduce_and_with_true() {
+        let mut builder = IrBuilder::default();
+        let var_x = Rc::new(Variable::new(0, "x".to_string(), Sort::Bool));
+        let lit = Literal::Positive(builder.bool_var(var_x));
+
+        let formula = Formula::And(vec![Formula::True, Formula::Literal(lit.clone())]);
+        assert_eq!(formula.reduce(), Formula::Literal(lit));
+    }
+
+    #[test]
+    fn test_reduce_and_with_false() {
+        let mut builder = IrBuilder::default();
+        let var_x = Rc::new(Variable::new(0, "x".to_string(), Sort::Bool));
+        let lit = Literal::Positive(builder.bool_var(var_x));
+
+        let formula = Formula::And(vec![Formula::False, Formula::Literal(lit)]);
+        assert_eq!(formula.reduce(), Formula::False);
+    }
+
+    #[test]
+    fn test_reduce_or_with_true() {
+        let mut builder = IrBuilder::default();
+        let var_x = Rc::new(Variable::new(0, "x".to_string(), Sort::Bool));
+        let lit = Literal::Positive(builder.bool_var(var_x));
+
+        let formula = Formula::Or(vec![Formula::True, Formula::Literal(lit)]);
+        assert_eq!(formula.reduce(), Formula::True);
+    }
+
+    #[test]
+    fn test_reduce_or_with_false() {
+        let mut builder = IrBuilder::default();
+        let var_x = Rc::new(Variable::new(0, "x".to_string(), Sort::Bool));
+        let lit = Literal::Positive(builder.bool_var(var_x.clone()));
+
+        let formula = Formula::Or(vec![Formula::False, Formula::Literal(lit.clone())]);
+        assert_eq!(formula.reduce(), Formula::Literal(lit));
+    }
+
+    #[test]
+    fn test_reduce_and_with_duplicate_literal() {
+        let mut builder = IrBuilder::default();
+        let var_x = Rc::new(Variable::new(0, "x".to_string(), Sort::Bool));
+        let lit = Literal::Positive(builder.bool_var(var_x.clone()));
+
+        let formula = Formula::And(vec![
+            Formula::Literal(lit.clone()),
+            Formula::Literal(lit.clone()),
+        ]);
+        assert_eq!(formula.reduce(), Formula::Literal(lit));
+    }
+
+    #[test]
+    fn test_reduce_or_with_duplicate_literal() {
+        let mut builder = IrBuilder::default();
+        let var_x = Rc::new(Variable::new(0, "x".to_string(), Sort::Bool));
+        let lit = Literal::Positive(builder.bool_var(var_x.clone()));
+
+        let formula = Formula::Or(vec![
+            Formula::Literal(lit.clone()),
+            Formula::Literal(lit.clone()),
+        ]);
+        assert_eq!(formula.reduce(), Formula::Literal(lit));
+    }
+
+    #[test]
+    fn test_reduce_and_with_complementary_literals() {
+        let mut builder = IrBuilder::default();
+        let var_x = Rc::new(Variable::new(0, "x".to_string(), Sort::Bool));
+        let lit1 = Literal::Positive(builder.bool_var(var_x.clone()));
+        let lit2 = Literal::Negative(builder.bool_var(var_x));
+
+        let formula = Formula::And(vec![Formula::Literal(lit1), Formula::Literal(lit2)]);
+        assert_eq!(formula.reduce(), Formula::False);
+    }
+
+    #[test]
+    fn test_reduce_or_with_complementary_literals() {
+        let mut builder = IrBuilder::default();
+        let var_x = Rc::new(Variable::new(0, "x".to_string(), Sort::Bool));
+        let lit1 = Literal::Positive(builder.bool_var(var_x.clone()));
+        let lit2 = Literal::Negative(builder.bool_var(var_x));
+
+        let formula = Formula::Or(vec![Formula::Literal(lit1), Formula::Literal(lit2)]);
+        assert_eq!(formula.reduce(), Formula::True);
+    }
+
+    #[test]
+    fn test_reduce_complex_and() {
+        let mut builder = IrBuilder::default();
+        let var_x = Rc::new(Variable::new(0, "x".to_string(), Sort::Bool));
+        let var_y = Rc::new(Variable::new(1, "y".to_string(), Sort::Bool));
+        let lit1 = Literal::Positive(builder.bool_var(var_x.clone()));
+        let lit2 = Literal::Positive(builder.bool_var(var_y.clone()));
+
+        let formula = Formula::And(vec![
+            Formula::Literal(lit1.clone()),
+            Formula::True,
+            Formula::Literal(lit2.clone()),
+            Formula::Literal(lit1.clone()),
+        ]);
+        assert_eq!(
+            formula.reduce(),
+            Formula::And(vec![Formula::Literal(lit1), Formula::Literal(lit2)])
+        );
+    }
+
+    #[test]
+    fn test_reduce_complex_or() {
+        let mut builder = IrBuilder::default();
+        let var_x = Rc::new(Variable::new(0, "x".to_string(), Sort::Bool));
+        let var_y = Rc::new(Variable::new(1, "y".to_string(), Sort::Bool));
+        let lit1 = Literal::Positive(builder.bool_var(var_x.clone()));
+        let lit2 = Literal::Positive(builder.bool_var(var_y.clone()));
+
+        let formula = Formula::Or(vec![
+            Formula::Literal(lit1.clone()),
+            Formula::False,
+            Formula::Literal(lit2.clone()),
+            Formula::Literal(lit1.clone()),
+        ]);
+        assert_eq!(
+            formula.reduce(),
+            Formula::Or(vec![Formula::Literal(lit1), Formula::Literal(lit2)])
+        );
     }
 }
