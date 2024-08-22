@@ -4,7 +4,7 @@ use std::{
     rc::Rc,
 };
 
-use regulaer::{automaton::NFA, re::Regex};
+use regulaer::{automaton::NFA, compiler::Compiler, re::Regex};
 
 use crate::repr::{ast::AstBuilder, ir::IrBuilder, Sort, Sorted, Variable};
 
@@ -18,6 +18,8 @@ pub struct Context {
     ast_builder: AstBuilder,
     //ir_builder: RefCell<IrBuilder>,
     ir_builder: IrBuilder,
+
+    nfa_cache: HashMap<Regex, Rc<NFA>>,
 }
 
 impl Context {
@@ -120,8 +122,18 @@ impl Context {
 
     /// Returns the NFA for the given regular expression.
     /// Computes the NFA if it has not been computed yet.
-    pub fn get_nfa(&self, regex: &Regex) -> Rc<NFA> {
-        todo!()
+    pub fn get_nfa(&mut self, regex: &Regex) -> Rc<NFA> {
+        if let Some(nfa) = self.nfa_cache.get(regex) {
+            nfa.clone()
+        } else {
+            let builder = self.ast_builder().re_builder();
+            let nfa = Compiler::Thompson
+                .nfa(regex, builder)
+                .expect("Failed to compile regex");
+            let nfa = Rc::new(nfa);
+            self.nfa_cache.insert(regex.clone(), nfa.clone());
+            nfa
+        }
     }
 
     // pub fn ir_builder(&self) -> RefMut<IrBuilder> {
