@@ -111,6 +111,8 @@ pub fn abstract_fm(fm: &Formula) -> Abstraction {
 
 fn build(fm: &Formula, defs: &mut HashMap<Rc<Atom>, Definition>) -> PFormula {
     match fm {
+        Formula::True => PFormula::True,
+        Formula::False => PFormula::False,
         Formula::Literal(lit) => {
             if let Some(def) = defs.get_mut(lit.atom()) {
                 if lit.polarity() {

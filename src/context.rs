@@ -4,6 +4,8 @@ use std::{
     rc::Rc,
 };
 
+use regulaer::{automaton::NFA, re::Regex};
+
 use crate::repr::{ast::AstBuilder, ir::IrBuilder, Sort, Sorted, Variable};
 
 #[derive(Default)]
@@ -116,7 +118,17 @@ impl Context {
         &mut self.ir_builder
     }
 
+    /// Returns the NFA for the given regular expression.
+    /// Computes the NFA if it has not been computed yet.
+    pub fn get_nfa(&self, regex: &Regex) -> Rc<NFA> {
+        todo!()
+    }
+
     // pub fn ir_builder(&self) -> RefMut<IrBuilder> {
     //     self.ir_builder.borrow_mut()
     // }
+}
+
+struct NFABuilder {
+    nfa_cache: HashMap<Regex, Rc<NFA>>,
 }
