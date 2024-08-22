@@ -23,7 +23,7 @@ use crate::{
         constraints::{RegularConstraint, RegularConstraintType, Symbol},
         Variable,
     },
-    sat::{plit, nlit, pvar, PVar},
+    sat::{nlit, plit, pvar, PVar},
 };
 
 const NFA_NOT_EPSILON_FREE_MSG: &str = "NFA must be epsilon-free";

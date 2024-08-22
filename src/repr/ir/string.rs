@@ -328,11 +328,196 @@ impl Display for Symbol {
     }
 }
 
+// The actual constraints
+
+/// Represents a word equation, i.e. an equation between two patterns.
+// TODO: Make enum for various types (constant, assignment, variable, general)
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+pub struct WordEquation {
+    lhs: Pattern,
+    rhs: Pattern,
+}
+impl WordEquation {
+    /// Creates a new word equation from two patterns.
+    pub fn new(lhs: Pattern, rhs: Pattern) -> Self {
+        Self { lhs, rhs }
+    }
+
+    /// Returns the left-hand side of the word equation.
+    pub fn lhs(&self) -> &Pattern {
+        &self.lhs
+    }
+
+    /// Returns the right-hand side of the word equation.
+    pub fn rhs(&self) -> &Pattern {
+        &self.rhs
+    }
+}
+impl ConstReducible for WordEquation {
+    /// If the equation is constant, i.e., both sides are constant words, returns whether the two words are equal.
+    /// Returns `Some(true)` if the words are equal, `Some(false)` if they are not, and `None` if either side contains variables.
+    fn is_constant(&self) -> Option<bool> {
+        let lhs_const = self.lhs.as_constant()?;
+        let rhs_const = self.rhs.as_constant()?;
+        Some(lhs_const == rhs_const)
+    }
+}
+impl Display for WordEquation {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{} = {}", self.lhs, self.rhs)
+    }
+}
+
+/// Represents a regular constraint, i.e. a pattern and a regular expression.
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+pub struct RegularConstraint {
+    lhs: Pattern,
+    re: Regex,
+}
+impl RegularConstraint {
+    /// Creates a new regular constraint from a pattern and a regular expression.
+    pub fn new(lhs: Pattern, re: Regex) -> Self {
+        Self { lhs, re }
+    }
+
+    /// Returns the left-hand side of the regular constraint.
+    pub fn pattern(&self) -> &Pattern {
+        &self.lhs
+    }
+
+    /// Returns the regular expression of the regular constraint.
+    pub fn re(&self) -> &Regex {
+        &self.re
+    }
+}
+impl ConstReducible for RegularConstraint {
+    /// If the constraint is constant, i.e., the pattern contains no variables, returns whether the pattern is in the language of the regular expression.
+    /// Returns `Some(true)` if the pattern is in the language, `Some(false)` if it is not, and `None` if the pattern contains variables.
+    fn is_constant(&self) -> Option<bool> {
+        let pat_c = self.pattern().as_constant()?;
+        Some(self.re().accepts(&pat_c.into()))
+    }
+}
+impl Display for RegularConstraint {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{} ∈ {}", self.lhs, self.re)
+    }
+}
+
+/// Represents a prefix of constraint, i.e. a pattern that is a prefix of another pattern.
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+pub struct PrefixOf {
+    prefix: Pattern,
+    of: Pattern,
+}
+impl PrefixOf {
+    /// Creates a new prefix of constraint from two patterns.
+    pub fn new(prefix: Pattern, of: Pattern) -> Self {
+        Self { prefix, of }
+    }
+
+    /// Returns the prefix of the prefix of constraint.
+    pub fn prefix(&self) -> &Pattern {
+        &self.prefix
+    }
+
+    /// Returns the pattern of the prefix of constraint.
+    pub fn of(&self) -> &Pattern {
+        &self.of
+    }
+}
+impl ConstReducible for PrefixOf {
+    fn is_constant(&self) -> Option<bool> {
+        let prefix_c = self.prefix.as_constant()?;
+        let of_c = self.of.as_constant()?;
+        Some(of_c.starts_with(&prefix_c))
+    }
+}
+impl Display for PrefixOf {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{} ⊑ {}", self.prefix, self.of)
+    }
+}
+
+/// Represents a prefix of constraint, i.e. a pattern that is a prefix of another pattern.
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+pub struct SuffixOf {
+    suffix: Pattern,
+    of: Pattern,
+}
+impl SuffixOf {
+    /// Creates a new suffix of constraint from two patterns.
+    pub fn new(suffix: Pattern, of: Pattern) -> Self {
+        Self { suffix, of }
+    }
+
+    /// Returns the suffix of the suffix of constraint.
+    pub fn suffix(&self) -> &Pattern {
+        &self.suffix
+    }
+
+    /// Returns the pattern of the suffix of constraint.
+    pub fn of(&self) -> &Pattern {
+        &self.of
+    }
+}
+impl ConstReducible for SuffixOf {
+    fn is_constant(&self) -> Option<bool> {
+        let suffix_c = self.suffix.as_constant()?;
+        let of_c = self.of.as_constant()?;
+        Some(of_c.ends_with(&suffix_c))
+    }
+}
+
+impl Display for SuffixOf {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{} ⊒ {}", self.suffix, self.of)
+    }
+}
+
+/// Represents a prefix of constraint, i.e. a pattern that is a prefix of another pattern.
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+pub struct Contains {
+    needle: Pattern,
+    haystack: Pattern,
+}
+impl Contains {
+    /// Creates a new contains constraint from two patterns.
+    pub fn new(needle: Pattern, haystack: Pattern) -> Self {
+        Self { needle, haystack }
+    }
+
+    /// Returns the needle of the contains constraint.
+    pub fn needle(&self) -> &Pattern {
+        &self.needle
+    }
+
+    /// Returns the haystack of the contains constraint.
+    pub fn haystack(&self) -> &Pattern {
+        &self.haystack
+    }
+}
+impl ConstReducible for Contains {
+    fn is_constant(&self) -> Option<bool> {
+        let needle_c = self.needle.as_constant()?;
+        let haystack_c = self.haystack.as_constant()?;
+        Some(haystack_c.contains(&needle_c))
+    }
+}
+impl Display for Contains {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{} contains {}", self.haystack, self.needle)
+    }
+}
+
 /* Arbitrary */
 
 use quickcheck;
+use regulaer::re::Regex;
 
 use crate::repr::{Sort, Sorted, Variable};
+
+use super::ConstReducible;
 
 impl Arbitrary for Symbol {
     fn arbitrary(g: &mut quickcheck::Gen) -> Self {

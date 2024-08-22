@@ -4,6 +4,8 @@ use indexmap::IndexSet;
 
 use crate::repr::Variable;
 
+use super::ConstReducible;
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Summand {
     VarCoeff(Variable, isize),
@@ -161,10 +163,11 @@ impl LinearArithTerm {
     }
 
     /// Returns `Some(c)` if the term is constant `c`, `None` otherwise.
-    pub fn reduce_constant(&self) -> Option<isize> {
+    pub fn as_constant(&self) -> Option<isize> {
         let mut c = 0;
         for f in self.iter() {
             match f {
+                Summand::VarCoeff(_, 0) => (),
                 Summand::VarCoeff(_, _) => return None,
                 Summand::Const(c2) => c += c2,
             }
@@ -190,16 +193,50 @@ pub enum LinearOperator {
     Geq,
     Greater,
 }
+impl LinearOperator {
+    pub fn eval(&self, lhs: isize, rhs: isize) -> bool {
+        match self {
+            LinearOperator::Eq => lhs == rhs,
+            LinearOperator::Ineq => lhs != rhs,
+            LinearOperator::Leq => lhs <= rhs,
+            LinearOperator::Less => lhs < rhs,
+            LinearOperator::Geq => lhs >= rhs,
+            LinearOperator::Greater => lhs > rhs,
+        }
+    }
+}
 
 /// A linear constraint
-// #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-// pub struct LinearConstraint {
-//     pub lhs: LinearArithTerm,
-//     pub rhs: isize,
-//     pub typ: LinearOperator,
-// }
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct LinearConstraint {
+    pub lhs: LinearArithTerm,
+    pub rhs: isize,
+    pub typ: LinearOperator,
+}
 
-// impl LinearConstraint {
+impl LinearConstraint {
+    pub fn new(lhs: LinearArithTerm, typ: LinearOperator, rhs: isize) -> Self {
+        Self { lhs, rhs, typ }
+    }
+
+    pub fn lhs(&self) -> &LinearArithTerm {
+        &self.lhs
+    }
+    pub fn rhs(&self) -> isize {
+        self.rhs
+    }
+    pub fn typ(&self) -> LinearOperator {
+        self.typ
+    }
+}
+
+impl ConstReducible for LinearConstraint {
+    fn is_constant(&self) -> Option<bool> {
+        let lhs = self.lhs.as_constant()?;
+        Some(self.typ().eval(lhs, self.rhs))
+    }
+}
+
 //     /// Derive a linear constraint from a word equation
 //     pub fn from_word_equation(eq: &WordEquation) -> Self {
 //         let mut lhs = LinearArithTerm::new();
@@ -356,10 +393,10 @@ impl Display for LinearOperator {
     }
 }
 
-// impl Display for LinearConstraint {
-//     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-//         write!(f, "{} {} {}", self.lhs, self.typ, self.rhs)
-//     }
-// }
+impl Display for LinearConstraint {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{} {} {}", self.lhs, self.typ, self.rhs)
+    }
+}
 
 // TODO: Needs testing!

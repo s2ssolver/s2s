@@ -1,13 +1,19 @@
 //! Internal representation of the input formula.
-use std::{collections::HashMap, fmt::Display, hash::Hash, rc::Rc};
+use std::{
+    collections::{HashMap, HashSet},
+    fmt::Display,
+    hash::Hash,
+    rc::Rc,
+};
 
 use regulaer::re::Regex;
 
 mod int;
 mod string;
 mod substitution;
-pub use int::{LinearArithTerm, LinearOperator};
-pub use string::{Pattern, Symbol};
+
+pub use int::*;
+pub use string::*;
 pub use substitution::*;
 
 use super::Variable;
@@ -16,35 +22,33 @@ use super::Variable;
 pub enum AtomType {
     /// A boolean variable.
     BoolVar(Rc<Variable>),
-    /// A constant boolean value.
-    BoolConst(bool),
 
     /// A regular constraint.
-    InRe(Pattern, Regex),
+    InRe(RegularConstraint),
     /// A word equation.
-    WordEquation(Pattern, Pattern),
+    WordEquation(WordEquation),
 
     /// PrefixOf
-    PrefixOf(Pattern, Pattern),
+    PrefixOf(PrefixOf),
     /// SuffixOf
-    SuffixOf(Pattern, Pattern),
+    SuffixOf(SuffixOf),
     /// Contains
-    Contains(Pattern, Pattern),
+    Contains(Contains),
 
     /// A linear constraint.
-    LinearConstraint(LinearArithTerm, LinearOperator, isize),
+    LinearConstraint(LinearConstraint),
 }
+
 impl Display for AtomType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             AtomType::BoolVar(v) => write!(f, "{}", v),
-            AtomType::BoolConst(b) => write!(f, "{}", b),
-            AtomType::InRe(p, r) => write!(f, "{} ∈ {}", p, r),
-            AtomType::WordEquation(l, r) => write!(f, "{} = {}", l, r),
-            AtomType::PrefixOf(l, r) => write!(f, "{} ⊑ {}", l, r),
-            AtomType::SuffixOf(l, r) => write!(f, "{} ⊒ {}", l, r),
-            AtomType::Contains(l, r) => write!(f, "{} contains {}", l, r),
-            AtomType::LinearConstraint(l, o, r) => write!(f, "{} {} {}", l, o, r),
+            AtomType::InRe(rc) => write!(f, "{}", rc),
+            AtomType::WordEquation(eq) => write!(f, "{}", eq),
+            AtomType::PrefixOf(c) => write!(f, "{}", c),
+            AtomType::SuffixOf(c) => write!(f, "{}", c),
+            AtomType::Contains(c) => write!(f, "{}", c),
+            AtomType::LinearConstraint(lc) => write!(f, "{}", lc),
         }
     }
 }
@@ -90,6 +94,14 @@ pub enum Literal {
     Negative(Rc<Atom>),
 }
 impl Literal {
+    pub fn new(atom: Rc<Atom>, polarity: bool) -> Self {
+        if polarity {
+            Literal::Positive(atom)
+        } else {
+            Literal::Negative(atom)
+        }
+    }
+
     pub fn id(&self) -> isize {
         match self {
             Literal::Positive(a) => a.id as isize,
@@ -165,11 +177,21 @@ impl Formula {
     /// - `A ∨ A` = `x`
     /// - `A ∧ ¬A` = `false`
     /// - `A ∨ ¬A` = `true`
+    /// Additionally, reduces all constant literals to their truth value.
     pub fn reduce(self) -> Formula {
         match self {
-            Formula::True | Formula::False | Formula::Literal(_) => self,
+            Formula::True | Formula::False => self,
+            Formula::Literal(lit) => Self::reduce_literal(lit),
             Formula::And(fs) => Self::reduce_conjunction(fs),
             Formula::Or(fs) => Self::reduce_disjunction(fs),
+        }
+    }
+
+    fn reduce_literal(lit: Literal) -> Formula {
+        match lit.is_constant() {
+            Some(true) => Formula::True,   // `true` literal
+            Some(false) => Formula::False, // `false` literal
+            None => Formula::Literal(lit), // Non-constant literal
         }
     }
 
@@ -261,6 +283,35 @@ impl Display for Formula {
     }
 }
 
+pub trait ConstReducible {
+    /// Checks if the formula constant.
+    /// If the formula is constant, returns the constant truth value.
+    /// If the formula is not constant, returns None.
+    fn is_constant(&self) -> Option<bool>;
+}
+
+impl ConstReducible for Atom {
+    fn is_constant(&self) -> Option<bool> {
+        match self.get_type() {
+            AtomType::BoolVar(_) => None,
+            AtomType::InRe(r) => r.is_constant(),
+            AtomType::WordEquation(w) => w.is_constant(),
+            AtomType::PrefixOf(p) => p.is_constant(),
+            AtomType::SuffixOf(s) => s.is_constant(),
+            AtomType::Contains(c) => c.is_constant(),
+            AtomType::LinearConstraint(lc) => lc.is_constant(),
+        }
+    }
+}
+
+impl ConstReducible for Literal {
+    fn is_constant(&self) -> Option<bool> {
+        self.atom()
+            .is_constant()
+            .map(|c| if self.polarity() { c } else { !c })
+    }
+}
+
 #[derive(Default)]
 pub struct IrBuilder {
     registry: HashMap<AtomType, Rc<Atom>>,
@@ -283,33 +334,28 @@ impl IrBuilder {
         self.register_atom(bool_var)
     }
 
-    pub fn bool_const(&mut self, value: bool) -> Rc<Atom> {
-        let bool_const = AtomType::BoolConst(value);
-        self.register_atom(bool_const)
-    }
-
     pub fn word_equation(&mut self, lhs: Pattern, rhs: Pattern) -> Rc<Atom> {
-        let eq = AtomType::WordEquation(lhs, rhs);
+        let eq = AtomType::WordEquation(WordEquation::new(lhs, rhs));
         self.register_atom(eq)
     }
 
-    pub fn in_re(&mut self, lhs: Pattern, rhs: Regex) -> Rc<Atom> {
-        let in_re = AtomType::InRe(lhs, rhs);
+    pub fn in_re(&mut self, lhs: Pattern, re: Regex) -> Rc<Atom> {
+        let in_re = AtomType::InRe(RegularConstraint::new(lhs, re));
         self.register_atom(in_re)
     }
 
-    pub fn prefix_of(&mut self, lhs: Pattern, rhs: Pattern) -> Rc<Atom> {
-        let prefix_of = AtomType::PrefixOf(lhs, rhs);
+    pub fn prefix_of(&mut self, prefix: Pattern, of: Pattern) -> Rc<Atom> {
+        let prefix_of = AtomType::PrefixOf(PrefixOf::new(prefix, of));
         self.register_atom(prefix_of)
     }
 
-    pub fn suffix_of(&mut self, lhs: Pattern, rhs: Pattern) -> Rc<Atom> {
-        let suffix_of = AtomType::SuffixOf(lhs, rhs);
+    pub fn suffix_of(&mut self, suffix: Pattern, of: Pattern) -> Rc<Atom> {
+        let suffix_of = AtomType::SuffixOf(SuffixOf::new(suffix, of));
         self.register_atom(suffix_of)
     }
 
-    pub fn contains(&mut self, lhs: Pattern, rhs: Pattern) -> Rc<Atom> {
-        let contains = AtomType::Contains(lhs, rhs);
+    pub fn contains(&mut self, haystack: Pattern, needle: Pattern) -> Rc<Atom> {
+        let contains = AtomType::Contains(Contains::new(needle, haystack));
         self.register_atom(contains)
     }
 
@@ -319,7 +365,7 @@ impl IrBuilder {
         op: LinearOperator,
         rhs: isize,
     ) -> Rc<Atom> {
-        let linear_constraint = AtomType::LinearConstraint(lhs, op, rhs);
+        let linear_constraint = AtomType::LinearConstraint(LinearConstraint::new(lhs, op, rhs));
         self.register_atom(linear_constraint)
     }
 

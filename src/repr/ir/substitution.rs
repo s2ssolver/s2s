@@ -7,6 +7,7 @@ use crate::{
     repr::{Sort, Sorted, Variable},
 };
 
+use super::Literal;
 use super::{int::Summand, string::Symbol, AtomType, Formula, LinearArithTerm, Pattern};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -19,7 +20,7 @@ impl Substitute {
     pub fn is_constant(&self) -> bool {
         match self {
             Self::String(p) => p.is_constant(),
-            Self::Int(t) => t.reduce_constant().is_some(),
+            Self::Int(t) => t.as_constant().is_some(),
         }
     }
 }
@@ -153,41 +154,36 @@ impl VarSubstitution {
         buf
     }
 
+    pub fn apply_literal(&self, lit: Literal, ctx: &mut Context) -> Literal {
+        let pol = lit.polarity();
+        let new_atom = match &lit.atom().ttype {
+            AtomType::InRe(inre) => {
+                let new_p = self.apply_pattern(inre.pattern());
+                ctx.ir_builder().in_re(new_p, inre.re().clone())
+            }
+            AtomType::WordEquation(weq) => {
+                let new_l = self.apply_pattern(weq.lhs());
+                let new_r = self.apply_pattern(weq.rhs());
+                ctx.ir_builder().word_equation(new_l, new_r)
+            }
+            AtomType::LinearConstraint(lc) => {
+                let new_l = self.apply_arith_term(lc.lhs());
+                ctx.ir_builder()
+                    .linear_constraint(new_l, lc.typ(), lc.rhs())
+            }
+            AtomType::BoolVar(bv) => ctx.ir_builder().bool_var(bv.clone()),
+            AtomType::PrefixOf(_) => todo!(),
+            AtomType::SuffixOf(_) => todo!(),
+            AtomType::Contains(_) => todo!(),
+        };
+        Literal::new(new_atom, pol)
+    }
+
     pub fn apply(&self, fm: Formula, ctx: &mut Context) -> Formula {
         match fm {
-            Formula::Literal(lit) => {
-                let pol = lit.polarity();
-                let new_lit = match &lit.atom().ttype {
-                    AtomType::InRe(p, r) => {
-                        let new_p = self.apply_pattern(&p);
-                        let new_in_re = ctx.ir_builder().in_re(new_p, r.clone());
-                        ctx.ir_builder().literal(new_in_re, pol)
-                    }
-                    AtomType::WordEquation(l, r) => {
-                        let new_l = self.apply_pattern(&l);
-                        let new_r = self.apply_pattern(&r);
-                        let new_eq = ctx.ir_builder().word_equation(new_l, new_r);
-                        ctx.ir_builder().literal(new_eq, pol)
-                    }
-                    AtomType::LinearConstraint(l, o, r) => {
-                        let new_l = self.apply_arith_term(&l);
-                        let new_eq = ctx.ir_builder().linear_constraint(new_l, *o, *r);
-                        ctx.ir_builder().literal(new_eq, pol)
-                    }
-                    AtomType::BoolVar(bv) => {
-                        let v = ctx.ir_builder().bool_var(bv.clone());
-                        ctx.ir_builder().literal(v, pol)
-                    }
-                    AtomType::BoolConst(b) => {
-                        let v = ctx.ir_builder().bool_const(*b);
-                        ctx.ir_builder().literal(v, pol)
-                    }
-                    AtomType::PrefixOf(_, _) => todo!(),
-                    AtomType::SuffixOf(_, _) => todo!(),
-                    AtomType::Contains(_, _) => todo!(),
-                };
-                new_lit
-            }
+            Formula::False => Formula::False,
+            Formula::True => Formula::True,
+            Formula::Literal(lit) => Formula::Literal(self.apply_literal(lit, ctx)),
             Formula::And(rs) => {
                 let mut new_rs = Vec::new();
                 for r in rs {
