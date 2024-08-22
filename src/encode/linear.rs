@@ -4,15 +4,12 @@ use indexmap::IndexMap;
 
 use crate::{
     bounds::Bounds,
-    error::Error,
-    model::{
-        constraints::{LinearArithFactor, LinearConstraint, LinearConstraintType},
-        Evaluable, Substitution,
-    },
-    sat::{plit, nlit, pvar, PVar},
+    context::Context,
+    repr::ir::{ConstReducible, LinearConstraint, LinearOperator, Summand},
+    sat::{nlit, plit, pvar, PVar},
 };
 
-use super::{domain::DomainEncoding, ConstraintEncoder, EncodingResult};
+use super::{domain::DomainEncoding, EncodingError, EncodingResult, LiteralEncoder};
 
 /// Encodes linear constraints by using multi-valued decision diagrams.
 pub struct MddEncoder {
@@ -51,7 +48,7 @@ impl MddEncoder {
     }
 }
 
-impl ConstraintEncoder for MddEncoder {
+impl LiteralEncoder for MddEncoder {
     fn is_incremental(&self) -> bool {
         true
     }
@@ -60,12 +57,18 @@ impl ConstraintEncoder for MddEncoder {
         todo!()
     }
 
-    fn encode(&mut self, bounds: &Bounds, dom: &DomainEncoding) -> Result<EncodingResult, Error> {
+    fn encode(
+        &mut self,
+        bounds: &Bounds,
+        dom: &DomainEncoding,
+        _: &Context,
+    ) -> Result<EncodingResult, EncodingError> {
         self.round += 1;
         let mut res = EncodingResult::empty();
 
         // Check if trivial
-        match self.linear.eval(&Substitution::new()) {
+
+        match self.linear.is_constant() {
             Some(true) => {
                 return Ok(res);
             }
@@ -82,7 +85,7 @@ impl ConstraintEncoder for MddEncoder {
 
         while let Some((level, value, node_var)) = queue.pop_front() {
             match &self.linear.lhs()[level] {
-                LinearArithFactor::VarCoeff(v, coeff) => {
+                Summand::VarCoeff(v, coeff) => {
                     let current_u_bound = bounds.get_upper(v).expect("Unbounded variable");
                     let current_l_bound = bounds.get_lower(v).expect("Unbounded variable");
 
@@ -113,42 +116,42 @@ impl ConstraintEncoder for MddEncoder {
                             queue.push_back((level + 1, new_value, child_pvar));
                         } else {
                             let node = match self.linear.typ {
-                                LinearConstraintType::Eq => {
+                                LinearOperator::Eq => {
                                     if new_value == self.linear.rhs {
                                         self.mdd_true
                                     } else {
                                         self.mdd_false
                                     }
                                 }
-                                LinearConstraintType::Ineq => {
+                                LinearOperator::Ineq => {
                                     if new_value != self.linear.rhs {
                                         self.mdd_true
                                     } else {
                                         self.mdd_false
                                     }
                                 }
-                                LinearConstraintType::Leq => {
+                                LinearOperator::Leq => {
                                     if new_value <= self.linear.rhs {
                                         self.mdd_true
                                     } else {
                                         self.mdd_false
                                     }
                                 }
-                                LinearConstraintType::Less => {
+                                LinearOperator::Less => {
                                     if new_value < self.linear.rhs {
                                         self.mdd_true
                                     } else {
                                         self.mdd_false
                                     }
                                 }
-                                LinearConstraintType::Geq => {
+                                LinearOperator::Geq => {
                                     if new_value >= self.linear.rhs {
                                         self.mdd_true
                                     } else {
                                         self.mdd_false
                                     }
                                 }
-                                LinearConstraintType::Greater => {
+                                LinearOperator::Greater => {
                                     if new_value > self.linear.rhs {
                                         self.mdd_true
                                     } else {
@@ -160,7 +163,7 @@ impl ConstraintEncoder for MddEncoder {
                         }
                     }
                 }
-                LinearArithFactor::Const(_) => {
+                Summand::Const(_) => {
                     todo!("Consts not supported: {}", self.linear)
                 }
             }
