@@ -4,10 +4,10 @@
 use std::cmp::Ordering;
 
 use crate::{
-    ast::Variable,
     bounds::Bounds,
-    encode::{domain::DomainEncoding, ConstraintEncoder, EncodingResult, LAMBDA},
-    error::Error,
+    context::Context,
+    encode::{domain::DomainEncoding, EncodingError, EncodingResult, LiteralEncoder, LAMBDA},
+    repr::Variable,
     sat::{nlit, plit, pvar},
 };
 
@@ -32,7 +32,7 @@ impl AssignmentEncoder {
         &mut self,
         bounds: &Bounds,
         dom: &DomainEncoding,
-    ) -> Result<EncodingResult, Error> {
+    ) -> Result<EncodingResult, EncodingError> {
         let len_var = self.lhs.len_var().unwrap();
         let len_rhs = self.rhs.len();
         let bound = bounds.get_upper(&len_var).unwrap() as usize;
@@ -84,7 +84,7 @@ impl AssignmentEncoder {
         &mut self,
         bounds: &Bounds,
         dom: &DomainEncoding,
-    ) -> Result<EncodingResult, Error> {
+    ) -> Result<EncodingResult, EncodingError> {
         let len_var = self.lhs.len_var().unwrap();
         let len_rhs = self.rhs.len();
         let bound = bounds.get_upper(&len_var).unwrap() as usize;
@@ -133,7 +133,7 @@ impl AssignmentEncoder {
     }
 }
 
-impl ConstraintEncoder for AssignmentEncoder {
+impl LiteralEncoder for AssignmentEncoder {
     fn is_incremental(&self) -> bool {
         true
     }
@@ -146,7 +146,8 @@ impl ConstraintEncoder for AssignmentEncoder {
         &mut self,
         bounds: &Bounds,
         substitution: &DomainEncoding,
-    ) -> Result<EncodingResult, Error> {
+        _: &Context,
+    ) -> Result<EncodingResult, EncodingError> {
         if self.sign {
             self.encode_eq(bounds, substitution)
         } else {
