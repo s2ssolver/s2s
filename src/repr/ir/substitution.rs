@@ -23,6 +23,20 @@ impl Substitute {
             Self::Int(t) => t.as_constant().is_some(),
         }
     }
+
+    pub fn as_string(&self) -> &Pattern {
+        match self {
+            Self::String(p) => p,
+            _ => panic!("Expected a string term"),
+        }
+    }
+
+    pub fn as_int(&self) -> &LinearArithTerm {
+        match self {
+            Self::Int(t) => t,
+            _ => panic!("Expected an integer term"),
+        }
+    }
 }
 
 impl Display for Substitute {
@@ -75,6 +89,16 @@ impl VarSubstitution {
             let len_term = Self::strterm_to_len(&term, ctx);
             self.subs.insert(len_var, len_term);
         }
+    }
+
+    pub fn set_str(&mut self, var: &Variable, pat: Pattern, ctx: &Context) {
+        debug_assert!(var.sort() == Sort::String);
+        self.set(var, Substitute::String(pat), ctx);
+    }
+
+    pub fn set_int(&mut self, var: &Variable, term: LinearArithTerm, ctx: &Context) {
+        debug_assert!(var.sort() == Sort::Int);
+        self.set(var, Substitute::Int(term), ctx);
     }
 
     fn strterm_to_len(t: &Substitute, ctx: &Context) -> Substitute {
@@ -236,5 +260,24 @@ impl VarSubstitution {
         }
         new_term.normalize();
         new_term
+    }
+}
+
+pub trait Substitutable {
+    fn apply_substitution(&self, sub: &VarSubstitution) -> Self;
+}
+
+impl Display for VarSubstitution {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut first = true;
+        for (var, val) in &self.subs {
+            if first {
+                first = false;
+            } else {
+                write!(f, ", ")?;
+            }
+            write!(f, "{} -> {}", var, val)?;
+        }
+        Ok(())
     }
 }

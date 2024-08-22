@@ -48,6 +48,18 @@ impl Symbol {
     }
 }
 
+impl From<char> for Symbol {
+    fn from(value: char) -> Self {
+        Symbol::Constant(value)
+    }
+}
+
+impl From<Variable> for Symbol {
+    fn from(value: Variable) -> Self {
+        Symbol::Variable(value)
+    }
+}
+
 /// A pattern is a sequence of symbols, which can be either constant words or variables (of sort String).
 #[derive(Clone, Debug, PartialEq, Hash, Eq)]
 pub struct Pattern {
@@ -306,6 +318,26 @@ impl IntoIterator for Pattern {
     }
 }
 
+impl Substitutable for Pattern {
+    fn apply_substitution(&self, sub: &super::VarSubstitution) -> Self {
+        let mut res = Pattern::empty();
+        for s in self.iter() {
+            match s {
+                Symbol::Constant(_) => res.push(s.clone()),
+                Symbol::Variable(v) => {
+                    if let Some(subst) = sub.get(v) {
+                        let substituee = subst.as_string();
+                        res.concat(substituee.clone());
+                    } else {
+                        res.push(s.clone());
+                    }
+                }
+            }
+        }
+        res
+    }
+}
+
 /* Pretty Printing */
 impl Display for Pattern {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
@@ -352,6 +384,13 @@ impl WordEquation {
     pub fn rhs(&self) -> &Pattern {
         &self.rhs
     }
+
+    /// Returns the set of variables that occur in the word equation.
+    pub fn variables(&self) -> IndexSet<Variable> {
+        let mut vars = self.lhs().vars();
+        vars.extend(self.rhs().vars());
+        vars
+    }
 }
 impl ConstReducible for WordEquation {
     /// If the equation is constant, i.e., both sides are constant words, returns whether the two words are equal.
@@ -360,6 +399,14 @@ impl ConstReducible for WordEquation {
         let lhs_const = self.lhs.as_constant()?;
         let rhs_const = self.rhs.as_constant()?;
         Some(lhs_const == rhs_const)
+    }
+}
+impl Substitutable for WordEquation {
+    fn apply_substitution(&self, sub: &super::VarSubstitution) -> Self {
+        Self::new(
+            self.lhs.apply_substitution(sub),
+            self.rhs.apply_substitution(sub),
+        )
     }
 }
 impl Display for WordEquation {
@@ -398,6 +445,11 @@ impl ConstReducible for RegularConstraint {
         Some(self.re().accepts(&pat_c.into()))
     }
 }
+impl Substitutable for RegularConstraint {
+    fn apply_substitution(&self, sub: &super::VarSubstitution) -> Self {
+        Self::new(self.pattern().apply_substitution(sub), self.re.clone())
+    }
+}
 impl Display for RegularConstraint {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "{} ∈ {}", self.lhs, self.re)
@@ -424,6 +476,14 @@ impl PrefixOf {
     /// Returns the pattern of the prefix of constraint.
     pub fn of(&self) -> &Pattern {
         &self.of
+    }
+}
+impl Substitutable for PrefixOf {
+    fn apply_substitution(&self, sub: &super::VarSubstitution) -> Self {
+        Self::new(
+            self.prefix.apply_substitution(sub),
+            self.of.apply_substitution(sub),
+        )
     }
 }
 impl ConstReducible for PrefixOf {
@@ -459,6 +519,14 @@ impl SuffixOf {
     /// Returns the pattern of the suffix of constraint.
     pub fn of(&self) -> &Pattern {
         &self.of
+    }
+}
+impl Substitutable for SuffixOf {
+    fn apply_substitution(&self, sub: &super::VarSubstitution) -> Self {
+        Self::new(
+            self.suffix.apply_substitution(sub),
+            self.of.apply_substitution(sub),
+        )
     }
 }
 impl ConstReducible for SuffixOf {
@@ -497,6 +565,14 @@ impl Contains {
         &self.haystack
     }
 }
+impl Substitutable for Contains {
+    fn apply_substitution(&self, sub: &super::VarSubstitution) -> Self {
+        Self::new(
+            self.needle.apply_substitution(sub),
+            self.haystack.apply_substitution(sub),
+        )
+    }
+}
 impl ConstReducible for Contains {
     fn is_constant(&self) -> Option<bool> {
         let needle_c = self.needle.as_constant()?;
@@ -517,7 +593,7 @@ use regulaer::re::Regex;
 
 use crate::repr::{Sort, Sorted, Variable};
 
-use super::ConstReducible;
+use super::{ConstReducible, Substitutable};
 
 impl Arbitrary for Symbol {
     fn arbitrary(g: &mut quickcheck::Gen) -> Self {
