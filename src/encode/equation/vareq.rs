@@ -4,9 +4,9 @@ use std::cmp::{min, Ordering};
 
 use crate::{
     bounds::Bounds,
-    encode::{domain::DomainEncoding, ConstraintEncoder, EncodingResult, LAMBDA},
-    error::Error,
-    model::Variable,
+    context::Context,
+    encode::{domain::DomainEncoding, EncodingError, EncodingResult, LiteralEncoder, LAMBDA},
+    repr::Variable,
     sat::{nlit, plit, pvar, PVar},
 };
 
@@ -23,7 +23,7 @@ impl VareqEncoder {
         &mut self,
         bounds: &Bounds,
         dom: &DomainEncoding,
-    ) -> Result<EncodingResult, Error> {
+    ) -> Result<EncodingResult, EncodingError> {
         let lhs_len = self.lhs.len_var().unwrap();
         let rhs_len = self.rhs.len_var().unwrap();
 
@@ -70,7 +70,7 @@ impl VareqEncoder {
         &mut self,
         bounds: &Bounds,
         dom: &DomainEncoding,
-    ) -> Result<EncodingResult, Error> {
+    ) -> Result<EncodingResult, EncodingError> {
         let lhs_len = self.lhs.len_var().unwrap();
         let rhs_len = self.rhs.len_var().unwrap();
 
@@ -162,7 +162,7 @@ impl VareqEncoder {
     }
 }
 
-impl ConstraintEncoder for VareqEncoder {
+impl LiteralEncoder for VareqEncoder {
     fn is_incremental(&self) -> bool {
         true
     }
@@ -171,7 +171,12 @@ impl ConstraintEncoder for VareqEncoder {
         todo!()
     }
 
-    fn encode(&mut self, bounds: &Bounds, dom: &DomainEncoding) -> Result<EncodingResult, Error> {
+    fn encode(
+        &mut self,
+        bounds: &Bounds,
+        dom: &DomainEncoding,
+        _: &Context,
+    ) -> Result<EncodingResult, EncodingError> {
         if self.sign {
             self.encode_eq(bounds, dom)
         } else {
