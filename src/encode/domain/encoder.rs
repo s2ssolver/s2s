@@ -10,8 +10,7 @@ use crate::{
         card::{exactly_one, IncrementalEO},
         EncodingResult, LAMBDA,
     },
-    instance::Instance,
-    repr::{Sort, Variable},
+    repr::Variable,
     sat::{nlit, plit, pvar, Cnf},
 };
 
@@ -38,7 +37,6 @@ impl DomainEncoder {
         let mut encoding = self.encoding.take().unwrap_or(DomainEncoding::new(
             self.strings.alphabet.clone(),
             bounds.clone(),
-            false,
         ));
         let mut res = EncodingResult::empty();
         res.join(self.strings.encode(bounds, &mut encoding, ctx));
@@ -62,9 +60,6 @@ impl DomainEncoder {
 pub struct SubstitutionEncoder {
     last_bounds: Option<Bounds>,
     alphabet: IndexSet<char>,
-
-    // If true, then no lambda substitutions are allowed
-    singular: bool,
 }
 
 impl SubstitutionEncoder {
@@ -72,7 +67,6 @@ impl SubstitutionEncoder {
         Self {
             alphabet,
             last_bounds: None,
-            singular: false,
         }
     }
 
@@ -90,45 +84,45 @@ impl SubstitutionEncoder {
         let subs = &mut encoding.string;
         log::debug!("Encoding substitutions");
 
-        for str_var in instance.vars_of_sort(Sort::String) {
-            let var = str_var
-                .len_var()
-                .unwrap_or_else(|| panic!("No length variable for {}", str_var));
-            let bound = bounds.get_upper(&var).expect("Unbounded string variable") as usize;
-            let last_bound = self.pre_bounds(&var).unwrap_or(0);
+        // Encode the substitutions for each string variable
+        for (str_var, len_var) in ctx.string_len_vars() {
+            let last_bound = self.pre_bounds(&len_var).unwrap_or(0);
+            let new_bound = bounds
+                .get_upper(&len_var)
+                .expect("Unbounded string variable") as usize;
 
             // Todo: this is bad because it clones the alphabet
-            let alph = self.alphabet.clone();
-            for b in last_bound..bound {
+            let alph = &self.alphabet;
+            for b in last_bound..new_bound {
                 let mut pos_subs = vec![];
-                for c in &alph {
+                for c in alph {
                     // subvar <--> `var` at position `b` is substituted with `c`
                     let subvar = pvar();
                     subs.add(str_var, b, *c, subvar);
                     pos_subs.push(subvar)
                 }
-                if !self.singular {
-                    // Lambda
-                    let subvar_lambda = pvar();
-                    subs.add(str_var, b, LAMBDA, subvar_lambda);
-                    pos_subs.push(subvar_lambda);
 
-                    // If previous position is lambda, then so is this one
-                    if b > 0 {
-                        let clause = vec![
-                            nlit(subs.get(str_var, b - 1, LAMBDA).unwrap_or_else(|| {
-                                panic!("{:?}[{}] = {} undefined", str_var, b - 1, LAMBDA)
-                            })),
-                            plit(subvar_lambda),
-                        ];
-                        cnf.push(clause);
-                    }
+                // Lambda (unused position = empty string)
+                let subvar_lambda = pvar();
+                subs.add(str_var, b, LAMBDA, subvar_lambda);
+                pos_subs.push(subvar_lambda);
+
+                // If previous position is lambda, then so is this one
+                if b > 0 {
+                    let clause = vec![
+                        nlit(subs.get(str_var, b - 1, LAMBDA).unwrap_or_else(|| {
+                            panic!("{:?}[{}] = {} undefined", str_var, b - 1, LAMBDA)
+                        })),
+                        plit(subvar_lambda),
+                    ];
+                    cnf.push(clause);
                 }
                 // Exactly one needs to be selected
                 cnf.extend(exactly_one(&pos_subs));
             }
         }
 
+        // Update last bound
         self.last_bounds = Some(bounds.clone());
         EncodingResult::cnf(cnf)
     }
@@ -170,8 +164,8 @@ impl IntegerEncoder {
     ) -> EncodingResult {
         let mut res = EncodingResult::empty();
 
-        res.join(self.encode_str_lengths(bounds, encoding, instance));
-        res.join(self.encode_int_vars(bounds, encoding, instance));
+        res.join(self.encode_str_lengths(bounds, encoding, ctx));
+        res.join(self.encode_int_vars(bounds, encoding, ctx));
         self.last_domains = Some(bounds.clone());
         res
     }
@@ -190,30 +184,28 @@ impl IntegerEncoder {
     ) -> EncodingResult {
         let mut res = EncodingResult::empty();
 
-        for ivar in instance.vars_of_sort(Sort::Int).filter(|v| !v.is_len_var()) {
+        for (svar, lvar) in ctx.string_len_vars() {
             let mut len_choices = vec![];
-            let last_upper_bound = self.get_last_dom(ivar).map(|b| (b.get_upper().unwrap()));
+            let last_upper_bound = self.get_last_dom(lvar).map(|b| (b.get_upper().unwrap()));
             // from last_upper_bound to upper bound
-            let last_lower_bound = self.get_last_dom(ivar).map(|b| b.get_lower().unwrap());
+            let last_lower_bound = self.get_last_dom(lvar).map(|b| b.get_lower().unwrap());
 
-            let lower = bounds.get_lower(ivar).unwrap_or(0);
-            let upper = bounds.get_upper(ivar).unwrap();
+            let lower = bounds.get_lower(lvar).unwrap_or(0);
+            let upper = bounds.get_upper(lvar).unwrap();
             for len in lower..=upper {
                 if last_lower_bound.map(|ll| len < ll).unwrap_or(true)
                     || last_upper_bound.map(|lu| len > lu).unwrap_or(true)
                 {
                     // This lenght is not in the previous domain, so we need to encode it
-
                     let choice = pvar();
-
                     len_choices.push(choice);
-                    encoding.int.insert(ivar.clone(), len, choice);
+                    encoding.int.insert(lvar.as_ref().clone(), len, choice);
                 }
             }
             // Exactly one length must be true
             let eo = self
                 .var_len_eo_encoders
-                .entry(ivar.clone())
+                .entry(lvar.as_ref().clone())
                 .or_default()
                 .add(&len_choices);
 
@@ -230,46 +222,44 @@ impl IntegerEncoder {
     ) -> EncodingResult {
         let mut res = EncodingResult::empty();
 
-        for str_var in instance.vars_of_sort(Sort::String) {
-            let str_len_var = str_var.len_var().unwrap();
+        for (str_var, len_var) in ctx.string_len_vars() {
             let mut len_choices = vec![];
             let last_bound = self
-                .get_last_dom(&str_len_var)
+                .get_last_dom(&len_var)
                 .map(|b| (b.get_upper().unwrap()) + 1)
                 .unwrap_or(0);
 
-            let lower = bounds.get_lower(&str_len_var).unwrap_or(0);
-            for len in last_bound..=bounds.get_upper(&str_len_var).unwrap() {
+            let lower = bounds.get_lower(&len_var).unwrap_or(0);
+            for len in last_bound..=bounds.get_upper(&len_var).unwrap() {
                 let choice = pvar();
                 len_choices.push(choice);
                 // Deactive this lenght if it is less than the lower bound
                 if len < lower {
                     res.add_clause(vec![nlit(choice)]);
                 }
-                encoding.int.insert(str_len_var.clone(), len, choice);
+                encoding.int.insert(len_var.as_ref().clone(), len, choice);
+
                 // If the variable has this length, then only lambdas follow, and no lambdas precede
-                if !encoding.is_singular() {
-                    if len < bounds.get_upper(&str_len_var).unwrap() {
-                        let lambda_suffix = encoding
-                            .string()
-                            .get(str_var, len as usize, LAMBDA)
-                            .unwrap();
-                        res.add_clause(vec![nlit(choice), plit(lambda_suffix)]);
-                    }
-                    if len > 0 {
-                        let not_lambda_prefix = encoding
-                            .string()
-                            .get(str_var, len as usize - 1, LAMBDA)
-                            .unwrap();
-                        res.add_clause(vec![nlit(choice), nlit(not_lambda_prefix)]);
-                    }
+                if len < bounds.get_upper(&len_var).unwrap() {
+                    let lambda_suffix = encoding
+                        .string()
+                        .get(str_var, len as usize, LAMBDA)
+                        .unwrap();
+                    res.add_clause(vec![nlit(choice), plit(lambda_suffix)]);
+                }
+                if len > 0 {
+                    let not_lambda_prefix = encoding
+                        .string()
+                        .get(str_var, len as usize - 1, LAMBDA)
+                        .unwrap();
+                    res.add_clause(vec![nlit(choice), nlit(not_lambda_prefix)]);
                 }
             }
 
             // Exactly one length must be true
             let eo = self
                 .var_len_eo_encoders
-                .entry(str_len_var.clone())
+                .entry(len_var.as_ref().clone())
                 .or_default()
                 .add(&len_choices);
 
@@ -290,13 +280,13 @@ mod tests {
     use quickcheck_macros::quickcheck;
 
     use crate::{
-        ast::{Sort, Variable},
         bounds::{Bounds, IntDomain},
+        context::Context,
         encode::{
             domain::{encoding::DomainEncoding, get_str_substitutions},
             LAMBDA,
         },
-        instance::Instance,
+        repr::Sort,
         sat::plit,
     };
 
@@ -304,9 +294,8 @@ mod tests {
 
     #[test]
     fn all_subst_defined() {
-        let mut instance = Instance::default();
-        let var = Variable::temp(Sort::String);
-        instance.add_var(var.clone());
+        let mut ctx = Context::default();
+        let var = ctx.new_temp_var(Sort::String);
 
         let alphabet = IndexSet::from_iter(vec!['a', 'b', 'c']);
         let mut alphabet_lambda = alphabet.clone();
@@ -316,8 +305,8 @@ mod tests {
         let mb = 10;
         let bounds = Bounds::with_defaults(IntDomain::Bounded(0, mb));
 
-        let mut encoding = DomainEncoding::new(alphabet, bounds.clone(), false);
-        encoder.encode(&bounds, &mut encoding, &instance);
+        let mut encoding = DomainEncoding::new(alphabet, bounds.clone());
+        encoder.encode(&bounds, &mut encoding, &ctx);
 
         for b in 0..mb {
             for c in &alphabet_lambda {
@@ -335,19 +324,19 @@ mod tests {
 
     #[test]
     fn all_subst_defined_incremental() {
-        let mut instance = Instance::default();
-        let var = Variable::temp(Sort::String);
-        instance.add_var(var.clone());
+        let mut ctx = Context::default();
+        let var = ctx.new_temp_var(Sort::String);
+
         let alphabet = IndexSet::from_iter(vec!['a', 'b', 'c']);
         let mut alphabet_lambda = alphabet.clone();
         alphabet_lambda.insert(LAMBDA);
 
         let mut encoder = SubstitutionEncoder::new(alphabet.clone());
         let bounds = Bounds::with_defaults(IntDomain::Bounded(0, 5));
-        let mut encoding = DomainEncoding::new(alphabet, bounds.clone(), false);
-        encoder.encode(&bounds, &mut encoding, &instance);
+        let mut encoding = DomainEncoding::new(alphabet, bounds.clone());
+        encoder.encode(&bounds, &mut encoding, &ctx);
         let bounds = Bounds::with_defaults(IntDomain::Bounded(0, 10));
-        encoder.encode(&bounds, &mut encoding, &instance);
+        encoder.encode(&bounds, &mut encoding, &ctx);
 
         for b in 0..10 {
             for c in &alphabet_lambda {
@@ -357,21 +346,23 @@ mod tests {
     }
 
     #[quickcheck]
-    fn solution_is_valid_substitution(len: u8) -> TestResult {
+    fn solution_is_valid_substitution(len: u32) -> TestResult {
         if len == 0 {
             return TestResult::discard();
         }
-        let mut instance = Instance::default();
-        let var = Variable::temp(Sort::String);
-        instance.add_var(var.clone());
+        let len = len % 20;
+
+        let mut ctx = Context::default();
+        let var = ctx.new_temp_var(Sort::String);
+
         let alphabet = IndexSet::from_iter(vec!['a', 'b', 'c', 'd']);
 
         let mut encoder = SubstitutionEncoder::new(alphabet.clone());
-        encoder.singular = true;
+
         let bounds = Bounds::with_defaults(IntDomain::Bounded(0, len as isize));
-        let mut encoding = DomainEncoding::new(alphabet, bounds.clone(), true);
+        let mut encoding = DomainEncoding::new(alphabet, bounds.clone());
         let mut solver: cadical::Solver = cadical::Solver::new();
-        match encoder.encode(&bounds, &mut encoding, &instance) {
+        match encoder.encode(&bounds, &mut encoding, &ctx) {
             crate::encode::EncodingResult::Cnf(cnf, _) => {
                 cnf.into_iter().for_each(|cl| solver.add_clause(cl));
                 solver.solve();
@@ -380,7 +371,7 @@ mod tests {
         }
 
         // This will panic if the substitution is not valid
-        let subs = get_str_substitutions(&encoding, &instance, &solver);
+        let subs = get_str_substitutions(&encoding, &ctx, &solver);
         assert!(
             subs.get(&var).is_some(),
             "No substitution found (length is {})",
@@ -396,16 +387,16 @@ mod tests {
         if len == 0 {
             return TestResult::discard();
         }
-        let mut instance = Instance::default();
-        let var = Variable::temp(Sort::String);
-        instance.add_var(var.clone());
+        let mut ctx = Context::default();
+        let var = ctx.new_temp_var(Sort::String);
+
         let alphabet = IndexSet::from_iter(vec!['a', 'b', 'c', 'd']);
 
         let mut encoder = SubstitutionEncoder::new(alphabet.clone());
         let bounds = Bounds::with_defaults(IntDomain::Bounded(0, len as isize));
-        let mut encoding = DomainEncoding::new(alphabet, bounds, false);
+        let mut encoding = DomainEncoding::new(alphabet, bounds);
         let mut solver: cadical::Solver = cadical::Solver::new();
-        match encoder.encode(&encoding.bounds.clone(), &mut encoding, &instance) {
+        match encoder.encode(&encoding.bounds.clone(), &mut encoding, &ctx) {
             crate::encode::EncodingResult::Cnf(cnf, _) => {
                 cnf.into_iter().for_each(|cl| solver.add_clause(cl));
                 solver.solve();
@@ -413,7 +404,7 @@ mod tests {
             crate::encode::EncodingResult::Trivial(_) => unreachable!(),
         }
         encoding.bounds.double_uppers();
-        match encoder.encode(&encoding.bounds.clone(), &mut encoding, &instance) {
+        match encoder.encode(&encoding.bounds.clone(), &mut encoding, &ctx) {
             crate::encode::EncodingResult::Cnf(cnf, _) => {
                 cnf.into_iter().for_each(|cl| solver.add_clause(cl));
                 solver.solve();
@@ -424,17 +415,16 @@ mod tests {
         // This will panic if the substitution is not valid
         let subs = {
             let domain_encoding = &encoding;
-            let instance = &instance;
+            let instance = &ctx;
             let solver = &solver;
             if solver.status() != Some(true) {
                 panic!("Solver is not in a SAT state")
             }
             let mut subs = HashMap::new();
-            for var in instance.vars_of_sort(Sort::String) {
+            for (str_var, len_var) in ctx.string_len_vars() {
                 // initialize substitutions
-                let len_var = &var.len_var().unwrap();
                 subs.insert(
-                    var.clone(),
+                    str_var.clone(),
                     vec![
                         None;
                         domain_encoding

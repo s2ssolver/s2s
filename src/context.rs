@@ -50,14 +50,14 @@ impl Context {
 
     /// For a string variable, returns a variable that represents the length of the string.
     /// Panics if the variable is not a string variable.
-    pub fn get_len_var(&self, v: &Variable) -> Rc<Variable> {
+    pub fn get_len_var(&self, v: &Variable) -> &Rc<Variable> {
         assert_eq!(
             v.sort(),
             Sort::String,
             "Only a string variable has a length variable"
         );
         let len_name = self.len_var_name(v.name());
-        self.variables.get(&len_name).unwrap().clone()
+        self.variables.get(&len_name).unwrap()
     }
 
     pub fn new_temp_var(&mut self, sort: Sort) -> Rc<Variable> {
@@ -67,8 +67,35 @@ impl Context {
         v
     }
 
+    /// Returns the variable with the given name.
     pub fn get_var(&self, name: &str) -> Option<Rc<Variable>> {
         self.variables.get(name).cloned()
+    }
+
+    /// Returns an iterator over all variables of the given sort.
+    /// Includes temporary variables.
+    pub fn vars_with_sort(&self, sort: Sort) -> impl Iterator<Item = &Rc<Variable>> + '_ {
+        self.variables
+            .values()
+            .filter(move |v| v.sort() == sort)
+            .chain(self.temp_vars.iter().filter(move |v| v.sort() == sort))
+    }
+
+    /// Returns an iterator over all integer variables.
+    /// Includes temporary variables.
+    pub fn string_vars(&self) -> impl Iterator<Item = &Rc<Variable>> + '_ {
+        self.vars_with_sort(Sort::String)
+    }
+
+    /// Returns an iterator over all string variables and their length variables.
+    pub fn string_len_vars(&self) -> impl Iterator<Item = (&Rc<Variable>, &Rc<Variable>)> + '_ {
+        self.string_vars().map(|v| (v, self.get_len_var(v)))
+    }
+
+    /// Returns an iterator over all integer variables.
+    /// Includes temporary variables.
+    pub fn int_vars(&self) -> impl Iterator<Item = &Rc<Variable>> + '_ {
+        self.vars_with_sort(Sort::Int)
     }
 
     // /// Returns the instance of the [AstBuilder] that is shared by this context.

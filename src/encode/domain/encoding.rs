@@ -1,12 +1,12 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, rc::Rc};
 
 use indexmap::{IndexMap, IndexSet};
 
 use crate::{
-    ast::{Sort, Variable},
     bounds::Bounds,
+    context::Context,
     encode::LAMBDA,
-    instance::Instance,
+    repr::{Sort, Sorted, Variable},
     sat::{plit, PLit, PVar},
 };
 
@@ -18,8 +18,7 @@ pub struct DomainEncoding {
 
     /// The alphabet used for the substitutions
     alphabet: IndexSet<char>,
-    /// If true, then no lambda substitutions are allowed
-    singular: bool,
+
     /// The bounds of the integer variables
     pub(super) bounds: Bounds,
 }
@@ -27,22 +26,17 @@ pub struct DomainEncoding {
 /// Propositional encoding of the domains of all variables.
 
 impl DomainEncoding {
-    pub fn new(alphabet: IndexSet<char>, bounds: Bounds, singular: bool) -> Self {
+    pub fn new(alphabet: IndexSet<char>, bounds: Bounds) -> Self {
         Self {
             string: SubstitutionEncoding::new(),
             int: IntEncoding::default(),
             alphabet,
-            singular,
             bounds,
         }
     }
 
     pub fn string(&self) -> &SubstitutionEncoding {
         &self.string
-    }
-
-    pub fn is_singular(&self) -> bool {
-        self.singular
     }
 
     pub fn int(&self) -> &IntEncoding {
@@ -143,18 +137,18 @@ impl SubstitutionEncoding {
 /// TODO: Move this into the SubstitutionEncoding struct
 pub fn get_str_substitutions(
     domain_encoding: &DomainEncoding,
-    instance: &Instance,
+    ctx: &Context,
     solver: &cadical::Solver,
-) -> HashMap<Variable, Vec<char>> {
+) -> HashMap<Rc<Variable>, Vec<char>> {
     if solver.status() != Some(true) {
         panic!("Solver is not in a SAT state")
     }
     let mut subs = HashMap::new();
-    for var in instance.vars_of_sort(Sort::String) {
+    for (str_var, len_var) in ctx.string_len_vars() {
         // initialize substitutions
-        let len_var = &var.len_var().unwrap();
+
         subs.insert(
-            var.clone(),
+            str_var.clone(),
             vec![
                 None;
                 domain_encoding

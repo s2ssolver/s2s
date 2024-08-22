@@ -2,10 +2,10 @@ use std::{fmt::Display, ops::Index, slice::Iter};
 
 use crate::{
     bounds::Bounds,
-    error::Error,
-    model::{
-        constraints::{Pattern, Symbol},
-        Constraint, Variable,
+    context::Context,
+    repr::{
+        ir::{Pattern, Symbol},
+        Variable,
     },
     sat::{Clause, Cnf, PLit},
 };
@@ -48,20 +48,20 @@ struct FilledPattern {
 }
 
 impl FilledPattern {
-    fn fill(pattern: &Pattern, bounds: &Bounds) -> Self {
+    fn fill(pattern: &Pattern, bounds: &Bounds, ctx: &Context) -> Self {
         Self {
-            positions: Self::convert(pattern, bounds),
+            positions: Self::convert(pattern, bounds, ctx),
         }
     }
 
-    fn convert(pattern: &Pattern, bounds: &Bounds) -> Vec<FilledPos> {
+    fn convert(pattern: &Pattern, bounds: &Bounds, ctx: &Context) -> Vec<FilledPos> {
         let mut positions = vec![];
         for symbol in pattern.symbols() {
             match symbol {
                 Symbol::Constant(c) => positions.push(FilledPos::Const(*c)),
                 Symbol::Variable(v) => {
-                    let len_var = &v.len_var().unwrap();
-                    let len = bounds.get_upper(len_var).unwrap() as usize;
+                    let len_var = ctx.get_len_var(v).as_ref().clone();
+                    let len = bounds.get_upper(&len_var).unwrap() as usize;
                     for i in 0..len {
                         positions.push(FilledPos::FilledPos(v.clone(), i))
                     }

@@ -7,7 +7,7 @@ mod int;
 mod string;
 mod substitution;
 pub use int::{LinearArithTerm, LinearOperator};
-pub use string::Pattern;
+pub use string::{Pattern, Symbol};
 pub use substitution::*;
 
 use super::Variable;
