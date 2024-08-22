@@ -1,11 +1,11 @@
 use crate::{
     bounds::Bounds,
-    error::Error,
-    model::Variable,
-    sat::{plit, nlit, PLit},
+    context::Context,
+    repr::{Sorted, Variable},
+    sat::{nlit, plit, pvar, PLit},
 };
 
-use super::{domain::DomainEncoding, ConstraintEncoder, EncodingResult};
+use super::{domain::DomainEncoding, EncodingError, EncodingResult, LiteralEncoder};
 
 pub struct BoolVarEncoder {
     encoded: bool,
@@ -13,17 +13,11 @@ pub struct BoolVarEncoder {
 }
 
 impl BoolVarEncoder {
-    pub fn new(boolvar: Variable, pol: bool) -> Self {
-        let lit = match boolvar {
-            Variable::Bool { value, .. } => {
-                if pol {
-                    plit(value)
-                } else {
-                    nlit(value)
-                }
-            }
-            _ => panic!("Expected a boolean variable, got {}", boolvar),
-        };
+    pub fn new(boolvar: &Variable, pol: bool) -> Self {
+        assert!(boolvar.sort().is_bool());
+        // Create a new propositional variable for the boolean variable
+        let v = pvar();
+        let lit = if pol { plit(v) } else { nlit(v) };
         Self {
             encoded: false,
             lit,
@@ -31,7 +25,7 @@ impl BoolVarEncoder {
     }
 }
 
-impl ConstraintEncoder for BoolVarEncoder {
+impl LiteralEncoder for BoolVarEncoder {
     fn is_incremental(&self) -> bool {
         true
     }
@@ -44,7 +38,8 @@ impl ConstraintEncoder for BoolVarEncoder {
         &mut self,
         _bounds: &Bounds,
         _substitution: &DomainEncoding,
-    ) -> Result<EncodingResult, Error> {
+        _ctx: &Context,
+    ) -> Result<EncodingResult, EncodingError> {
         if self.encoded {
             Ok(EncodingResult::Trivial(true))
         } else {
