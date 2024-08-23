@@ -1180,11 +1180,14 @@ mod tests {
         alphabet: &IndexSet<char>,
         ctx: &mut Context,
     ) -> Option<bool> {
-        let mut bounds = Bounds::with_defaults(IntDomain::Bounded(0, 1));
-
         let mut encoder = WordEquationEncoder::new(eq.clone(), true);
 
         let mut dom_encoder = DomainEncoder::new(alphabet.clone());
+
+        let mut bounds = Bounds::new();
+        for var in eq.variables() {
+            bounds.set(&var, IntDomain::Bounded(0, 1));
+        }
 
         let mut result = None;
         let mut done = bounds.uppers_geq(limit as isize);
@@ -1281,7 +1284,11 @@ mod tests {
     fn align_empty_eq() {
         let mut ctx = Context::default();
         let eq = WordEquation::new(Pattern::from(vec![]), Pattern::from(vec![]));
-        let bounds = Bounds::with_defaults(IntDomain::Bounded(0, 10));
+        let mut bounds = Bounds::new();
+        for var in eq.variables() {
+            bounds.set(&var, IntDomain::Bounded(0, 10));
+        }
+
         let res = solve_align(&eq, bounds, &eq.constants(), &mut ctx);
         assert!(matches!(res, Some(true)));
     }
@@ -1291,7 +1298,10 @@ mod tests {
         let mut ctx = Context::default();
         let eq = parse_simple("bar", "bar", &mut ctx);
 
-        let bounds = Bounds::with_defaults(IntDomain::Bounded(0, 10));
+        let mut bounds = Bounds::new();
+        for var in eq.variables() {
+            bounds.set(&var, IntDomain::Bounded(0, 10));
+        }
 
         let res = solve_align(&eq, bounds, &eq.constants(), &mut ctx);
         assert!(matches!(res, Some(true)));
@@ -1301,7 +1311,10 @@ mod tests {
     fn align_trivial_unsat_consts() {
         let mut ctx = Context::default();
         let eq = parse_simple("bar", "barr", &mut ctx);
-        let bounds = Bounds::with_defaults(IntDomain::Bounded(0, 10));
+        let mut bounds = Bounds::new();
+        for var in eq.variables() {
+            bounds.set(&var, IntDomain::Bounded(0, 10));
+        }
 
         let res = solve_align(&eq, bounds, &eq.constants(), &mut ctx);
         assert!(matches!(res, Some(false)));
@@ -1312,7 +1325,10 @@ mod tests {
         let mut ctx = Context::default();
         let eq = parse_simple("bar", "foo", &mut ctx);
 
-        let bounds = Bounds::with_defaults(IntDomain::Bounded(0, 10));
+        let mut bounds = Bounds::new();
+        for var in eq.variables() {
+            bounds.set(&var, IntDomain::Bounded(0, 10));
+        }
 
         let res = solve_align(&eq, bounds, &eq.constants(), &mut ctx);
         assert!(matches!(res, Some(false)));
@@ -1323,7 +1339,10 @@ mod tests {
         let mut ctx = Context::default();
         let eq = parse_simple("X", "abc", &mut ctx);
 
-        let bounds = Bounds::with_defaults(IntDomain::Bounded(0, 5));
+        let mut bounds = Bounds::new();
+        for var in eq.variables() {
+            bounds.set(&var, IntDomain::Bounded(0, 5));
+        }
 
         let res = solve_align(&eq, bounds, &eq.constants(), &mut ctx);
         assert!(matches!(res, Some(true)));
@@ -1334,7 +1353,10 @@ mod tests {
         let mut ctx = Context::default();
         let eq = parse_simple("A", "A", &mut ctx);
 
-        let bounds = Bounds::with_defaults(IntDomain::Bounded(0, 10));
+        let mut bounds = Bounds::new();
+        for var in eq.variables() {
+            bounds.set(&var, IntDomain::Bounded(0, 10));
+        }
         let res = solve_align(&eq, bounds, &eq.constants(), &mut ctx);
         assert!(matches!(res, Some(true)));
     }
@@ -1344,7 +1366,10 @@ mod tests {
         let mut ctx = Context::default();
         let eq = parse_simple("A", "B", &mut ctx);
 
-        let bounds = Bounds::with_defaults(IntDomain::Bounded(0, 10));
+        let mut bounds = Bounds::new();
+        for var in eq.variables() {
+            bounds.set(&var, IntDomain::Bounded(0, 10));
+        }
         let res = solve_align(&eq, bounds, &eq.constants(), &mut ctx);
         assert!(matches!(res, Some(true)));
     }
@@ -1356,7 +1381,10 @@ mod tests {
 
         let eq = parse_simple("AB", "BA", &mut ctx);
 
-        let bounds = Bounds::with_defaults(IntDomain::Bounded(0, 10));
+        let mut bounds = Bounds::new();
+        for var in eq.variables() {
+            bounds.set(&var, IntDomain::Bounded(0, 10));
+        }
         let res = solve_align(&eq, bounds, &eq.constants(), &mut ctx);
         assert!(matches!(res, Some(true)));
     }
@@ -1366,7 +1394,10 @@ mod tests {
         let mut ctx = Context::default();
         let eq = parse_simple("aXc", "abc", &mut ctx);
 
-        let bounds = Bounds::with_defaults(IntDomain::Bounded(0, 1));
+        let mut bounds = Bounds::new();
+        for var in eq.variables() {
+            bounds.set(&var, IntDomain::Bounded(0, 1));
+        }
         let res = solve_align(&eq, bounds, &eq.constants(), &mut ctx);
         assert!(matches!(res, Some(true)));
     }
@@ -1377,7 +1408,10 @@ mod tests {
 
         let eq = parse_simple("aXb", "YXc", &mut ctx);
 
-        let bounds = Bounds::with_defaults(IntDomain::Bounded(0, 2));
+        let mut bounds = Bounds::new();
+        for var in eq.variables() {
+            bounds.set(&var, IntDomain::Bounded(0, 2));
+        }
         let res = solve_align(&eq, bounds, &eq.constants(), &mut ctx);
         assert!(matches!(res, Some(true)));
     }
@@ -1387,7 +1421,10 @@ mod tests {
         let mut ctx = Context::default();
         let eq = parse_simple("X", "foo", &mut ctx);
 
-        let bounds = Bounds::with_defaults(IntDomain::Bounded(0, 1));
+        let mut bounds = Bounds::new();
+        for var in eq.variables() {
+            bounds.set(&var, IntDomain::Bounded(0, 1));
+        }
 
         let res = solve_align(&eq, bounds, &eq.constants(), &mut ctx);
         assert!(matches!(res, Some(false)));
@@ -1401,7 +1438,10 @@ mod tests {
             "ebcaeccedbedefbfdFgbagebcbfacgadbefcffcgceeedd",
             &mut ctx,
         );
-        let bounds = Bounds::with_defaults(IntDomain::Bounded(0, 50));
+        let mut bounds = Bounds::new();
+        for var in eq.variables() {
+            bounds.set(&var, IntDomain::Bounded(0, 50));
+        }
         let res = solve_align(&eq, bounds, &eq.constants(), &mut ctx);
 
         assert!(matches!(res, Some(true)));

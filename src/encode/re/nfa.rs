@@ -409,7 +409,7 @@ mod test {
         repr::Sort,
     };
 
-    fn solve_with_bounds(re: Regex, pol: bool, bounds: &[Bounds]) -> Option<bool> {
+    fn solve_with_bounds(re: Regex, pol: bool, ubounds: &[usize]) -> Option<bool> {
         let mut ctx = Context::default();
         let var = ctx.new_temp_var(Sort::String);
 
@@ -417,16 +417,21 @@ mod test {
         alph.insert('a');
 
         let nfa = ctx.get_nfa(&re);
+
+        let mut bounds = Bounds::new();
+
         let mut encoder = NFAEncoder::new(&var, nfa, &re, pol);
         let mut dom_encoder = DomainEncoder::new(alph);
         let mut solver: Solver = cadical::Solver::default();
 
         let mut result = None;
-        for bound in bounds {
+        for bound in ubounds {
+            bounds.set(&var, IntDomain::Bounded(0, *bound as isize));
             let mut res = EncodingResult::empty();
-            res.extend(dom_encoder.encode(bound, &ctx));
 
-            res.extend(encoder.encode(bound, dom_encoder.encoding()).unwrap());
+            res.extend(dom_encoder.encode(&bounds, &ctx));
+
+            res.extend(encoder.encode(&bounds, dom_encoder.encoding()).unwrap());
 
             match res {
                 EncodingResult::Cnf(clauses, assms) => {
@@ -456,13 +461,10 @@ mod test {
     #[test]
     fn var_in_epsi() {
         let mut ctx = Context::default();
-        let var = ctx.new_temp_var(Sort::String);
 
         let re = ctx.ast_builder().re_builder().epsilon();
-        let mut bounds = Bounds::with_defaults(IntDomain::Bounded(0, 0));
-        bounds.set(&var, IntDomain::Bounded(0, 1));
 
-        assert_eq!(solve_with_bounds(re, true, &[bounds]), Some(true));
+        assert_eq!(solve_with_bounds(re, true, &[1]), Some(true));
     }
 
     #[test]
@@ -471,9 +473,7 @@ mod test {
 
         let re = ctx.ast_builder().re_builder().none();
 
-        let bounds = Bounds::with_defaults(IntDomain::Bounded(0, 10));
-
-        assert_eq!(solve_with_bounds(re, true, &[bounds]), Some(false));
+        assert_eq!(solve_with_bounds(re, true, &[10]), Some(false));
     }
 
     #[test]
@@ -481,9 +481,8 @@ mod test {
         let mut ctx = Context::default();
 
         let re = ctx.ast_builder().re_builder().word("foo".into());
-        let bounds = Bounds::with_defaults(IntDomain::Bounded(0, 10));
 
-        assert_eq!(solve_with_bounds(re, true, &[bounds]), Some(true));
+        assert_eq!(solve_with_bounds(re, true, &[10]), Some(true));
     }
 
     #[test]
@@ -494,8 +493,7 @@ mod test {
 
         let args = vec![builder.word("foo".into()), builder.word("bar".into())];
         let re = builder.concat(args);
-        let bounds = Bounds::with_defaults(IntDomain::Bounded(0, 10));
 
-        assert_eq!(solve_with_bounds(re, true, &[bounds]), Some(true));
+        assert_eq!(solve_with_bounds(re, true, &[10]), Some(true));
     }
 }

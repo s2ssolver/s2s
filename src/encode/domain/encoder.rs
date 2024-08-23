@@ -240,10 +240,8 @@ impl IntegerEncoder {
         res
     }
 
-    fn get_last_dom(&self, var: &Variable) -> Option<IntDomain> {
-        self.last_domains
-            .as_ref()
-            .map(|doms| doms.get_with_default(var))
+    fn get_last_dom(&self, var: &Variable) -> Option<&IntDomain> {
+        self.last_domains.as_ref().and_then(|doms| doms.get(var))
     }
 
     fn encode_int_vars(
@@ -318,7 +316,8 @@ mod tests {
 
         let mut encoder = StringDomainEncoder::new(alphabet.clone());
         let mb = 10;
-        let bounds = Bounds::with_defaults(IntDomain::Bounded(0, mb));
+        let mut bounds = Bounds::new();
+        bounds.set(var.as_ref(), IntDomain::Bounded(0, mb));
 
         let mut encoding = DomainEncoding::new(alphabet, bounds.clone());
         encoder.encode_substitutions(&bounds, &mut encoding, &ctx);
@@ -350,10 +349,12 @@ mod tests {
         alphabet_lambda.insert(LAMBDA);
 
         let mut encoder = StringDomainEncoder::new(alphabet.clone());
-        let bounds = Bounds::with_defaults(IntDomain::Bounded(0, 5));
+        let mut bounds = Bounds::new();
+        bounds.set(var.as_ref(), IntDomain::Bounded(0, 5));
+
         let mut encoding = DomainEncoding::new(alphabet, bounds.clone());
         encoder.encode_substitutions(&bounds, &mut encoding, &ctx);
-        let bounds = Bounds::with_defaults(IntDomain::Bounded(0, 10));
+        bounds.set(var.as_ref(), IntDomain::Bounded(0, 10));
         encoder.encode_substitutions(&bounds, &mut encoding, &ctx);
 
         for b in 0..10 {
@@ -377,7 +378,8 @@ mod tests {
 
         let mut encoder = StringDomainEncoder::new(alphabet.clone());
 
-        let bounds = Bounds::with_defaults(IntDomain::Bounded(0, len as isize));
+        let mut bounds = Bounds::new();
+        bounds.set(var.as_ref(), IntDomain::Bounded(0, len as isize));
         let mut encoding = DomainEncoding::new(alphabet, bounds.clone());
         let mut solver: cadical::Solver = cadical::Solver::new();
         match encoder.encode_substitutions(&bounds, &mut encoding, &ctx) {
@@ -411,7 +413,9 @@ mod tests {
         let alphabet = IndexSet::from_iter(vec!['a', 'b', 'c', 'd']);
 
         let mut encoder = StringDomainEncoder::new(alphabet.clone());
-        let bounds = Bounds::with_defaults(IntDomain::Bounded(0, len as isize));
+
+        let mut bounds = Bounds::new();
+        bounds.set(var.as_ref(), IntDomain::Bounded(0, len as isize));
         let mut encoding = DomainEncoding::new(alphabet, bounds);
         let mut solver: cadical::Solver = cadical::Solver::new();
         match encoder.encode_substitutions(&encoding.bounds.clone(), &mut encoding, &ctx) {
