@@ -49,7 +49,7 @@ pub fn parse_script(
             Command::DeclareConst { symbol, sort } => {
                 let sort = convert_sort(&sort)?;
                 let var = ctx
-                    .new_var(symbol.0.to_owned(), sort)
+                    .make_var(symbol.0.to_owned(), sort)
                     .ok_or(AstError::Unsupported(format!("{}", symbol)))?;
                 script.declare_var(var);
             }
@@ -60,7 +60,7 @@ pub fn parse_script(
             } if parameters.is_empty() => {
                 let sort = convert_sort(&sort)?;
                 let var = ctx
-                    .new_var(symbol.0.to_owned(), sort)
+                    .make_var(symbol.0.to_owned(), sort)
                     .ok_or(AstError::Unsupported(format!("{}", symbol)))?;
                 script.declare_var(var);
             }

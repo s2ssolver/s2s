@@ -13,9 +13,9 @@ use crate::{
 #[derive(Clone, Debug)]
 pub struct DomainEncoding {
     /// The encoding of the substitutions
-    pub(super) string: SubstitutionEncoding,
+    pub(super) string: StringDomain,
     /// The encoding of the integer domains
-    pub(super) int: IntEncoding,
+    pub(super) int: IntDomain,
 
     /// The alphabet used for the substitutions
     alphabet: IndexSet<char>,
@@ -29,18 +29,18 @@ pub struct DomainEncoding {
 impl DomainEncoding {
     pub fn new(alphabet: IndexSet<char>, bounds: Bounds) -> Self {
         Self {
-            string: SubstitutionEncoding::new(),
-            int: IntEncoding::default(),
+            string: StringDomain::new(),
+            int: IntDomain::default(),
             alphabet,
             bounds,
         }
     }
 
-    pub fn string(&self) -> &SubstitutionEncoding {
+    pub fn string(&self) -> &StringDomain {
         &self.string
     }
 
-    pub fn int(&self) -> &IntEncoding {
+    pub fn int(&self) -> &IntDomain {
         &self.int
     }
 
@@ -56,11 +56,11 @@ impl DomainEncoding {
 }
 
 #[derive(Clone, Debug, Default)]
-pub struct IntEncoding {
+pub struct IntDomain {
     encodings: IndexMap<(Variable, isize), PVar>,
 }
 
-impl IntEncoding {
+impl IntDomain {
     /// Sets the Boolean variable that is true if the variable has the given length.
     /// Panics if the variable was already set.
     pub fn insert(&mut self, var: Variable, value: isize, pvar: PVar) {
@@ -91,45 +91,67 @@ impl IntEncoding {
 }
 
 #[derive(Clone, Debug)]
-pub struct SubstitutionEncoding {
-    encodings: HashMap<(Variable, usize, char), PVar>,
+pub struct StringDomain {
+    substitutions: HashMap<(Variable, usize, char), PVar>,
+    lengths: IndexMap<(Variable, usize), PVar>,
 }
 
-impl SubstitutionEncoding {
+impl StringDomain {
     pub fn new() -> Self {
         Self {
-            encodings: HashMap::new(),
+            substitutions: HashMap::new(),
+            lengths: IndexMap::new(),
         }
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = (&Variable, usize, char, &PVar)> {
-        self.encodings
+    pub fn iter_substitutions(&self) -> impl Iterator<Item = (&Variable, usize, char, &PVar)> {
+        self.substitutions
             .iter()
             .map(|((var, pos, chr), v)| (var, *pos, *chr, v))
     }
 
-    pub fn get(&self, var: &Variable, pos: usize, chr: char) -> Option<PVar> {
+    pub fn get_sub(&self, var: &Variable, pos: usize, chr: char) -> Option<PVar> {
         assert!(
             var.sort() == Sort::String,
             "Variable {} is not a string",
             var
         );
 
-        self.encodings.get(&(var.clone(), pos, chr)).cloned()
+        self.substitutions.get(&(var.clone(), pos, chr)).cloned()
     }
 
-    pub fn get_lit(&self, var: &Variable, pos: usize, chr: char) -> Option<PLit> {
-        self.get(var, pos, chr).map(plit)
-    }
-
-    pub(super) fn add(&mut self, var: &Variable, pos: usize, chr: char, v: PVar) {
+    pub fn get_len(&self, var: &Variable, len: usize) -> Option<PVar> {
         assert!(
             var.sort() == Sort::String,
             "Variable {} is not a string",
             var
         );
 
-        self.encodings.insert((var.clone(), pos, chr), v);
+        self.lengths.get(&(var.clone(), len)).cloned()
+    }
+
+    pub(super) fn get_sub_lit(&self, var: &Variable, pos: usize, chr: char) -> Option<PLit> {
+        self.get_sub(var, pos, chr).map(plit)
+    }
+
+    pub(super) fn inser_substitution(&mut self, var: &Variable, pos: usize, chr: char, v: PVar) {
+        assert!(
+            var.sort() == Sort::String,
+            "Variable {} is not a string",
+            var
+        );
+
+        self.substitutions.insert((var.clone(), pos, chr), v);
+    }
+
+    pub(super) fn inser_lenght(&mut self, var: &Variable, len: usize, v: PVar) {
+        assert!(
+            var.sort() == Sort::String,
+            "Variable {} is not a string",
+            var
+        );
+        let ok = self.lengths.insert((var.clone(), len), v);
+        assert!(ok.is_none());
     }
 }
 
@@ -145,7 +167,7 @@ pub fn get_str_substitutions(
         panic!("Solver is not in a SAT state")
     }
     let mut subs = HashMap::new();
-    for (str_var, len_var) in ctx.string_len_vars() {
+    for str_var in ctx.string_vars() {
         // initialize substitutions
 
         subs.insert(
@@ -154,12 +176,12 @@ pub fn get_str_substitutions(
                 None;
                 domain_encoding
                     .bounds
-                    .get_upper(len_var)
+                    .get_upper(str_var)
                     .expect("Unbounded string variable") as usize
             ],
         );
     }
-    for (var, pos, chr, v) in domain_encoding.string().iter() {
+    for (var, pos, chr, v) in domain_encoding.string().iter_substitutions() {
         if let Some(true) = solver.value(plit(*v)) {
             let sub = subs.get_mut(var).unwrap();
             // This could be more efficient by going over the positions only once, however, this way we can check for invalid substitutions

@@ -1,6 +1,5 @@
 use crate::{
     bounds::Bounds,
-    context::Context,
     repr::{Sorted, Variable},
     sat::{nlit, plit, pvar, PLit},
 };
@@ -37,8 +36,7 @@ impl LiteralEncoder for BoolVarEncoder {
     fn encode(
         &mut self,
         _bounds: &Bounds,
-        _substitution: &DomainEncoding,
-        _ctx: &Context,
+        _dom: &DomainEncoding,
     ) -> Result<EncodingResult, EncodingError> {
         if self.encoded {
             Ok(EncodingResult::Trivial(true))

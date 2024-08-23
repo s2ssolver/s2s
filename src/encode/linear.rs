@@ -4,8 +4,10 @@ use indexmap::IndexMap;
 
 use crate::{
     bounds::Bounds,
-    context::Context,
-    repr::ir::{ConstReducible, LinearConstraint, LinearOperator, Summand},
+    repr::{
+        ir::{ConstReducible, LinearConstraint, LinearOperator, LinearSummand},
+        Sorted,
+    },
     sat::{nlit, plit, pvar, PVar},
 };
 
@@ -61,7 +63,6 @@ impl LiteralEncoder for MddEncoder {
         &mut self,
         bounds: &Bounds,
         dom: &DomainEncoding,
-        _: &Context,
     ) -> Result<EncodingResult, EncodingError> {
         self.round += 1;
         let mut res = EncodingResult::empty();
@@ -85,7 +86,8 @@ impl LiteralEncoder for MddEncoder {
 
         while let Some((level, value, node_var)) = queue.pop_front() {
             match &self.linear.lhs()[level] {
-                Summand::VarCoeff(v, coeff) => {
+                LinearSummand::Mult(var, coeff) => {
+                    let v = var.variable();
                     let current_u_bound = bounds.get_upper(v).expect("Unbounded variable");
                     let current_l_bound = bounds.get_lower(v).expect("Unbounded variable");
 
@@ -98,7 +100,12 @@ impl LiteralEncoder for MddEncoder {
                                 continue;
                             }
                         }
-                        let len_assign_var = dom.int().get(v, l).unwrap();
+                        // If string: get length encoding, if int: get int encoding
+                        let len_assign_var = if v.sort().is_string() {
+                            dom.int().get(v, l).unwrap()
+                        } else {
+                            dom.string().get_len(v, l as usize).unwrap()
+                        };
                         let new_value = value + l * coeff;
                         if level + 1 < self.linear.lhs.len() {
                             let child_pvar = *self
@@ -163,7 +170,7 @@ impl LiteralEncoder for MddEncoder {
                         }
                     }
                 }
-                Summand::Const(_) => {
+                LinearSummand::Const(_) => {
                     todo!("Consts not supported: {}", self.linear)
                 }
             }

@@ -48,20 +48,19 @@ struct FilledPattern {
 }
 
 impl FilledPattern {
-    fn fill(pattern: &Pattern, bounds: &Bounds, ctx: &Context) -> Self {
+    fn fill(pattern: &Pattern, bounds: &Bounds) -> Self {
         Self {
-            positions: Self::convert(pattern, bounds, ctx),
+            positions: Self::convert(pattern, bounds),
         }
     }
 
-    fn convert(pattern: &Pattern, bounds: &Bounds, ctx: &Context) -> Vec<FilledPos> {
+    fn convert(pattern: &Pattern, bounds: &Bounds) -> Vec<FilledPos> {
         let mut positions = vec![];
         for symbol in pattern.symbols() {
             match symbol {
                 Symbol::Constant(c) => positions.push(FilledPos::Const(*c)),
                 Symbol::Variable(v) => {
-                    let len_var = ctx.get_len_var(v).as_ref().clone();
-                    let len = bounds.get_upper(&len_var).unwrap() as usize;
+                    let len = bounds.get_upper(v).unwrap() as usize;
                     for i in 0..len {
                         positions.push(FilledPos::FilledPos(v.clone(), i))
                     }
@@ -241,7 +240,6 @@ pub trait LiteralEncoder {
         &mut self,
         bounds: &Bounds,
         substitution: &DomainEncoding,
-        ctx: &Context,
     ) -> Result<EncodingResult, EncodingError>;
 
     fn print_debug(&self, _solver: &cadical::Solver, _dom: &DomainEncoding, _ctx: &Context) {}

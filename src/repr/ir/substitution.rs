@@ -7,8 +7,8 @@ use crate::{
     repr::{Sort, Sorted, Variable},
 };
 
-use super::Literal;
-use super::{int::Summand, string::Symbol, AtomType, Formula, LinearArithTerm, Pattern};
+use super::{int::LinearSummand, string::Symbol, AtomType, Formula, LinearArithTerm, Pattern};
+use super::{Literal, VariableTerm};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Substitute {
@@ -81,48 +81,39 @@ impl VarSubstitution {
         self.subs.get(var)
     }
 
-    pub fn set(&mut self, var: &Variable, term: Substitute, ctx: &Context) {
+    pub fn set(&mut self, var: &Variable, term: Substitute) {
         self.subs.insert(var.clone(), term.clone());
-        if var.sort() == Sort::String {
-            // Also define the substitution for the length variable
-            let len_var = ctx.get_len_var(var).as_ref().clone();
-            let len_term = Self::strterm_to_len(&term, ctx);
-            self.subs.insert(len_var, len_term);
-        }
     }
 
-    pub fn set_str(&mut self, var: &Variable, pat: Pattern, ctx: &Context) {
+    pub fn set_str(&mut self, var: &Variable, pat: Pattern) {
         debug_assert!(var.sort() == Sort::String);
-        self.set(var, Substitute::String(pat), ctx);
+        self.set(var, Substitute::String(pat));
     }
 
-    pub fn set_int(&mut self, var: &Variable, term: LinearArithTerm, ctx: &Context) {
+    pub fn set_int(&mut self, var: &Variable, term: LinearArithTerm) {
         debug_assert!(var.sort() == Sort::Int);
-        self.set(var, Substitute::Int(term), ctx);
+        self.set(var, Substitute::Int(term));
     }
 
-    fn strterm_to_len(t: &Substitute, ctx: &Context) -> Substitute {
-        if let Substitute::String(pat) = t {
-            let mut vs = HashMap::new();
-            let mut r = 0;
-            for s in pat.iter() {
-                match s {
-                    Symbol::Constant(_) => r += 1,
-                    Symbol::Variable(v) => {
-                        let lv = ctx.get_len_var(v);
-                        *vs.entry(lv.clone()).or_insert(0) += 1;
-                    }
+    fn pattern_to_len(pat: &Pattern) -> LinearArithTerm {
+        let mut vs = HashMap::new();
+        let mut r = 0;
+        for s in pat.iter() {
+            match s {
+                Symbol::Constant(_) => r += 1,
+                Symbol::Variable(v) => {
+                    *vs.entry(v.clone()).or_insert(0) += 1;
                 }
             }
-            let mut term = LinearArithTerm::new();
-            vs.into_iter()
-                .for_each(|(v, c)| term.add_var_coeff(v.as_ref(), c));
-            term.add_summand(Summand::Const(r));
-
-            Substitute::Int(term)
-        } else {
-            panic!("Expected a string term")
         }
+        let mut term = LinearArithTerm::new();
+        vs.into_iter().for_each(|(v, c)| {
+            let len = VariableTerm::Len(v);
+            term.add_summand(LinearSummand::Mult(len, c));
+        });
+        term.add_summand(LinearSummand::Const(r));
+
+        term
     }
 
     pub fn iter(&self) -> impl Iterator<Item = (&Variable, &Substitute)> {
@@ -132,7 +123,7 @@ impl VarSubstitution {
     /// Calculates the composition of two substitutions.
     /// The result is the substitution that results from applying the given substitution to this substitution.
     /// If the given substitution defines variables that are not defined in this substitution, the result will contain these variables.
-    pub fn compose(&self, other: &Self, ctx: &Context) -> Self {
+    pub fn compose(&self, other: &Self) -> Self {
         let mut sub = Self::empty();
         for (var, val) in &self.subs {
             let chained = match val {
@@ -145,12 +136,12 @@ impl VarSubstitution {
                     Substitute::Int(new_t)
                 }
             };
-            sub.set(var, chained, ctx);
+            sub.set(var, chained);
         }
         for (var, val) in &other.subs {
             // Add the substitution if it is not yet present
             if sub.get(var).is_none() {
-                sub.set(var, val.clone(), ctx);
+                sub.set(var, val.clone());
             }
         }
         sub
@@ -246,15 +237,27 @@ impl VarSubstitution {
         let mut new_term = LinearArithTerm::new();
         for s in term.iter() {
             match s {
-                Summand::Const(c) => new_term.add_summand(Summand::Const(*c)),
-                Summand::VarCoeff(v, c) => match self.get(v) {
-                    Some(Substitute::Int(t)) => {
-                        for s2 in t.iter() {
-                            new_term.add_summand(s2.multiply(*c))
+                LinearSummand::Const(c) => new_term.add_summand(LinearSummand::Const(*c)),
+                LinearSummand::Mult(v, c) => match v {
+                    VariableTerm::Int(intvar) => match self.get(intvar) {
+                        Some(Substitute::Int(t)) => {
+                            for s2 in t.iter() {
+                                new_term.add_summand(s2.multiply(*c))
+                            }
                         }
-                    }
-                    None => new_term.add_var_coeff(v, *c),
-                    _ => panic!("Expected an integer term"),
+                        Some(Substitute::String(_)) => unreachable!("Expected an integer term"),
+                        None => new_term.add_summand(s.clone()),
+                    },
+                    VariableTerm::Len(strvar) => match self.get(strvar) {
+                        Some(Substitute::String(p)) => {
+                            let int_term = Self::pattern_to_len(p);
+                            for s2 in int_term.iter() {
+                                new_term.add_summand(s2.multiply(*c))
+                            }
+                        }
+                        Some(Substitute::Int(_)) => unreachable!("Expected a string term"),
+                        None => new_term.add_summand(s.clone()),
+                    },
                 },
             }
         }

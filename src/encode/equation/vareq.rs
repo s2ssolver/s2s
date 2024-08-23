@@ -4,7 +4,6 @@ use std::cmp::{min, Ordering};
 
 use crate::{
     bounds::Bounds,
-    context::Context,
     encode::{domain::DomainEncoding, EncodingError, EncodingResult, LiteralEncoder, LAMBDA},
     repr::Variable,
     sat::{nlit, plit, pvar, PVar},
@@ -23,13 +22,9 @@ impl VareqEncoder {
         &mut self,
         bounds: &Bounds,
         dom: &DomainEncoding,
-        ctx: &Context,
     ) -> Result<EncodingResult, EncodingError> {
-        let lhs_len = ctx.get_len_var(&self.lhs).as_ref();
-        let rhs_len = ctx.get_len_var(&self.rhs).as_ref();
-
-        let lhs_bound = bounds.get_upper(&lhs_len).unwrap() as usize;
-        let rhs_bound = bounds.get_upper(&rhs_len).unwrap() as usize;
+        let lhs_bound = bounds.get_upper(&self.lhs).unwrap() as usize;
+        let rhs_bound = bounds.get_upper(&self.rhs).unwrap() as usize;
         let next_bound = min(lhs_bound, rhs_bound);
 
         let last_bound = self.last_bounds.unwrap_or(0);
@@ -39,13 +34,13 @@ impl VareqEncoder {
         let mut res = EncodingResult::empty();
         for pos in last_bound..next_bound {
             for c in alph {
-                let lhs_pos_c = dom.string().get(&self.lhs, pos, *c).unwrap();
-                let rhs_pos_c = dom.string().get(&self.rhs, pos, *c).unwrap();
+                let lhs_pos_c = dom.string().get_sub(&self.lhs, pos, *c).unwrap();
+                let rhs_pos_c = dom.string().get_sub(&self.rhs, pos, *c).unwrap();
                 let clause = vec![nlit(lhs_pos_c), plit(rhs_pos_c)];
                 res.add_clause(clause);
             }
-            let lhs_pos_c = dom.string().get(&self.lhs, pos, LAMBDA).unwrap();
-            let rhs_pos_c = dom.string().get(&self.rhs, pos, LAMBDA).unwrap();
+            let lhs_pos_c = dom.string().get_sub(&self.lhs, pos, LAMBDA).unwrap();
+            let rhs_pos_c = dom.string().get_sub(&self.rhs, pos, LAMBDA).unwrap();
             let clause = vec![nlit(lhs_pos_c), plit(rhs_pos_c)];
             res.add_clause(clause);
         }
@@ -53,11 +48,11 @@ impl VareqEncoder {
         // Make sure the rest of the longer string is empty
         match lhs_bound.cmp(&rhs_bound) {
             Ordering::Less => {
-                let rhs_lambda = dom.string().get(&self.rhs, next_bound, LAMBDA).unwrap();
+                let rhs_lambda = dom.string().get_sub(&self.rhs, next_bound, LAMBDA).unwrap();
                 res.add_assumption(plit(rhs_lambda))
             }
             Ordering::Greater => {
-                let lhs_lambda = dom.string().get(&self.lhs, next_bound, LAMBDA).unwrap();
+                let lhs_lambda = dom.string().get_sub(&self.lhs, next_bound, LAMBDA).unwrap();
                 res.add_assumption(plit(lhs_lambda))
             }
             _ => (),
@@ -71,13 +66,9 @@ impl VareqEncoder {
         &mut self,
         bounds: &Bounds,
         dom: &DomainEncoding,
-        ctx: &Context,
     ) -> Result<EncodingResult, EncodingError> {
-        let lhs_len = ctx.get_len_var(&self.lhs).as_ref();
-        let rhs_len = ctx.get_len_var(&self.rhs).as_ref();
-
-        let lhs_bound = bounds.get_upper(&lhs_len).unwrap() as usize;
-        let rhs_bound = bounds.get_upper(&rhs_len).unwrap() as usize;
+        let lhs_bound = bounds.get_upper(&self.lhs).unwrap() as usize;
+        let rhs_bound = bounds.get_upper(&self.rhs).unwrap() as usize;
         let next_bound = min(lhs_bound, rhs_bound);
         if let Some(b) = self.last_bounds {
             assert!(next_bound >= b);
@@ -106,11 +97,11 @@ impl VareqEncoder {
         res.add_assumption(plit(selector));
         match lhs_bound.cmp(&rhs_bound) {
             Ordering::Less => {
-                let rhs_lambda = dom.string().get(&self.rhs, next_bound, LAMBDA).unwrap();
+                let rhs_lambda = dom.string().get_sub(&self.rhs, next_bound, LAMBDA).unwrap();
                 def_clause.push(nlit(rhs_lambda));
             }
             Ordering::Greater => {
-                let lhs_lambda = dom.string().get(&self.lhs, next_bound, LAMBDA).unwrap();
+                let lhs_lambda = dom.string().get_sub(&self.lhs, next_bound, LAMBDA).unwrap();
                 def_clause.push(nlit(lhs_lambda));
             }
             _ => (),
@@ -120,8 +111,8 @@ impl VareqEncoder {
             for c in alph {
                 let p = pvar();
                 def_clause.push(plit(p));
-                let lhs_pos_c = dom.string().get(&self.lhs, pos, *c).unwrap();
-                let rhs_pos_c = dom.string().get(&self.rhs, pos, *c).unwrap();
+                let lhs_pos_c = dom.string().get_sub(&self.lhs, pos, *c).unwrap();
+                let rhs_pos_c = dom.string().get_sub(&self.rhs, pos, *c).unwrap();
 
                 // p --> (-h(x[pos]) = a /\ h(y[pos]) = a)
                 // <==> (-p \/ -h(x[pos]) = a) /\ (-p \/ h(y[pos]) = a)
@@ -137,8 +128,8 @@ impl VareqEncoder {
             }
             // Repeat for lambda
             let p = pvar();
-            let lhs_pos_c = dom.string().get(&self.lhs, pos, LAMBDA).unwrap();
-            let rhs_pos_c = dom.string().get(&self.rhs, pos, LAMBDA).unwrap();
+            let lhs_pos_c = dom.string().get_sub(&self.lhs, pos, LAMBDA).unwrap();
+            let rhs_pos_c = dom.string().get_sub(&self.rhs, pos, LAMBDA).unwrap();
             let clause_lhs = vec![nlit(p), nlit(lhs_pos_c)];
             let clause_rhs = vec![nlit(p), plit(rhs_pos_c)];
             res.add_clause(clause_lhs);
@@ -177,12 +168,11 @@ impl LiteralEncoder for VareqEncoder {
         &mut self,
         bounds: &Bounds,
         dom: &DomainEncoding,
-        ctx: &Context,
     ) -> Result<EncodingResult, EncodingError> {
         if self.sign {
-            self.encode_eq(bounds, dom, ctx)
+            self.encode_eq(bounds, dom)
         } else {
-            self.encode_ineq(bounds, dom, ctx)
+            self.encode_ineq(bounds, dom)
         }
     }
 }

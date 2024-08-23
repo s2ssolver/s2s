@@ -135,7 +135,7 @@ mod tests {
     fn test_bnf_var() {
         let mut builder = AstBuilder::default();
         let mut ctx = Context::default();
-        let v = ctx.new_var("x".to_string(), Sort::Bool).unwrap();
+        let v = ctx.make_var("x".to_string(), Sort::Bool).unwrap();
         let var = builder.var(v);
 
         // Variable should remain unchanged in BNF
@@ -147,7 +147,7 @@ mod tests {
     fn test_nnf_var() {
         let mut builder = AstBuilder::default();
         let mut ctx = Context::default();
-        let v = ctx.new_var("x".to_string(), Sort::Bool).unwrap();
+        let v = ctx.make_var("x".to_string(), Sort::Bool).unwrap();
         let var = builder.var(v);
 
         // Variable should remain unchanged in NNF
@@ -159,9 +159,9 @@ mod tests {
     fn test_bnf_and() {
         let mut builder = AstBuilder::default();
         let mut ctx = Context::default();
-        let vx = ctx.new_var("x".to_string(), Sort::Bool).unwrap();
+        let vx = ctx.make_var("x".to_string(), Sort::Bool).unwrap();
         let var_x = builder.var(vx);
-        let vy = ctx.new_var("y".to_string(), Sort::Bool).unwrap();
+        let vy = ctx.make_var("y".to_string(), Sort::Bool).unwrap();
         let var_y = builder.var(vy);
 
         let and_expr = builder.and(vec![var_x.clone(), var_y.clone()]);
@@ -175,9 +175,9 @@ mod tests {
     fn test_nnf_and() {
         let mut builder = AstBuilder::default();
         let mut ctx = Context::default();
-        let vx = ctx.new_var("x".to_string(), Sort::Bool).unwrap();
+        let vx = ctx.make_var("x".to_string(), Sort::Bool).unwrap();
         let var_x = builder.var(vx);
-        let vy = ctx.new_var("y".to_string(), Sort::Bool).unwrap();
+        let vy = ctx.make_var("y".to_string(), Sort::Bool).unwrap();
         let var_y = builder.var(vy);
         let and_expr = builder.and(vec![var_x.clone(), var_y.clone()]);
 
@@ -190,7 +190,7 @@ mod tests {
     fn test_bnf_not() {
         let mut builder = AstBuilder::default();
         let mut ctx = Context::default();
-        let v = ctx.new_var("x".to_string(), Sort::Bool).unwrap();
+        let v = ctx.make_var("x".to_string(), Sort::Bool).unwrap();
         let var = builder.var(v);
         let not_expr = builder.not(var.clone());
 
@@ -203,7 +203,7 @@ mod tests {
     fn test_nnf_not() {
         let mut builder = AstBuilder::default();
         let mut ctx = Context::default();
-        let v = ctx.new_var("x".to_string(), Sort::Bool).unwrap();
+        let v = ctx.make_var("x".to_string(), Sort::Bool).unwrap();
         let var = builder.var(v);
         let not_expr = builder.not(var.clone());
 
@@ -216,9 +216,9 @@ mod tests {
     fn test_bnf_or() {
         let mut builder = AstBuilder::default();
         let mut ctx = Context::default();
-        let vx = ctx.new_var("x".to_string(), Sort::Bool).unwrap();
+        let vx = ctx.make_var("x".to_string(), Sort::Bool).unwrap();
         let var_x = builder.var(vx);
-        let vy = ctx.new_var("y".to_string(), Sort::Bool).unwrap();
+        let vy = ctx.make_var("y".to_string(), Sort::Bool).unwrap();
         let var_y = builder.var(vy);
         let or_expr = builder.or(vec![var_x.clone(), var_y.clone()]);
 
@@ -231,9 +231,9 @@ mod tests {
     fn test_nnf_or() {
         let mut builder = AstBuilder::default();
         let mut ctx = Context::default();
-        let vx = ctx.new_var("x".to_string(), Sort::Bool).unwrap();
+        let vx = ctx.make_var("x".to_string(), Sort::Bool).unwrap();
         let var_x = builder.var(vx);
-        let vy = ctx.new_var("y".to_string(), Sort::Bool).unwrap();
+        let vy = ctx.make_var("y".to_string(), Sort::Bool).unwrap();
         let var_y = builder.var(vy);
         let or_expr = builder.or(vec![var_x.clone(), var_y.clone()]);
 
@@ -246,9 +246,9 @@ mod tests {
     fn test_bnf_implies() {
         let mut builder = AstBuilder::default();
         let mut ctx = Context::default();
-        let vx = ctx.new_var("x".to_string(), Sort::Bool).unwrap();
+        let vx = ctx.make_var("x".to_string(), Sort::Bool).unwrap();
         let var_x = builder.var(vx);
-        let vy = ctx.new_var("y".to_string(), Sort::Bool).unwrap();
+        let vy = ctx.make_var("y".to_string(), Sort::Bool).unwrap();
         let var_y = builder.var(vy);
         let implies_expr = builder.imp(var_x.clone(), var_y.clone());
 
@@ -263,9 +263,9 @@ mod tests {
     fn test_bnf_equivalence() {
         let mut builder = AstBuilder::default();
         let mut ctx = Context::default();
-        let vx = ctx.new_var("x".to_string(), Sort::Bool).unwrap();
+        let vx = ctx.make_var("x".to_string(), Sort::Bool).unwrap();
         let var_x = builder.var(vx);
-        let vy = ctx.new_var("y".to_string(), Sort::Bool).unwrap();
+        let vy = ctx.make_var("y".to_string(), Sort::Bool).unwrap();
         let var_y = builder.var(vy);
         let eq_expr = builder.eq(var_x.clone(), var_y.clone());
 
@@ -283,7 +283,7 @@ mod tests {
     fn test_nnf_double_negation() {
         let mut builder = AstBuilder::default();
         let mut ctx = Context::default();
-        let v = ctx.new_var("x".to_string(), Sort::Bool).unwrap();
+        let v = ctx.make_var("x".to_string(), Sort::Bool).unwrap();
         let var = builder.var(v);
 
         let neg = builder.not(var.clone());
@@ -298,9 +298,9 @@ mod tests {
     fn test_nnf_negation_of_and() {
         let mut builder = AstBuilder::default();
         let mut ctx = Context::default();
-        let vx = ctx.new_var("x".to_string(), Sort::Bool).unwrap();
+        let vx = ctx.make_var("x".to_string(), Sort::Bool).unwrap();
         let var_x = builder.var(vx);
-        let vy = ctx.new_var("y".to_string(), Sort::Bool).unwrap();
+        let vy = ctx.make_var("y".to_string(), Sort::Bool).unwrap();
         let var_y = builder.var(vy);
 
         let and_expr = builder.and(vec![var_x.clone(), var_y.clone()]);
@@ -318,9 +318,9 @@ mod tests {
     fn test_nnf_negation_of_or() {
         let mut builder = AstBuilder::default();
         let mut ctx = Context::default();
-        let vx = ctx.new_var("x".to_string(), Sort::Bool).unwrap();
+        let vx = ctx.make_var("x".to_string(), Sort::Bool).unwrap();
         let var_x = builder.var(vx);
-        let vy = ctx.new_var("y".to_string(), Sort::Bool).unwrap();
+        let vy = ctx.make_var("y".to_string(), Sort::Bool).unwrap();
         let var_y = builder.var(vy);
 
         let or_expr = builder.or(vec![var_x.clone(), var_y.clone()]);

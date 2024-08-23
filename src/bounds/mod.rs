@@ -8,7 +8,7 @@ use std::{
 use indexmap::IndexMap;
 use quickcheck::Arbitrary;
 
-use crate::model::Variable;
+use crate::repr::{Sorted, Variable};
 
 mod infer;
 
@@ -216,7 +216,7 @@ impl Bounds {
     /// Sets the domain of a variable.
     pub fn set(&mut self, var: &Variable, domain: IntDomain) -> Option<IntDomain> {
         assert!(
-            var.is_int(),
+            var.sort().is_int(),
             "Cannot add bounds for non-integer variable {}.",
             var
         );
@@ -227,7 +227,7 @@ impl Bounds {
     /// If no domain is set for the variable, returns the default domain.
     pub fn get_with_default(&self, var: &Variable) -> IntDomain {
         debug_assert!(
-            var.is_int(),
+            var.sort().is_int(),
             "Cannot get bounds for non-integer variable {}.",
             var
         );

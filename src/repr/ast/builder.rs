@@ -368,7 +368,7 @@ mod tests {
     #[test]
     fn test_var() {
         let mut ctx = Context::default();
-        let var = ctx.new_var("x".to_string(), Sort::String).unwrap();
+        let var = ctx.make_var("x".to_string(), Sort::String).unwrap();
         let mut builder = AstBuilder::default();
 
         let expr = builder.var(var.clone());
@@ -379,7 +379,7 @@ mod tests {
     fn test_not() {
         let mut ctx = Context::default();
         let mut builder = AstBuilder::default();
-        let var = ctx.new_var("x".to_string(), Sort::String).unwrap();
+        let var = ctx.make_var("x".to_string(), Sort::String).unwrap();
 
         let expr = builder.var(var.clone());
         let not_expr = builder.not(expr.clone());
@@ -390,8 +390,8 @@ mod tests {
     fn test_and() {
         let mut ctx = Context::default();
         let mut builder = AstBuilder::default();
-        let var1 = ctx.new_var("x".to_string(), Sort::String).unwrap();
-        let var2 = ctx.new_var("y".to_string(), Sort::String).unwrap();
+        let var1 = ctx.make_var("x".to_string(), Sort::String).unwrap();
+        let var2 = ctx.make_var("y".to_string(), Sort::String).unwrap();
         let expr1 = builder.var(var1.clone());
         let expr2 = builder.var(var2.clone());
         let and_expr = builder.and(vec![expr1.clone(), expr2.clone()]);
@@ -405,8 +405,8 @@ mod tests {
     fn test_or() {
         let mut ctx = Context::default();
 
-        let var1 = ctx.new_var("x".to_string(), Sort::String).unwrap();
-        let var2 = ctx.new_var("y".to_string(), Sort::String).unwrap();
+        let var1 = ctx.make_var("x".to_string(), Sort::String).unwrap();
+        let var2 = ctx.make_var("y".to_string(), Sort::String).unwrap();
         let mut builder = AstBuilder::default();
         let expr1 = builder.var(var1.clone());
         let expr2 = builder.var(var2.clone());
@@ -420,8 +420,8 @@ mod tests {
     #[test]
     fn test_equal() {
         let mut ctx = Context::default();
-        let var1 = ctx.new_var("x".to_string(), Sort::String).unwrap();
-        let var2 = ctx.new_var("y".to_string(), Sort::String).unwrap();
+        let var1 = ctx.make_var("x".to_string(), Sort::String).unwrap();
+        let var2 = ctx.make_var("y".to_string(), Sort::String).unwrap();
 
         let mut builder = AstBuilder::default();
         let expr1 = builder.var(var1.clone());
@@ -437,8 +437,8 @@ mod tests {
     fn test_imp() {
         let mut ctx = Context::default();
 
-        let var1 = ctx.new_var("x".to_string(), Sort::String).unwrap();
-        let var2 = ctx.new_var("y".to_string(), Sort::String).unwrap();
+        let var1 = ctx.make_var("x".to_string(), Sort::String).unwrap();
+        let var2 = ctx.make_var("y".to_string(), Sort::String).unwrap();
 
         let mut builder = AstBuilder::default();
         let expr1 = builder.var(var1.clone());
@@ -454,10 +454,10 @@ mod tests {
     fn test_id_equality() {
         let mut ctx = Context::default();
 
-        let var1 = ctx.new_var("x".to_string(), Sort::String).unwrap();
-        let var2 = ctx.new_var("y".to_string(), Sort::String).unwrap();
+        let var1 = ctx.make_var("x".to_string(), Sort::String).unwrap();
+        let var2 = ctx.make_var("y".to_string(), Sort::String).unwrap();
 
-        let var3 = ctx.new_var("z".to_string(), Sort::String).unwrap();
+        let var3 = ctx.make_var("z".to_string(), Sort::String).unwrap();
         let mut builder = AstBuilder::default();
 
         let expr1 = builder.var(var1.clone());

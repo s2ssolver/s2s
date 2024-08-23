@@ -46,7 +46,7 @@ impl ProblemEncoder {
         let dom = self.domain_encoder.encoding().clone();
         // Encode all definitions
         for def in defs.iter() {
-            let cnf = self.encode_def(def, bounds, &dom, ctx);
+            let cnf = self.encode_def(def, bounds, &dom);
             res.extend(cnf);
         }
 
@@ -58,7 +58,6 @@ impl ProblemEncoder {
         def: &Definition,
         bounds: &Bounds,
         dom: &DomainEncoding,
-        ctx: &Context,
     ) -> EncodingResult {
         let atom = def.atom();
 
@@ -78,7 +77,7 @@ impl ProblemEncoder {
             let enc = self.get_encoder(&lit);
             (probe, enc)
         };
-        let mut encoding = encoder.encode(bounds, dom, ctx);
+        let mut encoding = encoder.encode(bounds, dom);
 
         // Add probe to every clause
         encoding
@@ -111,7 +110,7 @@ impl ProblemEncoder {
     }
 
     /// Returns the model of the current assignment.
-    pub fn get_model(&self, solver: &Solver) -> Option<VarSubstitution> {
+    pub fn get_model(&self, solver: &Solver, ctx: &Context) -> Option<VarSubstitution> {
         todo!()
     }
 }

@@ -2,50 +2,86 @@ use std::{collections::HashMap, fmt::Display, ops::Index};
 
 use indexmap::IndexSet;
 
-use crate::repr::Variable;
+use crate::repr::{Sorted, Variable};
 
 use super::ConstReducible;
 
+/// Represents different types of variable-based terms in a linear expression.
+/// This enum differentiates between a simple variable and the length of a string variable.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum Summand {
-    VarCoeff(Variable, isize),
+pub enum VariableTerm {
+    Int(Variable), // A simple variable like x
+    Len(Variable), // Represents |x|, the length of a string variable
+}
+impl VariableTerm {
+    pub fn is_len(&self) -> bool {
+        matches!(self, VariableTerm::Len(_))
+    }
+
+    pub fn is_int(&self) -> bool {
+        matches!(self, VariableTerm::Int(_))
+    }
+
+    pub fn variable(&self) -> &Variable {
+        match self {
+            VariableTerm::Int(x) => x,
+            VariableTerm::Len(x) => x,
+        }
+    }
+}
+impl Display for VariableTerm {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            VariableTerm::Int(x) => write!(f, "{}", x),
+            VariableTerm::Len(x) => write!(f, "|{}|", x),
+        }
+    }
+}
+
+/// Represents a single summand in a linear expression.
+/// A `LinearSummand` can either be a scaled variable term or a constant value.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum LinearSummand {
+    /// Multiply a variable term with a constant
+    Mult(VariableTerm, isize),
+    /// A constant
     Const(isize),
 }
 
-impl Summand {
+impl LinearSummand {
     pub fn is_constant(&self) -> bool {
         match self {
-            Summand::VarCoeff(_, _) => false,
-            Summand::Const(_) => true,
+            LinearSummand::Const(_) | LinearSummand::Mult(_, 0) => true, // 0*x = 0
+            LinearSummand::Mult(_, _) => false,
         }
     }
 
     pub fn multiply(&self, c: isize) -> Self {
         match self {
-            Summand::VarCoeff(x, c2) => Summand::VarCoeff(x.clone(), c * c2),
-            Summand::Const(c2) => Summand::Const(c * c2),
+            LinearSummand::Mult(x, c2) => LinearSummand::Mult(x.clone(), c * c2),
+            LinearSummand::Const(c2) => LinearSummand::Const(c * c2),
         }
     }
 }
 
-impl Display for Summand {
+impl Display for LinearSummand {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Summand::VarCoeff(x, c) => {
+            LinearSummand::Mult(x, c) => {
                 if *c == 1 {
                     write!(f, "{}", x)
                 } else {
                     write!(f, "{}*{}", c, x)
                 }
             }
-            Summand::Const(c) => write!(f, "{}", c),
+            LinearSummand::Const(c) => write!(f, "{}", c),
         }
     }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default, Hash)]
 pub struct LinearArithTerm {
-    factors: Vec<Summand>,
+    factors: Vec<LinearSummand>,
 }
 
 impl LinearArithTerm {
@@ -53,13 +89,25 @@ impl LinearArithTerm {
         Self { factors: vec![] }
     }
 
+    /// Create a linear arithmetic term from a (int) variable
+    /// Panics if the variable is not of sort int
     pub fn from_var(x: &Variable) -> Self {
+        assert!(x.sort().is_int(), "Variable must be of sort int");
         Self {
-            factors: vec![Summand::VarCoeff(x.clone(), 1)],
+            factors: vec![LinearSummand::Mult(VariableTerm::Int(x.clone()), 1)],
         }
     }
 
-    pub fn remove_factor(&mut self, f: &Summand) -> bool {
+    /// Create a linear arithmetic term from the length of a string variable
+    /// Panics if the variable is not of sort string
+    pub fn from_var_len(x: &Variable) -> Self {
+        assert!(x.sort().is_string(), "Variable must be of sort string");
+        Self {
+            factors: vec![LinearSummand::Mult(VariableTerm::Len(x.clone()), 1)],
+        }
+    }
+
+    pub fn remove_factor(&mut self, f: &LinearSummand) -> bool {
         if let Some(index) = self.factors.iter().position(|x| *x == *f) {
             self.factors.remove(index);
             true
@@ -71,34 +119,30 @@ impl LinearArithTerm {
     /// Create a linear arithmetic term from a constant
     pub fn from_const(c: isize) -> Self {
         Self {
-            factors: vec![Summand::Const(c)],
+            factors: vec![LinearSummand::Const(c)],
         }
     }
 
-    pub fn add_summand(&mut self, f: Summand) {
+    pub fn add_summand(&mut self, f: LinearSummand) {
         self.factors.push(f);
-    }
-
-    pub fn add_var_coeff(&mut self, x: &Variable, c: isize) {
-        self.factors.push(Summand::VarCoeff(x.clone(), c));
     }
 
     pub fn extend(&mut self, other: Self) {
         self.factors.extend(other.factors);
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = &Summand> {
+    pub fn iter(&self) -> impl Iterator<Item = &LinearSummand> {
         self.factors.iter()
     }
 
-    pub fn vars(&self) -> IndexSet<Variable> {
+    pub fn vars(&self) -> IndexSet<VariableTerm> {
         let mut vars = IndexSet::new();
         for f in self.iter() {
             match f {
-                Summand::VarCoeff(x, _) => {
+                LinearSummand::Mult(x, _) => {
                     vars.insert(x.clone());
                 }
-                Summand::Const(_) => {}
+                LinearSummand::Const(_) => {}
             }
         }
         vars
@@ -120,21 +164,21 @@ impl LinearArithTerm {
         let mut residual = 0;
         for f in self.factors.iter() {
             match f {
-                Summand::VarCoeff(x, c) => {
+                LinearSummand::Mult(x, c) => {
                     let entry = factors.entry(x.clone()).or_insert(0);
                     *entry += c;
                 }
-                Summand::Const(c) => {
+                LinearSummand::Const(c) => {
                     residual += c;
                 }
             }
         }
         self.factors.clear();
         for (x, c) in factors {
-            self.factors.push(Summand::VarCoeff(x, c));
+            self.factors.push(LinearSummand::Mult(x, c));
         }
         if residual != 0 {
-            self.factors.push(Summand::Const(residual));
+            self.factors.push(LinearSummand::Const(residual));
         }
     }
 
@@ -143,11 +187,11 @@ impl LinearArithTerm {
         let mut res = self.clone();
         for f in other.iter() {
             match f {
-                Summand::VarCoeff(x, c) => {
-                    res.add_summand(Summand::VarCoeff(x.clone(), -c));
+                LinearSummand::Mult(x, c) => {
+                    res.add_summand(LinearSummand::Mult(x.clone(), -c));
                 }
-                Summand::Const(c) => {
-                    res.add_summand(Summand::Const(-c));
+                LinearSummand::Const(c) => {
+                    res.add_summand(LinearSummand::Const(-c));
                 }
             }
         }
@@ -167,9 +211,9 @@ impl LinearArithTerm {
         let mut c = 0;
         for f in self.iter() {
             match f {
-                Summand::VarCoeff(_, 0) => (),
-                Summand::VarCoeff(_, _) => return None,
-                Summand::Const(c2) => c += c2,
+                LinearSummand::Mult(_, 0) => (),
+                LinearSummand::Mult(_, _) => return None,
+                LinearSummand::Const(c2) => c += c2,
             }
         }
         Some(c)
@@ -177,7 +221,7 @@ impl LinearArithTerm {
 }
 
 impl Index<usize> for LinearArithTerm {
-    type Output = Summand;
+    type Output = LinearSummand;
 
     fn index(&self, index: usize) -> &Self::Output {
         &self.factors[index]

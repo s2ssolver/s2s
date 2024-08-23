@@ -176,7 +176,7 @@ impl<'a> Solver<'a> {
             match cadical.solve_with(asm.into_iter()) {
                 Some(true) => {
                     // If SAT, check if model is a solution for the original formula.
-                    let assign = encoder.get_model(&cadical).unwrap();
+                    let assign = encoder.get_model(&cadical, ctx).unwrap();
                     if self.check_assignment(fm, &assign) {
                         return Ok(SolverResult::Sat(Some(assign)));
                     } else {

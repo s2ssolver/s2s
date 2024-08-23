@@ -104,7 +104,8 @@ impl NFAEncoder {
                     match transition.get_type() {
                         TransitionType::Range(range) if range_any(&range) => {
                             // Follow transition if we do not read lambda
-                            let lambda_sub_var = dom.string().get(&self.var, l, LAMBDA).unwrap();
+                            let lambda_sub_var =
+                                dom.string().get_sub(&self.var, l, LAMBDA).unwrap();
                             let clause =
                                 vec![nlit(reach_var), plit(lambda_sub_var), plit(reach_next)];
                             res.add_clause(clause);
@@ -115,7 +116,7 @@ impl NFAEncoder {
 
                             // Follow transition if we read a character in the given range
                             for c in lb..=ub {
-                                let sub_var = dom.string().get(&self.var, l, c).unwrap();
+                                let sub_var = dom.string().get_sub(&self.var, l, c).unwrap();
                                 let clause = vec![nlit(reach_var), nlit(sub_var), plit(reach_next)];
                                 res.add_clause(clause);
                             }
@@ -129,7 +130,7 @@ impl NFAEncoder {
 
                 // Allow lambda self-transitions
                 let reach_next = self.reach_vars[&(state, l + 1)];
-                let lambda_sub_var = dom.string().get(&self.var, l, LAMBDA).unwrap();
+                let lambda_sub_var = dom.string().get_sub(&self.var, l, LAMBDA).unwrap();
                 let clause = vec![nlit(reach_var), nlit(lambda_sub_var), plit(reach_next)];
                 res.add_clause(clause);
             }
@@ -159,7 +160,7 @@ impl NFAEncoder {
                     match trans.get_type() {
                         TransitionType::Range(range) if range_any(range) => {
                             // Is predecessor if we do not read lambda
-                            let sub_var = dom.string().get(&self.var, l - 1, LAMBDA).unwrap();
+                            let sub_var = dom.string().get_sub(&self.var, l - 1, LAMBDA).unwrap();
                             res.add_clause(vec![nlit(def_var), plit(reach_prev)]);
                             res.add_clause(vec![nlit(def_var), nlit(sub_var)]);
                         }
@@ -170,7 +171,7 @@ impl NFAEncoder {
                             res.add_clause(vec![nlit(def_var), plit(reach_prev)]);
                             let mut range_clause = vec![nlit(def_var)];
                             for c in lb..=ub {
-                                let sub_var = dom.string().get(&self.var, l - 1, c).unwrap();
+                                let sub_var = dom.string().get_sub(&self.var, l - 1, c).unwrap();
                                 range_clause.push(plit(sub_var));
                             }
                             res.add_clause(range_clause);
@@ -183,7 +184,7 @@ impl NFAEncoder {
 
                 // Allow lambda self-transitions
                 let reach_prev = self.reach_vars[&(*state, l - 1)];
-                let lambda_sub_var = dom.string().get(&self.var, l - 1, LAMBDA).unwrap();
+                let lambda_sub_var = dom.string().get_sub(&self.var, l - 1, LAMBDA).unwrap();
                 let def_var = pvar();
                 alo_clause.push(plit(def_var));
                 res.add_clause(vec![nlit(def_var), plit(reach_prev)]);
@@ -228,10 +229,6 @@ impl NFAEncoder {
 
         res
     }
-
-    fn len_var(&self, ctx: &Context) -> Variable {
-        ctx.get_len_var(&self.var).as_ref().clone()
-    }
 }
 
 impl LiteralEncoder for NFAEncoder {
@@ -249,7 +246,6 @@ impl LiteralEncoder for NFAEncoder {
         &mut self,
         bounds: &Bounds,
         dom: &DomainEncoding,
-        ctx: &Context,
     ) -> Result<EncodingResult, EncodingError> {
         if self.sign {
             log::debug!("Encoding `{} in {}` ", self.var, self.regex,);
@@ -257,7 +253,7 @@ impl LiteralEncoder for NFAEncoder {
             log::debug!("Encoding `{} notin {}` ", self.var, self.regex,);
         }
 
-        let bound = bounds.get_upper(&self.len_var(ctx)).unwrap_or(0) as usize;
+        let bound = bounds.get_upper(&self.var).unwrap_or(0) as usize;
 
         log::trace!("Bound: {}", bound);
         if Some(bound) == self.last_bound {
@@ -430,7 +426,7 @@ mod test {
             let mut res = EncodingResult::empty();
             res.extend(dom_encoder.encode(bound, &ctx));
 
-            res.extend(encoder.encode(bound, dom_encoder.encoding(), &ctx).unwrap());
+            res.extend(encoder.encode(bound, dom_encoder.encoding()).unwrap());
 
             match res {
                 EncodingResult::Cnf(clauses, assms) => {
@@ -461,10 +457,10 @@ mod test {
     fn var_in_epsi() {
         let mut ctx = Context::default();
         let var = ctx.new_temp_var(Sort::String);
-        let len_var = ctx.get_len_var(&var).as_ref().clone();
+
         let re = ctx.ast_builder().re_builder().epsilon();
         let mut bounds = Bounds::with_defaults(IntDomain::Bounded(0, 0));
-        bounds.set(&len_var, IntDomain::Bounded(0, 1));
+        bounds.set(&var, IntDomain::Bounded(0, 1));
 
         assert_eq!(solve_with_bounds(re, true, &[bounds]), Some(true));
     }
