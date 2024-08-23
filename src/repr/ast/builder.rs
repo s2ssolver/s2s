@@ -2,7 +2,7 @@ use std::{collections::HashMap, rc::Rc};
 
 use regulaer::re::{OptReBuilder, Regex};
 
-use crate::repr::Variable;
+use crate::repr::{Sort, Sorted, Variable};
 
 use super::{CoreExpr, ExprType, Expression, IntExpr, StrExpr};
 
@@ -31,8 +31,31 @@ impl AstBuilder {
         }
     }
 
+    /// Creates a new variable expression based on the sort of the variable.
     pub fn var(&mut self, v: Rc<Variable>) -> Rc<Expression> {
+        match v.sort() {
+            Sort::Bool => self.bool_var(v),
+            Sort::String => self.string_var(v),
+            Sort::Int => self.int_var(v),
+            Sort::RegLang => unreachable!("Regular language variables are not supported"),
+        }
+    }
+
+    fn bool_var(&mut self, v: Rc<Variable>) -> Rc<Expression> {
+        assert!(v.sort().is_bool());
         let v = ExprType::Core(CoreExpr::Var(v));
+        self.intern(v)
+    }
+
+    fn string_var(&mut self, v: Rc<Variable>) -> Rc<Expression> {
+        assert!(v.sort().is_string());
+        let v = ExprType::String(StrExpr::Var(v));
+        self.intern(v)
+    }
+
+    fn int_var(&mut self, v: Rc<Variable>) -> Rc<Expression> {
+        assert!(v.sort().is_int());
+        let v = ExprType::Int(IntExpr::Var(v));
         self.intern(v)
     }
 
@@ -361,7 +384,7 @@ mod tests {
         let var = ctx.make_var("x".to_string(), Sort::String).unwrap();
         let mut builder = AstBuilder::default();
 
-        let expr = builder.var(var.clone());
+        let expr = builder.bool_var(var.clone());
         assert_eq!(*expr.get_type(), ExprType::Core(CoreExpr::Var(var)));
     }
 
@@ -371,7 +394,7 @@ mod tests {
         let mut builder = AstBuilder::default();
         let var = ctx.make_var("x".to_string(), Sort::String).unwrap();
 
-        let expr = builder.var(var.clone());
+        let expr = builder.bool_var(var.clone());
         let not_expr = builder.not(expr.clone());
         assert_eq!(*not_expr.get_type(), ExprType::Core(CoreExpr::Not(expr)));
     }
@@ -382,8 +405,8 @@ mod tests {
         let mut builder = AstBuilder::default();
         let var1 = ctx.make_var("x".to_string(), Sort::String).unwrap();
         let var2 = ctx.make_var("y".to_string(), Sort::String).unwrap();
-        let expr1 = builder.var(var1.clone());
-        let expr2 = builder.var(var2.clone());
+        let expr1 = builder.bool_var(var1.clone());
+        let expr2 = builder.bool_var(var2.clone());
         let and_expr = builder.and(vec![expr1.clone(), expr2.clone()]);
         assert_eq!(
             *and_expr.get_type(),
@@ -398,8 +421,8 @@ mod tests {
         let var1 = ctx.make_var("x".to_string(), Sort::String).unwrap();
         let var2 = ctx.make_var("y".to_string(), Sort::String).unwrap();
         let mut builder = AstBuilder::default();
-        let expr1 = builder.var(var1.clone());
-        let expr2 = builder.var(var2.clone());
+        let expr1 = builder.bool_var(var1.clone());
+        let expr2 = builder.bool_var(var2.clone());
         let or_expr = builder.or(vec![expr1.clone(), expr2.clone()]);
         assert_eq!(
             *or_expr.get_type(),
@@ -414,8 +437,8 @@ mod tests {
         let var2 = ctx.make_var("y".to_string(), Sort::String).unwrap();
 
         let mut builder = AstBuilder::default();
-        let expr1 = builder.var(var1.clone());
-        let expr2 = builder.var(var2.clone());
+        let expr1 = builder.bool_var(var1.clone());
+        let expr2 = builder.bool_var(var2.clone());
         let equal_expr = builder.eq(expr1.clone(), expr2.clone());
         assert_eq!(
             *equal_expr.get_type(),
@@ -431,8 +454,8 @@ mod tests {
         let var2 = ctx.make_var("y".to_string(), Sort::String).unwrap();
 
         let mut builder = AstBuilder::default();
-        let expr1 = builder.var(var1.clone());
-        let expr2 = builder.var(var2.clone());
+        let expr1 = builder.bool_var(var1.clone());
+        let expr2 = builder.bool_var(var2.clone());
         let imp_expr = builder.imp(expr1.clone(), expr2.clone());
         assert_eq!(
             *imp_expr.get_type(),
@@ -450,8 +473,8 @@ mod tests {
         let var3 = ctx.make_var("z".to_string(), Sort::String).unwrap();
         let mut builder = AstBuilder::default();
 
-        let expr1 = builder.var(var1.clone());
-        let expr2 = builder.var(var2.clone());
+        let expr1 = builder.bool_var(var1.clone());
+        let expr2 = builder.bool_var(var2.clone());
 
         // Create two equal expressions
         let equal_expr1 = builder.eq(expr1.clone(), expr2.clone());
@@ -461,7 +484,7 @@ mod tests {
         assert_eq!(equal_expr1.id(), equal_expr2.id());
 
         // Create a different expression
-        let expr3 = builder.var(var3.clone());
+        let expr3 = builder.bool_var(var3.clone());
         let different_expr = builder.eq(expr1.clone(), expr3.clone());
 
         // Check that its id is different

@@ -14,7 +14,7 @@ use crate::repr::{ast::convert_smtlib_char, Sort, Sorted, Variable};
 pub enum CoreExpr {
     /// A boolean constant
     Bool(bool),
-    /// A variable
+    /// A boolean variable
     Var(Rc<Variable>),
     /// Boolean Negation
     Not(Rc<Expression>),
@@ -127,6 +127,11 @@ impl Display for CoreExpr {
 pub enum StrExpr {
     /// A string constant
     Constant(String),
+
+    /// A string variable
+    Var(Rc<Variable>),
+
+    /// A regular expression
     Regex(Regex),
     /// Concatenation
     Concat(Vec<Rc<Expression>>),
@@ -163,6 +168,7 @@ impl StrExpr {
     pub fn children(&self) -> Vec<&Rc<Expression>> {
         match self {
             StrExpr::Constant(_) => vec![],
+            StrExpr::Var(_) => vec![],
             StrExpr::Concat(es) => es.iter().collect(),
             StrExpr::Length(e) => vec![e],
             StrExpr::InRe(e, r) => vec![e, r],
@@ -186,6 +192,10 @@ impl Sorted for StrExpr {
     fn sort(&self) -> Sort {
         match self {
             StrExpr::Regex(_) => Sort::RegLang,
+            StrExpr::Var(v) => {
+                debug_assert!(v.sort() == Sort::String);
+                Sort::String
+            }
             StrExpr::Constant(_)
             | StrExpr::Concat(_)
             | StrExpr::Substr(_, _, _)
@@ -206,6 +216,7 @@ impl Sorted for StrExpr {
 impl Display for StrExpr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            StrExpr::Var(v) => write!(f, "{}", v),
             StrExpr::Constant(c) => {
                 let converted = c.chars().map(convert_smtlib_char).collect::<String>();
                 write!(f, "\"{}\"", converted)
@@ -244,6 +255,7 @@ impl Display for StrExpr {
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub enum IntExpr {
     Constant(isize),
+    Var(Rc<Variable>),
     Add(Vec<Rc<Expression>>),
     Sub(Rc<Expression>, Rc<Expression>),
     Mul(Vec<Rc<Expression>>),
@@ -260,6 +272,7 @@ impl IntExpr {
     pub fn children(&self) -> Vec<&Rc<Expression>> {
         match self {
             IntExpr::Constant(_) => vec![],
+            IntExpr::Var(_) => vec![],
             IntExpr::Add(es) => es.iter().collect(),
             IntExpr::Sub(e1, e2) => vec![e1, e2],
             IntExpr::Mul(es) => es.iter().collect(),
@@ -279,6 +292,10 @@ impl Sorted for IntExpr {
     fn sort(&self) -> Sort {
         match self {
             IntExpr::Constant(_) => Sort::Int,
+            IntExpr::Var(v) => {
+                debug_assert!(v.sort() == Sort::Int);
+                Sort::Int
+            }
             IntExpr::Add(_)
             | IntExpr::Sub(_, _)
             | IntExpr::Mul(_)
@@ -297,6 +314,7 @@ impl Display for IntExpr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             IntExpr::Constant(c) => write!(f, "{}", c),
+            IntExpr::Var(v) => write!(f, "{}", v),
             IntExpr::Add(es) => {
                 write!(f, "(+")?;
                 for e in es {

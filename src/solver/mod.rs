@@ -1,4 +1,5 @@
 use core::panic;
+use std::time::Instant;
 
 use encoder::ProblemEncoder;
 
@@ -86,6 +87,7 @@ impl SolverOptions {
     }
 
     /// Whether to use a counterexample-guided abstraction refinement (CEGAR) strategy if unsupported literals are found.
+    ///
     /// If CEGAR is enabled, the solver solves an abstracted version of the formula containing only supported literals.
     /// If the abstracted formula is satisfiable, the solver checks if the model is a solution to the original formula.
     /// If the model is not a solution, the solver tries to refine the abstraction and solve the abstracted formula again.
@@ -117,20 +119,33 @@ impl Solver {
     }
 
     pub fn solve(&mut self, fm: &Formula, ctx: &mut Context) -> Result<SolverResult, Error> {
+        log::info!("Starting solver");
+        let mut timer = Instant::now();
+
         // Preprocess
         let fm_preprocessed = self.preprocess(&fm, ctx)?;
+        log::info!("Preprocessed ({:?})", timer.elapsed());
+        timer = Instant::now();
 
         // Build the Boolean abstraction
         let abstraction = abstract_fm(&fm_preprocessed);
+        log::info!("Built abstraction ({:?})", timer.elapsed());
+        timer = Instant::now();
 
         // Initialize the bounds
         let init_bounds = self.init_bounds(&fm_preprocessed);
+        log::info!("Initialized bounds ({:?})", timer.elapsed());
+        timer = Instant::now();
 
         // Initialize the alphabet
         let alphabet = alphabet::infer(fm);
+        log::info!("Inferred alphabet ({:?})", timer.elapsed());
+        timer = Instant::now();
 
         // Start CEGAR loop
-        self.run(fm, abstraction, init_bounds, alphabet, ctx)
+        let res = self.run(fm, abstraction, init_bounds, alphabet, ctx);
+        log::info!("Done solving ({:?})", timer.elapsed());
+        res
     }
 
     fn preprocess(

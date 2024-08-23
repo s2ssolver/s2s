@@ -14,6 +14,7 @@ use super::PreprocessingError;
 /// Converts the script to a formula.
 pub fn convert_script(script: &Script, ctx: &mut Context) -> Result<Formula, PreprocessingError> {
     let mut conjuncts = vec![];
+    // TODO: Cache the conversion of expressions. AST is interned, so we can use the pointer as a key.
     for expr in script.iter_asserts() {
         let as_nnf = expression_to_nnf(expr, ctx.ast_builder());
         let fm = convert_expr(&as_nnf, ctx)?;
@@ -94,6 +95,12 @@ fn convert_string_atom(expr: &StrExpr, ctx: &mut Context) -> Result<Rc<Atom>, Pr
 fn convert_pattern(expr: &StrExpr) -> Option<Pattern> {
     match expr {
         StrExpr::Constant(c) => Some(Pattern::constant(c)),
+        StrExpr::Var(v) => {
+            if !v.sort().is_string() {
+                return None;
+            }
+            Some(Pattern::variable(v))
+        }
         StrExpr::Concat(cs) => {
             let mut pattern = Pattern::empty();
             for c in cs {

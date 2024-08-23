@@ -9,11 +9,11 @@ pub struct PublicError(#[from] pub ErrorRepr);
 #[derive(Debug, Error)]
 pub enum ErrorRepr {
     /// An error that occured during parsing.
-    #[error(transparent)]
+    #[error("failed to construct the AST: {0}")]
     ParseError(AstError),
 
     /// An error that occured during preprocessing.
-    #[error(transparent)]
+    #[error("failed to preprocess: {0}")]
     PreprocessingError(PreprocessingError),
 
     /// An error that occured during encoding.
@@ -23,14 +23,6 @@ pub enum ErrorRepr {
     /// An error that occured during solving.
     #[error("failed solving: {0}")]
     SolverError(String),
-
-    /// An error indicating that the solver does not support the given feature.
-    #[error("unsupported: {0}")]
-    Unsupported(String),
-
-    /// An otherwise unclassified error.
-    #[error("failed: {0}")]
-    Other(String),
 }
 
 // Resolve transitive conversion
