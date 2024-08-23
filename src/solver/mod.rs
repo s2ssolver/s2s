@@ -62,14 +62,27 @@ impl std::fmt::Display for SolverResult {
 
 #[derive(Debug, Clone, Default)]
 pub struct SolverOptions {
+    dry: bool,
+    simplify: bool,
+    cegar: bool,
+    max_bounds: usize,
+}
+
+impl SolverOptions {
     /// Whether to use a dry-run mode.
     /// In dry-run mode, the solver does not actually solve the instance, but only preprocesses it.
     /// If after preprcessing the formula is not trivially sat/unsat, the solver returns `Unknown`.
-    dry: bool,
+    pub fn dry(&mut self, dry: bool) -> &mut Self {
+        self.dry = dry;
+        self
+    }
 
     /// Whether to simplify the formula before solving it.
     /// Simplification is done by applying algebraic simplifications to the formula.
-    simplify: bool,
+    pub fn simplify(&mut self, simplify: bool) -> &mut Self {
+        self.simplify = simplify;
+        self
+    }
 
     /// Whether to use a counterexample-guided abstraction refinement (CEGAR) strategy if unsupported literals are found.
     /// If CEGAR is enabled, the solver solves an abstracted version of the formula containing only supported literals.
@@ -77,35 +90,34 @@ pub struct SolverOptions {
     /// If the model is not a solution, the solver tries to refine the abstraction and solve the abstracted formula again.
     /// If the abstracted formula is unsatisfiable, the solver refines the abstraction and tries again.
     /// If this is set to false, the solver will refuse to solve the formula if it contains unsupported literals.
-    cegar: bool,
+    pub fn cegar(&mut self, cegar: bool) -> &mut Self {
+        self.cegar = cegar;
+        self
+    }
 
     /// The maximum upper bound the solver will try to find a solution for.
     /// If no solution is found within this bound, the solver returns `Unknown`.
-    max_bounds: usize,
+    pub fn max_bounds(&mut self, max_bounds: usize) -> &mut Self {
+        self.max_bounds = max_bounds;
+        self
+    }
 }
 
 /// The solver.
 
-pub struct Solver<'a> {
+#[derive(Default)]
+pub struct Solver {
     options: SolverOptions,
-    context: &'a mut Context,
 }
 
-impl<'a> Solver<'a> {
-    pub fn new(context: &'a mut Context) -> Self {
-        Self {
-            options: SolverOptions::default(),
-            context,
-        }
+impl Solver {
+    pub fn with_options(options: SolverOptions) -> Self {
+        Self { options }
     }
 
-    pub fn with_options(context: &'a mut Context, options: SolverOptions) -> Self {
-        Self { options, context }
-    }
-
-    pub fn solve(&mut self, fm: &Formula, ctx: &Context) -> Result<SolverResult, Error> {
+    pub fn solve(&mut self, fm: &Formula, ctx: &mut Context) -> Result<SolverResult, Error> {
         // Preprocess
-        let fm_preprocessed = self.preprocess(&fm)?;
+        let fm_preprocessed = self.preprocess(&fm, ctx)?;
 
         // Build the Boolean abstraction
         let abstraction = abstract_fm(&fm_preprocessed);
@@ -120,9 +132,13 @@ impl<'a> Solver<'a> {
         self.run(fm, abstraction, init_bounds, alphabet, ctx)
     }
 
-    fn preprocess(&mut self, fm: &Formula) -> Result<Formula, PreprocessingError> {
+    fn preprocess(
+        &mut self,
+        fm: &Formula,
+        ctx: &mut Context,
+    ) -> Result<Formula, PreprocessingError> {
         // TODO: Simplify
-        preprocess::normalize(fm, self.context)
+        preprocess::normalize(fm, ctx)
     }
 
     fn init_bounds(&self, fm: &Formula) -> Bounds {

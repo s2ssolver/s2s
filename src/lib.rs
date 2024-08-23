@@ -11,10 +11,29 @@ mod abstraction;
 mod bounds;
 mod context;
 mod encode;
-pub mod error;
+mod error;
 mod preprocess;
 mod repr;
 mod sat;
 mod solver;
 
-pub use solver::{SolverOld, SolverResult};
+use std::io::BufRead;
+
+use context::Context;
+pub use error::PublicError as Error;
+pub use solver::{Solver, SolverOptions, SolverResult};
+
+/// Solves an SMT problem over the theory of strings.
+/// The input problem must be in SMT-LIB format.
+/// Returns the result of the satisfiability check.
+/// Optionally, the solver can be configured with additional options.
+/// If no options are given, the solver uses the default options.
+pub fn solve_smt(smt: impl BufRead, options: Option<SolverOptions>) -> Result<SolverResult, Error> {
+    let mut ctx = Context::default();
+    let script = repr::ast::parse::parse_script(smt, &mut ctx)?;
+
+    let formula = preprocess::convert_script(&script, &mut ctx)?;
+
+    let mut solver = Solver::with_options(options.unwrap_or_default());
+    solver.solve(&formula, &mut ctx)
+}

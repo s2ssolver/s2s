@@ -2,7 +2,7 @@ use std::{path::Path, process::exit, time::Instant};
 
 use clap::{Parser as ClapParser, ValueEnum};
 
-use satstr::{model::Evaluable, solve, Parser, SolverResult};
+use satstr::{solve_smt, SolverOptions, SolverResult};
 
 /// The command line interface for the solver
 #[derive(ClapParser, Debug)]
@@ -13,7 +13,7 @@ struct Options {
     format: Format,
 
     #[arg(long)]
-    skip_preprocess: bool,
+    skip_simp: bool,
 
     /// If this is set to true, the solver will double-check that the found model is correct.
     #[arg(long)]
@@ -51,84 +51,45 @@ fn main() {
     env_logger::init();
     let ts = Instant::now();
     let cli = Options::parse();
-    let parser = match cli.format {
-        Format::Woorpje => Parser::WoorpjeParser,
-        Format::Smt => Parser::Smt2Parser,
-        Format::Auto => {
-            let ext = cli.file.split('.').last();
-            match ext {
-                Some("eq") => Parser::WoorpjeParser,
-                Some("smt2") | Some("smt") | Some("smt25") | Some("smt26") => Parser::Smt2Parser,
-                Some(other) => {
-                    log::error!(
-                        "Format set to 'auto', but the file extension is no supported: {}",
-                        other
-                    );
-                    println!("error");
-                    exit(-1);
-                }
-                None => {
-                    log::error!(
-                        "Format set to 'auto', but could not detect format from file extension of file {}",
-                        cli.file
-                    );
-                    println!("error");
-                    exit(-1);
-                }
-            }
-        }
-    };
     let file = Path::new(&cli.file);
     if !file.exists() {
         panic!("File not found: {}", cli.file);
     }
-    let mut instance = parser.parse(file.to_path_buf()).unwrap();
-    if let Some(bound) = cli.max_bound {
-        instance.set_ubound(bound);
-    }
-    if cli.model {
-        instance.set_print_model(true);
-    }
-    instance.set_lbound(cli.min_bound);
-    instance.set_dry_run(cli.dry);
-    if cli.skip_preprocess {
-        instance.set_preprocess(false);
-    }
-    // Keep a copy of the formula since the solver might modify it during preprocessing
-    // We want to validate the model against the original formula
-    let original_formula = instance.get_formula().clone();
 
-    let res = match solve(&mut instance) {
+    let opts = convert_options(&cli);
+    let smt = std::io::BufReader::new(std::fs::File::open(file).unwrap());
+    let res = match solve_smt(smt, Some(opts)) {
         Ok(res) => res,
-        Err(e) => {
-            log::error!("{}", e);
-            println!("error");
-            exit(-1);
+        Err(err) => {
+            eprintln!("Error: {}", err);
+            exit(1);
         }
     };
 
     log::info!("Done ({}ms).", ts.elapsed().as_millis());
     match res {
         SolverResult::Sat(Some(model)) => {
-            if cli.verify_model {
-                match original_formula.eval(&model) {
-                    Some(true) => {}
-                    Some(false) => panic!("Model is incorrect ({})", model),
-                    None => panic!("Model is incomplete ({})", model),
-                }
-            }
             println!("sat");
-            if instance.get_print_model() {
+            if cli.model {
                 println!("{}", model);
             }
         }
         SolverResult::Sat(None) => {
             println!("sat");
-            if instance.get_print_model() {
-                log::error!("No model found");
-            }
         }
         SolverResult::Unsat => println!("unsat"),
         SolverResult::Unknown => println!("unknown"),
     }
+}
+
+fn convert_options(options: &Options) -> SolverOptions {
+    let mut opts = SolverOptions::default();
+    opts.dry(options.dry);
+    if let Some(max) = options.max_bound {
+        opts.max_bounds(max);
+    }
+    if options.skip_simp {
+        opts.simplify(false);
+    }
+    opts
 }

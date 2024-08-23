@@ -112,7 +112,3 @@ impl Context {
     //     self.ir_builder.borrow_mut()
     // }
 }
-
-struct NFABuilder {
-    nfa_cache: HashMap<Regex, Rc<NFA>>,
-}

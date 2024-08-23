@@ -17,19 +17,19 @@ pub enum ErrorRepr {
     PreprocessingError(PreprocessingError),
 
     /// An error that occured during encoding.
-    #[error("Failed to encode: {0}")]
+    #[error("failed to encode: {0}")]
     EncodingError(String),
 
     /// An error that occured during solving.
-    #[error("Failed solving: {0}")]
+    #[error("failed solving: {0}")]
     SolverError(String),
 
     /// An error indicating that the solver does not support the given feature.
-    #[error("Unsupported: {0}")]
+    #[error("unsupported: {0}")]
     Unsupported(String),
 
     /// An otherwise unclassified error.
-    #[error("Failed: {0}")]
+    #[error("failed: {0}")]
     Other(String),
 }
 
@@ -38,5 +38,11 @@ pub enum ErrorRepr {
 impl From<PreprocessingError> for PublicError {
     fn from(err: PreprocessingError) -> Self {
         PublicError(ErrorRepr::PreprocessingError(err))
+    }
+}
+
+impl From<AstError> for PublicError {
+    fn from(err: AstError) -> Self {
+        PublicError(ErrorRepr::ParseError(err))
     }
 }

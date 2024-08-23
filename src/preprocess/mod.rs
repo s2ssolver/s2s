@@ -9,6 +9,8 @@ use crate::{
     repr::{ir::Formula, Sort},
 };
 
+pub use convert::convert_script;
+
 // TODO: Make struct with type for each error, and a field for the Expression/ExpressionType that caused the error
 #[derive(Error, Debug)]
 pub enum PreprocessingError {

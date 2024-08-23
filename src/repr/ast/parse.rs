@@ -20,29 +20,14 @@ use smt2parser::{
     CommandStream,
 };
 
-pub fn parse_script_file(
-    path: &Path,
-    ctx: &mut Context,
-    builder: &mut AstBuilder,
-) -> Result<Script, AstError> {
-    let file = std::fs::File::open(path)?;
-    let reader = std::io::BufReader::new(file);
-    parse_script(reader, ctx, builder)
-}
-
-pub fn parse_script(
-    input: impl std::io::BufRead,
-    ctx: &mut Context,
-    builder: &mut AstBuilder,
-) -> Result<Script, AstError> {
+pub fn parse_script(input: impl std::io::BufRead, ctx: &mut Context) -> Result<Script, AstError> {
     let cmds = CommandStream::new(input, SyntaxBuilder, None);
     let mut script = Script::default();
     let cmds = cmds.collect::<Result<Vec<_>, _>>()?;
-
     for cmd in cmds {
         match cmd {
             Command::Assert { term } => {
-                let expr = convert_term(&term, ctx, builder)?;
+                let expr = convert_term(&term, ctx)?;
                 script.assert(expr);
             }
             Command::CheckSat => script.check_sat(),
@@ -76,31 +61,27 @@ pub fn parse_script(
     Ok(script)
 }
 
-fn convert_term(
-    term: &Term,
-    ctx: &mut Context,
-    builder: &mut AstBuilder,
-) -> Result<Rc<Expression>, AstError> {
+fn convert_term(term: &Term, ctx: &mut Context) -> Result<Rc<Expression>, AstError> {
     match term {
         Term::Constant(c) => match c {
             Constant::String(s) => {
                 let parsed = parse_smtlib_string(s)?;
-                Ok(builder.string(parsed))
+                Ok(ctx.ast_builder().string(parsed))
             }
             Constant::Numeral(n) => n
                 .to_isize()
-                .map(|n| builder.int(n))
+                .map(|n| ctx.ast_builder().int(n))
                 .ok_or(AstError::Unsupported(format!("{}", n))),
             _ => Err(AstError::Unsupported(format!("{}", c))),
         },
         Term::QualIdentifier(i) => {
             let var = convert_variable(i, ctx)?;
-            Ok(builder.var(var))
+            Ok(ctx.ast_builder().var(var))
         }
         Term::Application {
             qual_identifier,
             arguments,
-        } => convert_application(qual_identifier, arguments, ctx, builder),
+        } => convert_application(qual_identifier, arguments, ctx),
         _ => Err(AstError::Unsupported(format!("{}", term))),
     }
 }
@@ -211,7 +192,6 @@ fn convert_application(
     qual_identifier: &QualIdentifier,
     arguments: &[Term],
     ctx: &mut Context,
-    builder: &mut AstBuilder,
 ) -> Result<Rc<Expression>, AstError> {
     let identifier = match qual_identifier {
         QualIdentifier::Simple { identifier } => identifier,
@@ -222,23 +202,23 @@ fn convert_application(
         Identifier::Simple { symbol } => {
             if symbol.0 == "str.in_re" || symbol.0 == "str.in.re" {
                 assert!(arguments.len() == 2);
-                let pat = convert_term(&arguments[0], ctx, builder)?;
-                let re = convert_re(ctx, &arguments[1], builder)?;
-                let re = builder.regex(re);
-                Ok(builder.in_re(pat, re))
+                let pat = convert_term(&arguments[0], ctx)?;
+                let re = convert_re(ctx, &arguments[1])?;
+                let re = ctx.ast_builder().regex(re);
+                Ok(ctx.ast_builder().in_re(pat, re))
             } else {
                 let args = arguments
                     .iter()
-                    .map(|arg| convert_term(arg, ctx, builder))
+                    .map(|arg| convert_term(arg, ctx))
                     .collect::<Result<Vec<_>, _>>()?;
-                smt2expr(&symbol.0, args, builder)
+                smt2expr(&symbol.0, args, ctx)
             }
         }
         Identifier::Indexed { .. } => Err(AstError::Unsupported(identifier.to_string())),
     }
 }
 
-fn convert_re(ctx: &mut Context, term: &Term, builder: &mut AstBuilder) -> Result<Regex, AstError> {
+fn convert_re(ctx: &mut Context, term: &Term) -> Result<Regex, AstError> {
     match term {
         Term::Application {
             qual_identifier,
@@ -253,7 +233,7 @@ fn convert_re(ctx: &mut Context, term: &Term, builder: &mut AstBuilder) -> Resul
             };
             match name.as_str() {
                 "str.to_re" | "str.to.re" if arguments.len() == 1 => {
-                    let s_term = convert_term(&arguments[0], ctx, builder)?;
+                    let s_term = convert_term(&arguments[0], ctx)?;
                     let s = if let ExprType::String(StrExpr::Constant(s)) = s_term.get_type() {
                         s
                     } else {
@@ -262,11 +242,11 @@ fn convert_re(ctx: &mut Context, term: &Term, builder: &mut AstBuilder) -> Resul
                             arguments[0]
                         )));
                     };
-                    Ok(builder.re_builder().word(s.clone().into()))
+                    Ok(ctx.ast_builder().re_builder().word(s.clone().into()))
                 }
                 "re.range" => {
                     assert!(arguments.len() == 2);
-                    let s_term = convert_term(&arguments[0], ctx, builder)?;
+                    let s_term = convert_term(&arguments[0], ctx)?;
                     let start = if let ExprType::String(StrExpr::Constant(s)) = s_term.get_type() {
                         s
                     } else {
@@ -275,7 +255,7 @@ fn convert_re(ctx: &mut Context, term: &Term, builder: &mut AstBuilder) -> Resul
                             arguments[0]
                         )));
                     };
-                    let e_term = convert_term(&arguments[1], ctx, builder)?;
+                    let e_term = convert_term(&arguments[1], ctx)?;
                     let end = if let ExprType::String(StrExpr::Constant(s)) = e_term.get_type() {
                         s
                     } else {
@@ -285,9 +265,10 @@ fn convert_re(ctx: &mut Context, term: &Term, builder: &mut AstBuilder) -> Resul
                         )));
                     };
                     if start.len() != 1 || end.len() != 1 {
-                        Ok(builder.re_builder().none())
+                        Ok(ctx.ast_builder().re_builder().none())
                     } else {
-                        Ok(builder
+                        Ok(ctx
+                            .ast_builder()
                             .re_builder()
                             .range(start.chars().next().unwrap(), end.chars().next().unwrap()))
                     }
@@ -295,42 +276,42 @@ fn convert_re(ctx: &mut Context, term: &Term, builder: &mut AstBuilder) -> Resul
                 "re.++" => {
                     let args = arguments
                         .iter()
-                        .map(|arg| convert_re(ctx, arg, builder))
+                        .map(|arg| convert_re(ctx, arg))
                         .collect::<Result<Vec<_>, _>>()?;
-                    Ok(builder.re_builder().concat(args))
+                    Ok(ctx.ast_builder().re_builder().concat(args))
                 }
                 "re.union" => {
                     let args = arguments
                         .iter()
-                        .map(|arg| convert_re(ctx, arg, builder))
+                        .map(|arg| convert_re(ctx, arg))
                         .collect::<Result<Vec<_>, _>>()?;
-                    Ok(builder.re_builder().union(args))
+                    Ok(ctx.ast_builder().re_builder().union(args))
                 }
                 "re.inter" => {
                     let args = arguments
                         .iter()
-                        .map(|arg| convert_re(ctx, arg, builder))
+                        .map(|arg| convert_re(ctx, arg))
                         .collect::<Result<Vec<_>, _>>()?;
-                    Ok(builder.re_builder().inter(args))
+                    Ok(ctx.ast_builder().re_builder().inter(args))
                 }
                 "re.*" if arguments.len() == 1 => {
-                    let arg = convert_re(ctx, &arguments[0], builder)?;
-                    Ok(builder.re_builder().star(arg))
+                    let arg = convert_re(ctx, &arguments[0])?;
+                    Ok(ctx.ast_builder().re_builder().star(arg))
                 }
                 "re.+" if arguments.len() == 1 => {
-                    let arg = convert_re(ctx, &arguments[0], builder)?;
-                    Ok(builder.re_builder().plus(arg))
+                    let arg = convert_re(ctx, &arguments[0])?;
+                    Ok(ctx.ast_builder().re_builder().plus(arg))
                 }
                 "re.opt" if arguments.len() == 1 => {
-                    let arg = convert_re(ctx, &arguments[0], builder)?;
-                    Ok(builder.re_builder().opt(arg))
+                    let arg = convert_re(ctx, &arguments[0])?;
+                    Ok(ctx.ast_builder().re_builder().opt(arg))
                 }
                 "re.comp" if arguments.len() == 1 => {
-                    let arg = convert_re(ctx, &arguments[0], builder)?;
-                    Ok(builder.re_builder().comp(arg))
+                    let arg = convert_re(ctx, &arguments[0])?;
+                    Ok(ctx.ast_builder().re_builder().comp(arg))
                 }
                 "re.loop" if arguments.len() == 1 && indices.len() == 2 => {
-                    let arg = convert_re(ctx, &arguments[0], builder)?;
+                    let arg = convert_re(ctx, &arguments[0])?;
                     let lower = if let Index::Numeral(n) = &indices[0] {
                         n.to_usize()
                             .ok_or(AstError::Unsupported(format!("{}", n)))?
@@ -344,10 +325,10 @@ fn convert_re(ctx: &mut Context, term: &Term, builder: &mut AstBuilder) -> Resul
                         return Err(AstError::Unsupported(format!("{:?}", indices[1])));
                     };
 
-                    Ok(builder.re_builder().loop_(arg, lower, upper))
+                    Ok(ctx.ast_builder().re_builder().loop_(arg, lower, upper))
                 }
                 "re.^" if arguments.len() == 1 && indices.len() == 1 => {
-                    let arg = convert_re(ctx, &arguments[0], builder)?;
+                    let arg = convert_re(ctx, &arguments[0])?;
                     let n = if let Index::Numeral(n) = &indices[0] {
                         n.to_usize()
                             .ok_or(AstError::Unsupported(format!("{}", n)))?
@@ -355,7 +336,7 @@ fn convert_re(ctx: &mut Context, term: &Term, builder: &mut AstBuilder) -> Resul
                         return Err(AstError::Unsupported(format!("{:?}", indices[0])));
                     };
 
-                    Ok(builder.re_builder().pow(arg, n))
+                    Ok(ctx.ast_builder().re_builder().pow(arg, n))
                 }
 
                 _ => Err(AstError::Unsupported(term.to_string())),
@@ -363,9 +344,9 @@ fn convert_re(ctx: &mut Context, term: &Term, builder: &mut AstBuilder) -> Resul
         }
         Term::QualIdentifier(QualIdentifier::Simple { identifier }) => match identifier {
             Identifier::Simple { symbol } => match symbol.0.as_str() {
-                "re.all" => Ok(builder.re_builder().all()),
-                "re.none" => Ok(builder.re_builder().none()),
-                "re.allchar" => Ok(builder.re_builder().any_char()),
+                "re.all" => Ok(ctx.ast_builder().re_builder().all()),
+                "re.none" => Ok(ctx.ast_builder().re_builder().none()),
+                "re.allchar" => Ok(ctx.ast_builder().re_builder().any_char()),
                 _ => Err(AstError::Unsupported(format!("{}", symbol))),
             },
             Identifier::Indexed { .. } => Err(AstError::Unsupported(format!("{:?}", term))),
@@ -377,62 +358,82 @@ fn convert_re(ctx: &mut Context, term: &Term, builder: &mut AstBuilder) -> Resul
 fn smt2expr(
     name: &str,
     args: Vec<Rc<Expression>>,
-    builder: &mut AstBuilder,
+    ctx: &mut Context,
 ) -> Result<Rc<Expression>, AstError> {
     match name {
         // Core
-        "not" if args.len() == 1 => Ok(builder.not(args[0].clone())),
-        "and" => Ok(builder.and(args)),
-        "or" => Ok(builder.or(args)),
-        "=>" if args.len() == 2 => Ok(builder.imp(args[0].clone(), args[1].clone())),
-        "=" if args.len() == 2 => Ok(builder.eq(args[0].clone(), args[1].clone())),
+        "not" if args.len() == 1 => Ok(ctx.ast_builder().not(args[0].clone())),
+        "and" => Ok(ctx.ast_builder().and(args)),
+        "or" => Ok(ctx.ast_builder().or(args)),
+        "=>" if args.len() == 2 => Ok(ctx.ast_builder().imp(args[0].clone(), args[1].clone())),
+        "=" if args.len() == 2 => Ok(ctx.ast_builder().eq(args[0].clone(), args[1].clone())),
         "ite" if args.len() == 3 => {
-            Ok(builder.ite(args[0].clone(), args[1].clone(), args[2].clone()))
+            Ok(ctx
+                .ast_builder()
+                .ite(args[0].clone(), args[1].clone(), args[2].clone()))
         }
-        "distinct" => Ok(builder.distinct(args)),
+        "distinct" => Ok(ctx.ast_builder().distinct(args)),
         // String
-        "str.++" => Ok(builder.concat(args)),
-        "str.len" if args.len() == 1 => Ok(builder.length(args[0].clone())),
+        "str.++" => Ok(ctx.ast_builder().concat(args)),
+        "str.len" if args.len() == 1 => Ok(ctx.ast_builder().length(args[0].clone())),
         "str.substr" if args.len() == 3 => {
-            Ok(builder.substr(args[0].clone(), args[1].clone(), args[2].clone()))
+            Ok(ctx
+                .ast_builder()
+                .substr(args[0].clone(), args[1].clone(), args[2].clone()))
         }
-        "str.at" if args.len() == 2 => Ok(builder.str_at(args[0].clone(), args[1].clone())),
-        "str.prefixof" if args.len() == 2 => {
-            Ok(builder.prefix_of(args[0].clone(), args[1].clone()))
+        "str.at" if args.len() == 2 => {
+            Ok(ctx.ast_builder().str_at(args[0].clone(), args[1].clone()))
         }
-        "str.suffixof" if args.len() == 2 => {
-            Ok(builder.suffix_of(args[0].clone(), args[1].clone()))
+        "str.prefixof" if args.len() == 2 => Ok(ctx
+            .ast_builder()
+            .prefix_of(args[0].clone(), args[1].clone())),
+        "str.suffixof" if args.len() == 2 => Ok(ctx
+            .ast_builder()
+            .suffix_of(args[0].clone(), args[1].clone())),
+        "str.contains" if args.len() == 2 => {
+            Ok(ctx.ast_builder().contains(args[0].clone(), args[1].clone()))
         }
-        "str.contains" if args.len() == 2 => Ok(builder.contains(args[0].clone(), args[1].clone())),
         "str.indexof" if args.len() == 3 => {
-            Ok(builder.index_of(args[0].clone(), args[1].clone(), args[2].clone()))
+            Ok(ctx
+                .ast_builder()
+                .index_of(args[0].clone(), args[1].clone(), args[2].clone()))
         }
         "str.replace" if args.len() == 3 => {
-            Ok(builder.replace(args[0].clone(), args[1].clone(), args[2].clone()))
+            Ok(ctx
+                .ast_builder()
+                .replace(args[0].clone(), args[1].clone(), args[2].clone()))
         }
         "str.replace_all" if args.len() == 3 => {
-            Ok(builder.replace_all(args[0].clone(), args[1].clone(), args[2].clone()))
+            Ok(ctx
+                .ast_builder()
+                .replace_all(args[0].clone(), args[1].clone(), args[2].clone()))
         }
         "str.replace_re" if args.len() == 3 => {
-            Ok(builder.replace_re(args[0].clone(), args[1].clone(), args[2].clone()))
+            Ok(ctx
+                .ast_builder()
+                .replace_re(args[0].clone(), args[1].clone(), args[2].clone()))
         }
         "str.replace_re_all" if args.len() == 3 => {
-            Ok(builder.replace_re_all(args[0].clone(), args[1].clone(), args[2].clone()))
+            Ok(ctx
+                .ast_builder()
+                .replace_re_all(args[0].clone(), args[1].clone(), args[2].clone()))
         }
-        "str.to_int" | "str.to_int" if args.len() == 1 => Ok(builder.to_int(args[0].clone())),
-        "str.from_int" if args.len() == 1 => Ok(builder.from_int(args[0].clone())),
+        "str.to_int" | "str.to_int" if args.len() == 1 => {
+            Ok(ctx.ast_builder().to_int(args[0].clone()))
+        }
+        "str.from_int" if args.len() == 1 => Ok(ctx.ast_builder().from_int(args[0].clone())),
 
         // int
-        "+" => Ok(builder.add(args)),
-        "-" if args.len() == 1 => Ok(builder.neg(args[0].clone())),
-        "-" if args.len() == 2 => Ok(builder.sub(args[0].clone(), args[1].clone())),
-        "*" => Ok(builder.mul(args)),
-        "div" if args.len() == 2 => Ok(builder.div(args[0].clone(), args[1].clone())),
-        "mod" if args.len() == 2 => Ok(builder.mod_(args[0].clone(), args[1].clone())),
-        "<" if args.len() == 2 => Ok(builder.lt(args[0].clone(), args[1].clone())),
-        "<=" if args.len() == 2 => Ok(builder.le(args[0].clone(), args[1].clone())),
-        ">" if args.len() == 2 => Ok(builder.gt(args[0].clone(), args[1].clone())),
-        ">=" if args.len() == 2 => Ok(builder.ge(args[0].clone(), args[1].clone())),
+        "+" => Ok(ctx.ast_builder().add(args)),
+        "-" if args.len() == 1 => Ok(ctx.ast_builder().neg(args[0].clone())),
+        "-" if args.len() == 2 => Ok(ctx.ast_builder().sub(args[0].clone(), args[1].clone())),
+        "*" => Ok(ctx.ast_builder().mul(args)),
+        "div" if args.len() == 2 => Ok(ctx.ast_builder().div(args[0].clone(), args[1].clone())),
+        "mod" if args.len() == 2 => Ok(ctx.ast_builder().mod_(args[0].clone(), args[1].clone())),
+        "<" if args.len() == 2 => Ok(ctx.ast_builder().lt(args[0].clone(), args[1].clone())),
+        "<=" if args.len() == 2 => Ok(ctx.ast_builder().le(args[0].clone(), args[1].clone())),
+        ">" if args.len() == 2 => Ok(ctx.ast_builder().gt(args[0].clone(), args[1].clone())),
+        ">=" if args.len() == 2 => Ok(ctx.ast_builder().ge(args[0].clone(), args[1].clone())),
 
         _ => Err(AstError::Unsupported(format!(
             "{} {}",

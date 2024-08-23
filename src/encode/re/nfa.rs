@@ -444,7 +444,7 @@ mod test {
                         let var_model = _model.get(&var).unwrap().iter().collect::<String>();
                         assert!(
                             re.accepts(&var_model.clone().into()),
-                            "Model {:?} does not match regex {:?}",
+                            "Model `{}` does not match regex `{}`",
                             var_model,
                             re
                         );
