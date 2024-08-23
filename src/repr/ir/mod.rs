@@ -11,6 +11,7 @@ use regulaer::re::Regex;
 mod int;
 mod string;
 mod substitution;
+pub mod util;
 
 pub use int::*;
 pub use string::*;
@@ -38,7 +39,33 @@ pub enum AtomType {
     /// A linear constraint.
     LinearConstraint(LinearConstraint),
 }
-
+impl AtomType {
+    pub fn variables(&self) -> IndexSet<Variable> {
+        match self {
+            AtomType::BoolVar(v) => {
+                let mut vars = IndexSet::new();
+                vars.insert(v.as_ref().clone());
+                vars
+            }
+            AtomType::InRe(inre) => inre.variables(),
+            AtomType::WordEquation(eq) => eq.variables(),
+            AtomType::PrefixOf(p) => p.variables(),
+            AtomType::SuffixOf(s) => s.variables(),
+            AtomType::Contains(c) => c.variables(),
+            AtomType::LinearConstraint(lc) => lc.variables(),
+        }
+    }
+    pub fn constants(&self) -> IndexSet<char> {
+        match self {
+            AtomType::BoolVar(_) | AtomType::LinearConstraint(_) => IndexSet::new(),
+            AtomType::InRe(inre) => inre.constants(),
+            AtomType::WordEquation(eq) => eq.constants(),
+            AtomType::PrefixOf(p) => p.constants(),
+            AtomType::SuffixOf(s) => s.constants(),
+            AtomType::Contains(c) => c.constants(),
+        }
+    }
+}
 impl Display for AtomType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -78,6 +105,9 @@ impl Atom {
     }
     pub fn into_type(self) -> AtomType {
         self.ttype
+    }
+    pub fn variables(&self) -> IndexSet<Variable> {
+        self.ttype.variables()
     }
 }
 impl Display for Atom {
@@ -138,6 +168,11 @@ impl Literal {
             Literal::Positive(a) => Literal::Negative(a.clone()),
             Literal::Negative(a) => Literal::Positive(a.clone()),
         }
+    }
+
+    /// Returns the set of variables in the literal.
+    pub fn variables(&self) -> IndexSet<Variable> {
+        self.atom().variables()
     }
 }
 impl Hash for Literal {
@@ -249,6 +284,10 @@ impl Formula {
             1 => reduced.into_iter().next().unwrap(),
             _ => Formula::Or(reduced.into_iter().collect()),
         }
+    }
+
+    pub fn literals(&self) -> LiteralIterator {
+        LiteralIterator::new(self)
     }
 }
 impl Display for Formula {
@@ -392,6 +431,34 @@ impl IrBuilder {
 
     pub fn nlit(&self, atom: Rc<Atom>) -> Formula {
         self.literal(atom, false)
+    }
+}
+
+pub struct LiteralIterator<'a> {
+    stack: Vec<&'a Formula>,
+}
+
+impl<'a> LiteralIterator<'a> {
+    pub fn new(formula: &'a Formula) -> Self {
+        let stack = vec![formula];
+        LiteralIterator { stack }
+    }
+}
+
+impl<'a> Iterator for LiteralIterator<'a> {
+    type Item = &'a Literal;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        while let Some(formula) = self.stack.pop() {
+            match formula {
+                Formula::True | Formula::False => continue,
+                Formula::Literal(lit) => return Some(lit),
+                Formula::And(fs) | Formula::Or(fs) => {
+                    self.stack.extend(fs.iter());
+                }
+            }
+        }
+        None
     }
 }
 

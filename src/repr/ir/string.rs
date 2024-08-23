@@ -143,7 +143,7 @@ impl Pattern {
     }
 
     /// Returns the set of variables that occur in the pattern.
-    pub fn vars(&self) -> IndexSet<Variable> {
+    pub fn variables(&self) -> IndexSet<Variable> {
         self.symbols
             .iter()
             .filter_map(|x| match x {
@@ -398,8 +398,8 @@ impl WordEquation {
 
     /// Returns the set of variables that occur in the word equation.
     pub fn variables(&self) -> IndexSet<Variable> {
-        let mut vars = self.lhs().vars();
-        vars.extend(self.rhs().vars());
+        let mut vars = self.lhs().variables();
+        vars.extend(self.rhs().variables());
         vars
     }
 
@@ -454,6 +454,10 @@ impl RegularConstraint {
     pub fn re(&self) -> &Regex {
         &self.re
     }
+
+    pub fn variables(&self) -> IndexSet<Variable> {
+        self.pattern().variables()
+    }
 }
 impl ConstReducible for RegularConstraint {
     /// If the constraint is constant, i.e., the pattern contains no variables, returns whether the pattern is in the language of the regular expression.
@@ -495,6 +499,12 @@ impl PrefixOf {
     pub fn of(&self) -> &Pattern {
         &self.of
     }
+    pub(crate) fn variables(&self) -> IndexSet<Variable> {
+        let mut vars = self.prefix.variables();
+        vars.extend(self.of.variables());
+        vars
+    }
+
 }
 impl Substitutable for PrefixOf {
     fn apply_substitution(&self, sub: &super::VarSubstitution) -> Self {
@@ -538,6 +548,13 @@ impl SuffixOf {
     pub fn of(&self) -> &Pattern {
         &self.of
     }
+
+    pub(crate) fn variables(&self) -> IndexSet<Variable> {
+        let mut vars = self.suffix.variables();
+        vars.extend(self.of.variables());
+        vars
+    }
+
 }
 impl Substitutable for SuffixOf {
     fn apply_substitution(&self, sub: &super::VarSubstitution) -> Self {
@@ -581,6 +598,12 @@ impl Contains {
     /// Returns the haystack of the contains constraint.
     pub fn haystack(&self) -> &Pattern {
         &self.haystack
+    }
+
+    pub(crate) fn variables(&self) -> IndexSet<Variable> {
+        let mut vars = self.needle.variables();
+        vars.extend(self.haystack.variables());
+        vars
     }
 }
 impl Substitutable for Contains {

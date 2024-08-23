@@ -272,6 +272,19 @@ impl LinearConstraint {
     pub fn typ(&self) -> LinearOperator {
         self.typ
     }
+
+    pub(crate) fn variables(&self) -> IndexSet<Variable> {
+        let mut vars = IndexSet::new();
+        for f in self.lhs.iter() {
+            match f {
+                LinearSummand::Mult(x, _) => {
+                    vars.insert(x.variable().clone());
+                }
+                LinearSummand::Const(_) => {}
+            }
+        }
+        vars
+    }
 }
 
 impl ConstReducible for LinearConstraint {
