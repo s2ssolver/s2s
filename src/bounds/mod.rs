@@ -199,11 +199,6 @@ impl Bounds {
 
     /// Sets the domain of a variable.
     pub fn set(&mut self, var: &Variable, domain: IntDomain) -> Option<IntDomain> {
-        assert!(
-            var.sort().is_int(),
-            "Cannot add bounds for non-integer variable {}.",
-            var
-        );
         self.domains.insert(var.clone(), domain)
     }
 
