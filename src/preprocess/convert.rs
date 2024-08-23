@@ -40,6 +40,7 @@ pub fn convert_expr(
             Formula::True => Ok(Formula::False),
             Formula::False => Ok(Formula::True),
         },
+
         ExprType::Core(CoreExpr::Bool(b)) => {
             if *b {
                 Ok(Formula::True)
@@ -61,6 +62,21 @@ pub fn convert_expr(
                 .collect::<Result<_, _>>()?;
             Ok(ctx.ir_builder().or(formulas))
         }
+        ExprType::Core(CoreExpr::Equal(l, r)) => match (l.get_type(), r.get_type()) {
+            (ExprType::Core(_), ExprType::Core(_)) => {
+                Err(PreprocessingError::NotInNNF(expr.to_string()))
+            }
+            (ExprType::String(lhs), ExprType::String(rhs)) => {
+                let atom = convert_word_equation(lhs, rhs, ctx.ir_builder())?;
+                Ok(ctx.ir_builder().plit(atom))
+            }
+            (ExprType::Int(_), ExprType::Int(_)) => todo!("Parse integer equality"),
+            _ => Err(PreprocessingError::InvalidSort {
+                expr: expr.to_string(),
+                expected: l.sort(),
+                got: r.sort(),
+            }),
+        },
         ExprType::Core(_) => Err(PreprocessingError::NotInNNF(expr.to_string())), // TODO: Handle ITE and Distinct
         ExprType::String(s) => {
             let atom = convert_string_atom(s, ctx)?;
