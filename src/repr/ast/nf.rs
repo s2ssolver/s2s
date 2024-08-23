@@ -271,12 +271,18 @@ mod tests {
 
         // Equivalence (x == y) should be converted to (x -> y) and (y -> x) in BNF
         let bnf = expression_to_bnf(&eq_expr, &mut builder);
+        let not_x = builder.not(var_x.clone());
+        let not_y = builder.not(var_y.clone());
         let args = vec![
-            builder.imp(var_x.clone(), var_y.clone()),
-            builder.imp(var_y.clone(), var_x.clone()),
+            builder.or(vec![not_x.clone(), var_y.clone()]),
+            builder.or(vec![not_y.clone(), var_x.clone()]),
         ];
         let expected_bnf = builder.and(args);
-        assert_eq!(expected_bnf, bnf);
+        assert_eq!(
+            expected_bnf, bnf,
+            "Expected: {}\nActual: {}",
+            expected_bnf, bnf
+        );
     }
 
     #[test]
