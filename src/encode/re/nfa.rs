@@ -398,12 +398,12 @@ fn precompute_delta_inv(
 #[cfg(test)]
 mod test {
     use cadical::Solver;
-    use indexmap::IndexSet;
     use regulaer::re::ReBuilder;
 
     use super::*;
 
     use crate::{
+        alphabet::Alphabet,
         bounds::IntDomain,
         encode::domain::{encoding::get_str_substitutions, DomainEncoder},
         repr::Sort,
@@ -413,8 +413,8 @@ mod test {
         let mut ctx = Context::default();
         let var = ctx.new_temp_var(Sort::String);
 
-        let mut alph = IndexSet::from_iter(re.operator().alphabet().iter_chars());
-        alph.insert('a');
+        let mut alph = Alphabet::from(re.operator().alphabet());
+        alph.insert_char('a');
 
         let nfa = ctx.get_nfa(&re);
 

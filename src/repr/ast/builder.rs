@@ -46,16 +46,6 @@ impl AstBuilder {
         self.intern(e)
     }
 
-    pub(crate) fn string_expr(&mut self, expr: StrExpr) -> Rc<Expression> {
-        let e = ExprType::String(expr);
-        self.intern(e)
-    }
-
-    pub(crate) fn int_expr(&mut self, expr: IntExpr) -> Rc<Expression> {
-        let e = ExprType::Int(expr);
-        self.intern(e)
-    }
-
     pub fn with_args(
         &mut self,
         expression: &Rc<Expression>,

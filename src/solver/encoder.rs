@@ -1,10 +1,10 @@
 use std::collections::HashMap;
 
 use cadical::Solver;
-use indexmap::IndexSet;
 
 use crate::{
     abstraction::Definition,
+    alphabet::Alphabet,
     bounds::Bounds,
     context::Context,
     encode::{
@@ -24,7 +24,7 @@ pub struct ProblemEncoder {
 }
 
 impl ProblemEncoder {
-    pub fn new(alphabet: IndexSet<char>) -> Self {
+    pub fn new(alphabet: Alphabet) -> Self {
         Self {
             probes: HashMap::new(),
             encoders: HashMap::new(),

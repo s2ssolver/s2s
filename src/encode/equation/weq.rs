@@ -158,10 +158,10 @@ impl WordEncoder {
         let last_bound = self.last_bound;
         for pos in last_bound..bound {
             let mut p_choices = vec![];
-            for c in dom.alphabet() {
+            for c in dom.alphabet().iter() {
                 let v = pvar();
                 p_choices.push(v);
-                self.define_char_at(pos, *c, v);
+                self.define_char_at(pos, c, v);
             }
             let v_lambda = pvar();
             p_choices.push(v_lambda);
@@ -614,9 +614,9 @@ impl WordEquationEncoder {
                                     1 => {
                                         let m_var: u32 = pvar();
                                         self.var_matches.insert((x.clone(), p, l), m_var);
-                                        for c in dom.alphabet() {
-                                            let cand_c = word.char_at(p, *c);
-                                            let sub_c = subs.get_sub(x, 0, *c).unwrap();
+                                        for c in dom.alphabet().iter() {
+                                            let cand_c = word.char_at(p, c);
+                                            let sub_c = subs.get_sub(x, 0, c).unwrap();
                                             clauses.push(vec![
                                                 nlit(m_var),
                                                 nlit(cand_c),
@@ -649,9 +649,9 @@ impl WordEquationEncoder {
                                             Some(mv) => *mv,
                                             None => {
                                                 let mv = pvar();
-                                                for c in dom.alphabet() {
-                                                    let cand_c = word.char_at(p + (l - 1), *c);
-                                                    let sub_c = subs.get_sub(x, l - 1, *c).unwrap();
+                                                for c in dom.alphabet().iter() {
+                                                    let cand_c = word.char_at(p + (l - 1), c);
+                                                    let sub_c = subs.get_sub(x, l - 1, c).unwrap();
                                                     clauses.push(vec![
                                                         nlit(mv),
                                                         nlit(cand_c),
@@ -787,9 +787,9 @@ impl WordEquationEncoder {
             let v = pvar();
             new_mismatch_selectors.push(v);
             // If v is true, then there is a mismatch at position b
-            for c in dom.alphabet() {
-                let lhs_c = lhs.char_at(b, *c);
-                let rhs_c = rhs.char_at(b, *c);
+            for c in dom.alphabet().iter() {
+                let lhs_c = lhs.char_at(b, c);
+                let rhs_c = rhs.char_at(b, c);
                 result.add_clause(vec![nlit(v), nlit(lhs_c), nlit(rhs_c)]);
             }
             let lhs_lambda = lhs.char_at(b, LAMBDA);
@@ -944,12 +944,12 @@ impl LiteralEncoder for WordEquationEncoder {
         let mut lhs_sol = String::new();
         let mut rhs_sol = String::new();
         for pos in 0..self.bound {
-            for c in dom.alphabet() {
-                if let Some(true) = solver.value(plit(lhs.char_at(pos, *c))) {
-                    lhs_sol.push(*c);
+            for c in dom.alphabet().iter() {
+                if let Some(true) = solver.value(plit(lhs.char_at(pos, c))) {
+                    lhs_sol.push(c);
                 }
-                if let Some(true) = solver.value(plit(rhs.char_at(pos, *c))) {
-                    rhs_sol.push(*c);
+                if let Some(true) = solver.value(plit(rhs.char_at(pos, c))) {
+                    rhs_sol.push(c);
                 }
             }
         }
@@ -1026,6 +1026,7 @@ impl Display for EqSide {
 #[cfg(test)]
 mod tests {
     use crate::{
+        alphabet::Alphabet,
         encode::domain::encoding::get_str_substitutions,
         repr::{
             ir::{ConstReducible, Substitutable, VarSubstitution},
@@ -1036,7 +1037,6 @@ mod tests {
 
     use super::*;
     use cadical::Solver;
-    use indexmap::IndexSet;
 
     use crate::{bounds::IntDomain, encode::domain::DomainEncoder};
 
@@ -1104,7 +1104,7 @@ mod tests {
     fn solve_align(
         eq: &WordEquation,
         bounds: Bounds,
-        alphabet: &IndexSet<char>,
+        alphabet: &Alphabet,
         ctx: &mut Context,
     ) -> Option<bool> {
         let mut encoding = EncodingResult::empty();
@@ -1177,7 +1177,7 @@ mod tests {
     fn solve_align_incremental(
         eq: &WordEquation,
         limit: usize,
-        alphabet: &IndexSet<char>,
+        alphabet: &Alphabet,
         ctx: &mut Context,
     ) -> Option<bool> {
         let mut encoder = WordEquationEncoder::new(eq.clone(), true);
@@ -1276,7 +1276,7 @@ mod tests {
         let mut ctx = Context::default();
         let eq = parse_simple("X", "abc", &mut ctx);
 
-        let res = solve_align_incremental(&eq, 5, &eq.constants(), &mut ctx);
+        let res = solve_align_incremental(&eq, 5, &eq.constants().into_iter().collect(), &mut ctx);
         assert!(matches!(res, Some(true)));
     }
 
@@ -1289,7 +1289,7 @@ mod tests {
             bounds.set(&var, IntDomain::Bounded(0, 10));
         }
 
-        let res = solve_align(&eq, bounds, &eq.constants(), &mut ctx);
+        let res = solve_align(&eq, bounds, &eq.constants().into_iter().collect(), &mut ctx);
         assert!(matches!(res, Some(true)));
     }
 
@@ -1303,7 +1303,7 @@ mod tests {
             bounds.set(&var, IntDomain::Bounded(0, 10));
         }
 
-        let res = solve_align(&eq, bounds, &eq.constants(), &mut ctx);
+        let res = solve_align(&eq, bounds, &eq.constants().into_iter().collect(), &mut ctx);
         assert!(matches!(res, Some(true)));
     }
 
@@ -1316,7 +1316,7 @@ mod tests {
             bounds.set(&var, IntDomain::Bounded(0, 10));
         }
 
-        let res = solve_align(&eq, bounds, &eq.constants(), &mut ctx);
+        let res = solve_align(&eq, bounds, &eq.constants().into_iter().collect(), &mut ctx);
         assert!(matches!(res, Some(false)));
     }
 
@@ -1330,7 +1330,7 @@ mod tests {
             bounds.set(&var, IntDomain::Bounded(0, 10));
         }
 
-        let res = solve_align(&eq, bounds, &eq.constants(), &mut ctx);
+        let res = solve_align(&eq, bounds, &eq.constants().into_iter().collect(), &mut ctx);
         assert!(matches!(res, Some(false)));
     }
 
@@ -1344,7 +1344,7 @@ mod tests {
             bounds.set(&var, IntDomain::Bounded(0, 5));
         }
 
-        let res = solve_align(&eq, bounds, &eq.constants(), &mut ctx);
+        let res = solve_align(&eq, bounds, &eq.constants().into_iter().collect(), &mut ctx);
         assert!(matches!(res, Some(true)));
     }
 
@@ -1357,7 +1357,7 @@ mod tests {
         for var in eq.variables() {
             bounds.set(&var, IntDomain::Bounded(0, 10));
         }
-        let res = solve_align(&eq, bounds, &eq.constants(), &mut ctx);
+        let res = solve_align(&eq, bounds, &eq.constants().into_iter().collect(), &mut ctx);
         assert!(matches!(res, Some(true)));
     }
 
@@ -1370,7 +1370,7 @@ mod tests {
         for var in eq.variables() {
             bounds.set(&var, IntDomain::Bounded(0, 10));
         }
-        let res = solve_align(&eq, bounds, &eq.constants(), &mut ctx);
+        let res = solve_align(&eq, bounds, &eq.constants().into_iter().collect(), &mut ctx);
         assert!(matches!(res, Some(true)));
     }
 
@@ -1385,7 +1385,7 @@ mod tests {
         for var in eq.variables() {
             bounds.set(&var, IntDomain::Bounded(0, 10));
         }
-        let res = solve_align(&eq, bounds, &eq.constants(), &mut ctx);
+        let res = solve_align(&eq, bounds, &eq.constants().into_iter().collect(), &mut ctx);
         assert!(matches!(res, Some(true)));
     }
 
@@ -1398,7 +1398,7 @@ mod tests {
         for var in eq.variables() {
             bounds.set(&var, IntDomain::Bounded(0, 1));
         }
-        let res = solve_align(&eq, bounds, &eq.constants(), &mut ctx);
+        let res = solve_align(&eq, bounds, &eq.constants().into_iter().collect(), &mut ctx);
         assert!(matches!(res, Some(true)));
     }
 
@@ -1412,7 +1412,7 @@ mod tests {
         for var in eq.variables() {
             bounds.set(&var, IntDomain::Bounded(0, 2));
         }
-        let res = solve_align(&eq, bounds, &eq.constants(), &mut ctx);
+        let res = solve_align(&eq, bounds, &eq.constants().into_iter().collect(), &mut ctx);
         assert!(matches!(res, Some(true)));
     }
 
@@ -1426,7 +1426,7 @@ mod tests {
             bounds.set(&var, IntDomain::Bounded(0, 1));
         }
 
-        let res = solve_align(&eq, bounds, &eq.constants(), &mut ctx);
+        let res = solve_align(&eq, bounds, &eq.constants().into_iter().collect(), &mut ctx);
         assert!(matches!(res, Some(false)));
     }
 
@@ -1442,7 +1442,7 @@ mod tests {
         for var in eq.variables() {
             bounds.set(&var, IntDomain::Bounded(0, 50));
         }
-        let res = solve_align(&eq, bounds, &eq.constants(), &mut ctx);
+        let res = solve_align(&eq, bounds, &eq.constants().into_iter().collect(), &mut ctx);
 
         assert!(matches!(res, Some(true)));
     }
@@ -1454,7 +1454,7 @@ mod tests {
             "ebcaeccedbedefbfdFgbagebcbfacgadbefcffcgceeedd",
             &mut ctx,
         );
-        let res = solve_align_incremental(&eq, 50, &eq.constants(), &mut ctx);
+        let res = solve_align_incremental(&eq, 50, &eq.constants().into_iter().collect(), &mut ctx);
 
         assert!(matches!(res, Some(true)));
     }
@@ -1468,7 +1468,7 @@ mod tests {
             &mut ctx,
         );
 
-        let res = solve_align_incremental(&eq, 50, &eq.constants(), &mut ctx);
+        let res = solve_align_incremental(&eq, 50, &eq.constants().into_iter().collect(), &mut ctx);
 
         assert!(matches!(res, Some(true)));
     }
@@ -1477,7 +1477,7 @@ mod tests {
     fn align_sat_t1i97() {
         let mut ctx = Context::default();
         let eq = parse_simple("AccAbccB", "CccAbDbcCcA", &mut ctx);
-        let res = solve_align_incremental(&eq, 50, &eq.constants(), &mut ctx);
+        let res = solve_align_incremental(&eq, 50, &eq.constants().into_iter().collect(), &mut ctx);
 
         assert!(matches!(res, Some(true)));
     }

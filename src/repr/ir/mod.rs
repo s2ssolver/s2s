@@ -6,6 +6,7 @@ use std::{
     rc::Rc,
 };
 
+use indexmap::IndexSet;
 use regulaer::re::Regex;
 
 mod int;
@@ -109,6 +110,9 @@ impl Atom {
     pub fn variables(&self) -> IndexSet<Variable> {
         self.ttype.variables()
     }
+    pub fn constants(&self) -> IndexSet<char> {
+        self.ttype.constants()
+    }
 }
 impl Display for Atom {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -173,6 +177,11 @@ impl Literal {
     /// Returns the set of variables in the literal.
     pub fn variables(&self) -> IndexSet<Variable> {
         self.atom().variables()
+    }
+
+    /// Returns the set of constants in the literal.
+    pub fn constants(&self) -> IndexSet<char> {
+        self.atom().constants()
     }
 }
 impl Hash for Literal {

@@ -1,11 +1,12 @@
 use core::panic;
 
 use encoder::ProblemEncoder;
-use indexmap::IndexSet;
+
 use itertools::Itertools;
 
 use crate::{
     abstraction::{abstract_fm, Abstraction, Definition},
+    alphabet::{self, Alphabet},
     bounds::Bounds,
     context::Context,
     preprocess::{self, PreprocessingError},
@@ -126,7 +127,7 @@ impl Solver {
         let init_bounds = self.init_bounds(&fm_preprocessed);
 
         // Initialize the alphabet
-        let alphabet = self.init_alphabet(&fm_preprocessed);
+        let alphabet = alphabet::infer(fm);
 
         // Start CEGAR loop
         self.run(fm, abstraction, init_bounds, alphabet, ctx)
@@ -145,16 +146,12 @@ impl Solver {
         todo!("Initialize the bounds")
     }
 
-    fn init_alphabet(&self, fm: &Formula) -> IndexSet<char> {
-        todo!("Initialize the alphabet")
-    }
-
     fn run(
         &mut self,
         fm: &Formula,
         abs: Abstraction,
         init_bounds: Bounds,
-        alphabet: IndexSet<char>,
+        alphabet: Alphabet,
         ctx: &Context,
     ) -> Result<SolverResult, Error> {
         // INPUT: Instance (Abstraction(Definition, Skeleton), Init-Bounds, Alphabet, OriginalFormula)
@@ -242,13 +239,4 @@ impl Solver {
     ) -> Vec<Definition> {
         todo!("Refine the abstraction")
     }
-}
-
-/// A solver for a problem instance.
-/// A solver provides a `solve` method that takes an instance and decides whether it is satisfiable.
-/// Implementations of this trait accept different kinds of instances.
-// todo: Default solver for formulas.
-pub trait SolverOld {
-    /// Solve the given instance.
-    fn solve(&mut self) -> Result<SolverResult, Error>;
 }

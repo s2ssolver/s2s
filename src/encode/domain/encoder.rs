@@ -1,9 +1,10 @@
 //! Encoding of the domains of all variables.
 
-use indexmap::{IndexMap, IndexSet};
+use indexmap::IndexMap;
 
 use super::encoding::DomainEncoding;
 use crate::{
+    alphabet::Alphabet,
     bounds::{Bounds, IntDomain},
     context::Context,
     encode::{
@@ -25,7 +26,7 @@ pub struct DomainEncoder {
 }
 
 impl DomainEncoder {
-    pub fn new(alphabet: IndexSet<char>) -> Self {
+    pub fn new(alphabet: Alphabet) -> Self {
         Self {
             strings: StringDomainEncoder::new(alphabet),
             integers: IntegerEncoder::new(),
@@ -63,13 +64,13 @@ impl DomainEncoder {
 // TODO: Encode lengths here.
 pub struct StringDomainEncoder {
     last_bounds: Option<Bounds>,
-    alphabet: IndexSet<char>,
+    alphabet: Alphabet,
     /// Maps each variable to an Incremental exact-one encoder that is used to encode the variable's length.
     var_len_eo_encoders: IndexMap<Variable, IncrementalEO>,
 }
 
 impl StringDomainEncoder {
-    pub fn new(alphabet: IndexSet<char>) -> Self {
+    pub fn new(alphabet: Alphabet) -> Self {
         Self {
             alphabet,
             last_bounds: None,
@@ -115,10 +116,10 @@ impl StringDomainEncoder {
             let alph = &self.alphabet;
             for b in last_bound..new_bound {
                 let mut pos_subs = vec![];
-                for c in alph {
+                for c in alph.iter() {
                     // subvar <--> `var` at position `b` is substituted with `c`
                     let subvar = pvar();
-                    subs.inser_substitution(str_var, b, *c, subvar);
+                    subs.inser_substitution(str_var, b, c, subvar);
                     pos_subs.push(subvar)
                 }
 
@@ -288,11 +289,11 @@ mod tests {
 
     use std::collections::HashMap;
 
-    use indexmap::IndexSet;
     use quickcheck::TestResult;
     use quickcheck_macros::quickcheck;
 
     use crate::{
+        alphabet::Alphabet,
         bounds::{Bounds, IntDomain},
         context::Context,
         encode::{
@@ -310,9 +311,9 @@ mod tests {
         let mut ctx = Context::default();
         let var = ctx.new_temp_var(Sort::String);
 
-        let alphabet = IndexSet::from_iter(vec!['a', 'b', 'c']);
+        let alphabet = Alphabet::from_iter(vec!['a', 'b', 'c']);
         let mut alphabet_lambda = alphabet.clone();
-        alphabet_lambda.insert(LAMBDA);
+        alphabet_lambda.insert_char(LAMBDA);
 
         let mut encoder = StringDomainEncoder::new(alphabet.clone());
         let mb = 10;
@@ -323,12 +324,9 @@ mod tests {
         encoder.encode_substitutions(&bounds, &mut encoding, &ctx);
 
         for b in 0..mb {
-            for c in &alphabet_lambda {
+            for c in alphabet_lambda.iter() {
                 assert!(
-                    encoding
-                        .string()
-                        .get_sub_lit(&var, b as usize, *c)
-                        .is_some(),
+                    encoding.string().get_sub_lit(&var, b as usize, c).is_some(),
                     "{:?}[{}] = {} not defined {:?}",
                     var,
                     b,
@@ -344,9 +342,9 @@ mod tests {
         let mut ctx = Context::default();
         let var = ctx.new_temp_var(Sort::String);
 
-        let alphabet = IndexSet::from_iter(vec!['a', 'b', 'c']);
+        let alphabet = Alphabet::from_iter(vec!['a', 'b', 'c']);
         let mut alphabet_lambda = alphabet.clone();
-        alphabet_lambda.insert(LAMBDA);
+        alphabet_lambda.insert_char(LAMBDA);
 
         let mut encoder = StringDomainEncoder::new(alphabet.clone());
         let mut bounds = Bounds::new();
@@ -358,8 +356,8 @@ mod tests {
         encoder.encode_substitutions(&bounds, &mut encoding, &ctx);
 
         for b in 0..10 {
-            for c in &alphabet_lambda {
-                assert!(encoding.string().get_sub_lit(&var, b, *c).is_some());
+            for c in alphabet_lambda.iter() {
+                assert!(encoding.string().get_sub_lit(&var, b, c).is_some());
             }
         }
     }
@@ -374,7 +372,7 @@ mod tests {
         let mut ctx = Context::default();
         let var = ctx.new_temp_var(Sort::String);
 
-        let alphabet = IndexSet::from_iter(vec!['a', 'b', 'c', 'd']);
+        let alphabet = Alphabet::from_iter(vec!['a', 'b', 'c', 'd']);
 
         let mut encoder = StringDomainEncoder::new(alphabet.clone());
 
@@ -410,7 +408,7 @@ mod tests {
         let mut ctx = Context::default();
         let var = ctx.new_temp_var(Sort::String);
 
-        let alphabet = IndexSet::from_iter(vec!['a', 'b', 'c', 'd']);
+        let alphabet = Alphabet::from_iter(vec!['a', 'b', 'c', 'd']);
 
         let mut encoder = StringDomainEncoder::new(alphabet.clone());
 

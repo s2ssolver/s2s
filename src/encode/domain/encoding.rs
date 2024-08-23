@@ -1,8 +1,9 @@
 use std::{collections::HashMap, rc::Rc};
 
-use indexmap::{IndexMap, IndexSet};
+use indexmap::IndexMap;
 
 use crate::{
+    alphabet::Alphabet,
     bounds::Bounds,
     context::Context,
     encode::LAMBDA,
@@ -18,7 +19,7 @@ pub struct DomainEncoding {
     pub(super) int: IntDomain,
 
     /// The alphabet used for the substitutions
-    alphabet: IndexSet<char>,
+    alphabet: Alphabet,
 
     /// The bounds of the integer variables
     pub(super) bounds: Bounds,
@@ -27,7 +28,7 @@ pub struct DomainEncoding {
 /// Propositional encoding of the domains of all variables.
 
 impl DomainEncoding {
-    pub fn new(alphabet: IndexSet<char>, bounds: Bounds) -> Self {
+    pub fn new(alphabet: Alphabet, bounds: Bounds) -> Self {
         Self {
             string: StringDomain::new(),
             int: IntDomain::default(),
@@ -44,13 +45,13 @@ impl DomainEncoding {
         &self.int
     }
 
-    pub fn alphabet(&self) -> &IndexSet<char> {
+    pub fn alphabet(&self) -> &Alphabet {
         &self.alphabet
     }
 
-    pub fn alphabet_lambda(&self) -> IndexSet<char> {
+    pub fn alphabet_lambda(&self) -> Alphabet {
         let mut alph = self.alphabet.clone();
-        alph.insert(LAMBDA);
+        alph.insert_char(LAMBDA);
         alph
     }
 }

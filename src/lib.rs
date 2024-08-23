@@ -8,6 +8,7 @@
 //! Note however, that the solver does not guarantee that unsatisfiability is detected and thus might not terminate.
 
 mod abstraction;
+mod alphabet;
 mod bounds;
 mod context;
 mod encode;

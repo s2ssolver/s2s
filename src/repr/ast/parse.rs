@@ -1,12 +1,12 @@
-use std::{path::Path, rc::Rc};
+use std::rc::Rc;
 
 use crate::context::Context;
 
+use super::AstError;
 use super::{
     expr::{ExprType, Expression, StrExpr},
     script::Script,
 };
-use super::{AstBuilder, AstError};
 use crate::repr::{Sort, Variable};
 
 use itertools::Itertools;
@@ -50,7 +50,7 @@ pub fn parse_script(input: impl std::io::BufRead, ctx: &mut Context) -> Result<S
                 script.declare_var(var);
             }
             Command::Echo { .. } => {}
-            Command::Exit => {}
+            Command::Exit => script.exit(),
             Command::GetModel => script.get_model(),
             Command::SetLogic { symbol } => script.set_logic(symbol.0.to_owned()),
             Command::SetOption { .. } => {}

@@ -100,7 +100,7 @@ impl Pattern {
     }
 
     /// Returns the alphabet of the pattern, i.e. the set of constant characters that occur in the pattern.
-    pub fn alphabet(&self) -> IndexSet<char> {
+    pub fn constants(&self) -> IndexSet<char> {
         let mut alphabet = IndexSet::new();
         for symbol in &self.symbols {
             if let Symbol::Constant(c) = symbol {
@@ -405,9 +405,15 @@ impl WordEquation {
 
     /// Returns the set of constants that occur in the word equation.
     pub fn constants(&self) -> IndexSet<char> {
-        let mut consts = self.lhs().alphabet();
-        consts.extend(self.rhs().alphabet());
+        let mut consts = self.lhs().constants();
+        consts.extend(self.rhs().constants());
         consts
+    }
+
+    /// We call a word equation `proper` if it contains at least one side with both a variable and a constant.
+    pub fn is_proper(&self) -> bool {
+        (self.lhs().contains_constant() && !self.lhs().is_constant())
+            || (self.rhs().contains_constant() && !self.rhs().is_constant())
     }
 }
 impl ConstReducible for WordEquation {
@@ -458,6 +464,10 @@ impl RegularConstraint {
     pub fn variables(&self) -> IndexSet<Variable> {
         self.pattern().variables()
     }
+
+    pub(crate) fn constants(&self) -> IndexSet<char> {
+        self.pattern().constants()
+    }
 }
 impl ConstReducible for RegularConstraint {
     /// If the constraint is constant, i.e., the pattern contains no variables, returns whether the pattern is in the language of the regular expression.
@@ -499,12 +509,18 @@ impl PrefixOf {
     pub fn of(&self) -> &Pattern {
         &self.of
     }
+
     pub(crate) fn variables(&self) -> IndexSet<Variable> {
         let mut vars = self.prefix.variables();
         vars.extend(self.of.variables());
         vars
     }
 
+    pub(crate) fn constants(&self) -> IndexSet<char> {
+        let mut consts = self.prefix.constants();
+        consts.extend(self.of.constants());
+        consts
+    }
 }
 impl Substitutable for PrefixOf {
     fn apply_substitution(&self, sub: &super::VarSubstitution) -> Self {
@@ -555,6 +571,11 @@ impl SuffixOf {
         vars
     }
 
+    pub(crate) fn constants(&self) -> IndexSet<char> {
+        let mut consts = self.suffix.constants();
+        consts.extend(self.of.constants());
+        consts
+    }
 }
 impl Substitutable for SuffixOf {
     fn apply_substitution(&self, sub: &super::VarSubstitution) -> Self {
@@ -604,6 +625,12 @@ impl Contains {
         let mut vars = self.needle.variables();
         vars.extend(self.haystack.variables());
         vars
+    }
+
+    pub(crate) fn constants(&self) -> IndexSet<char> {
+        let mut consts = self.needle.constants();
+        consts.extend(self.haystack.constants());
+        consts
     }
 }
 impl Substitutable for Contains {
