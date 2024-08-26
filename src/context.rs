@@ -101,7 +101,9 @@ impl Context {
             let builder = self.ast_builder().re_builder();
             let nfa = Compiler::Thompson
                 .nfa(regex, builder)
+                .map(|nfa| nfa.remove_epsilons().expect("Failed to compile regex"))
                 .expect("Failed to compile regex");
+
             let nfa = Rc::new(nfa);
             self.nfa_cache.insert(regex.clone(), nfa.clone());
             nfa
