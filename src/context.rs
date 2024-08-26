@@ -62,6 +62,10 @@ impl Context {
             .chain(self.temp_vars.iter().filter(move |v| v.sort() == sort))
     }
 
+    pub fn vars(&self) -> impl Iterator<Item = &Rc<Variable>> + '_ {
+        self.variables.values().chain(self.temp_vars.iter())
+    }
+
     /// Returns an iterator over all integer variables.
     /// Includes temporary variables.
     pub fn string_vars(&self) -> impl Iterator<Item = &Rc<Variable>> + '_ {

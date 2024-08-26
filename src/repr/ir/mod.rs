@@ -296,7 +296,14 @@ impl Formula {
     }
 
     pub fn literals(&self) -> LiteralIterator {
-        LiteralIterator::new(self)
+        LiteralIterator::new(self, false)
+    }
+
+    /// Returns an iterator over the literals entailed by the formula.
+    /// An entailed literal must be satisfied by any model of the formula.
+    /// The iterator returend by this function iterators only over a subset of the entailed literals by visiting only such literals that are reachable by only following conjunctions.
+    pub fn entailed_literals(&self) -> LiteralIterator {
+        LiteralIterator::new(self, true)
     }
 }
 impl Display for Formula {
@@ -444,13 +451,17 @@ impl IrBuilder {
 }
 
 pub struct LiteralIterator<'a> {
+    entailed_only: bool,
     stack: Vec<&'a Formula>,
 }
 
 impl<'a> LiteralIterator<'a> {
-    pub fn new(formula: &'a Formula) -> Self {
+    pub fn new(formula: &'a Formula, entailed_only: bool) -> Self {
         let stack = vec![formula];
-        LiteralIterator { stack }
+        LiteralIterator {
+            stack,
+            entailed_only,
+        }
     }
 }
 
@@ -462,8 +473,13 @@ impl<'a> Iterator for LiteralIterator<'a> {
             match formula {
                 Formula::True | Formula::False => continue,
                 Formula::Literal(lit) => return Some(lit),
-                Formula::And(fs) | Formula::Or(fs) => {
+                Formula::And(fs) => {
                     self.stack.extend(fs.iter());
+                }
+                Formula::Or(fs) => {
+                    if !self.entailed_only {
+                        self.stack.extend(fs.iter());
+                    }
                 }
             }
         }

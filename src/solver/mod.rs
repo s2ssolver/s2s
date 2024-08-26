@@ -8,10 +8,13 @@ use itertools::Itertools;
 use crate::{
     abstraction::{abstract_fm, Abstraction, Definition},
     alphabet::{self, Alphabet},
-    bounds::Bounds,
+    bounds::{infer::BoundInferer, BoundValue, Bounds, Interval},
     context::Context,
     preprocess::{self, PreprocessingError},
-    repr::ir::{Formula, Literal, VarSubstitution},
+    repr::{
+        ir::{Formula, Literal, VarSubstitution},
+        Sorted,
+    },
     sat::to_cnf,
 };
 
@@ -133,8 +136,12 @@ impl Solver {
         timer = Instant::now();
 
         // Initialize the bounds
-        let init_bounds = self.init_bounds(&fm_preprocessed);
+        let init_bounds = match self.init_bounds(&fm_preprocessed, ctx) {
+            Some(bs) => bs,
+            None => return Ok(SolverResult::Unsat),
+        };
         log::info!("Initialized bounds ({:?})", timer.elapsed());
+        log::debug!("Initial bounds: {}", init_bounds);
         timer = Instant::now();
 
         // Initialize the alphabet
@@ -157,8 +164,32 @@ impl Solver {
         preprocess::normalize(fm, ctx)
     }
 
-    fn init_bounds(&self, fm: &Formula) -> Bounds {
-        todo!("Initialize the bounds")
+    fn init_bounds(&self, fm: &Formula, ctx: &mut Context) -> Option<Bounds> {
+        let mut inferer = BoundInferer::default();
+        for lit in fm.entailed_literals() {
+            inferer.add_literal(lit.clone(), ctx)
+        }
+        let mut bounds = inferer.infer()?;
+        log::debug!("Inferred bounds for entailed literals: {}", bounds);
+        for var in ctx
+            .vars()
+            .filter(|v| v.sort().is_int() || v.sort().is_string())
+        {
+            // TODO: Check options for initial min/max bounds
+            let v_bounds = bounds.get(var.as_ref());
+            let lower = if let Some(lower) = v_bounds.map(|b| b.lower()) {
+                lower
+            } else {
+                0.into()
+            };
+            let upper = if let Some(upper) = v_bounds.map(|b| b.upper()) {
+                upper.min(BoundValue::Num(10))
+            } else {
+                10.into()
+            };
+            bounds.set(var.as_ref().clone(), Interval::new(lower, upper));
+        }
+        Some(bounds)
     }
 
     fn run(
