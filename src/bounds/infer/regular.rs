@@ -168,7 +168,10 @@ impl RegularBoundsInferer {
         components
     }
 
-    pub fn infer_bounds(&self) -> Bounds {
+    pub fn infer_bounds(&self) -> Option<Bounds> {
+        if self.conflict {
+            return None;
+        }
         // For each variable, use the number of states in the intersection automaton as the upper bound.
         let mut bounds = Bounds::default();
         for (v, nfa) in self.intersections.iter() {
@@ -178,17 +181,25 @@ impl RegularBoundsInferer {
         }
 
         // Adjust based on the non-equality constraints.
+        println!("{}", bounds);
         let components = self.partition_neqs();
         for component in components.into_iter() {
             // multiply all upper bounds of the variables in the component.
-            let mut prod = 2isize.checked_pow(component.len() as u32);
+            let mut prod: Option<isize> = Some(1);
             // todo: let lower equalt to minimum(?) of all lower bounds.
             for var in &component {
-                if let Some(upper) = bounds.get(&var).and_then(|b| b.upper_finite()) {
-                    prod = prod.and_then(|p| p.checked_mul(upper as isize));
-                } else {
-                    prod = None;
+                if let Some(bounds_v) = bounds.get(&var) {
+                    if let Some(upper) = bounds_v.upper_finite() {
+                        prod = prod
+                            .and_then(|p| p.checked_mul(upper as isize))
+                            .and_then(|p| p.checked_mul(2));
+                    } else {
+                        // Is infinite, so the product is infinite.
+                        prod = None;
+                    }
+                    println!("\t\t prod: {:?}", prod);
                 }
+                // Otherwise the variable is not constrained by any regular constraint.
             }
             for var in &component {
                 match prod {
@@ -208,7 +219,7 @@ impl RegularBoundsInferer {
             }
         }
 
-        bounds
+        Some(bounds)
     }
 }
 
@@ -227,7 +238,7 @@ mod tests {
         let mut inferer = RegularBoundsInferer::new();
         inferer.add_reg(v.as_ref().clone(), re, true, &mut ctx);
 
-        let bounds = inferer.infer_bounds();
+        let bounds = inferer.infer_bounds().unwrap();
         assert_eq!(bounds.get(&v), Some(Interval::new(0, 3)));
     }
 
@@ -241,7 +252,7 @@ mod tests {
         let mut inferer = RegularBoundsInferer::new();
         inferer.add_reg(v.as_ref().clone(), re, true, &mut ctx);
 
-        let bounds = inferer.infer_bounds();
+        let bounds = inferer.infer_bounds().unwrap();
         assert_eq!(bounds.get(&v), Some(Interval::new(0, 3)));
     }
 
@@ -257,7 +268,7 @@ mod tests {
         inferer.add_reg(v.as_ref().clone(), re1, true, &mut ctx);
         inferer.add_reg(v.as_ref().clone(), re2, true, &mut ctx);
 
-        let bounds = inferer.infer_bounds();
+        let bounds = inferer.infer_bounds().unwrap();
 
         assert_eq!(bounds.get(&v), Some(Interval::new(0, 7)));
     }
@@ -274,7 +285,7 @@ mod tests {
         inferer.add_reg(v.as_ref().clone(), re1, true, &mut ctx);
         inferer.add_reg(v.as_ref().clone(), re2, false, &mut ctx);
 
-        let bounds = inferer.infer_bounds();
+        let bounds = inferer.infer_bounds().unwrap();
 
         assert_eq!(bounds.get(&v), Some(Interval::new(0, 7)));
     }
@@ -293,7 +304,7 @@ mod tests {
         inferer.add_reg(v.as_ref().clone(), re2, false, &mut ctx);
         inferer.add_reg(v.as_ref().clone(), epsi, false, &mut ctx);
 
-        let bounds = inferer.infer_bounds();
+        let bounds = inferer.infer_bounds().unwrap();
         assert_eq!(bounds.get(&v), Some(Interval::new(0, 7)));
     }
 
@@ -312,6 +323,6 @@ mod tests {
         let bounds = inferer.infer_bounds();
 
         assert!(inferer.conflict);
-        assert_eq!(bounds.get(&v), Some(Interval::new(0, 0)));
+        assert_eq!(bounds, None);
     }
 }

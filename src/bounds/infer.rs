@@ -63,7 +63,11 @@ impl Fragment {
 
 #[derive(Debug, Default)]
 pub struct BoundInferer {
+    literals: IndexSet<Literal>,
+    // set to true if literals contain a conflict, i.e., a literal and its negation
+    conflict: bool,
     reg: RegularBoundsInferer,
+    fragment: Fragment,
 }
 
 impl BoundInferer {
@@ -74,6 +78,7 @@ impl BoundInferer {
             .expect("Regular constraints are only supported on variables.");
         let re = reg.re().clone();
         self.reg.add_reg(v, re, pol, ctx);
+        self.fragment.reg();
     }
 
     fn add_weq(&mut self, weq: &WordEquation, pol: bool, ctx: &mut Context) {
@@ -81,26 +86,51 @@ impl BoundInferer {
             WordEquation::ConstantEquality(_, _) => (),
             WordEquation::VarEquality(l, r) => {
                 self.reg.add_var_eq(l.clone(), r.clone(), pol);
+                self.fragment.reg();
             }
             WordEquation::VarAssignment(l, r) => {
                 self.reg.add_const_eq(l.clone(), r.clone(), pol, ctx);
+                self.fragment.reg();
             }
             WordEquation::General(_, _) => todo!("Support general word equations."),
         }
     }
 
     pub fn add_literal(&mut self, lit: Literal, ctx: &mut Context) {
-        let pol = lit.polarity();
-        match lit.atom().get_type() {
-            AtomType::BoolVar(_) => (),
-            AtomType::InRe(reg) => self.add_reg(reg, pol, ctx),
-            AtomType::WordEquation(weq) => self.add_weq(weq, pol, ctx),
-            AtomType::PrefixOf(_) | AtomType::SuffixOf(_) | AtomType::Contains(_) => {
-                unreachable!("Formula not in normal form.")
+        self.literals.insert(lit.clone());
+
+        self.conflict |= self.literals.contains(&lit.inverse());
+
+        if !self.conflict {
+            // skip this if there is a conflict
+            let pol = lit.polarity();
+            match lit.atom().get_type() {
+                AtomType::BoolVar(_) => (),
+                AtomType::InRe(reg) => self.add_reg(reg, pol, ctx),
+                AtomType::WordEquation(weq) => self.add_weq(weq, pol, ctx),
+                AtomType::PrefixOf(_) | AtomType::SuffixOf(_) | AtomType::Contains(_) => {
+                    unreachable!("Formula not in normal form.")
+                }
+                AtomType::LinearConstraint(_) => {
+                    todo!("Support linear constraints.")
+                }
             }
-            AtomType::LinearConstraint(_) => {
-                todo!("Support linear constraints.")
-            }
+        }
+    }
+
+    pub fn infer(&self) -> Option<Bounds> {
+        if self.conflict {
+            return None;
+        }
+        let fragment = (
+            self.fragment.is_reg(),
+            self.fragment.is_weq(),
+            self.fragment.is_lin(),
+        );
+        match fragment {
+            (true, false, false) => self.reg.infer_bounds(),
+            (false, false, false) => Some(Bounds::empty()),
+            _ => None,
         }
     }
 }
