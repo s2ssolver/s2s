@@ -147,6 +147,7 @@ impl Solver {
         // Initialize the alphabet
         let alphabet = alphabet::infer(fm);
         log::info!("Inferred alphabet ({:?})", timer.elapsed());
+        log::debug!("Alphabet: {}", alphabet);
         timer = Instant::now();
 
         // Start CEGAR loop

@@ -181,7 +181,7 @@ impl RegularBoundsInferer {
         }
 
         // Adjust based on the non-equality constraints.
-        println!("{}", bounds);
+
         let components = self.partition_neqs();
         for component in components.into_iter() {
             // multiply all upper bounds of the variables in the component.
@@ -197,7 +197,6 @@ impl RegularBoundsInferer {
                         // Is infinite, so the product is infinite.
                         prod = None;
                     }
-                    println!("\t\t prod: {:?}", prod);
                 }
                 // Otherwise the variable is not constrained by any regular constraint.
             }

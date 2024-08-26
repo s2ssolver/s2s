@@ -116,7 +116,13 @@ impl NFAEncoder {
 
                             // Follow transition if we read a character in the given range
                             for c in lb..=ub {
-                                let sub_var = dom.string().get_sub(&self.var, l, c).unwrap();
+                                let sub_var = dom.string().get_sub(&self.var, l, c).expect(
+                                    format!(
+                                        "Substitution h({})[{}] = {} not found",
+                                        self.var, l, c
+                                    )
+                                    .as_str(),
+                                );
                                 let clause = vec![nlit(reach_var), nlit(sub_var), plit(reach_next)];
                                 res.add_clause(clause);
                             }

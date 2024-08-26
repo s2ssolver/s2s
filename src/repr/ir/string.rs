@@ -517,7 +517,9 @@ impl RegularConstraint {
     }
 
     pub(crate) fn constants(&self) -> IndexSet<char> {
-        self.pattern().constants()
+        let mut alph = self.pattern().constants();
+        alph.extend(self.re().operator().alphabet().iter_chars());
+        alph
     }
 }
 impl ConstReducible for RegularConstraint {

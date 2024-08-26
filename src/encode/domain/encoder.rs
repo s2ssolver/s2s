@@ -39,11 +39,11 @@ impl DomainEncoder {
             self.strings.alphabet.clone(),
             bounds.clone(),
         ));
-        let mut res = EncodingResult::empty();
-        res.extend(
-            self.strings
-                .encode_substitutions(bounds, &mut encoding, ctx),
-        );
+
+        let mut res = self
+            .strings
+            .encode_substitutions(bounds, &mut encoding, ctx);
+
         res.extend(self.integers.encode(bounds, &mut encoding, ctx));
         encoding.bounds = bounds.clone();
         self.encoding = Some(encoding);

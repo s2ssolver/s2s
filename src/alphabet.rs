@@ -1,3 +1,5 @@
+use std::fmt::{self, Display, Formatter};
+
 use indexmap::IndexSet;
 
 use crate::repr::ir::{util::partition_by_vars, AtomType, Formula, Literal};
@@ -31,6 +33,12 @@ impl FromIterator<char> for Alphabet {
 impl From<InnerAlphaber> for Alphabet {
     fn from(alph: InnerAlphaber) -> Self {
         Alphabet(alph)
+    }
+}
+
+impl Display for Alphabet {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        write!(f, "{}", self.0)
     }
 }
 
