@@ -373,27 +373,65 @@ impl Display for Symbol {
 
 // The actual constraints
 
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+pub enum WordEquation {
+    ConstantEquality(String, String),
+    VarEquality(Variable, Variable),
+    VarAssignment(Variable, String),
+    General(Pattern, Pattern),
+}
+
 /// Represents a word equation, i.e. an equation between two patterns.
 // TODO: Make enum for various types (constant, assignment, variable, general)
-#[derive(Clone, Debug, Hash, PartialEq, Eq)]
-pub struct WordEquation {
-    lhs: Pattern,
-    rhs: Pattern,
-}
+
 impl WordEquation {
     /// Creates a new word equation from two patterns.
     pub fn new(lhs: Pattern, rhs: Pattern) -> Self {
-        Self { lhs, rhs }
+        if lhs.is_constant() && rhs.is_constant() {
+            let lhs = lhs.as_constant().unwrap();
+            let rhs = rhs.as_constant().unwrap();
+            WordEquation::ConstantEquality(lhs, rhs)
+        } else if lhs.is_variable() && rhs.is_variable() {
+            // Both single variables => Vareq
+            let lhs = lhs.as_variable().unwrap();
+            let rhs = rhs.as_variable().unwrap();
+            WordEquation::VarEquality(lhs, rhs)
+        } else if lhs.is_variable() && rhs.is_constant() {
+            // Left side variable and right side constants => Assignment
+            let lhs = lhs.as_variable().unwrap();
+            let rhs = rhs.as_constant().unwrap().chars().collect();
+            WordEquation::VarAssignment(lhs, rhs)
+        } else if lhs.is_constant() && rhs.is_variable() {
+            // Symmetric case
+            let lhs = lhs.as_constant().unwrap().chars().collect();
+            let rhs = rhs.as_variable().unwrap();
+            WordEquation::VarAssignment(rhs, lhs)
+        } else {
+            // General case
+            WordEquation::General(lhs, rhs)
+        }
     }
 
     /// Returns the left-hand side of the word equation.
-    pub fn lhs(&self) -> &Pattern {
-        &self.lhs
+    pub fn lhs(&self) -> Pattern {
+        match self {
+            WordEquation::ConstantEquality(lhs, _) => Pattern::constant(lhs),
+            WordEquation::VarEquality(lhs, _) | WordEquation::VarAssignment(lhs, _) => {
+                Pattern::variable(lhs)
+            }
+            WordEquation::General(lhs, _) => lhs.clone(),
+        }
     }
 
     /// Returns the right-hand side of the word equation.
-    pub fn rhs(&self) -> &Pattern {
-        &self.rhs
+    pub fn rhs(&self) -> Pattern {
+        match self {
+            WordEquation::ConstantEquality(_, rhs) | WordEquation::VarAssignment(_, rhs) => {
+                Pattern::constant(rhs)
+            }
+            WordEquation::VarEquality(_, rhs) => Pattern::variable(rhs),
+            WordEquation::General(_, rhs) => rhs.clone(),
+        }
     }
 
     /// Returns the set of variables that occur in the word equation.
@@ -420,22 +458,35 @@ impl ConstReducible for WordEquation {
     /// If the equation is constant, i.e., both sides are constant words, returns whether the two words are equal.
     /// Returns `Some(true)` if the words are equal, `Some(false)` if they are not, and `None` if either side contains variables.
     fn is_constant(&self) -> Option<bool> {
-        let lhs_const = self.lhs.as_constant()?;
-        let rhs_const = self.rhs.as_constant()?;
+        let lhs_const = match self {
+            WordEquation::ConstantEquality(l, _) => l.clone(),
+            WordEquation::VarAssignment(_, _) | WordEquation::VarEquality(_, _) => return None,
+            WordEquation::General(_, _) => self.lhs().as_constant()?,
+        };
+        let rhs_const = match self {
+            WordEquation::ConstantEquality(_, r) => r.clone(),
+            WordEquation::VarAssignment(_, _) | WordEquation::VarEquality(_, _) => return None,
+            WordEquation::General(_, _) => self.rhs().as_constant()?,
+        };
         Some(lhs_const == rhs_const)
     }
 }
 impl Substitutable for WordEquation {
     fn apply_substitution(&self, sub: &super::VarSubstitution) -> Self {
         Self::new(
-            self.lhs.apply_substitution(sub),
-            self.rhs.apply_substitution(sub),
+            self.lhs().apply_substitution(sub),
+            self.rhs().apply_substitution(sub),
         )
     }
 }
 impl Display for WordEquation {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{} = {}", self.lhs, self.rhs)
+        match self {
+            WordEquation::ConstantEquality(l, r) => write!(f, "{} = {}", l, r),
+            WordEquation::VarEquality(l, r) => write!(f, "{} = {}", l, r),
+            WordEquation::VarAssignment(l, r) => write!(f, "{} = {}", l, r),
+            WordEquation::General(l, r) => write!(f, "{} = {}", l, r),
+        }
     }
 }
 

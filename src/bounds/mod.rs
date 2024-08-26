@@ -1,9 +1,10 @@
 //! Bounds on integer variables and the length of string variables.
 
+pub mod infer;
 pub mod step;
 
 use std::{
-    cmp::{max, min, Ordering},
+    cmp::Ordering,
     fmt::Display,
 };
 
@@ -11,8 +12,6 @@ use indexmap::IndexMap;
 use quickcheck::Arbitrary;
 
 use crate::repr::Variable;
-
-//mod infer;
 
 /// Represents a value that can either be a finite integer, positive infinity,
 /// or negative infinity.

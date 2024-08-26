@@ -177,8 +177,8 @@ impl VarSubstitution {
                 ctx.ir_builder().in_re(new_p, inre.re().clone())
             }
             AtomType::WordEquation(weq) => {
-                let new_l = self.apply_pattern(weq.lhs());
-                let new_r = self.apply_pattern(weq.rhs());
+                let new_l = self.apply_pattern(&weq.lhs());
+                let new_r = self.apply_pattern(&weq.rhs());
                 ctx.ir_builder().word_equation(new_l, new_r)
             }
             AtomType::LinearConstraint(lc) => {
