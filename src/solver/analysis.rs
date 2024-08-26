@@ -55,7 +55,7 @@ fn infer_for(on: &IndexSet<&EncodingContext>) -> Result<Bounds, Error> {
 }
 
 fn join(b1: Bounds, b2: Bounds) -> Bounds {
-    let mut max = Bounds::new();
+    let mut max = Bounds::default();
     let vars = b1
         .iter()
         .map(|(v, _)| v)
@@ -87,8 +87,8 @@ fn join(b1: Bounds, b2: Bounds) -> Bounds {
 fn limit_reached(limit: &Bounds, other: &Bounds) -> bool {
     for v in other.iter().map(|(v, _)| v) {
         match (
-            limit.get_with_default(v).get_upper(),
-            other.get_with_default(v).get_upper(),
+            limit.get_with_default(v).get_upper_finite(),
+            other.get_with_default(v).get_upper_finite(),
         ) {
             (Some(ul), Some(u)) => {
                 if ul > u {
@@ -135,7 +135,7 @@ pub(super) fn init_bounds(
     }
     // Use the lower bounds as the upper bounds for the first round.
     // If a variable is unbounded, use the instance's lower bound instead
-    let mut bounds = Bounds::new();
+    let mut bounds = Bounds::default();
     let def_bounds = instance.get_start_bound() as isize;
     for v in instance.vars_of_sort(Sort::Int) {
         match base_bounds.get_lower(v) {
@@ -168,7 +168,7 @@ fn get_limit_bound(
         }
     } else {
         // Unbounded for all variables
-        Bounds::new()
+        Bounds::default()
     };
     Ok(BoundUpdate::Next(limit_bounds))
 }
@@ -221,7 +221,7 @@ pub(super) fn next_bounds(
     let mut was_updated = false;
     let avg_upper = vars_to_update
         .iter()
-        .map(|v| last.get_upper(v).unwrap())
+        .map(|v| last.get_upper_finite(v).unwrap())
         .sum::<isize>()
         / vars_to_update.len() as isize;
     let avg_lower = vars_to_update
@@ -232,7 +232,7 @@ pub(super) fn next_bounds(
 
     for v in vars_to_update.iter() {
         let mut updated = last.get(v).unwrap().clone();
-        let last_upper = last.get_upper(v).unwrap();
+        let last_upper = last.get_upper_finite(v).unwrap();
         let last_lower = last.get_lower(v).unwrap();
 
         // Clamp to threshold
@@ -249,7 +249,7 @@ pub(super) fn next_bounds(
             // If the upper bound is already above the average, increase by 1. This is to avoid growing the bounds too quickly.
             last_upper + 1
         };
-        if let Some(limit) = limit_bounds.get_upper(v) {
+        if let Some(limit) = limit_bounds.get_upper_finite(v) {
             new_upper = min(new_upper, limit);
         }
         if let Some(lower) = limit_bounds.get_lower(v) {
@@ -297,7 +297,7 @@ pub(super) fn next_bounds(
             }
         }
 
-        assert!(next.get(v).and_then(|b| b.get_upper()).is_some());
+        assert!(next.get(v).and_then(|b| b.get_upper_finite()).is_some());
         assert!(next.get(v).and_then(|b| b.get_lower()).is_some());
         next.set(v, updated);
     }

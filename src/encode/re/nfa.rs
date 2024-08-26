@@ -253,7 +253,7 @@ impl LiteralEncoder for NFAEncoder {
             log::debug!("Encoding `{} notin {}` ", self.var, self.regex,);
         }
 
-        let bound = bounds.get_upper(&self.var).unwrap_or(0) as usize;
+        let bound = bounds.get_upper_finite(&self.var).unwrap_or(0) as usize;
 
         log::trace!("Bound: {}", bound);
         if Some(bound) == self.last_bound {
@@ -404,7 +404,7 @@ mod test {
 
     use crate::{
         alphabet::Alphabet,
-        bounds::IntDomain,
+        bounds::Interval,
         encode::domain::{encoding::get_str_substitutions, DomainEncoder},
         repr::Sort,
     };
@@ -418,7 +418,7 @@ mod test {
 
         let nfa = ctx.get_nfa(&re);
 
-        let mut bounds = Bounds::new();
+        let mut bounds = Bounds::default();
 
         let mut encoder = NFAEncoder::new(&var, nfa, &re, pol);
         let mut dom_encoder = DomainEncoder::new(alph);
@@ -426,7 +426,7 @@ mod test {
 
         let mut result = None;
         for bound in ubounds {
-            bounds.set(&var, IntDomain::Bounded(0, *bound as isize));
+            bounds.set(var.as_ref().clone(), Interval::new(0, *bound as isize));
             let mut res = EncodingResult::empty();
 
             res.extend(dom_encoder.encode(&bounds, &ctx));

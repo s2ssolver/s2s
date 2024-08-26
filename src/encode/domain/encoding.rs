@@ -177,7 +177,7 @@ pub fn get_str_substitutions(
                 None;
                 domain_encoding
                     .bounds
-                    .get_upper(str_var)
+                    .get_upper_finite(str_var)
                     .expect("Unbounded string variable") as usize
             ],
         );

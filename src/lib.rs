@@ -18,7 +18,7 @@ mod repr;
 mod sat;
 mod solver;
 
-use std::io::BufRead;
+use std::{io::BufRead, time::Instant};
 
 use context::Context;
 pub use error::PublicError as Error;
@@ -31,10 +31,21 @@ pub use solver::{Solver, SolverOptions, SolverResult};
 /// If no options are given, the solver uses the default options.
 pub fn solve_smt(smt: impl BufRead, options: Option<SolverOptions>) -> Result<SolverResult, Error> {
     let mut ctx = Context::default();
+    let mut t = Instant::now();
+
+    // Parse the input problem
     let script = repr::ast::parse::parse_script(smt, &mut ctx)?;
+    log::info!("Parsed in {:?}", t.elapsed());
+    t = Instant::now();
 
+    // Convert the input problem to a formula
     let formula = preprocess::convert_script(&script, &mut ctx)?;
+    log::info!("Converted in {:?}", t.elapsed());
 
+    // Solve the formula
+    t = Instant::now();
     let mut solver = Solver::with_options(options.unwrap_or_default());
-    solver.solve(&formula, &mut ctx)
+    let res = solver.solve(&formula, &mut ctx);
+    log::info!("Solved in {:?}", t.elapsed());
+    res
 }

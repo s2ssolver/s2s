@@ -23,8 +23,8 @@ impl VareqEncoder {
         bounds: &Bounds,
         dom: &DomainEncoding,
     ) -> Result<EncodingResult, EncodingError> {
-        let lhs_bound = bounds.get_upper(&self.lhs).unwrap() as usize;
-        let rhs_bound = bounds.get_upper(&self.rhs).unwrap() as usize;
+        let lhs_bound = bounds.get_upper_finite(&self.lhs).unwrap() as usize;
+        let rhs_bound = bounds.get_upper_finite(&self.rhs).unwrap() as usize;
         let next_bound = min(lhs_bound, rhs_bound);
 
         let last_bound = self.last_bounds.unwrap_or(0);
@@ -67,8 +67,8 @@ impl VareqEncoder {
         bounds: &Bounds,
         dom: &DomainEncoding,
     ) -> Result<EncodingResult, EncodingError> {
-        let lhs_bound = bounds.get_upper(&self.lhs).unwrap() as usize;
-        let rhs_bound = bounds.get_upper(&self.rhs).unwrap() as usize;
+        let lhs_bound = bounds.get_upper_finite(&self.lhs).unwrap() as usize;
+        let rhs_bound = bounds.get_upper_finite(&self.rhs).unwrap() as usize;
         let next_bound = min(lhs_bound, rhs_bound);
         if let Some(b) = self.last_bounds {
             assert!(next_bound >= b);

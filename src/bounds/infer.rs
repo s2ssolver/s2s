@@ -80,7 +80,7 @@ fn from_regular_constraints(
     let all_single_var = constraints
         .iter()
         .all(|c| c.get_pattern().len() == 1 && c.single_var_pattern());
-    let mut res_bounds = Bounds::new();
+    let mut res_bounds = Bounds::default();
 
     if !all_single_var {
         // Cannot infer anything
@@ -223,7 +223,7 @@ fn refine(partition: &ConstraintPartition, mut bounds: Bounds) -> Result<Bounds,
 /// Infers the domain of the variables of a linear constraint based on the bounds of the other variables.
 fn propagate_bounds(lincon: &LinearConstraint, bounds: &Bounds) -> Bounds {
     // Get the lin constraint and solve if only one variable
-    let mut new_bounds = Bounds::new();
+    let mut new_bounds = Bounds::default();
     match lincon.typ {
         LinearConstraintType::Eq => {
             for factor in lincon.lhs().iter() {
@@ -478,12 +478,12 @@ pub fn infer(constraints: &[Constraint]) -> Result<Bounds, Error> {
         if let Some(_straight_line) = to_straight_line(partition.equations()) {
             // If straight line fragment: use the straight line bound inference
             log::warn!("Straight line fragment not implemented yet");
-            Bounds::new()
+            Bounds::default()
         } else {
-            Bounds::new()
+            Bounds::default()
         }
     } else {
-        Bounds::new()
+        Bounds::default()
     };
 
     // Refine the bounds based on linears propagation

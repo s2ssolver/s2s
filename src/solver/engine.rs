@@ -59,7 +59,7 @@ impl AbstractionSolver {
     fn sanitize_bounds(&self, bounds: &mut Bounds) {
         for v in self.instance.vars_of_sort(Sort::String) {
             let len_var = v.len_var().unwrap();
-            if let Some(upper) = bounds.get_upper(&len_var) {
+            if let Some(upper) = bounds.get_upper_finite(&len_var) {
                 if upper <= 0 {
                     bounds.set_upper(&len_var, 1);
                 }
@@ -270,11 +270,11 @@ fn _sharpen_bounds(eq: &WordEquation, bounds: &Bounds, vars: &Instance) -> Bound
             let abs_j = eq.lhs().count(&Symbol::Variable(var_j.clone())) as isize
                 - eq.rhs().count(&Symbol::Variable(var_j.clone())) as isize;
             if abs_j * denominator < 0 {
-                abs_k += abs_j * bounds.get_upper(&var_j_len).unwrap();
+                abs_k += abs_j * bounds.get_upper_finite(&var_j_len).unwrap();
             }
         }
         let sharpened = std::cmp::max((abs_consts - abs_k) / denominator, 0);
-        if sharpened < bounds.get_upper(&var_k_len).unwrap_or(isize::MAX) {
+        if sharpened < bounds.get_upper_finite(&var_k_len).unwrap_or(isize::MAX) {
             new_bounds.set_upper(&var_k_len, max(sharpened, 1));
         }
     }

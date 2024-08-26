@@ -336,7 +336,7 @@ impl WordEquationEncoder {
 
     /// Returns the upper bound of the given variable.
     fn get_var_bound(&self, var: &Variable, bounds: &Bounds) -> usize {
-        bounds.get_upper(&var).expect("Unbounded variable") as usize
+        bounds.get_upper_finite(&var).expect("Unbounded variable") as usize
     }
 
     /// Returns the variables' bound used in the last round.
@@ -344,7 +344,7 @@ impl WordEquationEncoder {
     fn get_last_var_bound(&self, var: &Variable) -> Option<usize> {
         self.last_var_bounds
             .as_ref()
-            .map(|bounds| bounds.get_upper(var).unwrap() as usize)
+            .map(|bounds| bounds.get_upper_finite(var).unwrap() as usize)
     }
 
     /// Encodes the alignment of a segmented pattern with the solution word by matching the respective lengths.
@@ -590,7 +590,7 @@ impl WordEquationEncoder {
         for (i, s) in segments.iter().enumerate() {
             match s {
                 PatternSegment::Variable(x) => {
-                    for l in 0..=bounds.get_upper(x).unwrap() as usize {
+                    for l in 0..=bounds.get_upper_finite(x).unwrap() as usize {
                         let has_len = dom.string().get_len(x, l).unwrap();
                         for p in segments.prefix_min_len(i, bounds)..self.bound {
                             let start_var = self.start_position(i, p, side);
@@ -683,7 +683,7 @@ impl WordEquationEncoder {
                         }
                         // Next position in variable, if exists, is lambda
                         if self.get_last_var_bound(x).unwrap_or(0) <= l
-                            && l < bounds.get_upper(x).unwrap() as usize
+                            && l < bounds.get_upper_finite(x).unwrap() as usize
                         {
                             // If variable is assigned length l, then the position x[l] (and implicitly all following) must be lambda
                             let sub_lambda = subs.get_sub(x, l, LAMBDA).unwrap();
@@ -742,7 +742,7 @@ impl WordEquationEncoder {
         match &segments.segments[last] {
             PatternSegment::Variable(x) => {
                 for p in 0..self.bound {
-                    for l in 0..=bounds.get_upper(x).unwrap() as usize {
+                    for l in 0..=bounds.get_upper_finite(x).unwrap() as usize {
                         // Filter out l,p pairs that have been encoded already, i.e. p+l < last_bound
                         if p < last_bound
                             && l < self.get_last_var_bound(x).unwrap_or(0)
@@ -830,7 +830,7 @@ impl LiteralEncoder for WordEquationEncoder {
 
             if let Some(last_bounds) = self.last_var_bounds.as_ref() {
                 for v in self.equation.variables() {
-                    if last_bounds.get_upper(&v) != bounds.get_upper(&v) {
+                    if last_bounds.get_upper_finite(&v) != bounds.get_upper_finite(&v) {
                         same_bounds = false;
                         break;
                     }
@@ -992,7 +992,13 @@ impl LiteralEncoder for WordEquationEncoder {
         }
         println!("\tASSIGNED LENGTHS");
         for v in &self.equation.variables() {
-            for l in 0..=self.last_var_bounds.as_ref().unwrap().get_upper(v).unwrap() as usize {
+            for l in 0..=self
+                .last_var_bounds
+                .as_ref()
+                .unwrap()
+                .get_upper_finite(v)
+                .unwrap() as usize
+            {
                 let lvar = dom.string().get_len(v, l).unwrap();
 
                 if let Some(true) = solver.value(plit(lvar)) {
@@ -1027,6 +1033,10 @@ impl Display for EqSide {
 mod tests {
     use crate::{
         alphabet::Alphabet,
+        bounds::{
+            step::{update_bounds, BoundStep},
+            Interval,
+        },
         encode::domain::encoding::get_str_substitutions,
         repr::{
             ir::{ConstReducible, Substitutable, VarSubstitution},
@@ -1038,7 +1048,7 @@ mod tests {
     use super::*;
     use cadical::Solver;
 
-    use crate::{bounds::IntDomain, encode::domain::DomainEncoder};
+    use crate::encode::domain::DomainEncoder;
 
     #[test]
     fn segment_single_var() {
@@ -1151,11 +1161,11 @@ mod tests {
                 }
             }
             for v in &eq.variables() {
-                for l in 0..=bounds.get_upper(v).unwrap() {
-                    let lvar = dom_encoder.encoding().int().get(v, l).unwrap();
+                for l in 0..=bounds.get_upper_finite(v).unwrap() {
+                    let lvar = dom_encoder.encoding().int().get(v, l as isize).unwrap();
 
                     if let Some(true) = solver.value(plit(lvar)) {
-                        println!("|{}| = {}", v, bounds.get_upper(v).unwrap());
+                        println!("|{}| = {}", v, bounds.get_upper_finite(v).unwrap());
                     }
                 }
             }
@@ -1184,16 +1194,29 @@ mod tests {
 
         let mut dom_encoder = DomainEncoder::new(alphabet.clone());
 
-        let mut bounds = Bounds::new();
+        let mut bounds = Bounds::default();
         for var in eq.variables() {
-            bounds.set(&var, IntDomain::Bounded(0, 1));
+            bounds.set(var, Interval::new(0, 1));
         }
 
         let mut result = None;
-        let mut done = bounds.uppers_geq(limit as isize);
+
         let mut solver: Solver = Solver::new();
 
-        while !done {
+        fn done(bounds: &Bounds, limit: usize) -> bool {
+            bounds.iter().all(|(_, i)| i.upper() >= limit.into())
+        }
+
+        fn clamp_uppers(bounds: Bounds, limit: usize) -> Bounds {
+            let mut clamped = Bounds::default();
+            for (v, i) in bounds.iter() {
+                let new_upper = i.upper().min(limit.into());
+                clamped.set(v.clone(), Interval::new(i.lower(), new_upper));
+            }
+            clamped
+        }
+
+        while !done(&bounds, limit) {
             let mut encoding = EncodingResult::empty();
 
             encoding.extend(dom_encoder.encode(&bounds, &ctx));
@@ -1207,11 +1230,9 @@ mod tests {
                 }
                 EncodingResult::Trivial(f) => Some(f),
             };
-            // Limit reached
-            done = bounds.uppers_geq(limit as isize);
 
-            bounds.next_square_uppers();
-            bounds.clamp(-(limit as isize), limit as isize);
+            bounds = update_bounds(&bounds, BoundStep::NextSquare); //BoundStep::NextSquare.apply(&bounds);
+            bounds = clamp_uppers(bounds, limit);
         }
         if let Some(true) = result {
             let solution = get_str_substitutions(dom_encoder.encoding(), ctx, &solver);
@@ -1248,11 +1269,11 @@ mod tests {
             }
             println!("Bounds: {:?}", eq.variables());
             for v in &eq.variables() {
-                for l in 0..=bounds.get_upper(v).unwrap() {
-                    let lvar = dom_encoder.encoding().int().get(v, l).unwrap();
+                for l in 0..=bounds.get_upper_finite(v).unwrap() {
+                    let lvar = dom_encoder.encoding().int().get(v, l as isize).unwrap();
 
                     if let Some(true) = solver.value(plit(lvar)) {
-                        println!("|{}| = {}", v, bounds.get_upper(v).unwrap());
+                        println!("|{}| = {}", v, bounds.get_upper_finite(v).unwrap());
                     }
                 }
             }
@@ -1284,9 +1305,9 @@ mod tests {
     fn align_empty_eq() {
         let mut ctx = Context::default();
         let eq = WordEquation::new(Pattern::from(vec![]), Pattern::from(vec![]));
-        let mut bounds = Bounds::new();
+        let mut bounds = Bounds::default();
         for var in eq.variables() {
-            bounds.set(&var, IntDomain::Bounded(0, 10));
+            bounds.set(var, Interval::new(0, 10));
         }
 
         let res = solve_align(&eq, bounds, &eq.constants().into_iter().collect(), &mut ctx);
@@ -1298,9 +1319,9 @@ mod tests {
         let mut ctx = Context::default();
         let eq = parse_simple("bar", "bar", &mut ctx);
 
-        let mut bounds = Bounds::new();
+        let mut bounds = Bounds::default();
         for var in eq.variables() {
-            bounds.set(&var, IntDomain::Bounded(0, 10));
+            bounds.set(var, Interval::new(0, 10));
         }
 
         let res = solve_align(&eq, bounds, &eq.constants().into_iter().collect(), &mut ctx);
@@ -1311,9 +1332,9 @@ mod tests {
     fn align_trivial_unsat_consts() {
         let mut ctx = Context::default();
         let eq = parse_simple("bar", "barr", &mut ctx);
-        let mut bounds = Bounds::new();
+        let mut bounds = Bounds::default();
         for var in eq.variables() {
-            bounds.set(&var, IntDomain::Bounded(0, 10));
+            bounds.set(var, Interval::new(0, 10));
         }
 
         let res = solve_align(&eq, bounds, &eq.constants().into_iter().collect(), &mut ctx);
@@ -1325,9 +1346,9 @@ mod tests {
         let mut ctx = Context::default();
         let eq = parse_simple("bar", "foo", &mut ctx);
 
-        let mut bounds = Bounds::new();
+        let mut bounds = Bounds::default();
         for var in eq.variables() {
-            bounds.set(&var, IntDomain::Bounded(0, 10));
+            bounds.set(var, Interval::new(0, 10));
         }
 
         let res = solve_align(&eq, bounds, &eq.constants().into_iter().collect(), &mut ctx);
@@ -1339,9 +1360,9 @@ mod tests {
         let mut ctx = Context::default();
         let eq = parse_simple("X", "abc", &mut ctx);
 
-        let mut bounds = Bounds::new();
+        let mut bounds = Bounds::default();
         for var in eq.variables() {
-            bounds.set(&var, IntDomain::Bounded(0, 5));
+            bounds.set(var, Interval::new(0, 5));
         }
 
         let res = solve_align(&eq, bounds, &eq.constants().into_iter().collect(), &mut ctx);
@@ -1353,9 +1374,9 @@ mod tests {
         let mut ctx = Context::default();
         let eq = parse_simple("A", "A", &mut ctx);
 
-        let mut bounds = Bounds::new();
+        let mut bounds = Bounds::default();
         for var in eq.variables() {
-            bounds.set(&var, IntDomain::Bounded(0, 10));
+            bounds.set(var, Interval::new(0, 10));
         }
         let res = solve_align(&eq, bounds, &eq.constants().into_iter().collect(), &mut ctx);
         assert!(matches!(res, Some(true)));
@@ -1366,9 +1387,9 @@ mod tests {
         let mut ctx = Context::default();
         let eq = parse_simple("A", "B", &mut ctx);
 
-        let mut bounds = Bounds::new();
+        let mut bounds = Bounds::default();
         for var in eq.variables() {
-            bounds.set(&var, IntDomain::Bounded(0, 10));
+            bounds.set(var, Interval::new(0, 10));
         }
         let res = solve_align(&eq, bounds, &eq.constants().into_iter().collect(), &mut ctx);
         assert!(matches!(res, Some(true)));
@@ -1381,9 +1402,9 @@ mod tests {
 
         let eq = parse_simple("AB", "BA", &mut ctx);
 
-        let mut bounds = Bounds::new();
+        let mut bounds = Bounds::default();
         for var in eq.variables() {
-            bounds.set(&var, IntDomain::Bounded(0, 10));
+            bounds.set(var, Interval::new(0, 10));
         }
         let res = solve_align(&eq, bounds, &eq.constants().into_iter().collect(), &mut ctx);
         assert!(matches!(res, Some(true)));
@@ -1394,9 +1415,9 @@ mod tests {
         let mut ctx = Context::default();
         let eq = parse_simple("aXc", "abc", &mut ctx);
 
-        let mut bounds = Bounds::new();
+        let mut bounds = Bounds::default();
         for var in eq.variables() {
-            bounds.set(&var, IntDomain::Bounded(0, 1));
+            bounds.set(var, Interval::new(0, 1));
         }
         let res = solve_align(&eq, bounds, &eq.constants().into_iter().collect(), &mut ctx);
         assert!(matches!(res, Some(true)));
@@ -1408,9 +1429,9 @@ mod tests {
 
         let eq = parse_simple("aXb", "YXc", &mut ctx);
 
-        let mut bounds = Bounds::new();
+        let mut bounds = Bounds::default();
         for var in eq.variables() {
-            bounds.set(&var, IntDomain::Bounded(0, 2));
+            bounds.set(var, Interval::new(0, 2));
         }
         let res = solve_align(&eq, bounds, &eq.constants().into_iter().collect(), &mut ctx);
         assert!(matches!(res, Some(true)));
@@ -1421,9 +1442,9 @@ mod tests {
         let mut ctx = Context::default();
         let eq = parse_simple("X", "foo", &mut ctx);
 
-        let mut bounds = Bounds::new();
+        let mut bounds = Bounds::default();
         for var in eq.variables() {
-            bounds.set(&var, IntDomain::Bounded(0, 1));
+            bounds.set(var.clone(), Interval::new(0, 1));
         }
 
         let res = solve_align(&eq, bounds, &eq.constants().into_iter().collect(), &mut ctx);
@@ -1438,9 +1459,9 @@ mod tests {
             "ebcaeccedbedefbfdFgbagebcbfacgadbefcffcgceeedd",
             &mut ctx,
         );
-        let mut bounds = Bounds::new();
+        let mut bounds = Bounds::default();
         for var in eq.variables() {
-            bounds.set(&var, IntDomain::Bounded(0, 50));
+            bounds.set(var, Interval::new(0, 50));
         }
         let res = solve_align(&eq, bounds, &eq.constants().into_iter().collect(), &mut ctx);
 

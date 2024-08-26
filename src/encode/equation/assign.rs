@@ -33,7 +33,7 @@ impl AssignmentEncoder {
         dom: &DomainEncoding,
     ) -> Result<EncodingResult, EncodingError> {
         let len_rhs = self.rhs.len();
-        let bound = bounds.get_upper(&self.lhs).unwrap() as usize;
+        let bound = bounds.get_upper_finite(&self.lhs).unwrap() as usize;
 
         let mut result = EncodingResult::empty();
         if bound < len_rhs {
@@ -84,7 +84,7 @@ impl AssignmentEncoder {
         dom: &DomainEncoding,
     ) -> Result<EncodingResult, EncodingError> {
         let len_rhs = self.rhs.len();
-        let bound = bounds.get_upper(&self.lhs).unwrap() as usize;
+        let bound = bounds.get_upper_finite(&self.lhs).unwrap() as usize;
 
         let mut result = EncodingResult::empty();
 

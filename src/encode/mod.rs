@@ -60,7 +60,7 @@ impl FilledPattern {
             match symbol {
                 Symbol::Constant(c) => positions.push(FilledPos::Const(*c)),
                 Symbol::Variable(v) => {
-                    let len = bounds.get_upper(v).unwrap() as usize;
+                    let len = bounds.get_upper_finite(v).unwrap() as usize;
                     for i in 0..len {
                         positions.push(FilledPos::FilledPos(v.clone(), i))
                     }

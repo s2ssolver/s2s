@@ -88,13 +88,21 @@ impl LiteralEncoder for MddEncoder {
             match &self.linear.lhs()[level] {
                 LinearSummand::Mult(var, coeff) => {
                     let v = var.variable();
-                    let current_u_bound = bounds.get_upper(v).expect("Unbounded variable");
-                    let current_l_bound = bounds.get_lower(v).expect("Unbounded variable");
+                    let current_u_bound =
+                        bounds.get_upper_finite(v).expect("Unbounded variable") as isize;
+                    let current_l_bound =
+                        bounds.get_lower_finite(v).expect("Unbounded variable") as isize;
 
                     for l in current_l_bound..=current_u_bound {
                         if let Some(last_bounds) = self.last_bounds.as_ref() {
-                            if last_bounds.get_lower(v).map(|ll| l >= ll).unwrap_or(false)
-                                && last_bounds.get_upper(v).map(|uu| l <= uu).unwrap_or(false)
+                            if last_bounds
+                                .get_lower_finite(v)
+                                .map(|ll| l >= ll as isize)
+                                .unwrap_or(false)
+                                && last_bounds
+                                    .get_upper_finite(v)
+                                    .map(|uu| l <= uu as isize)
+                                    .unwrap_or(false)
                             {
                                 // Already encoded
                                 continue;

@@ -1,363 +1,341 @@
 //! Bounds on integer variables and the length of string variables.
 
+pub mod step;
+
 use std::{
-    cmp::{max, min},
+    cmp::{max, min, Ordering},
     fmt::Display,
 };
 
 use indexmap::IndexMap;
 use quickcheck::Arbitrary;
 
-use crate::repr::{Sorted, Variable};
+use crate::repr::Variable;
 
 //mod infer;
 
-/// The domain of an integer variable.
-/// The domain is represented as a range of possible values.
-/// The domain can be bounded by only a lower bound, only an upper bound, an upper and lower bound, or be unbounded (i.e. the variable can take any value).
-/// Moreover, the domain can be empty, which means that the variable cannot take any value.
-/// All bounds are inclusive, i.e. a variable with domain [a, b] can take the values a, a+1, ..., b.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum IntDomain {
-    /// Is bounded by an upper and lower bound (inclusive).
-    /// The lower bound must be less than or equal to the upper bound.
-    /// Use `IntDomain::bounded` to create a new bounded domain instead of constructing it directly.
-    Bounded(isize, isize),
-    ///  Is bounded by a lower bound (inclusive), but unbounded from above
-    LowerBounded(isize),
-    /// Is bounded by an upper bound (inclusive), but unbounded from below
-    UpperBounded(isize),
-    /// Is unbounded, the variable can take any value
-    Unbounded,
-    /// Is empty, the variable cannot take a value
-    Empty,
+/// Represents a value that can either be a finite integer, positive infinity,
+/// or negative infinity.
+#[derive(Debug, PartialEq, Eq, Copy, Clone)]
+pub enum BoundValue {
+    PosInf,
+    NegInf,
+    Num(i32),
 }
 
-impl IntDomain {
-    /// Creates a new integer domain that is bounded by the given lower and upper bound.
-    fn bounded(lower: isize, upper: isize) -> Self {
-        if lower > upper {
-            IntDomain::Empty
-        } else {
-            IntDomain::Bounded(lower, upper)
-        }
-    }
-
-    /// Returns the upper bound of the domain if it is bounded from above and `None` otherwise.
-    pub fn get_upper(&self) -> Option<isize> {
-        match self {
-            IntDomain::Bounded(_, u) => Some(*u),
-            IntDomain::LowerBounded(_) => None,
-            IntDomain::UpperBounded(u) => Some(*u),
-            IntDomain::Unbounded => None,
-            IntDomain::Empty => None,
-        }
-    }
-
-    /// Returns the upper bound of the domain if it is bounded from above and `None` otherwise.
-    pub fn get_lower(&self) -> Option<isize> {
-        match self {
-            IntDomain::Bounded(l, _) => Some(*l),
-            IntDomain::LowerBounded(l) => Some(*l),
-            IntDomain::UpperBounded(_) => None,
-            IntDomain::Unbounded => None,
-            IntDomain::Empty => None,
-        }
-    }
-
-    /// Sets the upper bound of the domain.
-    /// If the domain is bounded from above, updates the upper bound.
-    /// If the domain is not bounded from above, imposes an upper bound.
-    /// If the domain is empty, does nothing.
-    pub fn set_upper(&mut self, upper: isize) {
-        match self {
-            IntDomain::UpperBounded(u) | IntDomain::Bounded(_, u) => *u = upper,
-            IntDomain::LowerBounded(l) => *self = Self::bounded(*l, upper),
-            IntDomain::Unbounded => *self = Self::UpperBounded(upper),
-            IntDomain::Empty => {}
-        }
-    }
-
-    /// Sets the lower bound of the domain.
-    /// If the domain is bounded from below, updates the lower bound.
-    /// If the domain is not bounded from below, imposes a lower bound.
-    /// If the domain is empty, does nothing.
-    pub fn set_lower(&mut self, lower: isize) {
-        match self {
-            IntDomain::LowerBounded(l) | IntDomain::Bounded(l, _) => *l = lower,
-            IntDomain::UpperBounded(u) => *self = Self::bounded(lower, *u),
-            IntDomain::Unbounded => *self = Self::LowerBounded(lower),
-            IntDomain::Empty => {}
-        }
-    }
-
-    /// Intersects two integer domains.
-    /// The intersection of two bounded domains is the intersection of the two ranges.
-    /// That is, if the first domain is [a, b] and the second domain is [c, d], then the intersection is [max(a, c), min(b, d)].
-    /// If one domain is bounded and the other is unbounded, the intersection is the bounded domain.
-    /// If one domain is empty, the intersection is empty.
-    fn intersect(&self, other: &Self) -> Self {
+impl PartialOrd for BoundValue {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         match (self, other) {
-            (IntDomain::Empty, _) | (_, IntDomain::Empty) => IntDomain::Empty,
-            (IntDomain::Bounded(l1, u1), IntDomain::Bounded(l2, u2)) => {
-                Self::bounded(max(*l1, *l2), min(*u1, *u2))
-            }
+            (BoundValue::PosInf, BoundValue::PosInf) => Some(Ordering::Equal),
+            (BoundValue::NegInf, BoundValue::NegInf) => Some(Ordering::Equal),
+            (BoundValue::PosInf, _) => Some(Ordering::Greater),
+            (BoundValue::NegInf, _) => Some(Ordering::Less),
+            (_, BoundValue::PosInf) => Some(Ordering::Less),
+            (_, BoundValue::NegInf) => Some(Ordering::Greater),
+            (BoundValue::Num(n1), BoundValue::Num(n2)) => n1.partial_cmp(n2),
+        }
+    }
+}
+impl Ord for BoundValue {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.partial_cmp(other).unwrap()
+    }
+}
 
-            (IntDomain::LowerBounded(l2), IntDomain::Bounded(l1, u1))
-            | (IntDomain::Bounded(l1, u1), IntDomain::LowerBounded(l2)) => {
-                Self::bounded(max(*l1, *l2), *u1)
-            }
+impl BoundValue {
+    /// Returns `Some(n=` if the value is a finite integer `n` and `None` otherwise.
+    pub fn as_num(&self) -> Option<i32> {
+        match self {
+            BoundValue::Num(n) => Some(*n),
+            _ => None,
+        }
+    }
+}
 
-            (IntDomain::UpperBounded(u2), IntDomain::Bounded(l1, u1))
-            | (IntDomain::Bounded(l1, u1), IntDomain::UpperBounded(u2)) => {
-                Self::bounded(*l1, min(*u1, *u2))
-            }
+impl From<i32> for BoundValue {
+    fn from(value: i32) -> Self {
+        BoundValue::Num(value as i32)
+    }
+}
 
-            (IntDomain::Unbounded, IntDomain::Bounded(l1, u1))
-            | (IntDomain::Bounded(l1, u1), IntDomain::Unbounded) => Self::bounded(*l1, *u1),
+impl From<u32> for BoundValue {
+    fn from(value: u32) -> Self {
+        BoundValue::Num(value as i32)
+    }
+}
 
-            (IntDomain::LowerBounded(l1), IntDomain::LowerBounded(l2)) => {
-                Self::LowerBounded(max(*l1, *l2))
-            }
+// Similarly, implement for other types if needed
+impl From<i64> for BoundValue {
+    fn from(value: i64) -> Self {
+        BoundValue::Num(value as i32)
+    }
+}
 
-            (IntDomain::UpperBounded(u), IntDomain::LowerBounded(l))
-            | (IntDomain::LowerBounded(l), IntDomain::UpperBounded(u)) => Self::bounded(*l, *u),
+impl From<u64> for BoundValue {
+    fn from(value: u64) -> Self {
+        BoundValue::Num(value as i32)
+    }
+}
 
-            (IntDomain::Unbounded, IntDomain::LowerBounded(l))
-            | (IntDomain::LowerBounded(l), IntDomain::Unbounded) => Self::LowerBounded(*l),
+// Implement for usize, u8, i8, etc.
+impl From<isize> for BoundValue {
+    fn from(value: isize) -> Self {
+        BoundValue::Num(value as i32)
+    }
+}
 
-            (IntDomain::UpperBounded(u1), IntDomain::UpperBounded(u2)) => {
-                Self::UpperBounded(min(*u1, *u2))
-            }
-            (IntDomain::Unbounded, IntDomain::UpperBounded(u))
-            | (IntDomain::UpperBounded(u), IntDomain::Unbounded) => Self::UpperBounded(*u),
+impl From<usize> for BoundValue {
+    fn from(value: usize) -> Self {
+        BoundValue::Num(value as i32)
+    }
+}
 
-            (IntDomain::Unbounded, IntDomain::Unbounded) => IntDomain::Unbounded,
+impl Display for BoundValue {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            BoundValue::PosInf => write!(f, "∞"),
+            BoundValue::NegInf => write!(f, "-∞"),
+            BoundValue::Num(n) => write!(f, "{}", n),
+        }
+    }
+}
+
+/// Represents an interval [l, u] where the bounds `l` and `u`
+/// can be either finite integers, positive infinity, or negative infinity.
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub struct Interval {
+    /// The lower bound of the interval.
+    lower: BoundValue,
+    /// The upper bound of the interval.
+    upper: BoundValue,
+}
+
+impl Interval {
+    /// Creates a new interval with the specified lower and upper bounds.
+    ///
+    /// # Arguments
+    ///
+    /// * `lower` - The lower bound of the interval.
+    /// * `upper` - The upper bound of the interval.
+    ///
+    /// # Returns
+    ///
+    /// A new `Interval` with the specified bounds.
+    pub fn new(lower: impl Into<BoundValue>, upper: impl Into<BoundValue>) -> Self {
+        Self {
+            lower: lower.into(),
+            upper: upper.into(),
         }
     }
 
-    /// Joins two integer domains.
-    /// The join of two bounded domains is the smallest bounded domain that contains both domains.
-    pub fn join(&self, other: &Self) -> Self {
-        match (&self, &other) {
-            (IntDomain::Empty, other) | (other, IntDomain::Empty) => *(*other),
-            (IntDomain::Bounded(l1, u1), IntDomain::Bounded(l2, u2)) => {
-                let l = *l1.min(l2);
-                let u = *u1.max(u2);
+    /// Creates an interval that is bounded above and unbounded below.
+    ///
+    /// # Arguments
+    ///
+    /// * `upper` - The upper bound of the interval.
+    ///
+    /// # Returns
+    ///
+    /// A new `Interval` with the specified upper bound and negative infinity as the lower bound.
+    pub fn bounded_above(upper: impl Into<BoundValue>) -> Self {
+        Self::new(BoundValue::NegInf, upper)
+    }
+
+    /// Creates an interval that is bounded below and unbounded above.
+    ///
+    /// # Arguments
+    ///
+    /// * `lower` - The lower bound of the interval.
+    ///
+    /// # Returns
+    ///
+    /// A new `Interval` with the specified lower bound and positive infinity as the upper bound.
+    pub fn bounded_below(lower: impl Into<BoundValue>) -> Self {
+        Self::new(lower, BoundValue::PosInf)
+    }
+
+    /// Creates an unbounded interval.
+    ///
+    /// # Returns
+    ///
+    /// A new `Interval` that spans from negative infinity to positive infinity.
+    pub fn unbounded() -> Self {
+        Self::new(BoundValue::NegInf, BoundValue::PosInf)
+    }
+
+    /// Checks if the interval is empty.
+    ///
+    /// An interval is considered empty if its lower bound is greater than its upper bound.
+    pub fn is_empty(&self) -> bool {
+        self.lower > self.upper
+    }
+
+    /// Returns the upper bound of the interval.
+    pub fn upper(&self) -> BoundValue {
+        self.upper
+    }
+
+    /// Returns the upper bound of the interval as a finite integer if it is finite and `None` otherwise.
+    pub fn upper_finite(&self) -> Option<i32> {
+        self.upper.as_num()
+    }
+
+    /// Returns the lower bound of the interval as a finite integer if it is finite and `None` otherwise.
+    pub fn lower_finite(&self) -> Option<i32> {
+        self.lower.as_num()
+    }
+
+    /// Returns the lower bound of the interval.
+    pub fn lower(&self) -> BoundValue {
+        self.lower
+    }
+
+    /// Intersects two intervals and returns the resulting interval.
+    /// The intersection of two intervals is the interval that contains all values that are in both intervals.
+    ///
+    /// # Returns
+    /// A new `Interval` representing the intersection of the two intervals.
+    /// If the intersection is empty, the resulting interval will have `lower > upper`.
+    pub fn intersect(&self, other: Self) -> Self {
+        let lower = self.lower.max(other.lower);
+        let upper = self.upper.min(other.upper);
+
+        Self::new(lower, upper)
+    }
+
+    /// Returns the length of the interval.
+    /// The length of the interval is the cardinality of the set of values in the interval.
+    /// If the interval is empty, the length is 0.
+    /// If the interval is unbounded, the length is infinite, in which case `None` is returned.
+    fn len(&self) -> Option<usize> {
+        match (self.lower, self.upper) {
+            (BoundValue::Num(l), BoundValue::Num(u)) => {
                 if l > u {
-                    IntDomain::Empty
+                    Some(0)
                 } else {
-                    IntDomain::Bounded(l, u)
+                    Some((u as isize - l as isize + 1) as usize)
                 }
             }
-            (IntDomain::Bounded(l1, _), IntDomain::LowerBounded(l2))
-            | (IntDomain::LowerBounded(l2), IntDomain::Bounded(l1, _)) => {
-                let l = *l1.min(l2);
-
-                IntDomain::LowerBounded(l)
-            }
-            (IntDomain::Bounded(_, u1), IntDomain::UpperBounded(u2))
-            | (IntDomain::UpperBounded(u2), IntDomain::Bounded(_, u1)) => {
-                let u = *u1.max(u2);
-                IntDomain::UpperBounded(u)
-            }
-            (_, IntDomain::Unbounded) | (IntDomain::Unbounded, _) => IntDomain::Unbounded,
-
-            (IntDomain::LowerBounded(l1), IntDomain::LowerBounded(l2)) => {
-                let l = *l1.min(l2);
-                IntDomain::LowerBounded(l)
-            }
-            (IntDomain::LowerBounded(l), _) | (_, IntDomain::LowerBounded(l)) => {
-                IntDomain::LowerBounded(*l)
-            }
-
-            (IntDomain::UpperBounded(u), IntDomain::UpperBounded(u2)) => {
-                let u = *u.max(u2);
-                IntDomain::UpperBounded(u)
-            }
+            (BoundValue::NegInf, BoundValue::Num(_)) => None,
+            (BoundValue::Num(_), BoundValue::PosInf) => None,
+            (BoundValue::NegInf, BoundValue::PosInf) => None,
+            _ => Some(0),
         }
     }
 }
 
-/// Represents and manages the bounds of variables.
-/// Every variable is associated with a [IntDomain] that represents the possible values the variable can take.
-/// For string variables, this domain represents the length of the string.
-/// For integer variables, this domain represents the domain of the variable.
-#[derive(Debug, Clone, PartialEq, Eq)]
+impl Display for Interval {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "[{}, {}]", self.lower, self.upper)
+    }
+}
+
+/// The bounds of the variables in the formula.
+/// Each variable is associated with an interval that represents the possible values the variable can take.
+/// For integer variables, this interval represents the domain of the variable.
+/// For string variables, this interval represents the length of the string.
+#[derive(Debug, PartialEq, Eq, Clone, Default)]
 pub struct Bounds {
-    domains: IndexMap<Variable, IntDomain>,
+    bounds: IndexMap<Variable, Interval>,
 }
 
 impl Bounds {
-    /// Creates a new bounds object with no bounds set.
-    /// By default, all integer variables are unbounded.
-    pub fn new() -> Self {
-        Self {
-            domains: IndexMap::new(),
-        }
+    pub fn empty() -> Self {
+        Self::default()
     }
 
-    /// Sets the domain of a variable.
-    pub fn set(&mut self, var: &Variable, domain: IntDomain) -> Option<IntDomain> {
-        self.domains.insert(var.clone(), domain)
+    /// Sets the bound of a variable.
+    /// If the variable is not present in the bounds, it is added.
+    /// If the variable is already present, the bound is updated.
+    ///
+    /// # Arguments
+    /// - `var` - The variable whose bound is to be set.
+    /// - `interval` - The interval that represents the bound of the variable.
+    ///
+    /// # Returns
+    /// The previous bound of the variable, if it was present in the bounds.
+    /// Otherwise, returns `None`.
+    pub fn set(&mut self, var: Variable, interval: Interval) -> Option<Interval> {
+        self.bounds.insert(var, interval)
     }
 
-    pub fn get(&self, var: &Variable) -> Option<&IntDomain> {
-        self.domains.get(var)
+    /// Returns the bound of a variable.
+    /// If the variable is not present in the bounds, returns `None`.
+    pub fn get(&self, var: &Variable) -> Option<Interval> {
+        self.bounds.get(var).copied()
     }
 
     /// Returns the upper bound of a variable.
-    /// Returns `None` if the variable is unbounded.
-    pub fn get_upper(&self, var: &Variable) -> Option<isize> {
-        self.get(var).and_then(|b| b.get_upper())
+    /// If the variable is not present in the bounds, returns `None`.
+    pub fn get_upper(&self, var: &Variable) -> Option<BoundValue> {
+        self.get(var).map(|i| i.upper())
     }
 
-    /// Sets the upper bound of a variable, see [IntDomain::set_upper].
-    pub fn set_upper(&mut self, var: &Variable, upper: isize) {
-        let new = match self.get(var) {
-            Some(domain) => {
-                let mut new = *domain;
-                new.set_upper(upper);
-                new
-            }
-            None => IntDomain::UpperBounded(upper),
-        };
-        self.set(var, new);
+    /// Returns the upper bound of the variable as a finite integer.
+    /// If the variable is not present in the bounds or the upper bound is not finite, returns `None`.
+    pub fn get_upper_finite(&self, var: &Variable) -> Option<i32> {
+        self.get_upper(var).and_then(|b| b.as_num())
     }
 
-    /// Returns the lower bound of a variable, if it is bounded from below.
-    /// Returns `None` if the variable is unbounded.
-    pub fn get_lower(&self, var: &Variable) -> Option<isize> {
-        self.get(var).and_then(|b| b.get_lower())
+    /// Returns the lower bound of a variable.
+    pub fn get_lower(&self, var: &Variable) -> Option<BoundValue> {
+        self.get(var).map(|i| i.lower())
     }
 
-    pub fn set_lower(&mut self, var: &Variable, lower: isize) {
-        let new = match self.get(var) {
-            Some(domain) => {
-                let mut new = *domain;
-                new.set_lower(lower);
-                new
-            }
-            None => IntDomain::LowerBounded(lower),
-        };
-        self.set(var, new);
+    /// Returns the lower bound of the variable as a finite integer.
+    /// If the variable is not present in the bounds or the lower bound is not finite, returns `None`.
+    pub fn get_lower_finite(&self, var: &Variable) -> Option<i32> {
+        self.get_lower(var).and_then(|b| b.as_num())
     }
 
-    /// Intesects all domains with the domains in the bounds, see [IntDomain::intersect].
-    /// If a variable is not present in both bounds, it is kept as is.
+    /// Removes the bound of a variable.
+    /// If the variable is not present in the bounds, returns `None`.
+    /// Otherwise, returns the bound of the variable that was removed.
+    pub fn remove(&mut self, var: &Variable) -> Option<Interval> {
+        self.bounds.remove(var)
+    }
+
+    /// Returns the number of variables in the bounds.
+    pub fn len(&self) -> usize {
+        self.bounds.len()
+    }
+
+    /// Returns true if the bounds are empty and false otherwise.
+    /// The bounds are considered empty if there are no variables in the bounds.
+    pub fn is_empty(&self) -> bool {
+        self.bounds.is_empty()
+    }
+
+    /// Intersects two `Bounds` instances and returns a new `Bounds` with the intersection.
+    ///
+    /// The intersection only includes variables that exist in both `Bounds`.
+    /// For each variable, the intersection of the corresponding intervals is computed.
+    ///
+    /// # Arguments
+    ///
+    /// * `other` - The other `Bounds` to intersect with.
+    ///
+    /// # Returns
+    ///
+    /// A new `Bounds` containing the intersections of the intervals for common variables.
     pub fn intersect(&self, other: &Self) -> Self {
-        let mut result = Self::new();
-        let decls = self.domains.keys().chain(other.domains.keys());
-        for var in decls {
-            match (self.get(var), other.get(var)) {
-                (Some(d1), Some(d2)) => {
-                    result.set(var, d1.intersect(d2));
-                }
-                (Some(d), None) | (None, Some(d)) => {
-                    result.set(var, *d);
-                }
-                (None, None) => {}
+        let mut intersection_map = IndexMap::new();
+
+        for (var, interval) in &self.bounds {
+            if let Some(other_interval) = other.get(var) {
+                let intersected_interval = interval.intersect(other_interval);
+                intersection_map.insert(var.clone(), intersected_interval);
             }
         }
 
-        result
-    }
-
-    /// Returns true if all upper bounds are less than or equal to the given value and false otherwise.
-    #[allow(dead_code)]
-    pub fn uppers_leq(&self, val: isize) -> bool {
-        self.domains
-            .values()
-            .all(|d| d.get_upper().map_or(false, |u| u <= val))
-    }
-
-    /// Returns true if all upper bounds are greater than or  equal to the given value and false otherwise.
-    #[allow(dead_code)]
-    pub fn uppers_geq(&self, val: isize) -> bool {
-        self.domains
-            .values()
-            .all(|d| d.get_upper().map_or(true, |u| u >= val))
-    }
-
-    /// Returns true if the domain of any variable is empty and false otherwise.
-    pub fn any_empty(&self) -> bool {
-        self.domains.values().any(|d| d == &IntDomain::Empty)
-    }
-
-    /// Updates the upper bounds of the variables by calling the given function on each bound, including the default bound.
-    /// If a variable is unbounded, it is not updated.
-    pub fn update_uppers(&mut self, updater: impl Fn(isize) -> isize) -> bool {
-        let mut any_changed = false;
-        for dom in self.domains.iter_mut().map(|b| b.1) {
-            if let Some(upper) = dom.get_upper() {
-                let new_upper = updater(upper);
-
-                if new_upper != upper {
-                    dom.set_upper(new_upper);
-                    any_changed = true;
-                }
-            }
+        Self {
+            bounds: intersection_map,
         }
-
-        any_changed
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = (&Variable, &IntDomain)> {
-        self.domains.iter()
-    }
-
-    /// Clamps the upper bounds of all variables to the given limit.
-    /// Returns true if any bound was changed and false otherwise.
-    pub fn clamp(&mut self, lower_limit: isize, upper_limit: isize) -> bool {
-        let mut updated = false;
-        for dom in self.domains.iter_mut().map(|b| b.1) {
-            if let Some(upper) = dom.get_upper() {
-                let new_upper = min(upper, upper_limit);
-                if new_upper < upper {
-                    updated = true;
-                    dom.set_upper(new_upper);
-                }
-            }
-            if let Some(lower) = dom.get_lower() {
-                let new_lower = max(lower, lower_limit);
-                if new_lower > lower {
-                    updated = true;
-                    dom.set_lower(new_lower);
-                }
-            }
-        }
-        updated
-    }
-
-    /// Doubles the bounds of all variables, including the default bound.
-    /// The optional clamp can be used to limit the maximum value of the bounds.
-    /// Returns true if any bound was changed and false otherwise.
-    #[allow(dead_code)]
-    pub fn double_uppers(&mut self) -> bool {
-        self.update_uppers(|b| b * 2)
-    }
-
-    /// Updates the bounds of all variables such that they are the next square number greater than the current value.
-    pub fn next_square_uppers(&mut self) -> bool {
-        self.update_uppers(|b| ((b as f64).sqrt() + 1f64).powi(2) as isize)
-    }
-}
-
-/* Pretty Printing */
-
-impl Display for IntDomain {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            IntDomain::Bounded(l, u) => match l.cmp(u) {
-                std::cmp::Ordering::Less => write!(f, "[{}, {}]", l, u),
-                std::cmp::Ordering::Equal => write!(f, "{}", l),
-                std::cmp::Ordering::Greater => write!(f, "∅"),
-            },
-            IntDomain::LowerBounded(l) => write!(f, "[{}, ∞)", l),
-            IntDomain::UpperBounded(u) => write!(f, "(-∞, {}]", u),
-            IntDomain::Unbounded => write!(f, "(-∞, ∞)"),
-            IntDomain::Empty => write!(f, "∅"),
-        }
+    /// Returns an iterator over the variables and their bounds.
+    pub fn iter(&self) -> impl Iterator<Item = (&Variable, &Interval)> {
+        self.bounds.iter()
     }
 }
 
@@ -365,221 +343,205 @@ impl Display for Bounds {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{{")?;
 
-        for (var, domain) in &self.domains {
+        for (var, domain) in &self.bounds {
             write!(f, "{}: {}, ", var, domain)?;
         }
         write!(f, "}}")
     }
 }
 
-/* Arbitrary */
-
-impl Arbitrary for IntDomain {
-    fn arbitrary(g: &mut quickcheck::Gen) -> Self {
-        let mut l = isize::arbitrary(g);
-        let mut u = isize::arbitrary(g);
-        while l > u {
-            l = isize::arbitrary(g);
-            u = isize::arbitrary(g);
-        }
-        let choices = [
-            IntDomain::bounded(l, u),
-            IntDomain::LowerBounded(l),
-            IntDomain::UpperBounded(u),
-            IntDomain::Unbounded,
-            IntDomain::Empty,
-        ];
-        *g.choose(&choices).unwrap()
-    }
-}
-
 #[cfg(test)]
 mod tests {
-
-    use quickcheck::TestResult;
-    use quickcheck_macros::quickcheck;
-
-    use crate::{context::Context, repr::Sort};
+    use crate::repr::Sort;
 
     use super::*;
 
     #[test]
-    fn int_domain_get_upper() {
-        assert_eq!(IntDomain::Bounded(0, 10).get_upper(), Some(10));
-        assert_eq!(IntDomain::LowerBounded(0).get_upper(), None);
-        assert_eq!(IntDomain::UpperBounded(10).get_upper(), Some(10));
-        assert_eq!(IntDomain::Unbounded.get_upper(), None);
-        assert_eq!(IntDomain::Empty.get_upper(), None);
+    fn test_interval_new() {
+        let interval = Interval::new(3, 10);
+        assert_eq!(interval.lower(), BoundValue::Num(3));
+        assert_eq!(interval.upper(), BoundValue::Num(10));
     }
 
     #[test]
-    fn int_domain_get_lower() {
-        assert_eq!(IntDomain::Bounded(0, 10).get_lower(), Some(0));
-        assert_eq!(IntDomain::LowerBounded(0).get_lower(), Some(0));
-        assert_eq!(IntDomain::UpperBounded(10).get_lower(), None);
-        assert_eq!(IntDomain::Unbounded.get_lower(), None);
-        assert_eq!(IntDomain::Empty.get_lower(), None);
+    fn test_bounded_above() {
+        let interval = Interval::bounded_above(10);
+        assert_eq!(interval.lower(), BoundValue::NegInf);
+        assert_eq!(interval.upper(), BoundValue::Num(10));
     }
 
     #[test]
-    fn int_domain_set_upper() {
-        let mut domain = IntDomain::Bounded(0, 10);
-        domain.set_upper(5);
-        assert_eq!(domain, IntDomain::Bounded(0, 5));
-
-        let mut domain = IntDomain::LowerBounded(0);
-        domain.set_upper(5);
-        assert_eq!(domain, IntDomain::Bounded(0, 5));
-
-        let mut domain = IntDomain::UpperBounded(10);
-        domain.set_upper(5);
-        assert_eq!(domain, IntDomain::UpperBounded(5));
-
-        let mut domain = IntDomain::Unbounded;
-        domain.set_upper(5);
-        assert_eq!(domain, IntDomain::UpperBounded(5));
-
-        let mut domain = IntDomain::Empty;
-        domain.set_upper(5);
-        assert_eq!(domain, IntDomain::Empty);
+    fn test_bounded_below() {
+        let interval = Interval::bounded_below(3);
+        assert_eq!(interval.lower(), BoundValue::Num(3));
+        assert_eq!(interval.upper(), BoundValue::PosInf);
     }
 
     #[test]
-    fn int_domain_intersect_empty() {
+    fn test_unbounded() {
+        let interval = Interval::unbounded();
+        assert_eq!(interval.lower(), BoundValue::NegInf);
+        assert_eq!(interval.upper(), BoundValue::PosInf);
+    }
+
+    #[test]
+    fn test_is_empty() {
+        let interval = Interval::new(10, 5);
+        assert!(interval.is_empty());
+
+        let non_empty_interval = Interval::new(5, 10);
+        assert!(!non_empty_interval.is_empty());
+    }
+
+    #[test]
+    fn test_partial_cmp() {
+        assert!(BoundValue::PosInf > BoundValue::Num(100));
+        assert!(BoundValue::NegInf < BoundValue::Num(-100));
         assert_eq!(
-            IntDomain::Bounded(0, 10).intersect(&IntDomain::Empty),
-            IntDomain::Empty
+            BoundValue::Num(50).partial_cmp(&BoundValue::Num(50)),
+            Some(Ordering::Equal)
         );
         assert_eq!(
-            IntDomain::LowerBounded(0).intersect(&IntDomain::Empty),
-            IntDomain::Empty
-        );
-        assert_eq!(
-            IntDomain::UpperBounded(10).intersect(&IntDomain::Empty),
-            IntDomain::Empty
-        );
-        assert_eq!(
-            IntDomain::Unbounded.intersect(&IntDomain::Empty),
-            IntDomain::Empty
-        );
-        assert_eq!(
-            IntDomain::Empty.intersect(&IntDomain::Empty),
-            IntDomain::Empty
+            BoundValue::Num(10).partial_cmp(&BoundValue::Num(20)),
+            Some(Ordering::Less)
         );
     }
 
     #[test]
-    fn int_domain_intersect_lower_bounded() {
-        assert_eq!(
-            IntDomain::Bounded(0, 10).intersect(&IntDomain::LowerBounded(5)),
-            IntDomain::Bounded(5, 10)
-        );
-        assert_eq!(
-            IntDomain::LowerBounded(0).intersect(&IntDomain::LowerBounded(5)),
-            IntDomain::LowerBounded(5)
-        );
-        assert_eq!(
-            IntDomain::UpperBounded(10).intersect(&IntDomain::LowerBounded(5)),
-            IntDomain::Bounded(5, 10)
-        );
-        assert_eq!(
-            IntDomain::Unbounded.intersect(&IntDomain::LowerBounded(5)),
-            IntDomain::LowerBounded(5)
-        );
-        assert_eq!(
-            IntDomain::Empty.intersect(&IntDomain::LowerBounded(5)),
-            IntDomain::Empty
-        );
-    }
-
-    #[quickcheck]
-    fn int_domain_intersection_unbounded_neutral(bound: IntDomain) {
-        assert_eq!(bound.intersect(&IntDomain::Unbounded), bound);
-    }
-
-    #[quickcheck]
-    fn int_domain_intersection_empty_is_empty(bound: IntDomain) {
-        assert_eq!(bound.intersect(&IntDomain::Empty), IntDomain::Empty);
-    }
-
-    #[quickcheck]
-    fn int_domain_intersection_lower_greater_upper_is_empty(
-        dom1: IntDomain,
-        dom2: IntDomain,
-    ) -> TestResult {
-        if let (Some(l1), Some(u2)) = (dom1.get_lower(), dom2.get_upper()) {
-            if l1 > u2 {
-                assert_eq!(dom1.intersect(&dom2), IntDomain::Empty);
-                return TestResult::passed();
-            } else {
-                return TestResult::discard();
-            }
-        }
-        TestResult::discard()
-    }
-
-    #[quickcheck]
-    fn int_domain_intersection_commutes(dom1: IntDomain, dom2: IntDomain) {
-        assert_eq!(dom1.intersect(&dom2), dom2.intersect(&dom1));
-    }
-
-    #[quickcheck]
-    fn int_domain_intersection_correct_lower(dom1: IntDomain, dom2: IntDomain) -> TestResult {
-        let inter = dom1.intersect(&dom2);
-
-        if let IntDomain::Empty = inter {
-            return TestResult::discard();
-        }
-
-        match (dom1.get_lower(), dom2.get_lower()) {
-            (Some(l1), Some(l2)) => {
-                assert!(inter.get_lower().map_or(false, |l| l >= l1 && l >= l2))
-            }
-            (None, Some(l1)) | (Some(l1), None) => {
-                assert!(inter.get_lower().map_or(false, |l| l >= l1))
-            }
-            (None, None) => assert!(inter.get_lower().is_none()),
-        }
-        TestResult::passed()
-    }
-
-    #[quickcheck]
-    fn int_domain_intersection_correct_upper(dom1: IntDomain, dom2: IntDomain) -> TestResult {
-        let inter = dom1.intersect(&dom2);
-
-        if let IntDomain::Empty = inter {
-            return TestResult::discard();
-        }
-
-        match (dom1.get_upper(), dom2.get_upper()) {
-            (Some(u1), Some(u2)) => {
-                assert!(inter.get_upper().map_or(false, |u| u <= u1 && u <= u2))
-            }
-            (None, Some(u1)) | (Some(u1), None) => {
-                assert!(inter.get_upper().map_or(false, |u| u <= u1))
-            }
-            (None, None) => assert!(inter.get_upper().is_none()),
-        }
-        TestResult::passed()
-    }
-
-    #[quickcheck]
-    fn bounds_set_get(domain: IntDomain) {
-        let mut ctx = Context::default();
-        let var = ctx.new_temp_var(Sort::Int);
-        let mut bounds = Bounds::new();
-        bounds.set(&var, domain);
-        assert_eq!(bounds.get(&var).cloned(), Some(domain));
+    fn test_intersect_overlapping_intervals() {
+        let interval1 = Interval::new(3, 10);
+        let interval2 = Interval::new(5, 12);
+        let result = interval1.intersect(interval2);
+        assert_eq!(result, Interval::new(5, 10));
     }
 
     #[test]
-    fn bounds_get_lower() {
-        let mut ctx = Context::default();
-        let var = ctx.new_temp_var(Sort::Int);
+    fn test_intersect_non_overlapping_intervals() {
+        let interval1 = Interval::new(3, 5);
+        let interval2 = Interval::new(6, 10);
+        let result = interval1.intersect(interval2);
+        assert!(result.is_empty(),);
+    }
 
-        let mut bounds = Bounds::new();
-        assert_eq!(bounds.get_lower(&var), None);
-        bounds.set(&var, IntDomain::bounded(5, 10));
-        assert_eq!(bounds.get_lower(&var), Some(5));
+    #[test]
+    fn test_intersect_touching_intervals() {
+        let interval1 = Interval::new(3, 5);
+        let interval2 = Interval::new(5, 10);
+        let result = interval1.intersect(interval2);
+        assert_eq!(result, Interval::new(5, 5));
+    }
+
+    #[test]
+    fn test_intersect_with_infinite_bounds() {
+        let interval1 = Interval::new(BoundValue::NegInf, 10);
+        let interval2 = Interval::new(5, BoundValue::PosInf);
+        let result = interval1.intersect(interval2);
+        assert_eq!(result, Interval::new(5, 10));
+    }
+
+    #[test]
+    fn test_insert_and_get() {
+        let mut interval_map = Bounds::default();
+
+        let var = Variable::new(0, "x".to_string(), Sort::Int);
+        let interval = Interval::new(1, 5);
+
+        interval_map.set(var.clone(), interval);
+
+        assert_eq!(interval_map.get(&var), Some(Interval::new(1, 5)));
+    }
+
+    #[test]
+    fn test_remove() {
+        let mut interval_map = Bounds::default();
+
+        let var = Variable::new(0, "x".to_string(), Sort::Int);
+        let interval = Interval::new(1, 5);
+
+        interval_map.set(var.clone(), interval);
+        let removed = interval_map.remove(&var);
+
+        assert_eq!(removed, Some(Interval::new(1, 5)));
+        assert!(interval_map.get(&var).is_none());
+    }
+
+    #[test]
+    fn test_len_and_is_empty() {
+        let mut interval_map = Bounds::default();
+
+        assert_eq!(interval_map.len(), 0);
+        assert!(interval_map.is_empty());
+
+        let var = Variable::new(0, "x".to_string(), Sort::Int);
+        let interval = Interval::new(1, 5);
+
+        interval_map.set(var, interval);
+
+        assert_eq!(interval_map.len(), 1);
+        assert!(!interval_map.is_empty());
+    }
+
+    #[test]
+    fn test_bounds_intersection() {
+        let mut bounds1 = Bounds::default();
+        let mut bounds2 = Bounds::default();
+
+        let var_x = Variable::new(0, "x".to_string(), Sort::Int);
+        let var_y = Variable::new(1, "y".to_string(), Sort::Int);
+
+        bounds1.set(var_x.clone(), Interval::new(1, 10));
+        bounds1.set(var_y.clone(), Interval::new(20, 30));
+
+        bounds2.set(var_x.clone(), Interval::new(5, 15));
+        bounds2.set(var_y.clone(), Interval::new(25, 35));
+
+        let intersection = bounds1.intersect(&bounds2);
+
+        assert_eq!(intersection.len(), 2);
+        assert_eq!(intersection.get(&var_x), Some(Interval::new(5, 10)));
+        assert_eq!(intersection.get(&var_y), Some(Interval::new(25, 30)));
+    }
+
+    #[test]
+    fn test_bounds_intersection_empty() {
+        let mut bounds1 = Bounds::default();
+        let mut bounds2 = Bounds::default();
+
+        let var_x = Variable::new(0, "x".to_string(), Sort::Int);
+
+        bounds1.set(var_x.clone(), Interval::new(1, 10));
+        bounds2.set(var_x.clone(), Interval::new(15, 20));
+
+        let intersection = bounds1.intersect(&bounds2);
+
+        assert!(
+            intersection.get(&var_x).unwrap().is_empty(),
+            "Expected empty but got {}",
+            intersection
+        );
+    }
+
+    #[test]
+    fn test_bounds_intersection_disjoint_vars() {
+        let mut bounds1 = Bounds::default();
+        let mut bounds2 = Bounds::default();
+
+        let var_x = Variable::new(0, "x".to_string(), Sort::Int);
+        let var_y = Variable::new(1, "y".to_string(), Sort::Int);
+
+        bounds1.set(var_x.clone(), Interval::new(1, 10));
+        bounds2.set(var_y.clone(), Interval::new(5, 15));
+
+        let intersection = bounds1.intersect(&bounds2);
+
+        assert!(intersection.is_empty());
+    }
+}
+
+impl Arbitrary for Interval {
+    fn arbitrary(g: &mut quickcheck::Gen) -> Self {
+        let v1 = isize::arbitrary(g);
+        let v2 = isize::arbitrary(g);
+        Interval::new(v1.min(v2), v1.max(v2))
     }
 }
