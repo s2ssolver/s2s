@@ -43,7 +43,7 @@ pub fn partition_by_vars(lits: &[Literal]) -> Vec<Vec<Literal>> {
         while let Some(lit) = stack.pop() {
             if unvisited.remove(lit) {
                 component.push(lit.clone());
-                for &dep_lit in edges.get(lit).unwrap() {
+                for &dep_lit in edges.get(lit).unwrap_or(&Vec::new()) {
                     stack.push(dep_lit);
                 }
             }
