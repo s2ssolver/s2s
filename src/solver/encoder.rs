@@ -50,8 +50,8 @@ impl ProblemEncoder {
         for def in defs.iter() {
             let t = Instant::now();
             let cnf = self.encode_def(def, bounds, &dom, ctx)?;
-            log::debug!("Encoded {} ({:?})", def, t.elapsed());
             res.extend(cnf);
+            log::debug!("Encoded {} ({:?})", def, t.elapsed());
         }
 
         Ok(res)

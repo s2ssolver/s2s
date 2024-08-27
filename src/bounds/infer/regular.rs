@@ -175,9 +175,10 @@ impl RegularBoundsInferer {
         // For each variable, use the number of states in the intersection automaton as the upper bound.
         let mut bounds = Bounds::default();
         for (v, nfa) in self.intersections.iter() {
-            let upper = nfa.num_states();
+            let upper = nfa.num_states().saturating_sub(1);
+            let lower = nfa.shortest().map(|l| l - 1).unwrap_or(0);
             // TODO: use shortest path to find lower bound.
-            bounds.set(v.clone(), Interval::new(0, upper));
+            bounds.set(v.clone(), Interval::new(lower, upper));
         }
 
         // Adjust based on the non-equality constraints.

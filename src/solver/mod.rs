@@ -186,7 +186,8 @@ impl Solver {
                 0.into()
             };
             let upper = if let Some(upper) = v_bounds.map(|b| b.upper()) {
-                upper.min(BoundValue::Num(10))
+                // at most 10, but at least the lower bound
+                upper.min(BoundValue::Num(10)).max(lower)
             } else {
                 10.into()
             };
@@ -210,6 +211,7 @@ impl Solver {
         // Check if skeleton is trivially unsat
         let skeleton_cnf = to_cnf(abs.skeleton());
 
+        let mut t = Instant::now();
         for clause in skeleton_cnf.into_iter() {
             cadical.add_clause(clause);
         }
@@ -217,6 +219,7 @@ impl Solver {
             log::info!("Skeleton is unsat");
             return Ok(SolverResult::Unsat);
         }
+        log::info!("Skeleton is SAT ({:?})", t.elapsed());
 
         // Initialize the problem encoder
 
@@ -235,13 +238,21 @@ impl Solver {
             round += 1;
             log::info!("Round {} with bounds {}", round, bounds);
             // Encode and Solve
+            t = Instant::now();
             let encoding = encoder.encode(&defs, &bounds, ctx)?;
             let (cnf, asm) = encoding.into_inner();
+            log::info!("Encoded ({} clauses) ({:?})", cnf.len(), t.elapsed());
+            t = Instant::now();
             for clause in cnf {
                 cadical.add_clause(clause);
             }
+            log::info!("Added clauses to cadical ({:?})", t.elapsed());
 
-            match cadical.solve_with(asm.into_iter()) {
+            t = Instant::now();
+            let res = cadical.solve_with(asm.into_iter());
+            log::info!("Done SAT solving: {:?} ({:?})", res, t.elapsed());
+
+            match res {
                 Some(true) => {
                     // If SAT, check if model is a solution for the original formula.
                     let assign = encoder.get_model(&cadical);
