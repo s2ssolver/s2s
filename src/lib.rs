@@ -22,6 +22,7 @@ use std::{io::BufRead, time::Instant};
 
 use context::Context;
 pub use error::PublicError as Error;
+use repr::ast::parse::AstParser;
 pub use solver::{Solver, SolverOptions, SolverResult};
 
 /// Solves an SMT problem over the theory of strings.
@@ -34,7 +35,8 @@ pub fn solve_smt(smt: impl BufRead, options: Option<SolverOptions>) -> Result<So
     let mut t = Instant::now();
 
     // Parse the input problem
-    let script = repr::ast::parse::parse_script(smt, &mut ctx)?;
+    let parser = AstParser::default();
+    let script = parser.parse_script(smt, &mut ctx)?;
     log::info!("Parsed in {:?}", t.elapsed());
     t = Instant::now();
 
