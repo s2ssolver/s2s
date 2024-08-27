@@ -145,14 +145,16 @@ impl StringDomain {
         self.substitutions.insert((var.clone(), pos, chr), v);
     }
 
-    pub(super) fn inser_lenght(&mut self, var: &Variable, len: usize, v: PVar) {
+    pub(super) fn insert_lenght(&mut self, var: &Variable, len: usize, v: PVar) {
         assert!(
             var.sort() == Sort::String,
             "Variable {} is not a string",
             var
         );
+
         let ok = self.lengths.insert((var.clone(), len), v);
-        assert!(ok.is_none());
+        assert!(ok.is_none(), "Length {} already set for {}", len, var);
+    }
     }
 }
 

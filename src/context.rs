@@ -12,6 +12,7 @@ use crate::repr::{ast::AstBuilder, ir::IrBuilder, Sort, Sorted, Variable};
 pub struct Context {
     /// Manages the variables
     variables: HashMap<String, Rc<Variable>>,
+    /// Subset of variables that are temporary and should be removed after use.
     temp_vars: HashSet<Rc<Variable>>,
 
     //ast_builder: RefCell<AstBuilder>,
@@ -53,13 +54,15 @@ impl Context {
         self.variables.get(name).cloned()
     }
 
+    /// Returns true if the given variable is temporary.
+    pub fn is_temp_var(&self, var: &Variable) -> bool {
+        self.temp_vars.contains(var)
+    }
+
     /// Returns an iterator over all variables of the given sort.
     /// Includes temporary variables.
     pub fn vars_with_sort(&self, sort: Sort) -> impl Iterator<Item = &Rc<Variable>> + '_ {
-        self.variables
-            .values()
-            .filter(move |v| v.sort() == sort)
-            .chain(self.temp_vars.iter().filter(move |v| v.sort() == sort))
+        self.variables.values().filter(move |v| v.sort() == sort)
     }
 
     pub fn vars(&self) -> impl Iterator<Item = &Rc<Variable>> + '_ {

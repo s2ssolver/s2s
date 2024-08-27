@@ -1037,6 +1037,7 @@ mod tests {
             step::{update_bounds, BoundStep},
             Interval,
         },
+        context::Context,
         encode::domain::encoding::get_str_substitutions,
         repr::{
             ir::{ConstReducible, Substitutable, VarSubstitution},
