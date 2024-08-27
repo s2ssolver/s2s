@@ -4,7 +4,7 @@ use std::fmt::Display;
 use std::time::Instant;
 
 use crate::bounds::Bounds;
-use crate::context::Context;
+
 use crate::encode::card::{exactly_one, IncrementalALO, IncrementalAMO};
 use crate::encode::domain::DomainEncoding;
 use crate::encode::{EncodingError, EncodingResult, FilledPattern, LiteralEncoder, LAMBDA};
@@ -938,7 +938,7 @@ impl LiteralEncoder for WordEquationEncoder {
         todo!()
     }
 
-    fn print_debug(&self, solver: &cadical::Solver, dom: &DomainEncoding, _: &Context) {
+    fn print_debug(&self, solver: &cadical::Solver, dom: &DomainEncoding) {
         let lhs = self.candidates.lhs_encoder();
         let rhs = self.candidates.rhs_encoder();
         let mut lhs_sol = String::new();
@@ -1146,7 +1146,7 @@ mod tests {
             for (var, val) in solution {
                 let as_str = val.iter().collect::<String>();
                 let as_pat = Pattern::constant(&as_str);
-                model.set_str(&var, as_pat);
+                model.set_str(var.as_ref().clone(), as_pat);
             }
             println!("\n========================\n");
             for i in 0..encoder.segments(&EqSide::Rhs).length() {
@@ -1241,7 +1241,7 @@ mod tests {
             for (var, val) in solution {
                 let as_str = val.iter().collect::<String>();
                 let as_pat = Pattern::constant(&as_str);
-                model.set_str(&var, as_pat);
+                model.set_str(var.as_ref().clone(), as_pat);
             }
 
             for i in 0..encoder.segments(&EqSide::Rhs).length() {

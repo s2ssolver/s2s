@@ -1,13 +1,17 @@
 use std::{collections::HashMap, rc::Rc};
 
 use indexmap::IndexMap;
+use itertools::Itertools;
 
 use crate::{
     alphabet::Alphabet,
     bounds::Bounds,
     context::Context,
     encode::LAMBDA,
-    repr::{Sort, Sorted, Variable},
+    repr::{
+        ir::{LinearArithTerm, Pattern, VarSubstitution},
+        Sort, Sorted, Variable,
+    },
     sat::{plit, PLit, PVar},
 };
 
@@ -54,6 +58,13 @@ impl DomainEncoding {
         alph.insert_char(LAMBDA);
         alph
     }
+
+    pub fn get_model(&self, solver: &cadical::Solver) -> VarSubstitution {
+        let mut model = self.string.get_model(solver, &self.bounds);
+        let overwrite = model.extend(&self.int.get_model(solver));
+        assert!(overwrite.is_empty());
+        model
+    }
 }
 
 #[derive(Clone, Debug, Default)]
@@ -88,6 +99,20 @@ impl IntDomain {
         );
 
         self.encodings.get(&(var.clone(), value)).cloned()
+    }
+
+    pub(crate) fn get_model(&self, solver: &cadical::Solver) -> VarSubstitution {
+        if solver.status() != Some(true) {
+            panic!("Solver is not in a SAT state")
+        }
+        let mut model = VarSubstitution::empty();
+        for (var, l, v) in self.iter() {
+            if let Some(true) = solver.value(plit(*v)) {
+                let ok = model.set_int(var.clone(), LinearArithTerm::from_const(l));
+                assert!(ok.is_none());
+            }
+        }
+        model
     }
 }
 
@@ -155,6 +180,45 @@ impl StringDomain {
         let ok = self.lengths.insert((var.clone(), len), v);
         assert!(ok.is_none(), "Length {} already set for {}", len, var);
     }
+
+    pub(crate) fn get_model(&self, solver: &cadical::Solver, bounds: &Bounds) -> VarSubstitution {
+        let mut subs: HashMap<Variable, Vec<Option<char>>> = HashMap::new();
+        // initialize substitutions
+        let vars = self.iter_substitutions().map(|(var, _, _, _)| var).unique();
+        for var in vars {
+            let len = bounds
+                .get_upper_finite(var)
+                .expect("Unbounded string variable");
+            subs.insert(var.clone(), vec![None; len as usize]);
+        }
+        for (var, pos, chr, v) in self.iter_substitutions() {
+            if let Some(true) = solver.value(plit(*v)) {
+                let sub = subs
+                    .get_mut(var)
+                    .expect(format!("No substitution for {}", var).as_str());
+                // This could be more efficient by going over the positions only once, however, this way we can check for invalid substitutions
+                assert!(
+                    sub[pos].is_none(),
+                    "Multiple substitutions for {} at position {}",
+                    var,
+                    pos
+                );
+                sub[pos] = Some(chr);
+            }
+        }
+        let mut model = VarSubstitution::empty();
+        for (var, sub) in subs.into_iter() {
+            let mut s = Pattern::empty();
+            for c in sub.iter() {
+                match c {
+                    Some(LAMBDA) => {}
+                    Some(c) => s.push((*c).into()),
+                    None => panic!("No substitution for {} at position {}", var, s.len()),
+                }
+            }
+            model.set_str(var, s);
+        }
+        model
     }
 }
 

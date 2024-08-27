@@ -14,6 +14,7 @@ use super::{Literal, VariableTerm};
 pub enum Substitute {
     String(Pattern),
     Int(LinearArithTerm),
+    Bool(bool),
 }
 
 impl Substitute {
@@ -21,6 +22,7 @@ impl Substitute {
         match self {
             Self::String(p) => p.is_constant(),
             Self::Int(t) => t.as_constant().is_some(),
+            Self::Bool(_) => true,
         }
     }
 
@@ -44,6 +46,7 @@ impl Display for Substitute {
         match self {
             Self::String(p) => write!(f, "{}", p),
             Self::Int(t) => write!(f, "{}", t),
+            Self::Bool(fm) => write!(f, "{}", fm),
         }
     }
 }
@@ -81,18 +84,18 @@ impl VarSubstitution {
         self.subs.get(var)
     }
 
-    pub fn set(&mut self, var: &Variable, term: Substitute) {
-        self.subs.insert(var.clone(), term.clone());
+    pub fn set(&mut self, var: Variable, term: Substitute) -> Option<Substitute> {
+        self.subs.insert(var.clone(), term.clone())
     }
 
-    pub fn set_str(&mut self, var: &Variable, pat: Pattern) {
+    pub fn set_str(&mut self, var: Variable, pat: Pattern) -> Option<Substitute> {
         debug_assert!(var.sort() == Sort::String);
-        self.set(var, Substitute::String(pat));
+        self.set(var, Substitute::String(pat))
     }
 
-    pub fn set_int(&mut self, var: &Variable, term: LinearArithTerm) {
+    pub fn set_int(&mut self, var: Variable, term: LinearArithTerm) -> Option<Substitute> {
         debug_assert!(var.sort() == Sort::Int);
-        self.set(var, Substitute::Int(term));
+        self.set(var, Substitute::Int(term))
     }
 
     fn pattern_to_len(pat: &Pattern) -> LinearArithTerm {
@@ -135,13 +138,14 @@ impl VarSubstitution {
                     let new_t = other.apply_arith_term(&t);
                     Substitute::Int(new_t)
                 }
+                Substitute::Bool(b) => Substitute::Bool(*b),
             };
-            sub.set(var, chained);
+            sub.set(var.clone(), chained);
         }
         for (var, val) in &other.subs {
             // Add the substitution if it is not yet present
             if sub.get(var).is_none() {
-                sub.set(var, val.clone());
+                sub.set(var.clone(), val.clone());
             }
         }
         sub
@@ -169,6 +173,38 @@ impl VarSubstitution {
         buf
     }
 
+    pub fn apply(&self, fm: Formula, ctx: &mut Context) -> Formula {
+        match fm {
+            Formula::False => Formula::False,
+            Formula::True => Formula::True,
+            Formula::Literal(lit) => {
+                if let AtomType::BoolVar(v) = &lit.atom().ttype {
+                    if let Some(Substitute::Bool(b)) = self.get(v) {
+                        return if *b { Formula::True } else { Formula::False };
+                    } else {
+                        Formula::Literal(lit)
+                    }
+                } else {
+                    Formula::Literal(self.apply_literal(lit, ctx))
+                }
+            }
+            Formula::And(rs) => {
+                let mut new_rs = Vec::new();
+                for r in rs {
+                    new_rs.push(self.apply(r, ctx));
+                }
+                ctx.ir_builder().and(new_rs)
+            }
+            Formula::Or(rs) => {
+                let mut new_rs = Vec::new();
+                for r in rs {
+                    new_rs.push(self.apply(r, ctx));
+                }
+                ctx.ir_builder().or(new_rs)
+            }
+        }
+    }
+
     pub fn apply_literal(&self, lit: Literal, ctx: &mut Context) -> Literal {
         let pol = lit.polarity();
         let new_atom = match &lit.atom().ttype {
@@ -192,28 +228,6 @@ impl VarSubstitution {
             AtomType::Contains(_) => todo!(),
         };
         Literal::new(new_atom, pol)
-    }
-
-    pub fn apply(&self, fm: Formula, ctx: &mut Context) -> Formula {
-        match fm {
-            Formula::False => Formula::False,
-            Formula::True => Formula::True,
-            Formula::Literal(lit) => Formula::Literal(self.apply_literal(lit, ctx)),
-            Formula::And(rs) => {
-                let mut new_rs = Vec::new();
-                for r in rs {
-                    new_rs.push(self.apply(r, ctx));
-                }
-                ctx.ir_builder().and(new_rs)
-            }
-            Formula::Or(rs) => {
-                let mut new_rs = Vec::new();
-                for r in rs {
-                    new_rs.push(self.apply(r, ctx));
-                }
-                ctx.ir_builder().or(new_rs)
-            }
-        }
     }
 
     fn apply_pattern(&self, pat: &Pattern) -> Pattern {
@@ -245,7 +259,9 @@ impl VarSubstitution {
                                 new_term.add_summand(s2.multiply(*c))
                             }
                         }
-                        Some(Substitute::String(_)) => unreachable!("Expected an integer term"),
+                        Some(Substitute::String(_)) | Some(Substitute::Bool(_)) => {
+                            unreachable!("Expected an int term")
+                        }
                         None => new_term.add_summand(s.clone()),
                     },
                     VariableTerm::Len(strvar) => match self.get(strvar) {
@@ -255,7 +271,10 @@ impl VarSubstitution {
                                 new_term.add_summand(s2.multiply(*c))
                             }
                         }
-                        Some(Substitute::Int(_)) => unreachable!("Expected a string term"),
+                        Some(Substitute::Int(_)) | Some(Substitute::Bool(_)) => {
+                            unreachable!("Expected a string term")
+                        }
+
                         None => new_term.add_summand(s.clone()),
                     },
                 },
@@ -263,6 +282,19 @@ impl VarSubstitution {
         }
         new_term.normalize();
         new_term
+    }
+
+    /// Extends this substitution with the given substitution.
+    /// If the given substitution defines variables that are already defined in this substitution, the new value will overwrite the old value.
+    /// Returns a list of tuples of the overwritten variables and their old values.
+    pub(crate) fn extend(&mut self, other: &VarSubstitution) -> Vec<(Variable, Substitute)> {
+        let mut overwrite = Vec::new();
+        for (var, val) in other.iter() {
+            if let Some(o) = self.set(var.clone(), val.clone()) {
+                overwrite.push((var.clone(), o));
+            }
+        }
+        overwrite
     }
 }
 

@@ -199,7 +199,7 @@ impl Solver {
         abs: Abstraction,
         init_bounds: Bounds,
         alphabet: Alphabet,
-        ctx: &Context,
+        ctx: &mut Context,
     ) -> Result<SolverResult, Error> {
         // INPUT: Instance (Abstraction(Definition, Skeleton), Init-Bounds, Alphabet, OriginalFormula)
 
@@ -207,6 +207,7 @@ impl Solver {
         let mut cadical: cadical::Solver = cadical::Solver::default();
         // Check if skeleton is trivially unsat
         let skeleton_cnf = to_cnf(abs.skeleton());
+
         for clause in skeleton_cnf.into_iter() {
             cadical.add_clause(clause);
         }
@@ -227,7 +228,7 @@ impl Solver {
         // Start Solving Loop
         loop {
             // Encode and Solve
-            let encoding = encoder.encode(&defs, &bounds, &ctx);
+            let encoding = encoder.encode(&defs, &bounds, ctx);
             let (cnf, asm) = encoding.into_inner();
             for clause in cnf {
                 cadical.add_clause(clause);
@@ -236,8 +237,8 @@ impl Solver {
             match cadical.solve_with(asm.into_iter()) {
                 Some(true) => {
                     // If SAT, check if model is a solution for the original formula.
-                    let assign = encoder.get_model(&cadical, ctx).unwrap();
-                    if self.check_assignment(fm, &assign) {
+                    let assign = encoder.get_model(&cadical);
+                    if self.check_assignment(fm, &assign, ctx) {
                         return Ok(SolverResult::Sat(Some(assign)));
                     } else {
                         let refined_defs = self.refine_abstraction(&defs, &assign, &abs);
@@ -271,8 +272,12 @@ impl Solver {
     }
 
     /// Check if the assignment is a solution for the formula.
-    fn check_assignment(&self, fm: &Formula, assign: &VarSubstitution) -> bool {
-        todo!("Check if the assignment is a solution for the formula")
+    fn check_assignment(&self, fm: &Formula, assign: &VarSubstitution, ctx: &mut Context) -> bool {
+        let applied = assign.apply(fm.clone(), ctx);
+
+        let reduced = applied.reduce();
+
+        matches!(reduced, Formula::True)
     }
 
     /// Refines the abstraction by picking new definitions to encode.
