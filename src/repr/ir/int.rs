@@ -218,6 +218,18 @@ impl LinearArithTerm {
         }
         Some(c)
     }
+
+    /// Returns `Some(x)` if the term is a single variable `x`, `None` otherwise.
+    pub fn as_variable(&self) -> Option<&Variable> {
+        if self.factors.len() == 1 {
+            match &self.factors[0] {
+                LinearSummand::Mult(VariableTerm::Int(x), 1) => Some(x),
+                _ => None,
+            }
+        } else {
+            None
+        }
+    }
 }
 
 impl Index<usize> for LinearArithTerm {

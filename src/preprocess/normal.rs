@@ -1,3 +1,8 @@
+//! Conversion of formulas to normal form.
+//! We say that a formula is in normal form if it is a conjunction of literals, where each atom is either
+//! - a word equation,
+//! - a regular membership constraint, or
+//! - a linear constraint.
 use std::{collections::HashMap, rc::Rc};
 
 use itertools::Itertools;
@@ -194,7 +199,7 @@ impl Normalizer {
     fn prefix_re(&self, prefix: &str, ctx: &mut Context) -> Regex {
         let builder = ctx.ast_builder().re_builder();
         let all = builder.all();
-        let pref = builder.word(prefix.clone().into());
+        let pref = builder.word(prefix.into());
         builder.concat(vec![pref, all])
     }
 
@@ -202,7 +207,7 @@ impl Normalizer {
     fn suffix_re(&self, suffix: &str, ctx: &mut Context) -> Regex {
         let builder = ctx.ast_builder().re_builder();
         let all = builder.all();
-        let suff = builder.word(suffix.clone().into());
+        let suff = builder.word(suffix.into());
         builder.concat(vec![all, suff])
     }
 

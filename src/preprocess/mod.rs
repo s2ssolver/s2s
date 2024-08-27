@@ -1,5 +1,6 @@
 mod convert;
 mod normal;
+mod simp;
 //mod simplify;
 
 use thiserror::Error;
