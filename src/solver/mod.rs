@@ -228,7 +228,7 @@ impl Solver {
         // Start Solving Loop
         loop {
             // Encode and Solve
-            let encoding = encoder.encode(&defs, &bounds, ctx);
+            let encoding = encoder.encode(&defs, &bounds, ctx)?;
             let (cnf, asm) = encoding.into_inner();
             for clause in cnf {
                 cadical.add_clause(clause);

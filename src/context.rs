@@ -2,6 +2,7 @@ use std::{
     //cell::{RefCell, RefMut},
     collections::{HashMap, HashSet},
     rc::Rc,
+    time::Instant,
 };
 
 use regulaer::{automaton::NFA, compiler::Compiler, re::Regex};
@@ -102,10 +103,12 @@ impl Context {
     /// Returns the NFA for the given regular expression.
     /// Computes the NFA if it has not been computed yet.
     pub fn get_nfa(&mut self, regex: &Regex) -> Rc<NFA> {
-        if let Some(nfa) = self.nfa_cache.get(regex) {
+        let t = Instant::now();
+        let nfa = if let Some(nfa) = self.nfa_cache.get(regex) {
             nfa.clone()
         } else {
             let builder = self.ast_builder().re_builder();
+
             let nfa = Compiler::Thompson
                 .nfa(regex, builder)
                 .map(|nfa| nfa.remove_epsilons().expect("Failed to compile regex"))
@@ -114,7 +117,9 @@ impl Context {
             let nfa = Rc::new(nfa);
             self.nfa_cache.insert(regex.clone(), nfa.clone());
             nfa
-        }
+        };
+        log::debug!("Compiled NFA ({:?})", t.elapsed());
+        nfa
     }
 
     // pub fn ir_builder(&self) -> RefMut<IrBuilder> {

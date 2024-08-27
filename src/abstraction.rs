@@ -1,4 +1,9 @@
-use std::{collections::HashMap, rc::Rc};
+use std::{
+    collections::HashMap,
+    fmt,
+    fmt::{Display, Formatter},
+    rc::Rc,
+};
 
 use crate::{
     repr::ir::{Atom, Formula},
@@ -73,6 +78,16 @@ impl Definition {
     /// Returns true if the definition is equivalent.
     pub fn is_equiv(&self) -> bool {
         matches!(self.polarity, DefinitionType::Equivalence)
+    }
+}
+
+impl Display for Definition {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self.polarity {
+            DefinitionType::PositiveImplication => write!(f, "{} => {}", self.var, self.atom),
+            DefinitionType::NegativeImplication => write!(f, "-{} => -{}", self.var, self.atom),
+            DefinitionType::Equivalence => write!(f, "{} <=> {}", self.var, self.atom),
+        }
     }
 }
 

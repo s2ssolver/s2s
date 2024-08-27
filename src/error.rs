@@ -1,6 +1,6 @@
 use thiserror::Error;
 
-use crate::{preprocess::PreprocessingError, repr::ast::AstError};
+use crate::{encode::EncodingError, preprocess::PreprocessingError, repr::ast::AstError};
 
 #[derive(Error, Debug)]
 #[error(transparent)]
@@ -18,7 +18,7 @@ pub enum ErrorRepr {
 
     /// An error that occured during encoding.
     #[error("failed to encode: {0}")]
-    EncodingError(String),
+    EncodingError(EncodingError),
 
     /// An error that occured during solving.
     #[error("failed solving: {0}")]
@@ -30,6 +30,12 @@ pub enum ErrorRepr {
 impl From<PreprocessingError> for PublicError {
     fn from(err: PreprocessingError) -> Self {
         PublicError(ErrorRepr::PreprocessingError(err))
+    }
+}
+
+impl From<EncodingError> for PublicError {
+    fn from(err: EncodingError) -> Self {
+        PublicError(ErrorRepr::EncodingError(err))
     }
 }
 

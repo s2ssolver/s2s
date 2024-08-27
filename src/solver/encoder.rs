@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, time::Instant};
 
 use cadical::Solver;
 
@@ -9,10 +9,10 @@ use crate::{
     context::Context,
     encode::{
         domain::{DomainEncoder, DomainEncoding},
-        EncodingResult, LiteralEncoder,
+        get_encoder, EncodingError, EncodingResult, LiteralEncoder,
     },
     repr::ir::{Literal, VarSubstitution},
-    sat::{nlit, pvar, PVar},
+    sat::{nlit, plit, pvar, PLit, PVar},
 };
 
 pub struct ProblemEncoder {
@@ -36,21 +36,25 @@ impl ProblemEncoder {
         &mut self,
         defs: &[Definition],
         bounds: &Bounds,
-        ctx: &Context,
-    ) -> EncodingResult {
+        ctx: &mut Context,
+    ) -> Result<EncodingResult, EncodingError> {
         // INPUT: BOUNDS
         // Encode the domain
+        let t = Instant::now();
         let mut res = self.domain_encoder.encode(bounds, ctx);
+        log::debug!("Encoded domain ({:?})", t.elapsed());
 
         // TODO: Instead let domain_encoder return the encoding of the domain or an Rc<DomainEncoding>
         let dom = self.domain_encoder.encoding().clone();
         // Encode all definitions
         for def in defs.iter() {
-            let cnf = self.encode_def(def, bounds, &dom);
+            let t = Instant::now();
+            let cnf = self.encode_def(def, bounds, &dom, ctx)?;
+            log::debug!("Encoded {} ({:?})", def, t.elapsed());
             res.extend(cnf);
         }
 
-        res
+        Ok(res)
     }
 
     fn encode_def(
@@ -58,42 +62,65 @@ impl ProblemEncoder {
         def: &Definition,
         bounds: &Bounds,
         dom: &DomainEncoding,
-    ) -> EncodingResult {
+        ctx: &mut Context,
+    ) -> Result<EncodingResult, EncodingError> {
         let atom = def.atom();
 
         // Check if atom is regex and definition is equivalence, then use specialized encoding
 
         let mut res = EncodingResult::empty();
-        let (probe, encoder) = if def.is_pos() {
-            // Convert to literal. Cloning is cheap, because the atom is wrapped in an Rc.
+
+        if def.is_pos() {
+            // def_var -> atom
             let lit = Literal::Positive(atom.clone());
-            let probe = *self.probes.entry(lit.clone()).or_insert_with(|| pvar());
-            let enc = self.get_encoder(&lit);
-            (probe, enc)
-        } else {
-            // Convert to literal. Cloning is cheap, because the atom is wrapped in an Rc.
+            let def_lit = nlit(def.def_var());
+
+            let encoding = self.encode_literal(&lit, def_lit, bounds, dom, ctx)?;
+            res.extend(encoding);
+        }
+
+        if def.is_neg() {
+            // -def_var -> -atom
             let lit = Literal::Negative(atom.clone());
-            let probe = *self.probes.entry(lit.clone()).or_insert_with(|| pvar());
-            let enc = self.get_encoder(&lit);
-            (probe, enc)
-        };
-        let mut encoding = encoder.encode(bounds, dom);
+            let def_lit = plit(def.def_var());
 
-        // Add probe to every clause
-        encoding
-            .as_mut()
-            .unwrap()
-            .iter_clauses_mut()
-            .for_each(|cl| cl.push(nlit(probe)));
-        res.extend(encoding.unwrap());
+            let encoding = self.encode_literal(&lit, def_lit, bounds, dom, ctx)?;
+            res.extend(encoding);
+        }
 
-        res
+        Ok(res)
     }
 
-    fn get_encoder(&mut self, lit: &Literal) -> &mut Box<dyn LiteralEncoder> {
+    fn encode_literal(
+        &mut self,
+        lit: &Literal,
+        def: PLit,
+        bounds: &Bounds,
+        dom: &DomainEncoding,
+        ctx: &mut Context,
+    ) -> Result<EncodingResult, EncodingError> {
+        let mut encoding = self.get_encoder(&lit, ctx).encode(bounds, dom)?;
+
+        // Add -def var to every clause
+        encoding.iter_clauses_mut().for_each(|cl| {
+            cl.push(def);
+        });
+
+        let probe = *self.probes.entry(lit.clone()).or_insert_with(|| pvar());
+        // Add probe to every clause
+        encoding
+            .iter_clauses_mut()
+            .for_each(|cl| cl.push(nlit(probe)));
+        // assert all probes
+        encoding.add_assumption(plit(probe));
+        Ok(encoding)
+    }
+
+    fn get_encoder(&mut self, lit: &Literal, ctx: &mut Context) -> &mut Box<dyn LiteralEncoder> {
         if self.encoders.get(lit).is_none() {
             // Create new encoder
-            // self.encoders.insert(lit.clone(), Box::new(RegexEncoder::new()));
+            let encoder = get_encoder(lit, ctx).unwrap();
+            self.encoders.insert(lit.clone(), encoder);
         }
         self.encoders.get_mut(lit).unwrap()
     }
@@ -110,7 +137,7 @@ impl ProblemEncoder {
     }
 
     /// Returns the model of the current assignment.
-    pub fn get_model(&self, solver: &Solver, ctx: &Context) -> Option<VarSubstitution> {
-        todo!()
+    pub fn get_model(&self, solver: &Solver) -> VarSubstitution {
+        self.domain_encoder.encoding().get_model(solver)
     }
 }
