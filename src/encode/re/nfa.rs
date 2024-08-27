@@ -12,7 +12,7 @@ use std::rc::Rc;
 use indexmap::{IndexMap, IndexSet};
 use regulaer::{
     alph::CharRange,
-    automaton::{AutomatonError, State, StateId, Transition, TransitionType, NFA},
+    automaton::{AutomatonError, State, StateId, TransitionType, NFA},
     re::Regex,
 };
 
@@ -27,8 +27,6 @@ use crate::{
     sat::{nlit, plit, pvar, PVar},
 };
 
-const NFA_NOT_EPSILON_FREE_MSG: &str = "NFA must be epsilon-free";
-
 /// An encoder for regular constraints using automata.
 /// Encodes that a variable is a member of a regular language.
 /// The resulting encoding is incremental.
@@ -37,7 +35,7 @@ pub struct NFAEncoder {
     nfa: Rc<NFA>,
     /// The inverse of the transition function.
     /// Maps a state to a list of pairs (state, transition) that lead to the given state.
-    delta_inv: IndexMap<StateId, Vec<(StateId, Transition)>>,
+    delta_inv: IndexMap<StateId, Vec<(StateId, TransitionType)>>,
 
     regex: Regex,
 
@@ -61,7 +59,8 @@ impl NFAEncoder {
         let last_bound = self.last_bound.unwrap_or(0);
         for l in last_bound..=bound {
             for state in self.nfa.states() {
-                self.reach_vars.insert((state, l), pvar());
+                let ok = self.reach_vars.insert((state, l), pvar());
+                assert!(ok.is_none());
             }
         }
     }
@@ -76,7 +75,6 @@ impl NFAEncoder {
                     res.add_clause(vec![plit(self.reach_vars[&(state, 0)])]);
                 } else {
                     // All other states are not reachable after reading 0 characters
-
                     res.add_clause(vec![nlit(self.reach_vars[&(state, 0)])]);
                 }
             }
@@ -94,50 +92,48 @@ impl NFAEncoder {
     ) -> Result<EncodingResult, EncodingError> {
         let mut res = EncodingResult::empty();
         let last_bound = self.last_bound.unwrap_or(0);
-
         for l in last_bound.saturating_sub(1)..bound {
             for state in self.nfa.states() {
                 let reach_var = self.reach_vars[&(state, l)];
 
                 for transition in self.nfa.get_state(state)?.transitions() {
                     let reach_next = self.reach_vars[&(transition.get_dest(), l + 1)];
+
                     match transition.get_type() {
                         TransitionType::Range(range) if range_any(&range) => {
                             // Follow transition if we do not read lambda
                             let lambda_sub_var =
                                 dom.string().get_sub(&self.var, l, LAMBDA).unwrap();
+
+                            // reach_var /\ -lambda_sub_var => reach_next
                             let clause =
                                 vec![nlit(reach_var), plit(lambda_sub_var), plit(reach_next)];
                             res.add_clause(clause);
                         }
                         TransitionType::Range(range) => {
-                            let lb = range.start();
-                            let ub = range.end();
+                            let s = range.start();
+                            let e = range.end();
 
                             // Follow transition if we read a character in the given range
-                            for c in lb..=ub {
-                                let sub_var = dom.string().get_sub(&self.var, l, c).expect(
-                                    format!(
-                                        "Substitution h({})[{}] = {} not found",
-                                        self.var, l, c
-                                    )
-                                    .as_str(),
-                                );
+                            for c in s..=e {
+                                let sub_var = dom.string().get_sub(&self.var, l, c).unwrap();
+                                // reach_var /\ sub_var => reach_next
                                 let clause = vec![nlit(reach_var), nlit(sub_var), plit(reach_next)];
                                 res.add_clause(clause);
                             }
                         }
                         TransitionType::Epsilon => {
                             // That must not happen
-                            return Err(EncodingError::new(NFA_NOT_EPSILON_FREE_MSG));
+                            return Err(EncodingError::not_epsi_free());
                         }
                     }
                 }
 
                 // Allow lambda self-transitions
-                let reach_next = self.reach_vars[&(state, l + 1)];
+                let reach_self = self.reach_vars[&(state, l + 1)];
                 let lambda_sub_var = dom.string().get_sub(&self.var, l, LAMBDA).unwrap();
-                let clause = vec![nlit(reach_var), nlit(lambda_sub_var), plit(reach_next)];
+                // reach_var /\ lambda_sub_var => reach_next
+                let clause = vec![nlit(reach_var), nlit(lambda_sub_var), plit(reach_self)];
                 res.add_clause(clause);
             }
         }
@@ -153,43 +149,53 @@ impl NFAEncoder {
         let last_bound = self.last_bound.unwrap_or(1);
 
         for l in last_bound..=bound {
-            for (state, preds) in self.delta_inv.iter() {
-                let reach_var = self.reach_vars[&(*state, l)];
+            for state in self.nfa.states() {
+                let reach_var = self.reach_vars[&(state, l)];
                 let mut alo_clause = vec![nlit(reach_var)];
-
-                for (q_pred, trans) in preds.iter() {
-                    debug_assert!(trans.get_dest() == *state);
+                for (q_pred, trans) in self.delta_inv.get(&state).unwrap_or(&vec![]) {
                     let reach_prev = self.reach_vars[&(*q_pred, l - 1)];
                     // Tseitin on-the-fly
                     let def_var = pvar();
                     alo_clause.push(plit(def_var));
-                    match trans.get_type() {
+                    match trans {
                         TransitionType::Range(range) if range_any(range) => {
                             // Is predecessor if we do not read lambda
                             let sub_var = dom.string().get_sub(&self.var, l - 1, LAMBDA).unwrap();
+                            // reach_prev /\ -sub_var
                             res.add_clause(vec![nlit(def_var), plit(reach_prev)]);
                             res.add_clause(vec![nlit(def_var), nlit(sub_var)]);
                         }
+                        TransitionType::Range(range) if range.len() == 1 => {
+                            // Is predecessor if we read the given character
+                            let c = range.start();
+                            let sub_var = dom.string().get_sub(&self.var, l - 1, c).unwrap();
+                            res.add_clause(vec![nlit(def_var), plit(reach_prev)]);
+                            res.add_clause(vec![nlit(def_var), plit(sub_var)]);
+                        }
                         TransitionType::Range(range) => {
                             // Is predecessor if we read a character in the given range
-                            let lb = range.start();
-                            let ub = range.end();
+                            let s = range.start();
+                            let e = range.end();
+
+                            // reach_prev /\ (sub_var_1 \/ ... \/ sub_var_n)
                             res.add_clause(vec![nlit(def_var), plit(reach_prev)]);
+
                             let mut range_clause = vec![nlit(def_var)];
-                            for c in lb..=ub {
+                            for c in s..=e {
                                 let sub_var = dom.string().get_sub(&self.var, l - 1, c).unwrap();
                                 range_clause.push(plit(sub_var));
                             }
+
                             res.add_clause(range_clause);
                         }
                         TransitionType::Epsilon => {
-                            return Err(EncodingError::new(NFA_NOT_EPSILON_FREE_MSG))
+                            return Err(EncodingError::not_epsi_free());
                         }
                     }
                 }
 
                 // Allow lambda self-transitions
-                let reach_prev = self.reach_vars[&(*state, l - 1)];
+                let reach_prev = self.reach_vars[&(state, l - 1)];
                 let lambda_sub_var = dom.string().get_sub(&self.var, l - 1, LAMBDA).unwrap();
                 let def_var = pvar();
                 alo_clause.push(plit(def_var));
@@ -325,6 +331,46 @@ impl LiteralEncoder for NFAEncoder {
         self.last_bound = Some(bound);
         Ok(res)
     }
+
+    fn print_debug(&self, solver: &cadical::Solver, _dom: &DomainEncoding) {
+        for l in 0..self.last_bound.unwrap() {
+            for c in _dom.alphabet().iter() {
+                let sub_var = _dom.string().get_sub(&self.var, l, c).expect(
+                    format!("Substitution h({})[{}] = {} not found", self.var, l, c).as_str(),
+                );
+                let is_sub = solver.value(plit(sub_var)).unwrap();
+                if is_sub {
+                    print!("{c}({sub_var})\t");
+                } else {
+                    print!("-{c}({sub_var})\t");
+                }
+            }
+            let sub_var = _dom.string().get_sub(&self.var, l, LAMBDA).unwrap();
+            let is_sub = solver.value(plit(sub_var)).unwrap();
+            if is_sub {
+                print!("_({sub_var})\t");
+            } else {
+                print!("-_({sub_var})\t");
+            }
+            println!("");
+        }
+
+        println!("");
+
+        for l in 0..=self.last_bound.unwrap() {
+            print!("{l}:\t");
+            for s in self.nfa.states() {
+                let reach_var = self.reach_vars[&(s, l)];
+                let reached = solver.value(plit(reach_var)).unwrap();
+                if reached {
+                    print!("{s}({reach_var})\t");
+                } else {
+                    print!("-{s}({reach_var})\t");
+                }
+            }
+            println!();
+        }
+    }
 }
 
 impl NFAEncoder {
@@ -378,7 +424,7 @@ fn range_any(r: &CharRange) -> bool {
 
 fn precompute_delta_inv(
     nfa: &Rc<NFA>,
-) -> Result<IndexMap<StateId, Vec<(StateId, Transition)>>, AutomatonError> {
+) -> Result<IndexMap<StateId, Vec<(StateId, TransitionType)>>, AutomatonError> {
     let mut delta_inv = IndexMap::new();
 
     // Do one DFS
@@ -391,13 +437,15 @@ fn precompute_delta_inv(
             for transition in nfa.get_state(state)?.transitions() {
                 let dest = transition.get_dest();
                 let entry = delta_inv.entry(dest).or_insert_with(Vec::new);
-                entry.push((state, transition));
+
+                entry.push((state, *transition.get_type()));
                 if !visited.contains(&dest) {
                     stack.push(dest);
                 }
             }
         }
     }
+    println!("{:?}", delta_inv);
     Ok(delta_inv)
 }
 
@@ -448,6 +496,7 @@ mod test {
                     if let Some(true) = result {
                         let _model = get_str_substitutions(dom_encoder.encoding(), &ctx, &solver);
                         let var_model = _model.get(&var).unwrap().iter().collect::<String>();
+                        encoder.print_debug(&solver, dom_encoder.encoding());
                         assert!(
                             re.accepts(&var_model.clone().into()),
                             "Model `{}` does not match regex `{}`",
@@ -483,12 +532,12 @@ mod test {
     }
 
     #[test]
-    fn var_in_const() {
+    fn var_in_const_no_concat() {
         let mut ctx = Context::default();
 
         let re = ctx.ast_builder().re_builder().word("foo".into());
 
-        assert_eq!(solve_with_bounds(re, true, &[10]), Some(true));
+        assert_eq!(solve_with_bounds(re, true, &[7]), Some(true));
     }
 
     #[test]

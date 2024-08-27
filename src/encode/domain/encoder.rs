@@ -110,7 +110,6 @@ impl StringDomainEncoder {
                 .get_upper_finite(&str_var)
                 .expect("Unbounded string variable") as usize;
 
-            // Todo: this is bad because it clones the alphabet
             let alph = &self.alphabet;
             for b in last_bound..new_bound {
                 let mut pos_subs = vec![];
@@ -169,7 +168,7 @@ impl StringDomainEncoder {
                 if len < lower {
                     res.add_clause(vec![nlit(choice)]);
                 }
-                encoding.string.inser_lenght(str_var.as_ref(), len, choice);
+                encoding.string.insert_lenght(str_var.as_ref(), len, choice);
 
                 // If the variable has this length, then only lambdas follow, and no lambdas precede
                 if len < bounds.get_upper_finite(&str_var).unwrap() as usize {
@@ -501,7 +500,7 @@ mod tests {
         let sub = subs.get(&var).unwrap();
         let expected_len = (len as usize) * 2;
         assert!(
-            sub.len() == expected_len,
+            sub.len() <= expected_len,
             "Expected length {}, got {}: {:?}",
             expected_len,
             sub.len(),

@@ -214,6 +214,10 @@ impl EncodingError {
             msg: msg.to_string(),
         }
     }
+
+    pub fn not_epsi_free() -> Self {
+        Self::new("NFA must be epsilon-free")
+    }
 }
 impl Display for EncodingError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -242,7 +246,7 @@ pub trait LiteralEncoder {
         substitution: &DomainEncoding,
     ) -> Result<EncodingResult, EncodingError>;
 
-    fn print_debug(&self, _solver: &cadical::Solver, _dom: &DomainEncoding, _ctx: &Context) {}
+    fn print_debug(&self, _solver: &cadical::Solver, _dom: &DomainEncoding) {}
 }
 
 pub fn get_encoder(
