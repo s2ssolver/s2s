@@ -305,6 +305,13 @@ impl Formula {
     pub fn entailed_literals(&self) -> LiteralIterator {
         LiteralIterator::new(self, true)
     }
+
+    /// Checks if the formula entails the given literal.
+    /// If true, the formula implies the literal.
+    /// If false, it is unknown if the formula implies the literal.
+    pub(crate) fn entails(&self, l: &&Literal) -> bool {
+        self.entailed_literals().any(|lit| lit == *l)
+    }
 }
 impl Display for Formula {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

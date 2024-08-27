@@ -8,11 +8,11 @@ use itertools::Itertools;
 use crate::{
     abstraction::{abstract_fm, Abstraction, Definition},
     alphabet::{self, Alphabet},
-    bounds::{infer::BoundInferer, BoundValue, Bounds, Interval},
+    bounds::{infer::BoundInferer, step::BoundStep, BoundValue, Bounds, Interval},
     context::Context,
     preprocess::{self, PreprocessingError},
     repr::{
-        ir::{Formula, Literal, VarSubstitution},
+        ir::{Formula, VarSubstitution},
         Sorted,
     },
     sat::to_cnf,
@@ -22,6 +22,7 @@ use crate::error::PublicError as Error;
 
 //mod analysis;
 mod encoder;
+mod refine;
 //mod engine;
 //mod manager;
 
@@ -71,6 +72,7 @@ pub struct SolverOptions {
     simplify: bool,
     cegar: bool,
     max_bounds: usize,
+    step: BoundStep,
 }
 
 impl SolverOptions {
@@ -225,8 +227,13 @@ impl Solver {
         // Initialize the bounds
         let mut bounds = init_bounds;
 
+        let mut _blocked_assignments = 0;
+        let mut round = 0;
+
         // Start Solving Loop
         loop {
+            round += 1;
+            log::info!("Round {} with bounds {}", round, bounds);
             // Encode and Solve
             let encoding = encoder.encode(&defs, &bounds, ctx)?;
             let (cnf, asm) = encoding.into_inner();
@@ -251,24 +258,31 @@ impl Solver {
                     }
                 }
                 Some(false) => {
+                    log::info!("Unsat");
                     let failed = encoder.get_failed_literals(&cadical);
+                    log::info!("{} Failed literal(s)", failed.len());
+                    log::debug!("Failed literals: {}", failed.iter().join(", "));
                     // Refine bounds. If bounds are at max, return UNSAT. Otherwise, continue with new bounds.
-                    match self.refine_bounds(&bounds, &failed) {
-                        Some(new_bounds) => {
-                            bounds = new_bounds;
+                    match refine::refine_bounds(&failed, &bounds, fm, self.options.step, ctx) {
+                        refine::BoundRefinement::Refined(b) => bounds = b,
+                        refine::BoundRefinement::SmallModelReached => {
+                            // If we blocked an assignment, we can't be sure that the formula is unsat.
+                            // Otherwise, we can return UNSAT.
+                            if _blocked_assignments > 0 {
+                                return Ok(SolverResult::Unknown);
+                            } else {
+                                return Ok(SolverResult::Unsat);
+                            }
                         }
-                        None => return Ok(SolverResult::Unsat),
+                        refine::BoundRefinement::LimitReached => {
+                            // TODO: specify in the options what should be returned here
+                            return Ok(SolverResult::Unknown);
+                        }
                     }
                 }
                 None => panic!("Cadical failed to solve"),
             }
         }
-    }
-
-    /// Refine the bounds based on the failed literals.
-    /// Returns None if the upper bound of every variable is equal to or greater than the bounds of the smallest model any combination of the failed literals can produce.
-    fn refine_bounds(&self, bounds: &Bounds, failed: &[Literal]) -> Option<Bounds> {
-        todo!("Refine the bounds")
     }
 
     /// Check if the assignment is a solution for the formula.

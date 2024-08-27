@@ -127,7 +127,16 @@ impl ProblemEncoder {
 
     /// Returns the failed literals.
     pub fn get_failed_literals(&self, solver: &Solver) -> Vec<Literal> {
-        todo!()
+        self.probes
+            .iter()
+            .filter_map(|(lit, &probe)| {
+                if solver.failed(plit(probe)) {
+                    Some(lit.clone())
+                } else {
+                    None
+                }
+            })
+            .collect()
     }
 
     /// Blocks the assignment of the given substitution.

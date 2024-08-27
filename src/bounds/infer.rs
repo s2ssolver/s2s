@@ -61,7 +61,7 @@ impl Fragment {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct BoundInferer {
     literals: IndexSet<Literal>,
     // set to true if literals contain a conflict, i.e., a literal and its negation
@@ -118,6 +118,12 @@ impl BoundInferer {
         }
     }
 
+    /// Returns true if the literals contain a conflict, i.e., a literal and its negation.
+    pub fn conflicting(&self) -> bool {
+        self.conflict
+    }
+
+    /// Infers the bounds of the variables in the literals.
     pub fn infer(&self) -> Option<Bounds> {
         if self.conflict {
             return None;

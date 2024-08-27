@@ -56,7 +56,7 @@ pub struct NFAEncoder {
 impl NFAEncoder {
     /// Incrementally adds the reachability vars for the increased bound.
     fn create_reach_vars(&mut self, bound: usize) {
-        let last_bound = self.last_bound.unwrap_or(0);
+        let last_bound = self.last_bound.map(|l| l + 1).unwrap_or(0);
         for l in last_bound..=bound {
             for state in self.nfa.states() {
                 let ok = self.reach_vars.insert((state, l), pvar());
@@ -259,12 +259,6 @@ impl LiteralEncoder for NFAEncoder {
         bounds: &Bounds,
         dom: &DomainEncoding,
     ) -> Result<EncodingResult, EncodingError> {
-        if self.sign {
-            log::debug!("Encoding `{} in {}` ", self.var, self.regex,);
-        } else {
-            log::debug!("Encoding `{} notin {}` ", self.var, self.regex,);
-        }
-
         let bound = bounds.get_upper_finite(&self.var).unwrap_or(0) as usize;
 
         log::trace!("Bound: {}", bound);

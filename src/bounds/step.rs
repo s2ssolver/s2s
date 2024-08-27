@@ -1,7 +1,5 @@
 //! Functions for increasing bounds on variables.
 
-use num_traits::Float;
-
 use crate::repr::Sorted;
 
 use super::{BoundValue, Bounds, Interval};
@@ -14,6 +12,7 @@ use super::{BoundValue, Bounds, Interval};
 /// - Adding/Subtracting a constant value to the bounds.
 /// - Setting the bounds to the next/previous square number.
 /// - Doubling the bounds.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum BoundStep {
     /// Adds or substracts a a constant offset.
     /// For lower bounds the offset is subtracted, for upper bounds it is added.
@@ -21,6 +20,7 @@ pub enum BoundStep {
     ConstantOffset(usize),
 
     /// Expands the bounds to the next/previous perfect square.
+    #[default]
     NextSquare,
 
     /// Doubles the size of the interval.

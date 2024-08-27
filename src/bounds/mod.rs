@@ -3,10 +3,7 @@
 pub mod infer;
 pub mod step;
 
-use std::{
-    cmp::Ordering,
-    fmt::Display,
-};
+use std::{cmp::Ordering, fmt::Display};
 
 use indexmap::IndexMap;
 use quickcheck::Arbitrary;
