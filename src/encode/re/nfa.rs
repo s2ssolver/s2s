@@ -441,11 +441,11 @@ fn precompute_delta_inv(
                 entry.push((state, *transition.get_type()));
                 if !visited.contains(&dest) {
                     stack.push(dest);
+                    visited.insert(dest);
                 }
             }
         }
     }
-    println!("{:?}", delta_inv);
     Ok(delta_inv)
 }
 
