@@ -1,7 +1,6 @@
 mod convert;
 mod normal;
-mod simp;
-//mod simplify;
+pub mod simp;
 
 use thiserror::Error;
 
@@ -29,7 +28,7 @@ pub enum PreprocessingError {
     NotInNNF(String),
 }
 
-pub fn normalize(fm: &Formula, ctx: &mut Context) -> Result<Formula, PreprocessingError> {
+pub fn normalize(fm: Formula, ctx: &mut Context) -> Result<Formula, PreprocessingError> {
     let mut normalizer = normal::Normalizer::default();
-    normalizer.rewrite(fm.clone(), ctx)
+    normalizer.rewrite(fm, ctx)
 }

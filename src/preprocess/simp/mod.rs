@@ -1,4 +1,4 @@
-mod reg;
+mod indep;
 mod weq;
 
 use crate::{
@@ -9,15 +9,24 @@ use crate::{
     },
 };
 
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SimplificationResult<T> {
     Simplified(T, VarSubstitution),
     Trivial(bool),
     Unchanged,
 }
 
+const DEFAULT_MAX_ITERATIONS: usize = 20;
+
 pub struct Simplifier {
-    simps: Vec<Box<dyn LiteralSimplifier>>,
     max_iterations: usize,
+}
+impl Default for Simplifier {
+    fn default() -> Self {
+        Self {
+            max_iterations: DEFAULT_MAX_ITERATIONS,
+        }
+    }
 }
 
 impl Simplifier {
@@ -26,13 +35,17 @@ impl Simplifier {
         let mut subst = VarSubstitution::default();
         let mut iterations = 0;
         let mut applied = true;
+
         while iterations < self.max_iterations && applied {
             simplified = simplified.reduce();
             applied = false;
             iterations += 1;
 
+            // These are recreated in each iteration, because they might depend on the current formula
+            let simps = self.build_simps(&simplified);
+
             // Apply all literal simplifications
-            match self.simp_lits(&simplified, ctx) {
+            match self.simp_lits(&simplified, ctx, &simps) {
                 SimplificationResult::Simplified(simped, new_subs) => {
                     simplified = simped;
                     subst = subst.compose(&new_subs);
@@ -45,14 +58,23 @@ impl Simplifier {
         SimplificationResult::Simplified(simplified, subst)
     }
 
-    fn simp_lits(&self, formula: &Formula, ctx: &mut Context) -> SimplificationResult<Formula> {
+    fn build_simps(&self, fm: &Formula) -> Vec<Box<dyn LiteralSimplifier>> {
+        vec![Box::new(indep::IndependetVarConstraint::new(fm))]
+    }
+
+    fn simp_lits(
+        &self,
+        formula: &Formula,
+        ctx: &mut Context,
+        simps: &[Box<dyn LiteralSimplifier>],
+    ) -> SimplificationResult<Formula> {
         match formula {
             Formula::True | Formula::False => SimplificationResult::Unchanged,
             Formula::Literal(l) => {
                 let mut applied = false;
                 let mut simped = l.clone();
                 let mut subs = VarSubstitution::default();
-                for simp in self.simps.iter() {
+                for simp in simps.iter() {
                     match simp.simplify(&simped, ctx) {
                         SimplificationResult::Simplified(simped_lit, new_subs) => {
                             subs = subs.compose(&new_subs);
@@ -76,7 +98,7 @@ impl Simplifier {
                 let mut simped = Vec::with_capacity(fs.len());
                 let mut subs = VarSubstitution::default();
                 for f in fs.iter() {
-                    match self.simp_lits(f, ctx) {
+                    match self.simp_lits(f, ctx, simps) {
                         SimplificationResult::Simplified(f, subst) => {
                             simped.push(f);
                             subs = subs.compose(&subst);

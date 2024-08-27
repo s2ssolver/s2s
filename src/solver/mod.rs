@@ -10,7 +10,11 @@ use crate::{
     alphabet::{self, Alphabet},
     bounds::{infer::BoundInferer, step::BoundStep, BoundValue, Bounds, Interval},
     context::Context,
-    preprocess::{self, PreprocessingError},
+    preprocess::{
+        self,
+        simp::{SimplificationResult, Simplifier},
+        PreprocessingError,
+    },
     repr::{
         ir::{Formula, VarSubstitution},
         Sorted,
@@ -66,13 +70,24 @@ impl std::fmt::Display for SolverResult {
     }
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct SolverOptions {
     dry: bool,
     simplify: bool,
     cegar: bool,
     max_bounds: usize,
     step: BoundStep,
+}
+impl Default for SolverOptions {
+    fn default() -> Self {
+        Self {
+            dry: false,
+            simplify: true,
+            cegar: true,
+            max_bounds: usize::MAX,
+            step: BoundStep::default(),
+        }
+    }
 }
 
 impl SolverOptions {
@@ -128,8 +143,17 @@ impl Solver {
         let mut timer = Instant::now();
 
         // Preprocess
-        let fm_preprocessed = self.preprocess(&fm, ctx)?;
+        let (fm_preprocessed, applied_subst) = self.preprocess(fm.clone(), ctx)?;
         log::info!("Preprocessed ({:?})", timer.elapsed());
+        log::debug!("Preprocessed formula: {}", fm_preprocessed);
+
+        // Early return if the formula is trivially sat/unsat
+        if fm_preprocessed == Formula::True {
+            return Ok(SolverResult::Sat(Some(applied_subst)));
+        } else if fm_preprocessed == Formula::False {
+            return Ok(SolverResult::Unsat);
+        }
+
         timer = Instant::now();
 
         // Build the Boolean abstraction
@@ -154,17 +178,33 @@ impl Solver {
 
         // Start CEGAR loop
         let res = self.run(fm, abstraction, init_bounds, alphabet, ctx);
+
         log::info!("Done solving ({:?})", timer.elapsed());
         res
     }
 
     fn preprocess(
         &mut self,
-        fm: &Formula,
+        fm: Formula,
         ctx: &mut Context,
-    ) -> Result<Formula, PreprocessingError> {
-        // TODO: Simplify
-        preprocess::normalize(fm, ctx)
+    ) -> Result<(Formula, VarSubstitution), PreprocessingError> {
+        let t = Instant::now();
+        let (fm, subst) = if self.options.simplify {
+            let simplifier = Simplifier::default();
+            match simplifier.simplify(fm.clone(), ctx) {
+                SimplificationResult::Simplified(f, s) => (f, s),
+                SimplificationResult::Trivial(true) => (Formula::True, VarSubstitution::default()),
+                SimplificationResult::Trivial(false) => {
+                    (Formula::False, VarSubstitution::default())
+                }
+                SimplificationResult::Unchanged => (fm.clone(), VarSubstitution::default()),
+            }
+        } else {
+            (fm.clone(), VarSubstitution::default())
+        };
+        log::info!("Simplified formula ({:?})", t.elapsed());
+
+        Ok((preprocess::normalize(fm, ctx)?, subst))
     }
 
     fn init_bounds(&self, fm: &Formula, ctx: &mut Context) -> Option<Bounds> {

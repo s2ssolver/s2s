@@ -1,14 +1,19 @@
 use std::collections::HashMap;
 
+use regulaer::{automaton::comp, re::ReBuilder};
+
 use crate::{
     context::Context,
     repr::{
-        ir::{AtomType, Formula, LinearArithTerm, Literal, Pattern, Symbol, WordEquation},
+        ir::{
+            AtomType, Formula, LinearArithTerm, Literal, Pattern, RegularConstraint, Symbol,
+            VarSubstitution, WordEquation,
+        },
         Variable,
     },
 };
 
-use super::LiteralSimplifier;
+use super::{LiteralSimplifier, SimplificationResult};
 
 /// We call a regular constraint independent if it has the form `x \in R` where `x` is a variable and `R` is a regular expression and `x` does not occur elsewhere in the formula.
 pub struct IndependetVarConstraint {
@@ -16,13 +21,12 @@ pub struct IndependetVarConstraint {
 }
 
 impl IndependetVarConstraint {
-    pub fn new() -> Self {
-        Self {
-            var_count: HashMap::new(),
-        }
+    pub fn new(fm: &Formula) -> Self {
+        let var_count = Self::count_vars(fm);
+        Self { var_count }
     }
 
-    fn count_vars(&mut self, fm: &Formula) -> HashMap<Variable, usize> {
+    fn count_vars(fm: &Formula) -> HashMap<Variable, usize> {
         match fm {
             Formula::Literal(l) => match l.atom().get_type() {
                 AtomType::BoolVar(_) => todo!(),
@@ -64,7 +68,7 @@ impl IndependetVarConstraint {
             Formula::And(fs) | Formula::Or(fs) => {
                 let mut count = HashMap::new();
                 for f in fs {
-                    let f_count = self.count_vars(f);
+                    let f_count = Self::count_vars(f);
                     count = Self::add(count, f_count);
                 }
                 count
@@ -105,10 +109,66 @@ impl IndependetVarConstraint {
         }
         count
     }
+
+    fn is_independent(&self, v: &Variable) -> bool {
+        self.var_count.get(v) == Some(&1)
+    }
+
+    fn simplify_regular_constraint(
+        &self,
+        lit: &Literal,
+        ctx: &mut Context,
+    ) -> SimplificationResult<Literal> {
+        if let AtomType::InRe(reg) = lit.atom().get_type() {
+            let pattern = reg.pattern();
+            // Check if pattern only consists of independet variables
+            let mut vars = Vec::new();
+            for s in pattern.iter() {
+                if let Symbol::Variable(v) = s {
+                    if !self.is_independent(v) {
+                        return SimplificationResult::Unchanged;
+                    }
+                    vars.push(v.clone());
+                } else {
+                    return SimplificationResult::Unchanged;
+                }
+            }
+
+            // All variables are independent, sample a word
+            let nfa = if lit.polarity() {
+                ctx.get_nfa(reg.re())
+            } else {
+                let builder = ctx.ast_builder().re_builder();
+                let comp = builder.comp(reg.re().clone());
+                ctx.get_nfa(&comp)
+            };
+
+            let w = match nfa.sample() {
+                Some(w) => w.to_string(),
+                None => return SimplificationResult::Trivial(false),
+            };
+
+            let mut subs = VarSubstitution::empty();
+            for (i, v) in vars.iter().enumerate() {
+                // set the first to w, the others to empty
+                let s = if i == 0 { w.clone() } else { "".to_string() };
+                subs.set_str(v.clone(), Pattern::constant(&s));
+            }
+
+            // apply substitution
+            let applied = subs.apply_literal(lit.clone(), ctx);
+            SimplificationResult::Simplified(applied, subs)
+        } else {
+            SimplificationResult::Unchanged
+        }
+    }
 }
 
 impl LiteralSimplifier for IndependetVarConstraint {
     fn simplify(&self, lit: &Literal, ctx: &mut Context) -> super::SimplificationResult<Literal> {
-        todo!("Reduce based on independent variable constraints")
+        match lit.atom().get_type() {
+            AtomType::InRe(_) => self.simplify_regular_constraint(lit, ctx),
+            _ => SimplificationResult::Unchanged,
+        }
     }
 }
