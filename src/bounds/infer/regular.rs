@@ -176,7 +176,7 @@ impl RegularBoundsInferer {
         let mut bounds = Bounds::default();
         for (v, nfa) in self.intersections.iter() {
             let upper = nfa.num_states().saturating_sub(1);
-            let lower = nfa.shortest().map(|l| l - 1).unwrap_or(0);
+            let lower = nfa.shortest().map(|l| l.saturating_sub(1)).unwrap_or(0);
             // TODO: use shortest path to find lower bound.
             bounds.set(v.clone(), Interval::new(lower, upper));
         }
@@ -239,7 +239,7 @@ mod tests {
         inferer.add_reg(v.as_ref().clone(), re, true, &mut ctx);
 
         let bounds = inferer.infer_bounds().unwrap();
-        assert_eq!(bounds.get(&v), Some(Interval::new(0, 3)));
+        assert_eq!(bounds.get(&v), Some(Interval::new(2, 2)));
     }
 
     #[test]
@@ -253,7 +253,7 @@ mod tests {
         inferer.add_reg(v.as_ref().clone(), re, true, &mut ctx);
 
         let bounds = inferer.infer_bounds().unwrap();
-        assert_eq!(bounds.get(&v), Some(Interval::new(0, 3)));
+        assert_eq!(bounds.get(&v), Some(Interval::new(0, 2)));
     }
 
     #[test]
@@ -270,7 +270,7 @@ mod tests {
 
         let bounds = inferer.infer_bounds().unwrap();
 
-        assert_eq!(bounds.get(&v), Some(Interval::new(0, 7)));
+        assert_eq!(bounds.get(&v), Some(Interval::new(0, 6)));
     }
 
     #[test]
@@ -287,7 +287,7 @@ mod tests {
 
         let bounds = inferer.infer_bounds().unwrap();
 
-        assert_eq!(bounds.get(&v), Some(Interval::new(0, 7)));
+        assert_eq!(bounds.get(&v), Some(Interval::new(0, 6)));
     }
 
     #[test]
@@ -305,7 +305,7 @@ mod tests {
         inferer.add_reg(v.as_ref().clone(), epsi, false, &mut ctx);
 
         let bounds = inferer.infer_bounds().unwrap();
-        assert_eq!(bounds.get(&v), Some(Interval::new(0, 7)));
+        assert_eq!(bounds.get(&v), Some(Interval::new(6, 6)));
     }
 
     #[test]
