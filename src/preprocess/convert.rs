@@ -82,7 +82,7 @@ pub fn convert_expr(
             let atom = convert_string_atom(s, ctx)?;
             Ok(ctx.ir_builder().plit(atom))
         }
-        ExprType::Int(_) => todo!(),
+        ExprType::Int(_) => todo!("Convert integer expressions"),
     }
 }
 

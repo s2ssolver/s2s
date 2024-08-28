@@ -1,6 +1,7 @@
 use indexmap::IndexMap;
 use std::collections::HashMap;
 use std::fmt::{Display, Write};
+use std::rc::Rc;
 
 use crate::{
     context::Context,
@@ -8,7 +9,7 @@ use crate::{
 };
 
 use super::{int::LinearSummand, string::Symbol, AtomType, Formula, LinearArithTerm, Pattern};
-use super::{Literal, VariableTerm};
+use super::{Atom, Literal, VariableTerm};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Substitute {
@@ -205,9 +206,8 @@ impl VarSubstitution {
         }
     }
 
-    pub fn apply_literal(&self, lit: Literal, ctx: &mut Context) -> Literal {
-        let pol = lit.polarity();
-        let new_atom = match &lit.atom().ttype {
+    pub fn apply_atom(&self, atom: &Atom, ctx: &mut Context) -> Rc<Atom> {
+        match atom.get_type() {
             AtomType::InRe(inre) => {
                 let new_p = self.apply_pattern(inre.pattern());
                 ctx.ir_builder().in_re(new_p, inre.re().clone())
@@ -226,7 +226,14 @@ impl VarSubstitution {
             AtomType::PrefixOf(_) => todo!(),
             AtomType::SuffixOf(_) => todo!(),
             AtomType::Contains(_) => todo!(),
-        };
+        }
+    }
+
+    /// Applies the substitution to the given literal.
+    /// Meaning, then substitution is applied to the atom of the literal and literal is returned with the new atom and the same polarity.
+    pub fn apply_literal(&self, lit: Literal, ctx: &mut Context) -> Literal {
+        let pol = lit.polarity();
+        let new_atom = self.apply_atom(lit.atom(), ctx);
         Literal::new(new_atom, pol)
     }
 

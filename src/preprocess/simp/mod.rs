@@ -54,12 +54,13 @@ impl Simplifier {
                 SimplificationResult::Trivial(b) => return SimplificationResult::Trivial(b),
                 SimplificationResult::Unchanged => {}
             }
+            log::debug!("Round {}: {}", iterations, simplified);
         }
         SimplificationResult::Simplified(simplified, subst)
     }
 
     fn build_simps(&self, fm: &Formula) -> Vec<Box<dyn LiteralSimplifier>> {
-        vec![Box::new(indep::IndependetVarConstraint::new(fm))]
+        vec![Box::new(indep::IndependentVarReducer::new(fm))]
     }
 
     fn simp_lits(
