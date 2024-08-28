@@ -184,6 +184,7 @@ impl WordEncoder {
     }
 }
 
+/// Encodes a solution for a word (in-)equation.
 enum SolutionWord {
     Equality(WordEncoder),
     Inequality(WordEncoder, WordEncoder),
@@ -269,7 +270,7 @@ pub struct WordEquationEncoder {
     starts_rhs: IndexMap<(usize, usize), PVar>,
 
     /// Maps each segment index to and incremental at-most-one encoder that is used to encode the possible start positions of the segment.
-    segs_starts_amo: IndexMap<(EqSide, usize), IncrementalAMO>,
+    //segs_starts_amo: IndexMap<(EqSide, usize), IncrementalAMO>,
 
     /// The variable-solution matching variables.
     var_matches: IndexMap<(Variable, usize, usize), PVar>,
@@ -300,7 +301,7 @@ impl WordEquationEncoder {
             last_var_bounds: None,
             starts_lhs: IndexMap::new(),
             starts_rhs: IndexMap::new(),
-            segs_starts_amo: IndexMap::new(),
+            //segs_starts_amo: IndexMap::new(),
             segments_lsh: lhs_segs,
             segments_rhs: rhs_segs,
             var_cand_match_cache: IndexMap::new(),
@@ -374,16 +375,16 @@ impl WordEquationEncoder {
             // Thus, the AMO encoding here is not required but redundant.
             // However, we still keep it as it helps the SAT solver.
             // ALO on the other hand seems to slow the solver down, so we omit it
-            let amo = self
-                .segs_starts_amo
-                .entry((side.clone(), i))
-                .or_default()
-                .add(&starts_i);
-            res.extend(amo);
+            // TODO: Set flag to enable/disable ALO encoding
+            // let amo = self
+            //     .segs_starts_amo
+            //     .entry((side.clone(), i))
+            //     .or_default()
+            //     .add(&starts_i);
+            // res.extend(amo);
         }
 
         // Encode start position needs to be 0 for the first segment
-
         for pos in last_bound..self.bound {
             let var = self.start_position(0, pos, side);
             if pos == 0 {
@@ -415,6 +416,8 @@ impl WordEquationEncoder {
                         // TODO: Put all "disabled" start-length-pairs is a list and process on next iteration instead of iterating over all pairs and checking the condition
                         let last_vbound = self.get_last_var_bound(v).unwrap_or(0);
                         let vbound = self.get_var_bound(v, bounds);
+
+                        // TODO: Do we really need to iterate over all lengths here or can we just check the last bound?
                         for len in 0..=vbound {
                             // Start position of next segment is i+len
                             let has_length = dom
@@ -426,6 +429,7 @@ impl WordEquationEncoder {
 
                             // If pos < self.last_bound AND len <= last_vbound, then we already encoded this.
                             // Check if any of the previously invalid position/length pairs became valid
+                            // TODO: There must be an easier way to check this
                             if pos < last_bound && len <= last_vbound {
                                 if pos + len
                                     >= last_bound.saturating_sub(
@@ -528,6 +532,7 @@ impl WordEquationEncoder {
         res
     }
 
+    // TODO: use the segments+1 encoding
     fn equal_length(&self, dom: &DomainEncoding, bounds: &Bounds, side: &EqSide) -> EncodingResult {
         let mut clauses = Cnf::new();
         let mut assumptions = indexset! {};
@@ -781,8 +786,6 @@ impl WordEquationEncoder {
         let lhs = self.candidates.lhs_encoder();
         let rhs = self.candidates.rhs_encoder();
         let mut new_mismatch_selectors = vec![];
-        println!("Alphabet: {:?}", dom.alphabet());
-        println!("Bound: {}", self.bound);
         for b in last_bound.saturating_sub(1)..self.bound {
             let v = pvar();
             new_mismatch_selectors.push(v);
@@ -1162,8 +1165,8 @@ mod tests {
                 }
             }
             for v in &eq.variables() {
-                for l in 0..=bounds.get_upper_finite(v).unwrap() {
-                    let lvar = dom_encoder.encoding().int().get(v, l as isize).unwrap();
+                for l in 0..=bounds.get_upper_finite(v).unwrap() as usize {
+                    let lvar = dom_encoder.encoding().string().get_len(v, l).unwrap();
 
                     if let Some(true) = solver.value(plit(lvar)) {
                         println!("|{}| = {}", v, bounds.get_upper_finite(v).unwrap());
@@ -1204,10 +1207,6 @@ mod tests {
 
         let mut solver: Solver = Solver::new();
 
-        fn done(bounds: &Bounds, limit: usize) -> bool {
-            bounds.iter().all(|(_, i)| i.upper() >= limit.into())
-        }
-
         fn clamp_uppers(bounds: Bounds, limit: usize) -> Bounds {
             let mut clamped = Bounds::default();
             for (v, i) in bounds.iter() {
@@ -1217,7 +1216,9 @@ mod tests {
             clamped
         }
 
-        while !done(&bounds, limit) {
+        let mut last_round = false;
+        while !last_round {
+            last_round |= bounds.iter().all(|(_, i)| i.upper() >= limit.into());
             let mut encoding = EncodingResult::empty();
 
             encoding.extend(dom_encoder.encode(&bounds, &ctx));
@@ -1232,7 +1233,7 @@ mod tests {
                 EncodingResult::Trivial(f) => Some(f),
             };
 
-            bounds = update_bounds(&bounds, BoundStep::NextSquare); //BoundStep::NextSquare.apply(&bounds);
+            bounds = update_bounds(&bounds, BoundStep::NextSquare);
             bounds = clamp_uppers(bounds, limit);
         }
         if let Some(true) = result {
@@ -1268,10 +1269,15 @@ mod tests {
                     }
                 }
             }
-            println!("Bounds: {:?}", eq.variables());
+            println!("Bounds: {:?}", bounds);
+            println!("{:?}", dom_encoder.encoding().string());
             for v in &eq.variables() {
-                for l in 0..=bounds.get_upper_finite(v).unwrap() {
-                    let lvar = dom_encoder.encoding().int().get(v, l as isize).unwrap();
+                for l in 0..=bounds.get_upper_finite(v).unwrap() as usize {
+                    let lvar = dom_encoder
+                        .encoding()
+                        .string()
+                        .get_len(v, l)
+                        .expect(format!("no length {}:{}", v, l).as_str());
 
                     if let Some(true) = solver.value(plit(lvar)) {
                         println!("|{}| = {}", v, bounds.get_upper_finite(v).unwrap());
@@ -1425,10 +1431,24 @@ mod tests {
     }
 
     #[test]
-    fn align_sat_two_patterns() {
+    fn align_sat_two_patterns_unsat() {
         let mut ctx = Context::default();
 
         let eq = parse_simple("aXb", "YXc", &mut ctx);
+
+        let mut bounds = Bounds::default();
+        for var in eq.variables() {
+            bounds.set(var, Interval::new(0, 2));
+        }
+        let res = solve_align(&eq, bounds, &eq.constants().into_iter().collect(), &mut ctx);
+        assert!(matches!(res, Some(false)));
+    }
+
+    #[test]
+    fn align_sat_two_patterns_sat() {
+        let mut ctx = Context::default();
+
+        let eq = parse_simple("aXb", "YbX", &mut ctx);
 
         let mut bounds = Bounds::default();
         for var in eq.variables() {
