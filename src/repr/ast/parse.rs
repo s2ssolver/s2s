@@ -138,6 +138,9 @@ impl AstParser {
                                     chars.next();
                                 }
                                 chars.next(); // consume '}'
+                                if hex.len() < 1 || hex.len() > 5 {
+                                    return Err(AstError::InvalidEscapeSequence(hex));
+                                }
                                 match u32::from_str_radix(&hex, 16) {
                                     Ok(codepoint) if codepoint <= 0x2FFFF => {
                                         let as_char = char::from_u32(codepoint)
@@ -182,8 +185,11 @@ impl AstParser {
                             };
                             result.push(char::from_u32(code).unwrap());
                         }
-                        Some(c) => return Err(AstError::InvalidEscapeSequence(format!("\\{c}"))),
-                        None => return Err(AstError::InvalidEscapeSequence("\\".to_string())),
+                        Some(c) => {
+                            result.push('\\');
+                            result.push(c);
+                        }
+                        None => result.push('\\'),
                     }
                 }
                 c if (0x20..=0x7E).contains(&(c as u32)) => {
@@ -519,11 +525,32 @@ mod tests {
     }
 
     #[test]
+    fn test_parse_smt_string_invalid_escape() {
+        let parser = AstParser::default();
+
+        let cases = vec!["\\ux", "\\u{abz}", "\\u{110000}, \\u{}"];
+        for case in cases {
+            assert!(matches!(
+                parser.parse_smtlib_string(case),
+                Err(AstError::InvalidEscapeSequence(_))
+            ));
+        }
+    }
+
+    #[test]
     fn test_parse_smt_string_non_ascii() {
         let parser = AstParser::default();
         assert_eq!(parser.parse_smtlib_string("\\u00A9").unwrap(), "©");
         assert_eq!(parser.parse_smtlib_string("\\u20AC").unwrap(), "€");
         assert_eq!(parser.parse_smtlib_string("\\u{1F600}").unwrap(), "😀");
+    }
+
+    #[test]
+    fn test_parse_smt_string_backslash_no_escape() {
+        let parser = AstParser::default();
+        assert_eq!(parser.parse_smtlib_string("\\L").unwrap(), "\\L");
+        assert_eq!(parser.parse_smtlib_string("\\n").unwrap(), "\\n");
+        assert_eq!(parser.parse_smtlib_string("\\r").unwrap(), "\\r");
     }
 
     #[test]
@@ -534,10 +561,10 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_smt_25_escape_panic() {
+    fn test_parse_no_smt_25_escape() {
         let mut parser = AstParser::default();
         parser.smt25 = false;
-        assert!(parser.parse_smtlib_string("\\xA9").is_err());
+        assert_eq!(parser.parse_smtlib_string("\\xA9").unwrap(), "\\xA9");
     }
 
     #[test]
