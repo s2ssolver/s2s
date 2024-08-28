@@ -36,49 +36,6 @@ pub type Clause = Vec<PLit>;
 /// A formula in conjunctive normal form, i.e., a conjunction of clauses
 pub type Cnf = Vec<Clause>;
 
-/// A CNF formula with assumptions
-#[derive(Clone, Debug, Default)]
-pub struct CnfA {
-    cnf: Cnf,
-    assumptions: Vec<PLit>,
-}
-
-impl From<Cnf> for CnfA {
-    fn from(cnf: Cnf) -> Self {
-        Self {
-            cnf,
-            assumptions: Vec::new(),
-        }
-    }
-}
-
-impl CnfA {
-    pub fn new(cnf: Cnf, assumptions: Vec<PLit>) -> Self {
-        Self { cnf, assumptions }
-    }
-
-    pub fn add_assumption(&mut self, lit: PLit) {
-        self.assumptions.push(lit);
-    }
-
-    pub fn assumptions(&self) -> &[PLit] {
-        &self.assumptions
-    }
-
-    pub fn cnf(&self) -> &Cnf {
-        &self.cnf
-    }
-
-    pub fn into_inner(self) -> (Cnf, Vec<PLit>) {
-        (self.cnf, self.assumptions)
-    }
-
-    pub fn extend(&mut self, other: CnfA) {
-        self.cnf.extend(other.cnf);
-        self.assumptions.extend(other.assumptions);
-    }
-}
-
 pub fn nlit(var: PVar) -> PLit {
     -plit(var)
 }
@@ -288,9 +245,9 @@ mod tests {
     #[test]
     #[should_panic]
     fn test_cnf_to_clause_not_cnf() {
-        // Test case 2: CNF formula with base cases
-        // (!F) && (A && B)
-        let fm = PFormula::And(vec![
+        // Test case 2: formula that is not in CNF
+        // (!F) || (A && B)
+        let fm = PFormula::Or(vec![
             PFormula::nlit(1),
             PFormula::And(vec![PFormula::plit(2), PFormula::plit(3)]),
         ]);
