@@ -712,18 +712,35 @@ impl Display for Contains {
 use quickcheck;
 use regulaer::re::Regex;
 
-use crate::repr::{Sort, Sorted, Variable};
+use crate::{
+    alphabet,
+    repr::{Sort, Sorted, Variable},
+};
 
 use super::{ConstReducible, Substitutable};
 
 impl Arbitrary for Symbol {
     fn arbitrary(g: &mut quickcheck::Gen) -> Self {
+        fn var_name(g: &mut quickcheck::Gen) -> String {
+            let mut name = String::new();
+            let alphabet = "abcdefghijklmnopqrstuvwxyz";
+            for _ in 0..g.size() {
+                name.push(
+                    alphabet
+                        .chars()
+                        .nth(usize::arbitrary(g) % alphabet.len())
+                        .unwrap(),
+                );
+            }
+            name
+        }
+
         let choices = &[
             Symbol::Constant(char::arbitrary(g)),
             Symbol::Constant(char::arbitrary(g)),
             Symbol::Variable(Variable::new(
                 usize::arbitrary(g),
-                String::arbitrary(g),
+                var_name(g),
                 Sort::String,
             )),
         ];
