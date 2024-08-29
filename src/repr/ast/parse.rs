@@ -29,6 +29,11 @@ impl Default for AstParser {
     }
 }
 
+enum IdentifierType {
+    Var(Rc<Variable>),
+    ConstFun(String),
+}
+
 impl AstParser {
     pub fn parse_script(
         &self,
@@ -67,7 +72,12 @@ impl AstParser {
                 Command::Exit => script.exit(),
                 Command::GetModel => script.get_model(),
                 Command::SetLogic { symbol } => script.set_logic(symbol.0.to_owned()),
-                Command::SetOption { .. } => {}
+                Command::SetOption { keyword, value } => {
+                    log::warn!("Ignoring set-option! {}: {}", keyword, value)
+                }
+                Command::SetInfo { keyword, value } => {
+                    log::warn!("Ignoring set-info! {}: {}", keyword, value)
+                }
                 _ => return Err(AstError::Unsupported(format!("{}", cmd))),
             }
         }
@@ -89,8 +99,15 @@ impl AstParser {
                 _ => Err(AstError::Unsupported(format!("{}", c))),
             },
             Term::QualIdentifier(i) => {
-                let var = self.convert_variable(i, ctx)?;
-                Ok(ctx.ast_builder().var(var))
+                let iden = self.convert_identifier(i, ctx)?;
+                match iden {
+                    IdentifierType::Var(v) => Ok(ctx.ast_builder().var(v)),
+                    IdentifierType::ConstFun(fname) => match fname.as_str() {
+                        "true" => Ok(ctx.ast_builder().bool(true)),
+                        "false" => Ok(ctx.ast_builder().bool(false)),
+                        _ => Err(AstError::Undeclared(fname)),
+                    },
+                }
             }
             Term::Application {
                 qual_identifier,
@@ -206,11 +223,11 @@ impl AstParser {
         Ok(result)
     }
 
-    fn convert_variable(
+    fn convert_identifier(
         &self,
         identifier: &QualIdentifier,
         ctx: &mut Context,
-    ) -> Result<Rc<Variable>, AstError> {
+    ) -> Result<IdentifierType, AstError> {
         let identifier = match identifier {
             QualIdentifier::Simple { identifier } => identifier,
             QualIdentifier::Sorted { identifier, .. } => identifier,
@@ -218,8 +235,11 @@ impl AstParser {
         match identifier {
             Identifier::Simple { symbol } => {
                 let name = symbol.0.to_owned();
-
-                ctx.get_var(&name).ok_or(AstError::Undeclared(name))
+                if let Some(var) = ctx.get_var(&name) {
+                    Ok(IdentifierType::Var(var))
+                } else {
+                    Ok(IdentifierType::ConstFun(name))
+                }
             }
             Identifier::Indexed { .. } => Err(AstError::Unsupported(identifier.to_string())),
         }
