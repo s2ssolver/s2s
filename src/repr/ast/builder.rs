@@ -146,13 +146,13 @@ impl AstBuilder {
                 }
                 IntExpr::Neg(_) if args.len() == 1 => Some(self.neg(args[0].clone())),
                 IntExpr::Abs(_) if args.len() == 1 => Some(self.abs(args[0].clone())),
-                IntExpr::Le(_, _) if args.len() == 2 => {
+                IntExpr::Leq(_, _) if args.len() == 2 => {
                     Some(self.le(args[0].clone(), args[1].clone()))
                 }
                 IntExpr::Lt(_, _) if args.len() == 2 => {
                     Some(self.lt(args[0].clone(), args[1].clone()))
                 }
-                IntExpr::Ge(_, _) if args.len() == 2 => {
+                IntExpr::Geq(_, _) if args.len() == 2 => {
                     Some(self.ge(args[0].clone(), args[1].clone()))
                 }
                 IntExpr::Gt(_, _) if args.len() == 2 => {
@@ -353,7 +353,7 @@ impl AstBuilder {
     }
 
     pub fn le(&mut self, f1: Rc<Expression>, f2: Rc<Expression>) -> Rc<Expression> {
-        self.intern(ExprType::Int(IntExpr::Le(f1, f2)))
+        self.intern(ExprType::Int(IntExpr::Leq(f1, f2)))
     }
 
     pub fn lt(&mut self, f1: Rc<Expression>, f2: Rc<Expression>) -> Rc<Expression> {
@@ -361,7 +361,7 @@ impl AstBuilder {
     }
 
     pub fn ge(&mut self, f1: Rc<Expression>, f2: Rc<Expression>) -> Rc<Expression> {
-        self.intern(ExprType::Int(IntExpr::Ge(f1, f2)))
+        self.intern(ExprType::Int(IntExpr::Geq(f1, f2)))
     }
 
     pub fn gt(&mut self, f1: Rc<Expression>, f2: Rc<Expression>) -> Rc<Expression> {

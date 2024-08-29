@@ -263,9 +263,9 @@ pub enum IntExpr {
     Mod(Rc<Expression>, Rc<Expression>),
     Neg(Rc<Expression>),
     Abs(Rc<Expression>),
-    Le(Rc<Expression>, Rc<Expression>),
+    Leq(Rc<Expression>, Rc<Expression>),
     Lt(Rc<Expression>, Rc<Expression>),
-    Ge(Rc<Expression>, Rc<Expression>),
+    Geq(Rc<Expression>, Rc<Expression>),
     Gt(Rc<Expression>, Rc<Expression>),
 }
 impl IntExpr {
@@ -280,9 +280,9 @@ impl IntExpr {
             IntExpr::Mod(e1, e2) => vec![e1, e2],
             IntExpr::Neg(e) => vec![e],
             IntExpr::Abs(e) => vec![e],
-            IntExpr::Le(e1, e2) => vec![e1, e2],
+            IntExpr::Leq(e1, e2) => vec![e1, e2],
             IntExpr::Lt(e1, e2) => vec![e1, e2],
-            IntExpr::Ge(e1, e2) => vec![e1, e2],
+            IntExpr::Geq(e1, e2) => vec![e1, e2],
             IntExpr::Gt(e1, e2) => vec![e1, e2],
         }
     }
@@ -303,7 +303,7 @@ impl Sorted for IntExpr {
             | IntExpr::Mod(_, _)
             | IntExpr::Neg(_)
             | IntExpr::Abs(_) => Sort::Int,
-            IntExpr::Le(_, _) | IntExpr::Lt(_, _) | IntExpr::Ge(_, _) | IntExpr::Gt(_, _) => {
+            IntExpr::Leq(_, _) | IntExpr::Lt(_, _) | IntExpr::Geq(_, _) | IntExpr::Gt(_, _) => {
                 Sort::Bool
             }
         }
@@ -334,9 +334,9 @@ impl Display for IntExpr {
             IntExpr::Mod(e1, e2) => write!(f, "(mod {} {})", e1, e2),
             IntExpr::Neg(e) => write!(f, "(- {})", e),
             IntExpr::Abs(e) => write!(f, "(abs {})", e),
-            IntExpr::Le(e1, e2) => write!(f, "(<= {} {})", e1, e2),
+            IntExpr::Leq(e1, e2) => write!(f, "(<= {} {})", e1, e2),
             IntExpr::Lt(e1, e2) => write!(f, "(< {} {})", e1, e2),
-            IntExpr::Ge(e1, e2) => write!(f, "(>= {} {})", e1, e2),
+            IntExpr::Geq(e1, e2) => write!(f, "(>= {} {})", e1, e2),
             IntExpr::Gt(e1, e2) => write!(f, "(> {} {})", e1, e2),
         }
     }

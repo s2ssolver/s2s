@@ -1,12 +1,17 @@
 //! Conversion from the AST to the IR.
 
-use std::rc::Rc;
+use std::{collections::HashMap, rc::Rc};
 
 use crate::{
     context::Context,
-    repr::ast::{nf::expression_to_nnf, CoreExpr, ExprType, Expression, Script, StrExpr},
-    repr::ir::{Atom, Formula, IrBuilder, Pattern},
-    repr::{Sort, Sorted},
+    repr::{
+        ast::{nf::expression_to_nnf, CoreExpr, ExprType, Expression, IntExpr, Script, StrExpr},
+        ir::{
+            Atom, AtomType, Formula, IrBuilder, LinearArithTerm, LinearOperator, LinearSummand,
+            Pattern, Symbol,
+        },
+        Sort, Sorted,
+    },
 };
 
 use super::PreprocessingError;
@@ -32,9 +37,18 @@ pub fn convert_expr(
     match expr.get_type() {
         ExprType::Core(CoreExpr::Not(neg)) => match convert_expr(neg, ctx)? {
             Formula::Literal(lit) => {
-                // Flip the polarity of the literal
-                let flipped = !lit.polarity();
-                Ok(ctx.ir_builder().literal(lit.into_atom(), flipped))
+                if let AtomType::LinearConstraint(lc) = lit.atom().get_type() {
+                    // In case of a linear constraint, we simply negate it by flipping the operator
+                    let negated = lc.negate();
+                    let atom = ctx
+                        .ir_builder()
+                        .register_atom(AtomType::LinearConstraint(negated));
+                    Ok(ctx.ir_builder().plit(atom))
+                } else {
+                    // Otherwise we flip the polarity of the literal
+                    let flipped = !lit.polarity();
+                    Ok(ctx.ir_builder().literal(lit.into_atom(), flipped))
+                }
             }
             Formula::And(_) | Formula::Or(_) => Err(PreprocessingError::NotInNNF(expr.to_string())),
             Formula::True => Ok(Formula::False),
@@ -70,7 +84,15 @@ pub fn convert_expr(
                 let atom = convert_word_equation(lhs, rhs, ctx.ir_builder())?;
                 Ok(ctx.ir_builder().plit(atom))
             }
-            (ExprType::Int(_), ExprType::Int(_)) => todo!("Parse integer equality"),
+            (_, _) if l.sort().is_int() && r.sort().is_int() => {
+                // integer equality
+                let l = convert_linear_arith_term(l)?;
+                let r = convert_linear_arith_term(r)?;
+                let (mut l, r) = normalize_linear(l, r);
+                l.canonicalize();
+                let atom = ctx.ir_builder().linear_constraint(l, LinearOperator::Eq, r);
+                Ok(ctx.ir_builder().plit(atom))
+            }
             _ => Err(PreprocessingError::InvalidSort {
                 expr: expr.to_string(),
                 expected: l.sort(),
@@ -82,7 +104,10 @@ pub fn convert_expr(
             let atom = convert_string_atom(s, ctx)?;
             Ok(ctx.ir_builder().plit(atom))
         }
-        ExprType::Int(_) => todo!("Convert integer expressions"),
+        ExprType::Int(int) => {
+            let atom = convert_int_atom(int, ctx);
+            Ok(ctx.ir_builder().plit(atom?))
+        }
     }
 }
 
@@ -242,4 +267,114 @@ fn convert_contains(
         })?,
     };
     Ok(builder.contains(lhs, rhs))
+}
+
+fn convert_int_atom(expr: &IntExpr, ctx: &mut Context) -> Result<Rc<Atom>, PreprocessingError> {
+    match expr {
+        IntExpr::Leq(lhs, rhs)
+        | IntExpr::Lt(lhs, rhs)
+        | IntExpr::Geq(lhs, rhs)
+        | IntExpr::Gt(lhs, rhs) => {
+            let lhs = convert_linear_arith_term(lhs)?;
+            let rhs = convert_linear_arith_term(rhs)?;
+            let op = match expr {
+                IntExpr::Leq(_, _) => LinearOperator::Leq,
+                IntExpr::Lt(_, _) => LinearOperator::Less,
+                IntExpr::Geq(_, _) => LinearOperator::Geq,
+                IntExpr::Gt(_, _) => LinearOperator::Greater,
+                _ => unreachable!(),
+            };
+            let (mut lhs, rhs) = normalize_linear(lhs, rhs);
+            lhs.canonicalize();
+            Ok(ctx.ir_builder().linear_constraint(lhs, op, rhs))
+        }
+        _ => Err(PreprocessingError::Unsupported(expr.to_string())),
+    }
+}
+
+fn convert_linear_arith_term(expr: &Rc<Expression>) -> Result<LinearArithTerm, PreprocessingError> {
+    match expr.get_type() {
+        ExprType::String(StrExpr::Length(x)) => {
+            if let ExprType::String(inner) = x.get_type() {
+                let pat = convert_pattern(inner)
+                    .ok_or(PreprocessingError::Unsupported(expr.to_string()))?;
+                let term = pattern_to_length(pat)?;
+                Ok(term)
+                // Make pattern to length
+            } else {
+                Err(PreprocessingError::InvalidSort {
+                    expr: x.to_string(),
+                    expected: Sort::String,
+                    got: x.sort(),
+                })
+            }
+        }
+        ExprType::Int(IntExpr::Constant(c)) => Ok(LinearArithTerm::from_const(*c)),
+        ExprType::Int(IntExpr::Var(v)) => Ok(LinearArithTerm::from_var(v.as_ref())),
+        ExprType::Int(IntExpr::Add(add)) => {
+            let mut term = LinearArithTerm::new();
+            for e in add {
+                let next = convert_linear_arith_term(e)?;
+                term.add(next);
+            }
+            Ok(term)
+        }
+        ExprType::Int(IntExpr::Sub(lhs, rhs)) => {
+            let mut lhs = convert_linear_arith_term(lhs)?;
+            let rhs = convert_linear_arith_term(rhs)?;
+            lhs.sub(rhs);
+            Ok(lhs)
+        }
+        ExprType::Int(IntExpr::Mul(lhs)) => {
+            let mut res = LinearArithTerm::from_const(1);
+            for e in lhs {
+                let next = convert_linear_arith_term(e)?;
+                res = match LinearArithTerm::multiply(res, next) {
+                    Some(r) => r,
+                    None => return Err(PreprocessingError::NonLinearArithmetic(expr.to_string())),
+                }
+            }
+            Ok(res)
+        }
+        _ => Err(PreprocessingError::Unsupported(expr.to_string())),
+    }
+}
+
+fn pattern_to_length(pat: Pattern) -> Result<LinearArithTerm, PreprocessingError> {
+    let mut vars = HashMap::new();
+    let mut consts = 0;
+    for s in pat.into_iter() {
+        match s {
+            Symbol::Constant(_) => consts += 1,
+            Symbol::Variable(v) => {
+                *vars.entry(v).or_default() += 1;
+            }
+        }
+    }
+    let mut term = LinearArithTerm::new();
+    for (v, c) in vars {
+        let summand = LinearSummand::len_variable(v, c);
+        term.add_summand(summand);
+    }
+    term.add_summand(LinearSummand::constant(consts));
+    Ok(term)
+}
+
+/// Normalizes a linear arithmetic term by moving all constants to the right hand side and all variables to the left hand side.
+fn normalize_linear(lhs: LinearArithTerm, rhs: LinearArithTerm) -> (LinearArithTerm, isize) {
+    let mut new_lhs = LinearArithTerm::new();
+    let mut rhs_const = 0;
+    for term in lhs.into_iter() {
+        match &term {
+            LinearSummand::Const(c) => rhs_const -= c,
+            LinearSummand::Mult(_, _) => new_lhs.add_summand(term),
+        }
+    }
+    for term in rhs.into_iter() {
+        match &term {
+            LinearSummand::Const(c) => rhs_const += c,
+            LinearSummand::Mult(_, _) => new_lhs.add_summand(term.flip_sign()),
+        }
+    }
+    (new_lhs, rhs_const)
 }

@@ -26,6 +26,8 @@ pub enum PreprocessingError {
     InvalidNegationQuantifier(String),
     #[error("Not in NNF: {0}")]
     NotInNNF(String),
+    #[error("Only linear arithmetic is supporte ({0})")]
+    NonLinearArithmetic(String),
 }
 
 pub fn normalize(fm: Formula, ctx: &mut Context) -> Result<Formula, PreprocessingError> {

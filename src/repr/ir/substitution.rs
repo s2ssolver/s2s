@@ -287,7 +287,7 @@ impl VarSubstitution {
                 },
             }
         }
-        new_term.normalize();
+        new_term.canonicalize();
         new_term
     }
 

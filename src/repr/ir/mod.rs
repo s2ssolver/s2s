@@ -380,7 +380,12 @@ pub struct IrBuilder {
 }
 
 impl IrBuilder {
-    fn register_atom(&mut self, atom: AtomType) -> Rc<Atom> {
+    /// Registers an atom in the builder's registry.
+    /// If the atom is already registered, returns the registered atom.
+    /// Otherwise, registers the atom and returns it.
+    /// The registry is used to ensure that atoms are not duplicated.
+    /// Every atom is unique in the registry and is identified by
+    pub(crate) fn register_atom(&mut self, atom: AtomType) -> Rc<Atom> {
         if let Some(atom) = self.registry.get(&atom) {
             return atom.clone();
         } else {

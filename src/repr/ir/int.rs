@@ -49,6 +49,23 @@ pub enum LinearSummand {
 }
 
 impl LinearSummand {
+    /// Create a linear summand from a constant value
+    pub fn constant(n: isize) -> Self {
+        LinearSummand::Const(n)
+    }
+
+    /// Create a linear summand from a scaled integer variable
+    pub fn int_variable(x: Variable, c: isize) -> Self {
+        assert!(x.sort().is_int(), "Variable must be of sort int");
+        LinearSummand::Mult(VariableTerm::Int(x), c)
+    }
+
+    /// Create a linear summand from a scaled length variable
+    pub fn len_variable(x: Variable, c: isize) -> Self {
+        assert!(x.sort().is_string(), "Variable must be of sort string");
+        LinearSummand::Mult(VariableTerm::Len(x), c)
+    }
+
     pub fn is_constant(&self) -> bool {
         match self {
             LinearSummand::Const(_) | LinearSummand::Mult(_, 0) => true, // 0*x = 0
@@ -60,6 +77,13 @@ impl LinearSummand {
         match self {
             LinearSummand::Mult(x, c2) => LinearSummand::Mult(x.clone(), c * c2),
             LinearSummand::Const(c2) => LinearSummand::Const(c * c2),
+        }
+    }
+
+    pub fn flip_sign(&self) -> Self {
+        match self {
+            LinearSummand::Mult(x, c) => LinearSummand::Mult(x.clone(), -c),
+            LinearSummand::Const(c) => LinearSummand::Const(-c),
         }
     }
 }
@@ -107,15 +131,6 @@ impl LinearArithTerm {
         }
     }
 
-    pub fn remove_factor(&mut self, f: &LinearSummand) -> bool {
-        if let Some(index) = self.factors.iter().position(|x| *x == *f) {
-            self.factors.remove(index);
-            true
-        } else {
-            false
-        }
-    }
-
     /// Create a linear arithmetic term from a constant
     pub fn from_const(c: isize) -> Self {
         Self {
@@ -123,8 +138,60 @@ impl LinearArithTerm {
         }
     }
 
+    /// Add a single summand to the term
     pub fn add_summand(&mut self, f: LinearSummand) {
         self.factors.push(f);
+    }
+
+    /// Tries to muliply both terms and return the result.
+    /// That only succeeds if the resulting term is linear.
+    /// It is linear if and only if one side of the multiplication is a constant.
+    /// If the multiplication is not linear, `None` is returned.
+    pub fn multiply(left: Self, right: Self) -> Option<Self> {
+        let mut res = LinearArithTerm::new();
+        for l in left.iter() {
+            for r in right.iter() {
+                // multiply l and r
+                match (l, r) {
+                    (LinearSummand::Mult(_, 0), LinearSummand::Mult(_, _))
+                    | (LinearSummand::Mult(_, _), LinearSummand::Mult(_, 0)) => {
+                        res.add_summand(LinearSummand::Const(0));
+                    }
+                    (LinearSummand::Mult(_, _), LinearSummand::Mult(_, _)) => {
+                        return None;
+                    }
+                    (LinearSummand::Mult(x, c), LinearSummand::Const(s))
+                    | (LinearSummand::Const(s), LinearSummand::Mult(x, c)) => {
+                        res.add_summand(LinearSummand::Mult(x.clone(), c * s));
+                    }
+                    (LinearSummand::Const(s1), LinearSummand::Const(s2)) => {
+                        res.add_summand(LinearSummand::Const(s1 * s2));
+                    }
+                }
+            }
+        }
+        Some(res)
+    }
+
+    /// Add another linear term to this term
+    pub fn add(&mut self, other: Self) {
+        for smd in other.into_iter() {
+            self.add_summand(smd);
+        }
+    }
+
+    /// Subtract another linear term from this term
+    pub fn sub(&mut self, other: Self) {
+        for smd in other.into_iter() {
+            match smd {
+                LinearSummand::Mult(x, c) => {
+                    self.add_summand(LinearSummand::Mult(x, -c));
+                }
+                LinearSummand::Const(c) => {
+                    self.add_summand(LinearSummand::Const(-c));
+                }
+            }
+        }
     }
 
     pub fn extend(&mut self, other: Self) {
@@ -133,6 +200,10 @@ impl LinearArithTerm {
 
     pub fn iter(&self) -> impl Iterator<Item = &LinearSummand> {
         self.factors.iter()
+    }
+
+    pub fn into_iter(self) -> impl Iterator<Item = LinearSummand> {
+        self.factors.into_iter()
     }
 
     pub fn vars(&self) -> IndexSet<VariableTerm> {
@@ -157,9 +228,9 @@ impl LinearArithTerm {
         self.factors.is_empty()
     }
 
-    /// Normalize the term by combining all coefficients of the same variable.
+    /// Canonicalizes the term by combining all coefficients of the same variable.
     /// After calling this, there is at most one factor per variable and at most one constant.
-    pub fn normalize(&mut self) {
+    pub fn canonicalize(&mut self) {
         let mut factors = HashMap::new();
         let mut residual = 0;
         for f in self.factors.iter() {
@@ -260,6 +331,23 @@ impl LinearOperator {
             LinearOperator::Greater => lhs > rhs,
         }
     }
+
+    /// Negate the operator.
+    /// - `<` becomes `>=`
+    /// - `<=` becomes `>`
+    /// - `>` becomes `<=`
+    /// - `>=` becomes `<`
+    /// - `=` becomes `!=`
+    pub fn negate(&self) -> Self {
+        match self {
+            LinearOperator::Eq => LinearOperator::Ineq,
+            LinearOperator::Ineq => LinearOperator::Eq,
+            LinearOperator::Leq => LinearOperator::Greater,
+            LinearOperator::Less => LinearOperator::Geq,
+            LinearOperator::Geq => LinearOperator::Less,
+            LinearOperator::Greater => LinearOperator::Leq,
+        }
+    }
 }
 
 /// A linear constraint
@@ -296,6 +384,21 @@ impl LinearConstraint {
             }
         }
         vars
+    }
+
+    /// Negate the constraint.
+    /// - `a = b` becomes `a != b`
+    /// - `a != b` becomes `a = b`
+    /// - `a <= b` becomes `a > b`
+    /// - `a < b` becomes `a >= b`
+    /// - `a >= b` becomes `a < b`
+    /// - `a > b` becomes `a <= b`
+    pub fn negate(&self) -> Self {
+        Self {
+            lhs: self.lhs.clone(),
+            rhs: self.rhs,
+            typ: self.typ.negate(),
+        }
     }
 }
 
