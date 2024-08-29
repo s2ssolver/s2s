@@ -153,7 +153,7 @@ impl BoundInferer {
         );
         let mut bounds = match fragment {
             (true, _, _) => self.reg.infer_bounds(),
-            (false, false, false) => Some(Bounds::empty()),
+            (false, false, false) | (false, false, true) => Some(Bounds::empty()),
             _ => None,
         };
 

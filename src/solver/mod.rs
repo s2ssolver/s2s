@@ -164,7 +164,10 @@ impl Solver {
         // Initialize the bounds
         let init_bounds = match self.init_bounds(&fm_preprocessed, ctx) {
             Some(bs) => bs,
-            None => return Ok(SolverResult::Unsat),
+            None => {
+                log::info!("No valid initial bounds. Unsat.");
+                return Ok(SolverResult::Unsat);
+            }
         };
         log::info!("Initialized bounds ({:?})", timer.elapsed());
         log::debug!("Initial bounds: {}", init_bounds);
