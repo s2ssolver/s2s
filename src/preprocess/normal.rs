@@ -185,7 +185,15 @@ impl Normalizer {
                         ))
                     }
                 }
-                AtomType::LinearConstraint(_) => todo!("linear constraints"),
+                AtomType::LinearConstraint(lc) => {
+                    // Linear constraints are in normal form by design
+                    // We only need to ensure that the polarity is correct and that the lhs is canonical
+                    assert!(lit.polarity());
+                    let mut lhs = lc.lhs().clone();
+                    lhs.canonicalize();
+                    let atom = ctx.ir_builder().linear_constraint(lhs, lc.typ(), lc.rhs());
+                    Ok(ctx.ir_builder().plit(atom))
+                }
                 _ => Ok(Formula::Literal(lit)), // No rewrite required
             }
         }
