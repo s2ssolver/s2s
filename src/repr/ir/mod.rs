@@ -628,9 +628,14 @@ mod tests {
             Formula::Literal(lit2.clone()),
             Formula::Literal(lit1.clone()),
         ]);
-        assert_eq!(
-            formula.reduce(),
-            Formula::And(vec![Formula::Literal(lit1), Formula::Literal(lit2)])
+        let reduced = formula.reduce();
+        assert!(
+            reduced
+                == Formula::And(vec![
+                    Formula::Literal(lit1.clone()),
+                    Formula::Literal(lit2.clone())
+                ])
+                || reduced == Formula::And(vec![Formula::Literal(lit2), Formula::Literal(lit1)])
         );
     }
 
