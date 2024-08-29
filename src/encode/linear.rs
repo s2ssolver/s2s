@@ -109,7 +109,7 @@ impl LiteralEncoder for MddEncoder {
                             }
                         }
                         // If string: get length encoding, if int: get int encoding
-                        let len_assign_var = if v.sort().is_string() {
+                        let len_assign_var = if v.sort().is_int() {
                             dom.int().get(v, l).unwrap()
                         } else {
                             dom.string().get_len(v, l as usize).unwrap()
