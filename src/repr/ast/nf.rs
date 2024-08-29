@@ -3,52 +3,47 @@
 use std::rc::Rc;
 
 use crate::repr::{
-    ast::{AstBuilder, CoreExpr, ExprType, Expression, Script},
-    Sorted,
+    ast::{AstBuilder, CoreExpr, ExprType, Expression},
+    Sort, Sorted,
 };
 
-/// Transforms a script into negation normal form.
-pub fn script_to_nnf(script: &Script, builder: &mut AstBuilder) -> Script {
-    let mut new_assertions = Vec::with_capacity(script.iter_asserts().count());
-    for assertion in script.iter_asserts() {
-        let nnf = expression_to_nnf(assertion, builder);
-        new_assertions.push(nnf);
-    }
-    script.replace_assertions(new_assertions)
-}
+use super::AstError;
 
 /// Transforms an expression into negation normal form.
 /// An expression is in negation normal form if negation is only applied to variables.
 /// Expression that are not in BNF are first converted to BNF before converting to NNF.
-pub fn expression_to_nnf(expr: &Rc<Expression>, builder: &mut AstBuilder) -> Rc<Expression> {
+pub fn expression_to_nnf(
+    expr: &Rc<Expression>,
+    builder: &mut AstBuilder,
+) -> Result<Rc<Expression>, AstError> {
     match expr.get_type() {
         ExprType::Core(e) => match e {
-            CoreExpr::Var(_) | CoreExpr::Bool(_) => expr.clone(),
+            CoreExpr::Var(_) | CoreExpr::Bool(_) => Ok(expr.clone()),
             CoreExpr::Not(inner_e) => match inner_e.get_type() {
                 ExprType::Core(inner) => match inner {
-                    CoreExpr::Bool(v) => builder.bool(!v),
+                    CoreExpr::Bool(v) => Ok(builder.bool(!v)),
                     CoreExpr::Var(v) => {
                         debug_assert!(v.sort().is_bool());
-                        expr.clone()
+                        Ok(expr.clone())
                     }
-                    CoreExpr::Not(dn) => dn.clone(),
+                    CoreExpr::Not(dn) => Ok(dn.clone()),
                     CoreExpr::And(es) => {
                         let new_es = es
                             .iter()
                             .map(|e| expression_to_nnf(&builder.not(e.clone()), builder))
-                            .collect();
-                        builder.or(new_es)
+                            .collect::<Result<_, _>>()?;
+                        Ok(builder.or(new_es))
                     }
                     CoreExpr::Or(es) => {
                         let new_es = es
                             .iter()
                             .map(|e| expression_to_nnf(&builder.not(e.clone()), builder))
-                            .collect();
-                        builder.and(new_es)
+                            .collect::<Result<_, _>>()?;
+                        Ok(builder.and(new_es))
                     }
                     CoreExpr::Equal(l, r) => {
                         if !l.sort().is_bool() && !r.sort().is_bool() {
-                            expr.clone()
+                            Ok(expr.clone())
                         } else {
                             panic!("Can only convert BNF to NNF")
                         }
@@ -57,48 +52,60 @@ pub fn expression_to_nnf(expr: &Rc<Expression>, builder: &mut AstBuilder) -> Rc<
                         panic!("Can only convert BNF to NNF")
                     }
                 },
-                _ => expr.clone(), // all literals are in NNF
+                _ => Ok(expr.clone()), // all literals are in NNF
             },
             CoreExpr::And(es) => {
-                let new_es: Vec<_> = es.iter().map(|e| expression_to_nnf(e, builder)).collect();
-                builder.and(new_es)
+                let new_es: Vec<_> = es
+                    .iter()
+                    .map(|e| expression_to_nnf(e, builder))
+                    .collect::<Result<_, _>>()?;
+                Ok(builder.and(new_es))
             }
             CoreExpr::Or(es) => {
-                let new_es: Vec<_> = es.iter().map(|e| expression_to_nnf(e, builder)).collect();
-                builder.or(new_es)
+                let new_es: Vec<_> = es
+                    .iter()
+                    .map(|e| expression_to_nnf(e, builder))
+                    .collect::<Result<_, _>>()?;
+                Ok(builder.or(new_es))
             }
             CoreExpr::Equal(l, r) => {
                 if !l.sort().is_bool() && !r.sort().is_bool() {
-                    expr.clone()
+                    Ok(expr.clone())
                 } else {
-                    let bnf = expression_to_bnf(expr, builder);
+                    let bnf = expression_to_bnf(expr, builder)?;
                     expression_to_nnf(&bnf, builder)
                 }
             }
             CoreExpr::Imp(_, _) | CoreExpr::Ite(_, _, _) | CoreExpr::Distinct(_) => {
-                let bnf = expression_to_bnf(expr, builder);
+                let bnf = expression_to_bnf(expr, builder)?;
                 expression_to_nnf(&bnf, builder)
             }
         },
-        _ => expr.clone(),
+        _ => Ok(expr.clone()),
     }
 }
 
 /// Transforms an expression into Boolean normal form.
 /// An expression is in Boolean normal form if it only uses the operators `and`, `or`, and `not`.
-pub fn expression_to_bnf(expr: &Rc<Expression>, builder: &mut AstBuilder) -> Rc<Expression> {
+pub fn expression_to_bnf(
+    expr: &Rc<Expression>,
+    builder: &mut AstBuilder,
+) -> Result<Rc<Expression>, AstError> {
     match expr.get_type() {
         ExprType::Core(e) => match e {
-            CoreExpr::Var(_) | CoreExpr::Bool(_) => expr.clone(),
+            CoreExpr::Var(_) | CoreExpr::Bool(_) => Ok(expr.clone()),
             CoreExpr::Not(e) => {
-                let inner = expression_to_bnf(e, builder);
-                builder.not(inner)
+                let inner = expression_to_bnf(e, builder)?;
+                Ok(builder.not(inner))
             }
             CoreExpr::And(es) | CoreExpr::Or(es) => {
-                let new_es = es.iter().map(|e| expression_to_bnf(e, builder)).collect();
+                let new_es = es
+                    .iter()
+                    .map(|e| expression_to_bnf(e, builder))
+                    .collect::<Result<_, _>>()?;
                 match e {
-                    CoreExpr::And(_) => builder.and(new_es),
-                    CoreExpr::Or(_) => builder.or(new_es),
+                    CoreExpr::And(_) => Ok(builder.and(new_es)),
+                    CoreExpr::Or(_) => Ok(builder.or(new_es)),
                     _ => unreachable!(),
                 }
             }
@@ -109,7 +116,7 @@ pub fn expression_to_bnf(expr: &Rc<Expression>, builder: &mut AstBuilder) -> Rc<
                 let conj = builder.and(vec![l2r, r2l]);
                 expression_to_bnf(&conj, builder)
             }
-            CoreExpr::Equal(_, _) => expr.clone(),
+            CoreExpr::Equal(_, _) => Ok(expr.clone()),
             CoreExpr::Imp(l, r) => {
                 // Resolve Boolean implication as (not l or r)
                 debug_assert!(l.sort().is_bool() && r.sort().is_bool());
@@ -117,9 +124,30 @@ pub fn expression_to_bnf(expr: &Rc<Expression>, builder: &mut AstBuilder) -> Rc<
                 let disj = builder.or(vec![not_l, r.clone()]);
                 expression_to_bnf(&disj, builder)
             }
-            CoreExpr::Ite(_, _, _) | CoreExpr::Distinct(_) => expr.clone(),
+            CoreExpr::Ite(i, _, _) if !i.sort().is_bool() => {
+                return Err(AstError::Unsupported(format!(
+                    "If condition in ite expressions must be Boolean ({expr})"
+                )))
+            }
+            CoreExpr::Ite(i, t, e) => {
+                match (t.sort(), e.sort()) {
+                    (Sort::Bool, Sort::Bool) => {
+                        // Resolve Boolean ITE as (i ==> t) and (not i ==> e)
+                        let i2t = builder.imp(i.clone(), t.clone());
+                        let not_i = builder.not(i.clone());
+                        let i2e = builder.imp(not_i, e.clone());
+                        let conj = builder.and(vec![i2t, i2e]);
+                        expression_to_bnf(&conj, builder)
+                    }
+                    (s1, s2) => {
+                        log::error!("BNF for ITE with non-Boolean branches\nTHEN: {t} \t(SORT {s1})\nELSE: {e} \t(SORT {s2})\nIN: {expr}");
+                        todo!("BNF for ITE with non-Boolean branches")
+                    }
+                }
+            }
+            CoreExpr::Distinct(_) => todo!("BNF for distinct"),
         },
-        _ => expr.clone(),
+        _ => Ok(expr.clone()),
     }
 }
 
@@ -139,7 +167,7 @@ mod tests {
         let var = builder.var(v);
 
         // Variable should remain unchanged in BNF
-        let bnf = expression_to_bnf(&var, &mut builder);
+        let bnf = expression_to_bnf(&var, &mut builder).unwrap();
         assert_eq!(var, bnf);
     }
 
@@ -151,7 +179,7 @@ mod tests {
         let var = builder.var(v);
 
         // Variable should remain unchanged in NNF
-        let nnf = expression_to_nnf(&var, &mut builder);
+        let nnf = expression_to_nnf(&var, &mut builder).unwrap();
         assert_eq!(var, nnf);
     }
 
@@ -167,7 +195,7 @@ mod tests {
         let and_expr = builder.and(vec![var_x.clone(), var_y.clone()]);
 
         // AND expression should remain unchanged in BNF
-        let bnf = expression_to_bnf(&and_expr, &mut builder);
+        let bnf = expression_to_bnf(&and_expr, &mut builder).unwrap();
         assert_eq!(and_expr, bnf);
     }
 
@@ -182,7 +210,7 @@ mod tests {
         let and_expr = builder.and(vec![var_x.clone(), var_y.clone()]);
 
         // AND expression should remain unchanged in NNF
-        let nnf = expression_to_nnf(&and_expr, &mut builder);
+        let nnf = expression_to_nnf(&and_expr, &mut builder).unwrap();
         assert_eq!(and_expr, nnf);
     }
 
@@ -195,7 +223,7 @@ mod tests {
         let not_expr = builder.not(var.clone());
 
         // NOT expression should remain unchanged in BNF
-        let bnf = expression_to_bnf(&not_expr, &mut builder);
+        let bnf = expression_to_bnf(&not_expr, &mut builder).unwrap();
         assert_eq!(not_expr, bnf);
     }
 
@@ -208,7 +236,7 @@ mod tests {
         let not_expr = builder.not(var.clone());
 
         // NOT expression should remain unchanged in NNF
-        let nnf = expression_to_nnf(&not_expr, &mut builder);
+        let nnf = expression_to_nnf(&not_expr, &mut builder).unwrap();
         assert_eq!(not_expr, nnf);
     }
 
@@ -223,7 +251,7 @@ mod tests {
         let or_expr = builder.or(vec![var_x.clone(), var_y.clone()]);
 
         // OR expression should remain unchanged in BNF
-        let bnf = expression_to_bnf(&or_expr, &mut builder);
+        let bnf = expression_to_bnf(&or_expr, &mut builder).unwrap();
         assert_eq!(or_expr, bnf);
     }
 
@@ -238,7 +266,7 @@ mod tests {
         let or_expr = builder.or(vec![var_x.clone(), var_y.clone()]);
 
         // OR expression should remain unchanged in NNF
-        let nnf = expression_to_nnf(&or_expr, &mut builder);
+        let nnf = expression_to_nnf(&or_expr, &mut builder).unwrap();
         assert_eq!(or_expr, nnf);
     }
 
@@ -253,7 +281,7 @@ mod tests {
         let implies_expr = builder.imp(var_x.clone(), var_y.clone());
 
         // Implication (x -> y) should be converted to (not x or y) in BNF
-        let bnf = expression_to_bnf(&implies_expr, &mut builder);
+        let bnf = expression_to_bnf(&implies_expr, &mut builder).unwrap();
         let args = vec![builder.not(var_x.clone()), var_y.clone()];
         let expected_bnf = builder.or(args);
         assert_eq!(expected_bnf, bnf);
@@ -270,7 +298,7 @@ mod tests {
         let eq_expr = builder.eq(var_x.clone(), var_y.clone());
 
         // Equivalence (x == y) should be converted to (x -> y) and (y -> x) in BNF
-        let bnf = expression_to_bnf(&eq_expr, &mut builder);
+        let bnf = expression_to_bnf(&eq_expr, &mut builder).unwrap();
         let not_x = builder.not(var_x.clone());
         let not_y = builder.not(var_y.clone());
         let args = vec![
@@ -296,7 +324,7 @@ mod tests {
         let double_neg = builder.not(neg.clone());
 
         // Double negation should simplify to the original variable
-        let nnf = expression_to_nnf(&double_neg, &mut builder);
+        let nnf = expression_to_nnf(&double_neg, &mut builder).unwrap();
         assert_eq!(var, nnf);
     }
 
@@ -313,7 +341,7 @@ mod tests {
         let neg_and = builder.not(and_expr);
 
         // Negation of (x and y) should convert to (not x or not y) in NNF
-        let nnf = expression_to_nnf(&neg_and, &mut builder);
+        let nnf = expression_to_nnf(&neg_and, &mut builder).unwrap();
 
         let args = vec![builder.not(var_x.clone()), builder.not(var_y.clone())];
         let expected_nnf = builder.or(args);
@@ -333,7 +361,7 @@ mod tests {
         let neg_or = builder.not(or_expr);
 
         // Negation of (x or y) should convert to (not x and not y) in NNF
-        let nnf = expression_to_nnf(&neg_or, &mut builder);
+        let nnf = expression_to_nnf(&neg_or, &mut builder).unwrap();
         let args = vec![builder.not(var_x.clone()), builder.not(var_y.clone())];
         let expected_nnf = builder.and(args);
         assert_eq!(expected_nnf, nnf);

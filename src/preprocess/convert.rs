@@ -1,6 +1,10 @@
 //! Conversion from the AST to the IR.
 
-use std::{collections::HashMap, rc::Rc};
+use std::{
+    collections::HashMap,
+    io::{stdout, Write},
+    rc::Rc,
+};
 
 use crate::{
     context::Context,
@@ -21,7 +25,12 @@ pub fn convert_script(script: &Script, ctx: &mut Context) -> Result<Formula, Pre
     let mut conjuncts = vec![];
     // TODO: Cache the conversion of expressions. AST is interned, so we can use the pointer as a key.
     for expr in script.iter_asserts() {
-        let as_nnf = expression_to_nnf(expr, ctx.ast_builder());
+        let as_nnf = match expression_to_nnf(expr, ctx.ast_builder()) {
+            Ok(ok) => ok,
+            Err(e) => return Err(PreprocessingError::NotInNNF(e.to_string())),
+        };
+
+        stdout().flush().unwrap();
         let fm = convert_expr(&as_nnf, ctx)?;
         conjuncts.push(fm);
     }
