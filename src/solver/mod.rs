@@ -220,14 +220,14 @@ impl Solver {
         {
             // TODO: Check options for initial min/max bounds
             let v_bounds = bounds.get(var.as_ref());
-            let lower = if let Some(lower) = v_bounds.map(|b| b.lower()) {
+            let lower = if let Some(lower) = v_bounds.and_then(|b| b.lower_finite()) {
                 lower
             } else {
                 0.into()
             };
-            let upper = if let Some(upper) = v_bounds.map(|b| b.upper()) {
+            let upper = if let Some(upper) = v_bounds.and_then(|b| b.upper_finite()) {
                 // at most 10, but at least the lower bound
-                upper.min(BoundValue::Num(10)).max(lower)
+                upper.min(10).max(lower)
             } else {
                 10.into()
             };
