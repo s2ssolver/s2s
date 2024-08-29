@@ -58,16 +58,14 @@ impl Sorted for CoreExpr {
             | CoreExpr::Or(_)
             | CoreExpr::Distinct(_) => Sort::Bool,
             CoreExpr::Equal(l, r) => {
-                let l_sort = l.sort();
-                let r_sort = r.sort();
                 assert!(
-                    l_sort == r_sort,
+                    l.sort() == r.sort(),
                     "Sort mismatch for {}: {} != {}",
                     self,
-                    l_sort,
-                    r_sort
+                    l.sort(),
+                    r.sort(),
                 );
-                l_sort
+                Sort::Bool
             }
             CoreExpr::Ite(_, t, e) => {
                 let t_sort = t.sort();
