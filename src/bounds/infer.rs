@@ -7,10 +7,13 @@ use regular::RegularBoundsInferer;
 
 use crate::{
     context::Context,
-    repr::ir::{AtomType, Literal, RegularConstraint, WordEquation},
+    repr::{
+        ir::{AtomType, LinearConstraint, Literal, RegularConstraint, WordEquation},
+        Sort, Sorted, Variable,
+    },
 };
 
-use super::Bounds;
+use super::{Bounds, Interval};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 enum FragmentPart {
@@ -68,6 +71,11 @@ pub struct BoundInferer {
     conflict: bool,
     reg: RegularBoundsInferer,
     fragment: Fragment,
+
+    /// Variables for which we cannot infer bounds
+    /// If bounds are inferred for variables in this set, they are overwriten as unbounded.
+    /// This is used if we encounter fragments that we cannot handle (yet).
+    unbounded: IndexSet<Variable>,
 }
 
 impl BoundInferer {
@@ -92,7 +100,19 @@ impl BoundInferer {
                 self.reg.add_const_eq(l.clone(), r.clone(), pol, ctx);
                 self.fragment.reg();
             }
-            WordEquation::General(_, _) => todo!("Support general word equations."),
+            WordEquation::General(_, _) => {
+                weq.variables().iter().for_each(|v| {
+                    self.unbounded.insert(v.clone());
+                });
+                self.fragment.weq();
+            }
+        }
+    }
+
+    fn add_linear_constraint(&mut self, lc: &LinearConstraint) {
+        self.fragment.lin();
+        for v in lc.variables() {
+            self.unbounded.insert(v.clone());
         }
     }
 
@@ -111,9 +131,7 @@ impl BoundInferer {
                 AtomType::PrefixOf(_) | AtomType::SuffixOf(_) | AtomType::Contains(_) => {
                     unreachable!("Formula not in normal form.")
                 }
-                AtomType::LinearConstraint(_) => {
-                    todo!("Support linear constraints.")
-                }
+                AtomType::LinearConstraint(lc) => self.add_linear_constraint(lc),
             }
         }
     }
@@ -133,10 +151,22 @@ impl BoundInferer {
             self.fragment.is_weq(),
             self.fragment.is_lin(),
         );
-        match fragment {
-            (true, false, false) => self.reg.infer_bounds(),
+        let mut bounds = match fragment {
+            (true, _, _) => self.reg.infer_bounds(),
             (false, false, false) => Some(Bounds::empty()),
             _ => None,
+        };
+
+        // Overwrite bounds for unbounded variables
+        if let Some(bounds) = bounds.as_mut() {
+            for v in &self.unbounded {
+                match v.sort() {
+                    Sort::Int => bounds.set(v.clone(), Interval::bounded_below(0)),
+                    Sort::String => bounds.set(v.clone(), Interval::unbounded()),
+                    _ => unreachable!(),
+                };
+            }
         }
+        bounds
     }
 }
