@@ -2,6 +2,8 @@
 
 use std::{collections::HashMap, rc::Rc};
 
+use indexmap::IndexSet;
+
 use crate::{
     bounds::{BoundValue, Bounds},
     repr::{
@@ -12,33 +14,91 @@ use crate::{
     },
 };
 
+use super::InferringStrategy;
+
 /// Implements a the iterative linear bound refinement algorithm.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct LinearRefiner {
     /// The linear constraints to refine the bounds with. Wrapped in an Rc to make cloning cheap.
-    linears: Vec<Rc<LinearConstraint>>,
+    linears: IndexSet<Rc<LinearConstraint>>,
+    conflict: bool,
 }
 
 impl LinearRefiner {
     /// Adds a linear constraint to the refiner.
-    pub fn add(&mut self, linear: LinearConstraint) {
-        self.linears.push(Rc::new(linear));
+    pub fn add_linear(&mut self, linear: LinearConstraint) {
+        match linear.operator() {
+            LinearOperator::Ineq | LinearOperator::Eq => {
+                let leq =
+                    LinearConstraint::new(linear.lhs().clone(), LinearOperator::Leq, linear.rhs());
+                let geq =
+                    LinearConstraint::new(linear.lhs().clone(), LinearOperator::Geq, linear.rhs());
+                if linear.operator() == LinearOperator::Ineq {
+                    // can only check for conflicts if the operator is an inequality
+                    // if both the leq and the geq are present, we have a conflict because then lhs = rhs and lhs != rhs.
+                    if self.linears.contains(&Rc::new(leq)) && self.linears.contains(&Rc::new(geq))
+                    {
+                        self.conflict = true;
+                    }
+                } else {
+                    // if the operator is an equality, we can just add both the leq and the geq
+                    self.add_linear(leq);
+                    self.add_linear(geq);
+                }
+            }
+            LinearOperator::Leq
+            | LinearOperator::Less
+            | LinearOperator::Geq
+            | LinearOperator::Greater => {
+                let flipped = linear.negate();
+                if self.linears.contains(&Rc::new(flipped)) {
+                    self.conflict = true;
+                }
+                self.linears.insert(Rc::new(linear));
+            }
+        }
+    }
+
+    /// Adds a word equation to the refiner.
+    pub fn add_weq(&mut self, weq: &WordEquation) {
+        self.add_linear(length_abstraction(weq));
     }
 
     /// Refines the bounds of the given variables.
-    pub fn refine(&self, bounds: &Bounds) -> Bounds {
+    /// If a variable is not present in the bounds, it is considered unbounded (i.e., the bounds are (-inf, inf)).
+    /// If a conflict is detected, i.e., if the linear constraints are unsatisfiable, `None` is returned.
+    pub fn refine(&mut self, bounds: &Bounds) -> Option<Bounds> {
+        if self.conflict {
+            return None;
+        }
         let mut changed = true;
         let mut refined = bounds.clone();
         while changed {
             changed = false;
             for linear in &self.linears {
                 if let Some(new_bounds) = self.refinement_step(&refined, linear) {
+                    if self.any_empty(&new_bounds) {
+                        // the linear constraints are unsatisfiable
+                        self.conflict = true;
+                        return None;
+                    }
                     refined = new_bounds;
                     changed = true;
                 }
             }
         }
-        refined
+        Some(refined)
+    }
+
+    /// Checks if any of the bounds is empty.
+    /// If this is the case, the linear constraints are unsatisfiable.
+    fn any_empty(&self, bounds: &Bounds) -> bool {
+        for (_, b) in bounds.iter() {
+            if b.is_empty() {
+                return true;
+            }
+        }
+        false
     }
 
     fn refinement_step(&self, bounds: &Bounds, linear: &LinearConstraint) -> Option<Bounds> {
@@ -145,7 +205,7 @@ impl LinearRefiner {
                                 }
                                 _ => return BoundValue::NegInf,
                             },
-                            None => unreachable!("Unbounded variable {}", v),
+                            None => return BoundValue::NegInf,
                         }
                     } else {
                         // Subtract the largest possible value of the variable
@@ -160,7 +220,7 @@ impl LinearRefiner {
                                 }
                                 _ => return BoundValue::NegInf,
                             },
-                            None => unreachable!("Unbounded variable {}", v),
+                            None => return BoundValue::NegInf,
                         }
                     }
                 }
@@ -189,7 +249,8 @@ impl LinearRefiner {
                                 }
                                 _ => return BoundValue::NegInf,
                             },
-                            None => unreachable!("Unbounded variable {}", v),
+                            // If the variable is not present in the bounds, the term is unbounded.
+                            None => return BoundValue::PosInf,
                         }
                     } else {
                         // subtract the least possible value of the variable
@@ -202,9 +263,9 @@ impl LinearRefiner {
                                         return BoundValue::PosInf;
                                     }
                                 }
-                                _ => return BoundValue::NegInf,
+                                _ => return BoundValue::PosInf,
                             },
-                            None => unreachable!("Unbounded variable {}", v),
+                            None => return BoundValue::PosInf,
                         }
                     }
                 }
@@ -250,6 +311,16 @@ pub fn length_abstraction(weq: &WordEquation) -> LinearConstraint {
         lhs.add_summand(LinearSummand::len_variable(v.clone(), c));
     }
     return LinearConstraint::new(lhs, LinearOperator::Eq, constant_counter);
+}
+
+impl InferringStrategy for LinearRefiner {
+    fn infer(&mut self) -> Option<Bounds> {
+        self.refine(&Bounds::default())
+    }
+
+    fn conflict(&self) -> bool {
+        self.conflict
+    }
 }
 
 //     /// Derive a linear constraint that restricts the upper bound for the patter from a regular constraint, if the regular language is finite.

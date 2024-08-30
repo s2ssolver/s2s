@@ -2,7 +2,7 @@ use std::{collections::HashMap, fmt::Display, ops::Index};
 
 use indexmap::IndexSet;
 
-use crate::repr::{Sorted, Variable};
+use crate::repr::{Sort, Sorted, Variable};
 
 use super::ConstReducible;
 
@@ -113,12 +113,17 @@ impl LinearArithTerm {
         Self { factors: vec![] }
     }
 
-    /// Create a linear arithmetic term from a (int) variable
-    /// Panics if the variable is not of sort int
+    /// Create a linear arithmetic term from ab (int or string) variable
+    /// Panics if the variable is not of sort int or string
     pub fn from_var(x: &Variable) -> Self {
-        assert!(x.sort().is_int(), "Variable must be of sort int");
-        Self {
-            factors: vec![LinearSummand::Mult(VariableTerm::Int(x.clone()), 1)],
+        match x.sort() {
+            Sort::Int => Self {
+                factors: vec![LinearSummand::Mult(VariableTerm::Int(x.clone()), 1)],
+            },
+            Sort::String => Self {
+                factors: vec![LinearSummand::Mult(VariableTerm::Len(x.clone()), 1)],
+            },
+            _ => panic!("Variable must be of sort int or string"),
         }
     }
 
