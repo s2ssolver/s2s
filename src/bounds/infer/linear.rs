@@ -115,7 +115,7 @@ impl LinearRefiner {
                             } else {
                                 BoundValue::Num(dived)
                             };
-                            if dived < bounds.get_upper(&var).expect("Unbounded variable") {
+                            if dived < bounds.get_upper(&var).unwrap_or(BoundValue::PosInf) {
                                 changed = true;
                                 new_bounds.set_upper(&var, dived);
                             }
@@ -130,7 +130,7 @@ impl LinearRefiner {
                             } else {
                                 BoundValue::Num(dived)
                             };
-                            if dived > bounds.get_lower(&var).expect("Unbounded variable") {
+                            if dived > bounds.get_lower(&var).unwrap_or(BoundValue::NegInf) {
                                 changed = true;
                                 new_bounds.set_lower(&var, dived);
                             }

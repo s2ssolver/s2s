@@ -18,6 +18,7 @@ use crate::{
 use super::{Bounds, Interval};
 
 #[allow(dead_code)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 enum Fragment {
     Empty,
     Reg,
@@ -185,8 +186,9 @@ impl BoundInferer {
         if self.conflicting() {
             return None;
         }
+        let frag = self.fragment.get_fragment();
 
-        let bounds = match self.fragment.get_fragment() {
+        let bounds = match frag {
             Fragment::Empty => Some(Bounds::default()),
             Fragment::Reg => self.reg.infer(),
             Fragment::Weq(_) => {
@@ -208,14 +210,15 @@ impl BoundInferer {
                             let lc = LinearConstraint::new(lhs, LinearOperator::Leq, max as isize);
                             self.lin.add_linear(lc);
                         }
-                        if let Some(max) = nfa.shortest() {
+                        if let Some(min) = nfa.shortest() {
                             // Add "|v| >= max" to the bounds
                             let lhs = LinearArithTerm::from_var(v);
-                            let lc = LinearConstraint::new(lhs, LinearOperator::Geq, max as isize);
+                            let lc = LinearConstraint::new(lhs, LinearOperator::Geq, min as isize);
                             self.lin.add_linear(lc);
                         }
                     }
                 }
+
                 self.lin.infer()
             }
             Fragment::RegWeqLin(true) | Fragment::RegWeq(true) => self.lin.infer(),
