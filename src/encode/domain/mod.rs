@@ -1,8 +1,10 @@
 //! Encoding of the domains of all variables.
 
+mod bool;
 mod int;
 mod string;
 
+use bool::{BoolDomain, BoolEncoder};
 pub use int::IntDomain;
 use int::IntegerEncoder;
 pub use string::StringDomain;
@@ -16,9 +18,11 @@ use crate::{
 #[derive(Clone, Debug)]
 pub struct DomainEncoding {
     /// The encoding of the substitutions
-    pub(super) string: StringDomain,
+    string: StringDomain,
     /// The encoding of the integer domains
-    pub(super) int: IntDomain,
+    int: IntDomain,
+    /// The encooding of Boolean variables
+    bool: BoolDomain,
 
     /// The alphabet used for the substitutions
     alphabet: Alphabet,
@@ -34,6 +38,7 @@ impl DomainEncoding {
         Self {
             string: StringDomain::new(),
             int: IntDomain::default(),
+            bool: BoolDomain::default(),
             alphabet,
             bounds,
         }
@@ -47,6 +52,10 @@ impl DomainEncoding {
         &self.int
     }
 
+    pub fn bool(&self) -> &BoolDomain {
+        &self.bool
+    }
+
     pub fn alphabet(&self) -> &Alphabet {
         &self.alphabet
     }
@@ -54,6 +63,8 @@ impl DomainEncoding {
     pub fn get_model(&self, solver: &cadical::Solver) -> VarSubstitution {
         let mut model = self.string.get_model(solver, &self.bounds);
         let overwrite = model.extend(&self.int.get_model(solver));
+        assert!(overwrite.is_empty());
+        let overwrite = model.extend(&self.bool.get_model(solver));
         assert!(overwrite.is_empty());
         model
     }
@@ -66,6 +77,8 @@ pub struct DomainEncoder {
     /// The encoder for integer variables
     integers: IntegerEncoder,
 
+    bool: BoolEncoder,
+
     encoding: Option<DomainEncoding>,
 }
 
@@ -74,6 +87,7 @@ impl DomainEncoder {
         Self {
             strings: StringDomainEncoder::new(alphabet),
             integers: IntegerEncoder::new(),
+            bool: BoolEncoder::default(),
             encoding: None,
         }
     }
@@ -83,6 +97,9 @@ impl DomainEncoder {
             self.strings.alphabet().clone(),
             bounds.clone(),
         ));
+
+        // Bool encoding does not depend on the bounds and does not return a CNF.
+        self.bool.encode(&mut encoding, ctx);
 
         let mut res = self.strings.encode(bounds, &mut encoding, ctx);
 

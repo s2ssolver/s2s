@@ -8,7 +8,7 @@ use itertools::Itertools;
 use crate::{
     abstraction::{abstract_fm, Abstraction, Definition},
     alphabet::{self, Alphabet},
-    bounds::{infer::BoundInferer, step::BoundStep, BoundValue, Bounds, Interval},
+    bounds::{infer::BoundInferer, step::BoundStep, Bounds, Interval},
     context::Context,
     preprocess::{
         self,
@@ -299,6 +299,7 @@ impl Solver {
                 Some(true) => {
                     // If SAT, check if model is a solution for the original formula.
                     let assign = encoder.get_model(&cadical);
+                    log::info!("Found model: {}", assign);
                     if self.check_assignment(fm, &assign, ctx) {
                         return Ok(SolverResult::Sat(Some(assign)));
                     } else {
@@ -342,7 +343,6 @@ impl Solver {
     /// Check if the assignment is a solution for the formula.
     fn check_assignment(&self, fm: &Formula, assign: &VarSubstitution, ctx: &mut Context) -> bool {
         let applied = assign.apply(fm.clone(), ctx);
-
         let reduced = applied.reduce();
 
         matches!(reduced, Formula::True)
