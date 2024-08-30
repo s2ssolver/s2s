@@ -409,7 +409,7 @@ pub fn build_inre_encoder(
 
 const SMT_MAX_CHAR: u32 = 196607;
 fn range_any(r: &CharRange) -> bool {
-    r.start() as u32 == 0 && r.end() as u32 == SMT_MAX_CHAR
+    r.start() as u32 == 0 && r.end() as u32 >= SMT_MAX_CHAR
 }
 
 fn precompute_delta_inv(
