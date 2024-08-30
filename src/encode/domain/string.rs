@@ -1,65 +1,132 @@
-//! Encoding of the domains of all variables.
+use std::collections::HashMap;
 
 use indexmap::IndexMap;
+use itertools::Itertools;
 
-use super::encoding::DomainEncoding;
 use crate::{
     alphabet::Alphabet,
-    bounds::{Bounds, Interval},
+    bounds::Bounds,
     context::Context,
     encode::{
         card::{exactly_one, IncrementalEO},
         EncodingResult, LAMBDA,
     },
-    repr::Variable,
-    sat::{nlit, plit, pvar, Cnf},
+    repr::{
+        ir::{Pattern, VarSubstitution},
+        Sort, Sorted, Variable,
+    },
+    sat::{nlit, plit, pvar, Cnf, PLit, PVar},
 };
 
-/// Encoder for the domains of all variables.
-pub struct DomainEncoder {
-    /// The encoder for string variables
-    strings: StringDomainEncoder,
-    /// The encoder for integer variables
-    integers: IntegerEncoder,
+use super::DomainEncoding;
 
-    encoding: Option<DomainEncoding>,
+#[derive(Clone, Debug)]
+pub struct StringDomain {
+    substitutions: HashMap<(Variable, usize, char), PVar>,
+    lengths: IndexMap<(Variable, usize), PVar>,
 }
 
-impl DomainEncoder {
-    pub fn new(alphabet: Alphabet) -> Self {
+impl StringDomain {
+    pub fn new() -> Self {
         Self {
-            strings: StringDomainEncoder::new(alphabet),
-            integers: IntegerEncoder::new(),
-            encoding: None,
+            substitutions: HashMap::new(),
+            lengths: IndexMap::new(),
         }
     }
 
-    pub fn encode(&mut self, bounds: &Bounds, ctx: &Context) -> EncodingResult {
-        let mut encoding = self.encoding.take().unwrap_or(DomainEncoding::new(
-            self.strings.alphabet.clone(),
-            bounds.clone(),
-        ));
-
-        let mut res = self.strings.encode(bounds, &mut encoding, ctx);
-
-        res.extend(self.integers.encode(bounds, &mut encoding, ctx));
-        encoding.bounds = bounds.clone();
-        self.encoding = Some(encoding);
-        res
+    pub fn iter_substitutions(&self) -> impl Iterator<Item = (&Variable, usize, char, &PVar)> {
+        self.substitutions
+            .iter()
+            .map(|((var, pos, chr), v)| (var, *pos, *chr, v))
     }
 
-    pub fn encoding(&self) -> &DomainEncoding {
-        self.encoding.as_ref().unwrap()
+    pub fn get_sub(&self, var: &Variable, pos: usize, chr: char) -> Option<PVar> {
+        assert!(
+            var.sort() == Sort::String,
+            "Variable {} is not a string",
+            var
+        );
+
+        self.substitutions.get(&(var.clone(), pos, chr)).cloned()
     }
 
-    pub fn reset(&mut self) {
-        self.strings.reset();
-        self.integers.reset();
-        self.encoding = None;
+    pub fn get_len(&self, var: &Variable, len: usize) -> Option<PVar> {
+        assert!(
+            var.sort() == Sort::String,
+            "Variable {} is not a string",
+            var
+        );
+
+        self.lengths.get(&(var.clone(), len)).cloned()
+    }
+
+    #[allow(dead_code)]
+    pub(super) fn get_sub_lit(&self, var: &Variable, pos: usize, chr: char) -> Option<PLit> {
+        self.get_sub(var, pos, chr).map(plit)
+    }
+
+    pub(super) fn inser_substitution(&mut self, var: &Variable, pos: usize, chr: char, v: PVar) {
+        assert!(
+            var.sort() == Sort::String,
+            "Variable {} is not a string",
+            var
+        );
+
+        self.substitutions.insert((var.clone(), pos, chr), v);
+    }
+
+    pub(super) fn insert_lenght(&mut self, var: &Variable, len: usize, v: PVar) {
+        assert!(
+            var.sort() == Sort::String,
+            "Variable {} is not a string",
+            var
+        );
+
+        let ok = self.lengths.insert((var.clone(), len), v);
+        assert!(ok.is_none(), "Length {} already set for {}", len, var);
+    }
+
+    pub(crate) fn get_model(&self, solver: &cadical::Solver, bounds: &Bounds) -> VarSubstitution {
+        let mut subs: HashMap<Variable, Vec<Option<char>>> = HashMap::new();
+        // initialize substitutions
+        let vars = self.iter_substitutions().map(|(var, _, _, _)| var).unique();
+        for var in vars {
+            let len = bounds
+                .get_upper_finite(var)
+                .expect("Unbounded string variable");
+            subs.insert(var.clone(), vec![None; len as usize]);
+        }
+        for (var, pos, chr, v) in self.iter_substitutions() {
+            if let Some(true) = solver.value(plit(*v)) {
+                let sub = subs
+                    .get_mut(var)
+                    .expect(format!("No substitution for {}", var).as_str());
+                // This could be more efficient by going over the positions only once, however, this way we can check for invalid substitutions
+                assert!(
+                    sub[pos].is_none(),
+                    "Multiple substitutions for {} at position {}",
+                    var,
+                    pos
+                );
+                sub[pos] = Some(chr);
+            }
+        }
+        let mut model = VarSubstitution::empty();
+        for (var, sub) in subs.into_iter() {
+            let mut s = Pattern::empty();
+            for c in sub.iter() {
+                match c {
+                    Some(LAMBDA) => {}
+                    Some(c) => s.push((*c).into()),
+                    None => panic!("No substitution for {} at position {}", var, s.len()),
+                }
+            }
+            model.set_str(var, s);
+        }
+        model
     }
 }
 
-// TODO: Encode lengths here.
 pub struct StringDomainEncoder {
     last_bounds: Option<Bounds>,
     alphabet: Alphabet,
@@ -76,11 +143,11 @@ impl StringDomainEncoder {
         }
     }
 
-    pub fn reset(&mut self) {
-        self.last_bounds = None;
+    pub fn alphabet(&self) -> &Alphabet {
+        &self.alphabet
     }
 
-    fn encode(
+    pub(super) fn encode(
         &mut self,
         bounds: &Bounds,
         encoding: &mut DomainEncoding,
@@ -210,86 +277,6 @@ impl StringDomainEncoder {
     }
 }
 
-pub struct IntegerEncoder {
-    last_domains: Option<Bounds>,
-    /// Maps each variable to an Incremental exact-one encoder that is used to encode the variable's domain.
-    var_len_eo_encoders: IndexMap<Variable, IncrementalEO>,
-}
-
-impl IntegerEncoder {
-    pub fn new() -> Self {
-        Self {
-            last_domains: None,
-            var_len_eo_encoders: IndexMap::new(),
-        }
-    }
-
-    pub fn reset(&mut self) {
-        self.last_domains = None;
-        self.var_len_eo_encoders.clear();
-    }
-
-    pub fn encode(
-        &mut self,
-        bounds: &Bounds,
-        encoding: &mut DomainEncoding,
-        ctx: &Context,
-    ) -> EncodingResult {
-        let res = self.encode_int_vars(bounds, encoding, ctx);
-
-        self.last_domains = Some(bounds.clone());
-        res
-    }
-
-    fn get_last_dom(&self, var: &Variable) -> Option<Interval> {
-        self.last_domains.as_ref().and_then(|doms| doms.get(var))
-    }
-
-    fn encode_int_vars(
-        &mut self,
-        bounds: &Bounds,
-        encoding: &mut DomainEncoding,
-        ctx: &Context,
-    ) -> EncodingResult {
-        let mut res = EncodingResult::empty();
-
-        for int_var in ctx.int_vars() {
-            let mut len_choices = vec![];
-            let last_upper_bound = self
-                .get_last_dom(int_var)
-                .map(|b| (b.upper_finite().unwrap()));
-            // from last_upper_bound to upper bound
-            let last_lower_bound = self
-                .get_last_dom(int_var)
-                .map(|b| b.lower_finite().unwrap());
-
-            let lower = bounds.get_lower_finite(int_var).unwrap_or(0);
-            let upper = bounds.get_upper_finite(int_var).unwrap();
-            for len in lower..=upper {
-                if last_lower_bound.map(|ll| len < ll).unwrap_or(true)
-                    || last_upper_bound.map(|lu| len > lu).unwrap_or(true)
-                {
-                    // This lenght is not in the previous domain, so we need to encode it
-                    let choice = pvar();
-                    len_choices.push(choice);
-                    encoding
-                        .int
-                        .insert(int_var.as_ref().clone(), len as isize, choice);
-                }
-            }
-            // Exactly one length must be true
-            let eo = self
-                .var_len_eo_encoders
-                .entry(int_var.as_ref().clone())
-                .or_default()
-                .add(&len_choices);
-
-            res.extend(eo);
-        }
-        res
-    }
-}
-
 #[cfg(test)]
 mod tests {
 
@@ -305,10 +292,7 @@ mod tests {
             Bounds, Interval,
         },
         context::Context,
-        encode::{
-            domain::encoding::{get_str_substitutions, DomainEncoding},
-            LAMBDA,
-        },
+        encode::{domain::DomainEncoding, LAMBDA},
         repr::Sort,
         sat::plit,
     };
@@ -373,10 +357,10 @@ mod tests {
 
     #[quickcheck]
     fn solution_is_valid_substitution(len: u32) -> TestResult {
+        let len = len % 20;
         if len == 0 {
             return TestResult::discard();
         }
-        let len = len % 20;
 
         let mut ctx = Context::default();
         let var = ctx.new_temp_var(Sort::String);
@@ -398,13 +382,13 @@ mod tests {
         }
 
         // This will panic if the substitution is not valid
-        let subs = get_str_substitutions(&encoding, &ctx, &solver);
+        let subs = encoding.get_model(&solver);
         assert!(
             subs.get(&var).is_some(),
             "No substitution found (length is {})",
             len
         );
-        let sub = subs.get(&var).unwrap();
+        let sub = subs.get(&var).unwrap().as_string().as_constant().unwrap();
         assert!(sub.len() == len as usize, "Substitution is too long");
         TestResult::passed()
     }

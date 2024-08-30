@@ -13,7 +13,6 @@ use indexmap::{IndexMap, IndexSet};
 use regulaer::{
     alph::CharRange,
     automaton::{AutomatonError, State, StateId, TransitionType, NFA},
-    re::Regex,
 };
 
 use crate::{
@@ -36,8 +35,6 @@ pub struct NFAEncoder {
     /// The inverse of the transition function.
     /// Maps a state to a list of pairs (state, transition) that lead to the given state.
     delta_inv: IndexMap<StateId, Vec<(StateId, TransitionType)>>,
-
-    regex: Regex,
 
     /// The bounds of the variable in the previous round.
     /// If `None`, the variable was not yet encoded, i.e., prior to the first encoding.
@@ -368,14 +365,13 @@ impl LiteralEncoder for NFAEncoder {
 }
 
 impl NFAEncoder {
-    fn new(var: &Variable, nfa: Rc<NFA>, regex: &Regex, pol: bool) -> Self {
+    fn new(var: &Variable, nfa: Rc<NFA>, pol: bool) -> Self {
         let delta_inv = precompute_delta_inv(&nfa).unwrap();
         Self {
             var: var.clone(),
             nfa,
             delta_inv,
             sign: pol,
-            regex: regex.clone(),
             last_bound: None,
             reach_vars: IndexMap::new(),
             bound_selector: None,
@@ -399,7 +395,7 @@ pub fn build_inre_encoder(
     let encoder: Box<dyn LiteralEncoder> = if p.is_variable() {
         if let Some(Symbol::Variable(v)) = p.first() {
             let nfa = ctx.get_nfa(re);
-            Box::new(NFAEncoder::new(v, nfa, re, pol))
+            Box::new(NFAEncoder::new(v, nfa, pol))
         } else {
             unreachable!()
         }
@@ -446,16 +442,11 @@ fn precompute_delta_inv(
 #[cfg(test)]
 mod test {
     use cadical::Solver;
-    use regulaer::re::ReBuilder;
+    use regulaer::re::{ReBuilder, Regex};
 
     use super::*;
 
-    use crate::{
-        alphabet::Alphabet,
-        bounds::Interval,
-        encode::domain::{encoding::get_str_substitutions, DomainEncoder},
-        repr::Sort,
-    };
+    use crate::{alphabet::Alphabet, bounds::Interval, encode::domain::DomainEncoder, repr::Sort};
 
     fn solve_with_bounds(re: Regex, pol: bool, ubounds: &[usize]) -> Option<bool> {
         let mut ctx = Context::default();
@@ -468,7 +459,7 @@ mod test {
 
         let mut bounds = Bounds::default();
 
-        let mut encoder = NFAEncoder::new(&var, nfa, &re, pol);
+        let mut encoder = NFAEncoder::new(&var, nfa, pol);
         let mut dom_encoder = DomainEncoder::new(alph);
         let mut solver: Solver = cadical::Solver::default();
 
@@ -488,8 +479,9 @@ mod test {
                     }
                     result = solver.solve_with(assms.into_iter());
                     if let Some(true) = result {
-                        let _model = get_str_substitutions(dom_encoder.encoding(), &ctx, &solver);
-                        let var_model = _model.get(&var).unwrap().iter().collect::<String>();
+                        let _model = dom_encoder.encoding().get_model(&solver);
+                        let var_model =
+                            _model.get(&var).unwrap().as_string().as_constant().unwrap();
                         encoder.print_debug(&solver, dom_encoder.encoding());
                         assert!(
                             re.accepts(&var_model.clone().into()),

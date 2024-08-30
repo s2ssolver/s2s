@@ -5,7 +5,7 @@ use std::time::Instant;
 
 use crate::bounds::Bounds;
 
-use crate::encode::card::{exactly_one, IncrementalALO, IncrementalAMO};
+use crate::encode::card::{exactly_one, IncrementalALO};
 use crate::encode::domain::DomainEncoding;
 use crate::encode::{EncodingError, EncodingResult, FilledPattern, LiteralEncoder, LAMBDA};
 
@@ -1041,9 +1041,8 @@ mod tests {
             Interval,
         },
         context::Context,
-        encode::domain::encoding::get_str_substitutions,
         repr::{
-            ir::{ConstReducible, Substitutable, VarSubstitution},
+            ir::{ConstReducible, Substitutable},
             Sort,
         },
     };
@@ -1144,13 +1143,8 @@ mod tests {
         }
         let res = solver.solve_with(assumptions.into_iter());
         if let Some(true) = res {
-            let solution = get_str_substitutions(dom_encoder.encoding(), ctx, &solver);
-            let mut model = VarSubstitution::empty();
-            for (var, val) in solution {
-                let as_str = val.iter().collect::<String>();
-                let as_pat = Pattern::constant(&as_str);
-                model.set_str(var.as_ref().clone(), as_pat);
-            }
+            let model = dom_encoder.encoding().get_model(&solver);
+
             println!("\n========================\n");
             for i in 0..encoder.segments(&EqSide::Rhs).length() {
                 for p in 0..encoder.bound {
@@ -1237,13 +1231,7 @@ mod tests {
             bounds = clamp_uppers(bounds, limit);
         }
         if let Some(true) = result {
-            let solution = get_str_substitutions(dom_encoder.encoding(), ctx, &solver);
-            let mut model = VarSubstitution::empty();
-            for (var, val) in solution {
-                let as_str = val.iter().collect::<String>();
-                let as_pat = Pattern::constant(&as_str);
-                model.set_str(var.as_ref().clone(), as_pat);
-            }
+            let model = dom_encoder.encoding().get_model(&solver);
 
             for i in 0..encoder.segments(&EqSide::Rhs).length() {
                 for p in 0..encoder.bound {
