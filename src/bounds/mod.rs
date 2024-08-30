@@ -8,7 +8,7 @@ use std::{cmp::Ordering, fmt::Display};
 use indexmap::IndexMap;
 use quickcheck::Arbitrary;
 
-use crate::repr::Variable;
+use crate::repr::{Sort, Sorted, Variable};
 
 /// Represents a value that can either be a finite integer, positive infinity,
 /// or negative infinity.
@@ -35,6 +35,61 @@ impl PartialOrd for BoundValue {
 impl Ord for BoundValue {
     fn cmp(&self, other: &Self) -> Ordering {
         self.partial_cmp(other).unwrap()
+    }
+}
+
+impl std::ops::Mul for BoundValue {
+    type Output = BoundValue;
+
+    /// Multiplies two `BoundValue`s.
+    /// The following rules are used:
+    /// - `Num(n1) * Num(n2) = Num(n1 * n2)`
+    /// - `X * Num(0) = Num(0)` and `Num(0) * X = Num(0)` for any `X`
+    /// - `PosInf * Num(n) = PosInf` if `n > 0`
+    /// - `PosInf * Num(n) = NegInf` if `n < 0`
+    /// - `NegInf * Num(n) = PosInf` if `n < 0`
+    /// - `NegInf * Num(n) = NegInf` if `n > 0`
+    /// - `PosInf * PosInf = PosInf`
+    /// - `NegInf * NegInf = PosInf`
+    /// - `PosInf * NegInf = NegInf` and  `NegInf * PosInf = NegInf`
+    fn mul(self, other: BoundValue) -> BoundValue {
+        match (self, other) {
+            (BoundValue::Num(n1), BoundValue::Num(n2)) => match n1.checked_mul(n2) {
+                Some(v) => BoundValue::Num(v),
+                None => {
+                    if n1.signum() == n2.signum() {
+                        BoundValue::PosInf
+                    } else {
+                        BoundValue::NegInf
+                    }
+                }
+            },
+            (_, BoundValue::Num(0)) | (BoundValue::Num(0), _) => BoundValue::Num(0),
+            (BoundValue::PosInf, BoundValue::Num(n)) | (BoundValue::Num(n), BoundValue::PosInf) => {
+                if n > 0 {
+                    BoundValue::PosInf
+                } else if n < 0 {
+                    BoundValue::NegInf
+                } else {
+                    BoundValue::Num(0)
+                }
+            }
+            (BoundValue::NegInf, BoundValue::Num(n)) | (BoundValue::Num(n), BoundValue::NegInf) => {
+                if n < 0 {
+                    BoundValue::PosInf
+                } else if n > 0 {
+                    BoundValue::NegInf
+                } else {
+                    BoundValue::Num(0)
+                }
+            }
+            (BoundValue::PosInf, BoundValue::PosInf) | (BoundValue::NegInf, BoundValue::NegInf) => {
+                BoundValue::PosInf
+            }
+            (BoundValue::PosInf, BoundValue::NegInf) | (BoundValue::NegInf, BoundValue::PosInf) => {
+                BoundValue::NegInf
+            }
+        }
     }
 }
 
@@ -332,6 +387,44 @@ impl Bounds {
     /// Returns an iterator over the variables and their bounds.
     pub fn iter(&self) -> impl Iterator<Item = (&Variable, &Interval)> {
         self.bounds.iter()
+    }
+
+    /// Sets the upper bound of a variable to the given value `u`.
+    ///
+    /// If the variable is not present in the bounds, sets the bounds to
+    /// - [-∞, u] if `u` is var is of sort `Sort::Int`
+    /// - [0, u] if `u` is of sort `Sort::String`
+    /// and returns `None`.
+    ///
+    /// If the variable is present in the bounds, sets the upper bound to `u` and returns the previous upper bound.
+    pub fn set_upper(&mut self, var: &Variable, u: BoundValue) -> Option<BoundValue> {
+        if let Some(interval) = self.get(var) {
+            let prev_upper = interval.upper();
+            self.set(var.clone(), Interval::new(interval.lower(), u));
+            Some(prev_upper)
+        } else {
+            let lower = match var.sort() {
+                Sort::Int => BoundValue::NegInf,
+                Sort::String => BoundValue::Num(0),
+                _ => unreachable!("Variable {} of sort {} has no bounds", var, var.sort()),
+            };
+            self.set(var.clone(), Interval::new(lower, u));
+            None
+        }
+    }
+
+    /// Sets the lower bound of a variable to the given value `l`.
+    /// If the variable is not present in the bounds, sets the bounds [l, ∞] and returns `None`.
+    /// If the variable is present in the bounds, sets the lower bound to `l` and returns the previous lower bound.
+    pub fn set_lower(&mut self, var: &Variable, l: BoundValue) -> Option<BoundValue> {
+        if let Some(interval) = self.get(var) {
+            let prev_lower = interval.lower();
+            self.set(var.clone(), Interval::new(l, interval.upper()));
+            Some(prev_lower)
+        } else {
+            self.set(var.clone(), Interval::new(l, BoundValue::PosInf));
+            None
+        }
     }
 }
 

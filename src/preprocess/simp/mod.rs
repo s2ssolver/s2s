@@ -141,7 +141,7 @@ impl Simplifier {
                 AtomType::WordEquation(WordEquation::VarAssignment(v, pat)) => {
                     subst.set_str(v.clone(), Pattern::constant(pat));
                 }
-                AtomType::LinearConstraint(lc) if lc.typ() == LinearOperator::Eq => {
+                AtomType::LinearConstraint(lc) if lc.operator() == LinearOperator::Eq => {
                     if let Some(v) = lc.lhs().as_variable() {
                         subst.set_int(v.clone(), LinearArithTerm::from_const(lc.rhs()));
                     }

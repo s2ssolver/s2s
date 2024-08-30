@@ -191,7 +191,9 @@ impl Normalizer {
                     assert!(lit.polarity());
                     let mut lhs = lc.lhs().clone();
                     lhs.canonicalize();
-                    let atom = ctx.ir_builder().linear_constraint(lhs, lc.typ(), lc.rhs());
+                    let atom = ctx
+                        .ir_builder()
+                        .linear_constraint(lhs, lc.operator(), lc.rhs());
                     Ok(ctx.ir_builder().plit(atom))
                 }
                 _ => Ok(Formula::Literal(lit)), // No rewrite required

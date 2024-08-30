@@ -220,7 +220,7 @@ impl VarSubstitution {
             AtomType::LinearConstraint(lc) => {
                 let new_l = self.apply_arith_term(lc.lhs());
                 ctx.ir_builder()
-                    .linear_constraint(new_l, lc.typ(), lc.rhs())
+                    .linear_constraint(new_l, lc.operator(), lc.rhs())
             }
             AtomType::BoolVar(bv) => ctx.ir_builder().bool_var(bv.clone()),
             AtomType::PrefixOf(_) => todo!(),

@@ -143,6 +143,13 @@ impl LinearArithTerm {
         self.factors.push(f);
     }
 
+    /// Multiplies every summand in the term with a constant
+    pub fn multiply_constant(&mut self, c: isize) {
+        for f in self.factors.iter_mut() {
+            *f = f.multiply(c);
+        }
+    }
+
     /// Tries to muliply both terms and return the result.
     /// That only succeeds if the resulting term is linear.
     /// It is linear if and only if one side of the multiplication is a constant.
@@ -369,7 +376,7 @@ impl LinearConstraint {
     pub fn rhs(&self) -> isize {
         self.rhs
     }
-    pub fn typ(&self) -> LinearOperator {
+    pub fn operator(&self) -> LinearOperator {
         self.typ
     }
 
@@ -405,136 +412,9 @@ impl LinearConstraint {
 impl ConstReducible for LinearConstraint {
     fn is_constant(&self) -> Option<bool> {
         let lhs = self.lhs.as_constant()?;
-        Some(self.typ().eval(lhs, self.rhs))
+        Some(self.operator().eval(lhs, self.rhs))
     }
 }
-
-//     /// Derive a linear constraint from a word equation
-//     pub fn from_word_equation(eq: &WordEquation) -> Self {
-//         let mut lhs = LinearArithTerm::new();
-//         let mut rhs = 0;
-//         for x in eq.variables() {
-//             let xs = &Symbol::Variable(x.clone());
-//             let coeff = eq.lhs().count(xs) as isize - eq.rhs().count(xs) as isize;
-//             lhs.add_var_coeff(&x.len_var().unwrap(), coeff);
-//         }
-//         for c in eq.alphabet() {
-//             let c = &Symbol::Constant(c);
-//             let diff = eq.rhs().count(c) as isize - eq.lhs().count(c) as isize;
-//             rhs += diff;
-//         }
-
-//         Self {
-//             lhs,
-//             rhs,
-//             typ: LinearOperator::Eq,
-//         }
-//     }
-
-//     /// Derive a linear constraint that restricts the upper bound for the patter from a regular constraint, if the regular language is finite.
-//     /// The constraint is of the form `lhs <= rhs`, where `lhs` is the length of the pattern (i.e., the sum of the lenght all variable occurrences plus the length of the constant symbols) and `rhs` is the number of states in the automaton.
-//     /// Note that there cannot be a word in the (finite) language that is longer than the number of states.
-//     /// If the regular language is not finite, `None` is returned.
-//     pub fn from_regular_constraint_upper(re: &RegularConstraint) -> Option<Self> {
-//         if let Some(automaton) = re.get_automaton() {
-//             if !automaton.acyclic() {
-//                 return None;
-//             }
-
-//             let mut lhs = LinearArithTerm::new();
-//             let mut rhs = 0;
-
-//             for x in re.get_pattern().iter() {
-//                 match x {
-//                     Symbol::Constant(_) => rhs -= 1,
-//                     Symbol::Variable(v) => {
-//                         lhs.add_var_coeff(&v.len_var().unwrap(), 1);
-//                     }
-//                 }
-//             }
-
-//             rhs += re.get_automaton().unwrap().states().len() as isize;
-
-//             Some(Self {
-//                 lhs,
-//                 rhs,
-//                 typ: LinearOperator::Leq,
-//             })
-//         } else {
-//             None
-//         }
-//     }
-
-//     /// Derive a linear constraint that restricts the lower bound for the pattern from a regular constraint.
-//     /// The constraint is of the form `lhs >= rhs`, where `lhs` is the length of the pattern (i.e., the sum of the lenght all variable occurrences plus the length of the constant symbols) and `rhs` is the shortest path from the initial state to a final state in the automaton.
-//     pub fn from_regular_constraint_lower(re: &RegularConstraint) -> Self {
-//         let automaton = re.get_automaton().unwrap();
-//         let mut lhs = LinearArithTerm::new();
-//         let mut rhs = 0;
-
-//         for x in re.get_pattern().iter() {
-//             match x {
-//                 Symbol::Constant(_) => rhs -= 1,
-//                 Symbol::Variable(v) => {
-//                     lhs.add_var_coeff(&v.len_var().unwrap(), 1);
-//                 }
-//             }
-//         }
-
-//         rhs += automaton.shortest().unwrap_or(0) as isize;
-
-//         Self {
-//             lhs,
-//             rhs,
-//             typ: LinearOperator::Geq,
-//         }
-//     }
-// }
-
-// impl From<(LinearArithTerm, LinearArithTerm, LinearOperator)> for LinearConstraint {
-//     fn from(value: (LinearArithTerm, LinearArithTerm, LinearOperator)) -> Self {
-//         let lhs = value.0;
-//         let rhs = value.1;
-//         let typ = value.2;
-//         if let Some(mut c) = rhs.is_constant() {
-//             let mut lhs = lhs;
-//             lhs.normalize();
-//             let mut consts = vec![];
-//             for fac in lhs.iter() {
-//                 match fac {
-//                     Summand::VarCoeff(_, _) => {}
-//                     Summand::Const(c2) => {
-//                         consts.push(fac.clone());
-//                         c -= c2;
-//                     }
-//                 }
-//             }
-//             for fac in consts {
-//                 lhs.remove_factor(&fac);
-//             }
-//             Self { lhs, rhs: c, typ }
-//         } else {
-//             let mut lhs = lhs.subtract(&rhs);
-//             lhs.normalize();
-//             let mut consts = vec![];
-//             let mut c = 0;
-//             for fac in lhs.iter() {
-//                 match fac {
-//                     Summand::VarCoeff(_, _) => {}
-//                     Summand::Const(c2) => {
-//                         consts.push(fac.clone());
-//                         c -= c2;
-//                     }
-//                 }
-//             }
-//             for fac in consts {
-//                 lhs.remove_factor(&fac);
-//             }
-
-//             Self { lhs, rhs: c, typ }
-//         }
-//     }
-// }
 
 /* Pretty Printing */
 
