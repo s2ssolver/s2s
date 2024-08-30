@@ -99,6 +99,10 @@ impl VarSubstitution {
         self.set(var, Substitute::Int(term))
     }
 
+    pub fn set_bool(&mut self, clone: Variable, val: bool) -> Option<Substitute> {
+        self.set(clone, Substitute::Bool(val))
+    }
+
     fn pattern_to_len(pat: &Pattern) -> LinearArithTerm {
         let mut vs = HashMap::new();
         let mut r = 0;
@@ -181,7 +185,11 @@ impl VarSubstitution {
             Formula::Literal(lit) => {
                 if let AtomType::BoolVar(v) = &lit.atom().ttype {
                     if let Some(Substitute::Bool(b)) = self.get(v) {
-                        return if *b { Formula::True } else { Formula::False };
+                        return if *b == lit.polarity() {
+                            Formula::True
+                        } else {
+                            Formula::False
+                        };
                     } else {
                         Formula::Literal(lit)
                     }
