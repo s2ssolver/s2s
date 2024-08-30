@@ -1,10 +1,6 @@
 //! Conversion from the AST to the IR.
 
-use std::{
-    collections::HashMap,
-    io::{stdout, Write},
-    rc::Rc,
-};
+use std::{collections::HashMap, rc::Rc};
 
 use crate::{
     context::Context,
@@ -27,10 +23,12 @@ pub fn convert_script(script: &Script, ctx: &mut Context) -> Result<Formula, Pre
     for expr in script.iter_asserts() {
         let as_nnf = match expression_to_nnf(expr, ctx.ast_builder()) {
             Ok(ok) => ok,
-            Err(e) => return Err(PreprocessingError::NotInNNF(e.to_string())),
+            Err(e) => {
+                log::error!("Failed to convert to NNF: {}", e);
+                return Err(PreprocessingError::NotInNNF(e.to_string()));
+            }
         };
 
-        stdout().flush().unwrap();
         let fm = convert_expr(&as_nnf, ctx)?;
         conjuncts.push(fm);
     }
@@ -63,7 +61,6 @@ pub fn convert_expr(
             Formula::True => Ok(Formula::False),
             Formula::False => Ok(Formula::True),
         },
-
         ExprType::Core(CoreExpr::Bool(b)) => {
             if *b {
                 Ok(Formula::True)
@@ -108,6 +105,18 @@ pub fn convert_expr(
                 got: r.sort(),
             }),
         },
+        ExprType::Core(CoreExpr::Var(x)) => {
+            if x.sort().is_bool() {
+                let atom = ctx.ir_builder().bool_var(x.clone());
+                Ok(ctx.ir_builder().plit(atom))
+            } else {
+                Err(PreprocessingError::InvalidSort {
+                    expr: expr.to_string(),
+                    expected: Sort::Bool,
+                    got: x.sort(),
+                })
+            }
+        }
         ExprType::Core(_) => Err(PreprocessingError::NotInNNF(expr.to_string())), // TODO: Handle ITE and Distinct
         ExprType::String(s) => {
             let atom = convert_string_atom(s, ctx)?;
@@ -386,4 +395,40 @@ fn normalize_linear(lhs: LinearArithTerm, rhs: LinearArithTerm) -> (LinearArithT
         }
     }
     (new_lhs, rhs_const)
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{
+        context::Context,
+        repr::{
+            ir::{Formula, Literal},
+            Sort,
+        },
+    };
+
+    use super::convert_expr;
+
+    #[test]
+    fn convert_bool_var() {
+        let mut ctx = Context::default();
+        let v = ctx.make_var("x".to_string(), Sort::Bool).unwrap();
+
+        let expr = ctx.ast_builder().var(v.clone());
+        let got = convert_expr(&expr, &mut ctx).unwrap();
+
+        let atom = ctx.ir_builder().bool_var(v);
+        let lit = ctx.ir_builder().plit(atom);
+        assert_eq!(got, lit);
+    }
+
+    #[test]
+    fn convert_int_var_to_bool_var() {
+        let mut ctx = Context::default();
+        let v = ctx.make_var("x".to_string(), Sort::Int).unwrap();
+
+        let expr = ctx.ast_builder().var(v.clone());
+        let got = convert_expr(&expr, &mut ctx);
+        assert!(got.is_err())
+    }
 }
