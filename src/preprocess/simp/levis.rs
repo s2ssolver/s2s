@@ -42,15 +42,39 @@ impl LevisSimp {
     /// Applies Levi's rule to simplify the given word equation.
     fn levis_step(weq: &WordEquation) -> SimplificationResult<WordEquation> {
         // Strip all common prefixes
-        let reduced = Self::strip_common_prefix(&weq);
-        let weq = reduced.unwrap_or_else(|| weq.clone());
-        let lhs = weq.lhs();
-        let rhs = weq.rhs();
+
+        let (stripped, was_sripped) = match Self::strip_common_prefix(&weq) {
+            Some(s) => (s, true),
+            None => (weq.clone(), false),
+        };
+        let lhs = stripped.lhs();
+        let rhs = stripped.rhs();
         let mut subst = VarSubstitution::default();
+
+        // Helper function to check if we have "a\beta = Y\alpha" or "Y\alpha = a\beta" and Y cannot be set to the empty string
+        fn not_empty(constant: &char, pattern: &Pattern) -> bool {
+            let scnd = pattern.at(1);
+            match scnd {
+                Some(Symbol::Constant(c)) => c != constant,
+                None => true,
+                _ => false,
+            }
+        }
+
         match (lhs.first(), rhs.first()) {
             /* One side is constant, the other variable */
-            (Some(Symbol::Constant(c)), Some(Symbol::Variable(v)))
-            | (Some(Symbol::Variable(v)), Some(Symbol::Constant(c))) => {
+            (Some(Symbol::Constant(c)), Some(Symbol::Variable(v))) if not_empty(c, &rhs) => {
+                let mut substitutee = Pattern::constant(&String::from(*c));
+                substitutee.push_var(v.clone());
+                subst.set_str(v.clone(), substitutee);
+                let lhs_new = lhs.apply_substitution(&subst);
+                let rhs_new = rhs.apply_substitution(&subst);
+                let mut applied_weq = WordEquation::new(lhs_new, rhs_new);
+                // Strip common prefixes again, there is now at least one
+                applied_weq = Self::strip_common_prefix(&applied_weq).unwrap_or(applied_weq);
+                SimplificationResult::Simplified(applied_weq, subst)
+            }
+            (Some(Symbol::Variable(v)), Some(Symbol::Constant(c))) if not_empty(c, &lhs) => {
                 let mut substitutee = Pattern::constant(&String::from(*c));
                 substitutee.push_var(v.clone());
                 subst.set_str(v.clone(), substitutee);
@@ -63,7 +87,13 @@ impl LevisSimp {
             }
 
             // All other cases are either not reducible or already reduced by stripping common prefixes
-            _ => SimplificationResult::Unchanged,
+            _ => {
+                if was_sripped {
+                    SimplificationResult::Simplified(stripped, subst)
+                } else {
+                    SimplificationResult::Unchanged
+                }
+            }
         }
     }
 
@@ -117,10 +147,13 @@ impl LiteralSimplifier for LevisSimp {
                 match Self::apply_levis(weq) {
                     SimplificationResult::Simplified(simped, mut subs) => {
                         // also apply it to the reverse equation
+
                         let reversed = simped.reverse();
+
                         match Self::apply_levis(&reversed) {
                             SimplificationResult::Simplified(simped_rev, subs_rev) => {
                                 // reverse the substitutions
+
                                 let subs_rev = Self::reverse_subsitutions(subs_rev);
                                 subs = subs.compose(&subs_rev);
                                 // reverse the equation back
@@ -141,12 +174,32 @@ impl LiteralSimplifier for LevisSimp {
                         }
                     }
                     SimplificationResult::Trivial(t) => SimplificationResult::Trivial(t),
-                    SimplificationResult::Unchanged => SimplificationResult::Unchanged,
+                    SimplificationResult::Unchanged => {
+                        let reversed = weq.reverse();
+                        match Self::apply_levis(&reversed) {
+                            SimplificationResult::Simplified(simped_rev, subs_rev) => {
+                                // reverse the substitutions
+                                let subs_rev = Self::reverse_subsitutions(subs_rev);
+                                // reverse the equation back
+                                let simped = simped_rev.reverse();
+                                let as_atom = ctx
+                                    .ir_builder()
+                                    .register_atom(AtomType::WordEquation(simped));
+                                SimplificationResult::Simplified(
+                                    Literal::new(as_atom, pol),
+                                    subs_rev,
+                                )
+                            }
+                            SimplificationResult::Trivial(t) => SimplificationResult::Trivial(t),
+                            SimplificationResult::Unchanged => SimplificationResult::Unchanged,
+                        }
+                    }
                 }
             } else {
                 // we can only strip common prefixes and suffixes if the polarity is negative or the literal is not entailed
-                let stripped =
-                    Self::strip_common_prefix(weq).and_then(|r| Self::strip_common_suffix(&r));
+                let stripped = Self::strip_common_prefix(weq)
+                    .or(Some(weq.clone()))
+                    .and_then(|r| Self::strip_common_suffix(&r));
                 if let Some(reduced) = stripped {
                     let as_atom = ctx
                         .ir_builder()
