@@ -77,11 +77,14 @@ impl Simplifier {
     }
 
     fn pure_simps(&self) -> Vec<Box<dyn PureSimplifier>> {
-        vec![]
+        vec![Box::new(weq::StripCommonPrefixSuffix)]
     }
 
     fn rewrite_simps(&self, fm: &Formula) -> Vec<Box<dyn RewriteSimplifier>> {
-        vec![Box::new(IndependentVarReducer::new(fm))]
+        vec![
+            Box::new(IndependentVarReducer::new(fm)),
+            Box::new(levis::LevisSimp),
+        ]
     }
 
     fn apply_pure_simps(
