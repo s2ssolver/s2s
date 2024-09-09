@@ -154,6 +154,10 @@ impl Solver {
             return Ok(SolverResult::Unsat);
         }
 
+        if self.options.dry {
+            return Ok(SolverResult::Unknown);
+        }
+
         timer = Instant::now();
 
         // Build the Boolean abstraction
