@@ -234,6 +234,30 @@ impl Pattern {
         Some(res)
     }
 
+    /// Returns the (longest) prefix of the pattern that is constant.
+    fn constant_prefix(&self) -> String {
+        let mut res = String::new();
+        for symbol in &self.symbols {
+            match symbol {
+                Symbol::Constant(c) => res.push(*c),
+                _ => break,
+            }
+        }
+        res
+    }
+
+    /// Returns the (longest) suffix of the pattern that is constant.
+    fn constant_suffix(&self) -> String {
+        let mut res = String::new();
+        for symbol in self.symbols.iter().rev() {
+            match symbol {
+                Symbol::Constant(c) => res.push(*c),
+                _ => break,
+            }
+        }
+        res.chars().rev().collect()
+    }
+
     /// Returns true iff the pattern contains at least one constant word
     pub fn contains_constant(&self) -> bool {
         self.symbols
@@ -448,29 +472,51 @@ impl WordEquation {
         consts
     }
 
+    /// Reverses both sides of the word equation.
+    pub fn reverse(&self) -> Self {
+        Self::new(self.lhs().reversed(), self.rhs().reversed())
+    }
+
     /// We call a word equation `proper` if it contains at least one side with both a variable and a constant.
     pub fn is_proper(&self) -> bool {
         (self.lhs().contains_constant() && !self.lhs().is_constant())
             || (self.rhs().contains_constant() && !self.rhs().is_constant())
     }
 }
-impl ConstReducible for WordEquation {
-    /// If the equation is constant, i.e., both sides are constant words, returns whether the two words are equal.
-    /// Returns `Some(true)` if the words are equal, `Some(false)` if they are not, and `None` if either side contains variables.
-    fn is_constant(&self) -> Option<bool> {
-        let lhs_const = match self {
-            WordEquation::ConstantEquality(l, _) => l.clone(),
-            WordEquation::VarAssignment(_, _) | WordEquation::VarEquality(_, _) => return None,
-            WordEquation::General(_, _) => self.lhs().as_constant()?,
-        };
-        let rhs_const = match self {
-            WordEquation::ConstantEquality(_, r) => r.clone(),
-            WordEquation::VarAssignment(_, _) | WordEquation::VarEquality(_, _) => return None,
-            WordEquation::General(_, _) => self.rhs().as_constant()?,
-        };
-        Some(lhs_const == rhs_const)
+impl TrivialReducible for WordEquation {
+    /// If the word equation is trivially true or false:
+    /// - if both sides are equal, returns true
+    /// - if both sides start with a constant word, returns whether they have a common prefix
+    /// - if both sides end with a constant word, returns whether they have a common suffix
+    /// - if one side is empty and the other side contains a constant word, returns false
+    /// - otherwise, returns None
+    fn is_trivial(&self) -> Option<bool> {
+        if self.lhs() == self.rhs() {
+            return Some(true);
+        }
+
+        let lhs_prefix = self.lhs().constant_prefix();
+        let rhs_prefix = self.rhs().constant_prefix();
+        if !lhs_prefix.starts_with(&rhs_prefix) && !rhs_prefix.starts_with(&lhs_prefix) {
+            return Some(false);
+        }
+
+        let lhs_suffix = self.lhs().constant_suffix();
+        let rhs_suffix = self.rhs().constant_suffix();
+        if !lhs_suffix.ends_with(&rhs_suffix) && !rhs_suffix.ends_with(&lhs_suffix) {
+            return Some(false);
+        }
+
+        if self.lhs().is_empty() && self.rhs().contains_constant() {
+            return Some(false);
+        }
+        if self.rhs().is_empty() && self.lhs().contains_constant() {
+            return Some(false);
+        }
+        None
     }
 }
+
 impl Substitutable for WordEquation {
     fn apply_substitution(&self, sub: &super::VarSubstitution) -> Self {
         Self::new(
@@ -488,6 +534,39 @@ impl Display for WordEquation {
             WordEquation::General(l, r) => write!(f, "{} = {}", l, r),
         }
     }
+}
+
+/// Parses a word equation from a simple string representation.
+/// The patterns (lhs and rhs) must be ascii letters. A lowercase letter is a constant, an uppercase letter is a variable.
+/// Creates a new variable for each uppercase letter on-the-fly.
+#[cfg(test)]
+pub(crate) fn parse_simple_equation(lhs: &str, rhs: &str, ctx: &mut Context) -> WordEquation {
+    let lhs = parse_simple_pattern(lhs, ctx);
+    let rhs = parse_simple_pattern(rhs, ctx);
+    WordEquation::new(lhs, rhs)
+}
+
+/// Parses a pattern.
+/// The pattern must be ascii letters. A lowercase letter is a constant, an uppercase letter is a variable.
+/// Creates a new variable for each uppercase letter on-the-fly.
+#[cfg(test)]
+pub(crate) fn parse_simple_pattern(pat: &str, ctx: &mut Context) -> Pattern {
+    let mut parsed = Pattern::empty();
+    for c in pat.chars() {
+        let symbol: Symbol = if c.is_ascii_lowercase() {
+            c.into()
+        } else if c.is_ascii_uppercase() {
+            let v = match ctx.get_var(&c.to_string()) {
+                Some(v) => v,
+                None => ctx.make_var(c.to_string(), Sort::String).unwrap(),
+            };
+            v.as_ref().clone().into()
+        } else {
+            panic!("Invalid character in pattern {}: {}", pat, c);
+        };
+        parsed.push(symbol);
+    }
+    parsed
 }
 
 /// Represents a regular constraint, i.e. a pattern and a regular expression.
@@ -522,10 +601,15 @@ impl RegularConstraint {
         alph
     }
 }
-impl ConstReducible for RegularConstraint {
-    /// If the constraint is constant, i.e., the pattern contains no variables, returns whether the pattern is in the language of the regular expression.
-    /// Returns `Some(true)` if the pattern is in the language, `Some(false)` if it is not, and `None` if the pattern contains variables.
-    fn is_constant(&self) -> Option<bool> {
+impl TrivialReducible for RegularConstraint {
+    /// If the constraint is trivial:
+    /// - if the pattern is constant (contains no variables), returns whether the pattern is in the language of the regular expression.
+    /// - if the regex is empty, returns `Some(false)``
+    /// - otherwise, returns `None`
+    fn is_trivial(&self) -> Option<bool> {
+        if self.re().operator().is_none().unwrap_or(false) {
+            return Some(false);
+        }
         let pat_c = self.pattern().as_constant()?;
         Some(self.re().accepts(&pat_c.into()))
     }
@@ -583,8 +667,8 @@ impl Substitutable for PrefixOf {
         )
     }
 }
-impl ConstReducible for PrefixOf {
-    fn is_constant(&self) -> Option<bool> {
+impl TrivialReducible for PrefixOf {
+    fn is_trivial(&self) -> Option<bool> {
         let prefix_c = self.prefix.as_constant()?;
         let of_c = self.of.as_constant()?;
         Some(of_c.starts_with(&prefix_c))
@@ -638,8 +722,8 @@ impl Substitutable for SuffixOf {
         )
     }
 }
-impl ConstReducible for SuffixOf {
-    fn is_constant(&self) -> Option<bool> {
+impl TrivialReducible for SuffixOf {
+    fn is_trivial(&self) -> Option<bool> {
         let suffix_c = self.suffix.as_constant()?;
         let of_c = self.of.as_constant()?;
         Some(of_c.ends_with(&suffix_c))
@@ -694,8 +778,8 @@ impl Substitutable for Contains {
         )
     }
 }
-impl ConstReducible for Contains {
-    fn is_constant(&self) -> Option<bool> {
+impl TrivialReducible for Contains {
+    fn is_trivial(&self) -> Option<bool> {
         let needle_c = self.needle.as_constant()?;
         let haystack_c = self.haystack.as_constant()?;
         Some(haystack_c.contains(&needle_c))
@@ -712,12 +796,9 @@ impl Display for Contains {
 use quickcheck;
 use regulaer::re::Regex;
 
-use crate::{
-    alphabet,
-    repr::{Sort, Sorted, Variable},
-};
+use crate::repr::{Sort, Sorted, Variable};
 
-use super::{ConstReducible, Substitutable};
+use super::{Substitutable, TrivialReducible};
 
 impl Arbitrary for Symbol {
     fn arbitrary(g: &mut quickcheck::Gen) -> Self {
@@ -762,6 +843,9 @@ impl Arbitrary for Pattern {
 #[cfg(test)]
 mod tests {
     use quickcheck_macros::quickcheck;
+    use regulaer::re::ReBuilder;
+
+    use crate::context::Context;
 
     use super::*;
 
@@ -804,5 +888,93 @@ mod tests {
     #[quickcheck]
     fn pattern_reverse_reverse_is_identity(pat: Pattern) -> bool {
         pat == pat.reversed().reversed()
+    }
+
+    #[quickcheck]
+    fn strip_length(pat: Pattern, n: usize) -> bool {
+        pat.strip_prefix(n).len() == pat.len().saturating_sub(n)
+    }
+
+    #[test]
+    fn reducible_re_none() {
+        let mut ctx = Context::default();
+        let re = ctx.ast_builder().re_builder().none();
+        let v = ctx.new_temp_var(Sort::String);
+        let pat = Pattern::variable(&v);
+        let re_constr = RegularConstraint::new(pat, re);
+        assert_eq!(re_constr.is_trivial(), Some(true));
+    }
+
+    #[quickcheck]
+    fn const_prefix_is_const_suffix_reversed(pat: Pattern) -> bool {
+        let prefix = pat.constant_prefix();
+        let suffix = pat.reversed().constant_suffix();
+        suffix == prefix.chars().rev().collect::<String>()
+    }
+
+    #[test]
+    fn reducible_weq_both_sides_equal_const() {
+        let mut ctx = Context::default();
+        let eq = parse_simple_equation("abc", "abc", &mut ctx);
+        assert_eq!(eq.is_trivial(), Some(true));
+    }
+
+    #[test]
+    fn reducible_weq_both_sides_equal_var() {
+        let mut ctx = Context::default();
+        let eq = parse_simple_equation("XY", "XY", &mut ctx);
+        assert_eq!(eq.is_trivial(), Some(true));
+    }
+
+    #[test]
+    fn reducible_weq_both_sides_equal_mixed() {
+        let mut ctx = Context::default();
+        let eq = parse_simple_equation("XabY", "XabY", &mut ctx);
+        assert_eq!(eq.is_trivial(), Some(true));
+    }
+
+    #[test]
+    fn reducible_weq_common_prefix_none() {
+        let mut ctx = Context::default();
+        let eq = parse_simple_equation("abcX", "abcY", &mut ctx);
+        assert_eq!(eq.is_trivial(), None);
+    }
+
+    #[test]
+    fn reducible_weq_common_prefix_false() {
+        let mut ctx = Context::default();
+        let eq = parse_simple_equation("abcX", "defY", &mut ctx);
+        assert_eq!(eq.is_trivial(), Some(false)); // No common prefix
+    }
+
+    #[test]
+    fn reducible_weq_common_suffix_none() {
+        let mut ctx = Context::default();
+        let eq = parse_simple_equation("Xabc", "Yabc", &mut ctx);
+        assert_eq!(eq.is_trivial(), Some(true)); // Common suffix: "abc"
+    }
+
+    #[test]
+    fn reducible_weq_common_suffix_false() {
+        let mut ctx = Context::default();
+        let eq = parse_simple_equation("Xabc", "Ydef", &mut ctx);
+        assert_eq!(eq.is_trivial(), Some(false)); // No common suffix
+    }
+
+    #[test]
+    fn reducible_weq_empty_side_with_constant() {
+        let mut ctx = Context::default();
+        let eq = parse_simple_equation("", "abc", &mut ctx);
+        assert_eq!(eq.is_trivial(), Some(false)); // One side is empty, the other has a constant
+
+        let eq2 = parse_simple_equation("abc", "", &mut ctx);
+        assert_eq!(eq2.is_trivial(), Some(false)); // One side is empty, the other has a constant
+    }
+
+    #[test]
+    fn reducible_weq_empty_sides() {
+        let mut ctx = Context::default();
+        let eq = parse_simple_equation("", "", &mut ctx);
+        assert_eq!(eq.is_trivial(), Some(true)); // Both sides are empty, hence equal
     }
 }

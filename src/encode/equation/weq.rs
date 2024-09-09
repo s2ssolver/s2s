@@ -1042,7 +1042,7 @@ mod tests {
         },
         context::Context,
         repr::{
-            ir::{ConstReducible, Substitutable},
+            ir::{parse_simple_equation, Substitutable, TrivialReducible},
             Sort,
         },
     };
@@ -1168,7 +1168,7 @@ mod tests {
                 }
             }
 
-            let substituted = eq.apply_substitution(&model).is_constant();
+            let substituted = eq.apply_substitution(&model).is_trivial();
             assert_eq!(
                 substituted,
                 Some(true),
@@ -1273,7 +1273,7 @@ mod tests {
                 }
             }
 
-            let substituted = eq.apply_substitution(&model).is_constant();
+            let substituted = eq.apply_substitution(&model).is_trivial();
             assert_eq!(
                 substituted,
                 Some(true),
@@ -1290,7 +1290,7 @@ mod tests {
     #[test]
     fn align_incremental_sat() {
         let mut ctx = Context::default();
-        let eq = parse_simple("X", "abc", &mut ctx);
+        let eq = parse_simple_equation("X", "abc", &mut ctx);
 
         let res = solve_align_incremental(&eq, 5, &eq.constants().into_iter().collect(), &mut ctx);
         assert!(matches!(res, Some(true)));
@@ -1312,7 +1312,7 @@ mod tests {
     #[test]
     fn align_trivial_sat_consts() {
         let mut ctx = Context::default();
-        let eq = parse_simple("bar", "bar", &mut ctx);
+        let eq = parse_simple_equation("bar", "bar", &mut ctx);
 
         let mut bounds = Bounds::default();
         for var in eq.variables() {
@@ -1326,7 +1326,7 @@ mod tests {
     #[test]
     fn align_trivial_unsat_consts() {
         let mut ctx = Context::default();
-        let eq = parse_simple("bar", "barr", &mut ctx);
+        let eq = parse_simple_equation("bar", "barr", &mut ctx);
         let mut bounds = Bounds::default();
         for var in eq.variables() {
             bounds.set(var, Interval::new(0, 10));
@@ -1339,7 +1339,7 @@ mod tests {
     #[test]
     fn align_trivial_unsat_consts_2() {
         let mut ctx = Context::default();
-        let eq = parse_simple("bar", "foo", &mut ctx);
+        let eq = parse_simple_equation("bar", "foo", &mut ctx);
 
         let mut bounds = Bounds::default();
         for var in eq.variables() {
@@ -1353,7 +1353,7 @@ mod tests {
     #[test]
     fn align_trivial_sat_const_var() {
         let mut ctx = Context::default();
-        let eq = parse_simple("X", "abc", &mut ctx);
+        let eq = parse_simple_equation("X", "abc", &mut ctx);
 
         let mut bounds = Bounds::default();
         for var in eq.variables() {
@@ -1367,7 +1367,7 @@ mod tests {
     #[test]
     fn align_trivial_sat_var_eq_same_var() {
         let mut ctx = Context::default();
-        let eq = parse_simple("A", "A", &mut ctx);
+        let eq = parse_simple_equation("A", "A", &mut ctx);
 
         let mut bounds = Bounds::default();
         for var in eq.variables() {
@@ -1380,7 +1380,7 @@ mod tests {
     #[test]
     fn align_trivial_sat_var_eq_other_var() {
         let mut ctx = Context::default();
-        let eq = parse_simple("A", "B", &mut ctx);
+        let eq = parse_simple_equation("A", "B", &mut ctx);
 
         let mut bounds = Bounds::default();
         for var in eq.variables() {
@@ -1395,7 +1395,7 @@ mod tests {
         // AB = BA
         let mut ctx = Context::default();
 
-        let eq = parse_simple("AB", "BA", &mut ctx);
+        let eq = parse_simple_equation("AB", "BA", &mut ctx);
 
         let mut bounds = Bounds::default();
         for var in eq.variables() {
@@ -1408,7 +1408,7 @@ mod tests {
     #[test]
     fn align_sat_pattern_const() {
         let mut ctx = Context::default();
-        let eq = parse_simple("aXc", "abc", &mut ctx);
+        let eq = parse_simple_equation("aXc", "abc", &mut ctx);
 
         let mut bounds = Bounds::default();
         for var in eq.variables() {
@@ -1422,7 +1422,7 @@ mod tests {
     fn align_sat_two_patterns_unsat() {
         let mut ctx = Context::default();
 
-        let eq = parse_simple("aXb", "YXc", &mut ctx);
+        let eq = parse_simple_equation("aXb", "YXc", &mut ctx);
 
         let mut bounds = Bounds::default();
         for var in eq.variables() {
@@ -1436,7 +1436,7 @@ mod tests {
     fn align_sat_two_patterns_sat() {
         let mut ctx = Context::default();
 
-        let eq = parse_simple("aXb", "YbX", &mut ctx);
+        let eq = parse_simple_equation("aXb", "YbX", &mut ctx);
 
         let mut bounds = Bounds::default();
         for var in eq.variables() {
@@ -1449,7 +1449,7 @@ mod tests {
     #[test]
     fn align_trivial_unsat_const_var_too_small() {
         let mut ctx = Context::default();
-        let eq = parse_simple("X", "foo", &mut ctx);
+        let eq = parse_simple_equation("X", "foo", &mut ctx);
 
         let mut bounds = Bounds::default();
         for var in eq.variables() {
@@ -1463,7 +1463,7 @@ mod tests {
     #[test]
     fn align_sat_t1i74() {
         let mut ctx = Context::default();
-        let eq = parse_simple(
+        let eq = parse_simple_equation(
             "A",
             "ebcaeccedbedefbfdFgbagebcbfacgadbefcffcgceeedd",
             &mut ctx,
@@ -1479,7 +1479,7 @@ mod tests {
     #[test]
     fn align_sat_t1i74_incremental() {
         let mut ctx = Context::default();
-        let eq = parse_simple(
+        let eq = parse_simple_equation(
             "A",
             "ebcaeccedbedefbfdFgbagebcbfacgadbefcffcgceeedd",
             &mut ctx,
@@ -1492,7 +1492,7 @@ mod tests {
     #[test]
     fn align_sat_t1i1() {
         let mut ctx = Context::default();
-        let eq = parse_simple(
+        let eq = parse_simple_equation(
             "cfcbbAadeeaecAgebegeecafegebdbagddaadbddcaeeebfabfefabfacdgAgaabg",
             "AfcbbAaIegeeAaD",
             &mut ctx,
@@ -1506,40 +1506,9 @@ mod tests {
     #[test]
     fn align_sat_t1i97() {
         let mut ctx = Context::default();
-        let eq = parse_simple("AccAbccB", "CccAbDbcCcA", &mut ctx);
+        let eq = parse_simple_equation("AccAbccB", "CccAbDbcCcA", &mut ctx);
         let res = solve_align_incremental(&eq, 50, &eq.constants().into_iter().collect(), &mut ctx);
 
         assert!(matches!(res, Some(true)));
-    }
-
-    /// Parses a word equation from a simple string representation.
-    /// The patterns (lhs and rhs) must be ascii letters. A lowercase letter is a constant, an uppercase letter is a variable.
-    /// Creates a new variable for each uppercase letter on-the-fly.
-    fn parse_simple(lhs: &str, rhs: &str, ctx: &mut Context) -> WordEquation {
-        let lhs = parse_simple_pattern(lhs, ctx);
-        let rhs = parse_simple_pattern(rhs, ctx);
-        WordEquation::new(lhs, rhs)
-    }
-
-    /// Parses a pattern.
-    /// The pattern must be ascii letters. A lowercase letter is a constant, an uppercase letter is a variable.
-    /// Creates a new variable for each uppercase letter on-the-fly.
-    fn parse_simple_pattern(pat: &str, ctx: &mut Context) -> Pattern {
-        let mut parsed = Pattern::empty();
-        for c in pat.chars() {
-            let symbol: Symbol = if c.is_ascii_lowercase() {
-                c.into()
-            } else if c.is_ascii_uppercase() {
-                let v = match ctx.get_var(&c.to_string()) {
-                    Some(v) => v,
-                    None => ctx.make_var(c.to_string(), Sort::String).unwrap(),
-                };
-                v.as_ref().clone().into()
-            } else {
-                panic!("Invalid character in pattern {}: {}", pat, c);
-            };
-            parsed.push(symbol);
-        }
-        parsed
     }
 }

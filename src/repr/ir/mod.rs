@@ -232,7 +232,7 @@ impl Formula {
     }
 
     fn reduce_literal(lit: Literal) -> Formula {
-        match lit.is_constant() {
+        match lit.is_trivial() {
             Some(true) => Formula::True,   // `true` literal
             Some(false) => Formula::False, // `false` literal
             None => Formula::Literal(lit), // Non-constant literal
@@ -345,31 +345,31 @@ impl Display for Formula {
     }
 }
 
-pub trait ConstReducible {
-    /// Checks if the formula constant.
-    /// If the formula is constant, returns the constant truth value.
-    /// If the formula is not constant, returns None.
-    fn is_constant(&self) -> Option<bool>;
+pub trait TrivialReducible {
+    /// Checks if the formula trivial.
+    /// If the formula is trivial, returns the constant truth value.
+    /// If the formula is not trivial, returns None.
+    fn is_trivial(&self) -> Option<bool>;
 }
 
-impl ConstReducible for Atom {
-    fn is_constant(&self) -> Option<bool> {
+impl TrivialReducible for Atom {
+    fn is_trivial(&self) -> Option<bool> {
         match self.get_type() {
             AtomType::BoolVar(_) => None,
-            AtomType::InRe(r) => r.is_constant(),
-            AtomType::WordEquation(w) => w.is_constant(),
-            AtomType::PrefixOf(p) => p.is_constant(),
-            AtomType::SuffixOf(s) => s.is_constant(),
-            AtomType::Contains(c) => c.is_constant(),
-            AtomType::LinearConstraint(lc) => lc.is_constant(),
+            AtomType::InRe(r) => r.is_trivial(),
+            AtomType::WordEquation(w) => w.is_trivial(),
+            AtomType::PrefixOf(p) => p.is_trivial(),
+            AtomType::SuffixOf(s) => s.is_trivial(),
+            AtomType::Contains(c) => c.is_trivial(),
+            AtomType::LinearConstraint(lc) => lc.is_trivial(),
         }
     }
 }
 
-impl ConstReducible for Literal {
-    fn is_constant(&self) -> Option<bool> {
+impl TrivialReducible for Literal {
+    fn is_trivial(&self) -> Option<bool> {
         self.atom()
-            .is_constant()
+            .is_trivial()
             .map(|c| if self.polarity() { c } else { !c })
     }
 }

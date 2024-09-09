@@ -5,7 +5,7 @@ use indexmap::IndexMap;
 use crate::{
     bounds::Bounds,
     repr::{
-        ir::{ConstReducible, LinearConstraint, LinearOperator, LinearSummand},
+        ir::{LinearConstraint, LinearOperator, LinearSummand, TrivialReducible},
         Sorted,
     },
     sat::{nlit, plit, pvar, PVar},
@@ -69,7 +69,7 @@ impl LiteralEncoder for MddEncoder {
 
         // Check if trivial
 
-        match self.linear.is_constant() {
+        match self.linear.is_trivial() {
             Some(true) => {
                 return Ok(res);
             }

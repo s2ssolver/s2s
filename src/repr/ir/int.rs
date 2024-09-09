@@ -5,7 +5,7 @@ use quickcheck::Arbitrary;
 
 use crate::repr::{Sort, Sorted, Variable};
 
-use super::ConstReducible;
+use super::TrivialReducible;
 
 /// Represents different types of variable-based terms in a linear expression.
 /// This enum differentiates between a simple variable and the length of a string variable.
@@ -450,8 +450,8 @@ impl LinearConstraint {
     }
 }
 
-impl ConstReducible for LinearConstraint {
-    fn is_constant(&self) -> Option<bool> {
+impl TrivialReducible for LinearConstraint {
+    fn is_trivial(&self) -> Option<bool> {
         let lhs = self.lhs.as_constant()?;
         Some(self.operator().eval(lhs, self.rhs))
     }
