@@ -80,6 +80,7 @@ impl LinearRefiner {
             changed = false;
             for linear in &self.linears {
                 if let Some(new_bounds) = self.refinement_step(&refined, linear) {
+                    log::trace!("Refined bounds: {}", new_bounds);
                     if self.any_empty(&new_bounds) {
                         // the linear constraints are unsatisfiable
                         self.conflict = true;
@@ -120,7 +121,7 @@ impl LinearRefiner {
                             } else {
                                 BoundValue::Num(dived)
                             };
-
+                            log::trace!("\t\t {op} {dived}");
                             if dived < self.ub(&var, bounds) {
                                 changed = true;
                                 new_bounds.set_upper(&var, dived);
@@ -136,6 +137,7 @@ impl LinearRefiner {
                             } else {
                                 BoundValue::Num(dived)
                             };
+                            log::trace!("\t\t {op} {dived}");
 
                             if dived > self.lb(&var, bounds) {
                                 changed = true;
@@ -338,7 +340,9 @@ pub fn length_abstraction(weq: &WordEquation) -> LinearConstraint {
     for (v, c) in var_occurrences {
         lhs.add_summand(LinearSummand::len_variable(v.clone(), c));
     }
-    return LinearConstraint::new(lhs, LinearOperator::Eq, constant_counter);
+    let la = LinearConstraint::new(lhs, LinearOperator::Eq, constant_counter);
+
+    la
 }
 
 impl InferringStrategy for LinearRefiner {

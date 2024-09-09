@@ -10,11 +10,7 @@ use crate::{
     alphabet::{self, Alphabet},
     bounds::{infer::BoundInferer, step::BoundStep, Bounds, Interval},
     context::Context,
-    preprocess::{
-        self,
-        simp::{SimplificationResult, Simplifier},
-        PreprocessingError,
-    },
+    preprocess::{self, simp::Simplifier, PreprocessingError},
     repr::{
         ir::{Formula, VarSubstitution},
         Sorted,
@@ -200,14 +196,8 @@ impl Solver {
         let t = Instant::now();
         let (fm, subst) = if self.options.simplify {
             let simplifier = Simplifier::default();
-            match simplifier.simplify(fm.clone(), ctx) {
-                SimplificationResult::Simplified(f, s) => (f, s),
-                SimplificationResult::Trivial(true) => (Formula::True, VarSubstitution::default()),
-                SimplificationResult::Trivial(false) => {
-                    (Formula::False, VarSubstitution::default())
-                }
-                SimplificationResult::Unchanged => (fm.clone(), VarSubstitution::default()),
-            }
+            let simped = simplifier.simplify(fm.clone(), ctx);
+            (simped.formula, simped.subst)
         } else {
             (fm.clone(), VarSubstitution::default())
         };

@@ -6,14 +6,14 @@ use crate::{
     context::Context,
     repr::{
         ir::{
-            AtomType, Formula, LinearArithTerm, Literal, Pattern, Symbol, VarSubstitution,
-            WordEquation,
+            AtomType, Formula, LinearArithTerm, Literal, Pattern, RegularConstraint, Symbol,
+            VarSubstitution, WordEquation,
         },
         Variable,
     },
 };
 
-use super::{LiteralSimplifier, SimplificationResult};
+use super::RewriteSimplifier;
 
 /// We call a regular constraint independent if it has the form `x \in R` where `x` is a variable and `R` is a regular expression and `x` does not occur elsewhere in the formula.
 pub struct IndependentVarReducer {
@@ -92,71 +92,52 @@ impl IndependentVarReducer {
 
     fn simplify_regular_constraint(
         &self,
-        lit: &Literal,
+        inre: &RegularConstraint,
+        pol: bool,
         ctx: &mut Context,
-    ) -> SimplificationResult<Literal> {
-        if let AtomType::InRe(reg) = lit.atom().get_type() {
-            let pattern = reg.pattern();
-            // Check if pattern only consists of independet variables
-            let mut vars = Vec::new();
-            for s in pattern.iter() {
-                if let Symbol::Variable(v) = s {
-                    if !self.is_independent(v) {
-                        return SimplificationResult::Unchanged;
-                    }
-                    vars.push(v.clone());
-                } else {
-                    return SimplificationResult::Unchanged;
+    ) -> Option<VarSubstitution> {
+        let pattern = inre.pattern();
+        let reg = inre.re();
+        // Check if pattern only consists of independet variables
+        let mut vars = Vec::new();
+        for s in pattern.iter() {
+            if let Symbol::Variable(v) = s {
+                if !self.is_independent(v) {
+                    return None;
                 }
-            }
-
-            // All variables are independent, sample a word
-            let nfa = if lit.polarity() {
-                ctx.get_nfa(reg.re())
+                vars.push(v.clone());
             } else {
-                let builder = ctx.ast_builder().re_builder();
-                let comp = builder.comp(reg.re().clone());
-                ctx.get_nfa(&comp)
-            };
-
-            let w = match nfa.sample() {
-                Some(w) => w.to_string(),
-                None => return SimplificationResult::Trivial(false),
-            };
-
-            let mut subs = VarSubstitution::empty();
-            for (i, v) in vars.iter().enumerate() {
-                // set the first to w, the others to empty
-                let s = if i == 0 { w.clone() } else { "".to_string() };
-                subs.set_str(v.clone(), Pattern::constant(&s));
+                return None;
             }
-
-            // apply substitution
-            let applied = subs.apply_atom(&lit.atom(), ctx);
-
-            let lit = if lit.polarity() {
-                Literal::Positive(applied)
-            } else {
-                Literal::Negative(applied)
-            };
-
-            SimplificationResult::Simplified(lit, subs)
-        } else {
-            SimplificationResult::Unchanged
         }
+
+        // All variables are independent, sample a word
+        let nfa = if pol {
+            ctx.get_nfa(reg)
+        } else {
+            let builder = ctx.ast_builder().re_builder();
+            let comp = builder.comp(reg.clone());
+            ctx.get_nfa(&comp)
+        };
+
+        let w = nfa.sample()?.to_string();
+
+        let mut subs = VarSubstitution::empty();
+        for (i, v) in vars.iter().enumerate() {
+            // set the first to w, the others to empty
+            let s = if i == 0 { w.clone() } else { "".to_string() };
+            subs.set_str(v.clone(), Pattern::constant(&s));
+        }
+
+        Some(subs)
     }
 }
 
-impl LiteralSimplifier for IndependentVarReducer {
-    fn simplify(
-        &self,
-        lit: &Literal,
-        _entailed: bool,
-        ctx: &mut Context,
-    ) -> SimplificationResult<Literal> {
+impl RewriteSimplifier for IndependentVarReducer {
+    fn infer(&self, lit: &Literal, _entailed: bool, ctx: &mut Context) -> Option<VarSubstitution> {
         match lit.atom().get_type() {
-            AtomType::InRe(_) => self.simplify_regular_constraint(lit, ctx),
-            _ => SimplificationResult::Unchanged,
+            AtomType::InRe(inre) => self.simplify_regular_constraint(inre, lit.polarity(), ctx),
+            _ => None,
         }
     }
 }
@@ -345,53 +326,41 @@ mod tests {
 
     fn reduce_inre_non_empty(regex: &Regex, ctx: &mut Context, pol: bool) {
         let var = ctx.make_var("x".to_string(), Sort::String).unwrap();
-        let atom = ctx
+
+        let fm = ctx
             .ir_builder()
             .in_re(Pattern::variable(var.as_ref()), regex.clone());
+        let lit = Literal::new(fm, pol);
+        let fm = Formula::Literal(lit.clone());
+        let reducer = IndependentVarReducer::new(&fm);
 
-        let lit = if pol {
-            Literal::Positive(atom)
-        } else {
-            Literal::Negative(atom)
-        };
-        let reducer = IndependentVarReducer::new(&Formula::Literal(lit.clone()));
-
-        match reducer.simplify_regular_constraint(&lit, ctx) {
-            SimplificationResult::Simplified(lit, subs) => {
-                if let AtomType::InRe(inre) = lit.atom().get_type() {
-                    let pattern = inre
-                        .pattern()
-                        .as_constant()
-                        .expect("Expected constant pattern");
-                    let sub = subs
-                        .get(var.as_ref())
-                        .unwrap()
-                        .as_string()
-                        .as_constant()
-                        .expect("Substitution not well-defined");
-                    assert_eq!(pattern, sub);
-                    if pol {
-                        assert!(
-                            regex.accepts(&pattern.clone().into()),
-                            "Regex {} does not accept word '{}' (length {})",
-                            regex,
-                            pattern,
-                            pattern.len()
-                        );
-                    } else {
-                        assert!(
-                            !regex.accepts(&pattern.clone().into()),
-                            "Regex {} does not accept word '{}' (length {})",
-                            regex,
-                            pattern,
-                            pattern.len()
-                        );
-                    }
+        match reducer.infer(&lit, true, ctx) {
+            Some(subs) => {
+                let sub: String = subs
+                    .get(var.as_ref())
+                    .unwrap()
+                    .as_string()
+                    .as_constant()
+                    .expect("Substitution not well-defined");
+                if pol {
+                    assert!(
+                        regex.accepts(&sub.clone().into()),
+                        "Regex {} does not accept word '{}' (length {})",
+                        regex,
+                        sub,
+                        sub.len()
+                    );
                 } else {
-                    panic!("Expected simplified literal to be an InRe atom");
+                    assert!(
+                        !regex.accepts(&sub.clone().into()),
+                        "Regex {} does not accept word '{}' (length {})",
+                        regex,
+                        sub,
+                        sub.len()
+                    );
                 }
             }
-            _ => unreachable!(),
+            None => todo!(),
         }
     }
 

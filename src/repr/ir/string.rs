@@ -492,7 +492,7 @@ impl WordEquation {
     }
 
     /// Reverses both sides of the word equation.
-    pub fn reverse(&self) -> Self {
+    pub fn reversed(&self) -> Self {
         Self::new(self.lhs().reversed(), self.rhs().reversed())
     }
 
