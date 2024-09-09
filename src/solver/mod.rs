@@ -229,8 +229,8 @@ impl Solver {
             } else {
                 2.into()
             }
-            .min(2)
-            .max(lower);
+            .max(lower)
+            .max(1); // need to be at least 1
             bounds.set(var.as_ref().clone(), Interval::new(lower, upper));
         }
         Some(bounds)

@@ -28,7 +28,6 @@ pub(super) fn refine_bounds(
         Some(b) => b,
         None => return BoundRefinement::SmallModelReached, // No satisfying assignment
     };
-
     let mut small_model_reached = true;
     let mut bounds = bounds.clone();
 
@@ -42,12 +41,16 @@ pub(super) fn refine_bounds(
         if let Some(current_bound) = bounds.get(&v) {
             let increased = step.apply(current_bound);
             let clamped = increased.intersect(smp_bounds.get(&v).unwrap());
-            if clamped != current_bound {
+            // Ensure we don't shrink the upper bounds or increase the lower bounds
+            let new_lower = clamped.lower().min(current_bound.lower());
+            let new_upper = clamped.upper().max(current_bound.upper());
+            let new_bounds = Interval::new(new_lower, new_upper);
+            if new_bounds != current_bound {
                 // changed
                 small_model_reached = false;
             }
             // TODO: Check if the limit is reached
-            bounds.set(v.clone(), clamped);
+            bounds.set(v.clone(), new_bounds);
         }
     }
 
