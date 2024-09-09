@@ -148,7 +148,12 @@ impl IndependentVarReducer {
 }
 
 impl LiteralSimplifier for IndependentVarReducer {
-    fn simplify(&self, lit: &Literal, ctx: &mut Context) -> SimplificationResult<Literal> {
+    fn simplify(
+        &self,
+        lit: &Literal,
+        _entailed: bool,
+        ctx: &mut Context,
+    ) -> SimplificationResult<Literal> {
         match lit.atom().get_type() {
             AtomType::InRe(_) => self.simplify_regular_constraint(lit, ctx),
             _ => SimplificationResult::Unchanged,

@@ -1,5 +1,7 @@
 mod indep;
-mod weq;
+mod levis;
+
+use std::fmt::Display;
 
 use crate::{
     context::Context,
@@ -14,6 +16,18 @@ pub enum SimplificationResult<T> {
     Simplified(T, VarSubstitution),
     Trivial(bool),
     Unchanged,
+}
+
+impl<T: Display> Display for SimplificationResult<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            SimplificationResult::Simplified(t, s) => {
+                write!(f, "{} (applied {})", t, s)
+            }
+            SimplificationResult::Trivial(b) => write!(f, "{}", b),
+            SimplificationResult::Unchanged => write!(f, "Unchanged"),
+        }
+    }
 }
 
 const DEFAULT_MAX_ITERATIONS: usize = 20;
@@ -45,7 +59,7 @@ impl Simplifier {
             let simps = self.build_simps(&simplified);
 
             // Apply all literal simplifications
-            match self.simp_lits(&simplified, ctx, &simps) {
+            match self.simp_lits(&simplified, true, ctx, &simps) {
                 SimplificationResult::Simplified(simped, new_subs) => {
                     simplified = simped;
                     subst = subst.compose(&new_subs);
@@ -56,16 +70,21 @@ impl Simplifier {
             }
             log::debug!("Round {}: {}", iterations, simplified);
         }
+
         SimplificationResult::Simplified(simplified, subst)
     }
 
     fn build_simps(&self, fm: &Formula) -> Vec<Box<dyn LiteralSimplifier>> {
-        vec![Box::new(indep::IndependentVarReducer::new(fm))]
+        vec![
+            Box::new(indep::IndependentVarReducer::new(fm)),
+            Box::new(levis::LevisSimp::default()),
+        ]
     }
 
     fn simp_lits(
         &self,
         formula: &Formula,
+        entailed: bool,
         ctx: &mut Context,
         simps: &[Box<dyn LiteralSimplifier>],
     ) -> SimplificationResult<Formula> {
@@ -76,7 +95,7 @@ impl Simplifier {
                 let mut simped = l.clone();
                 let mut subs = VarSubstitution::default();
                 for simp in simps.iter() {
-                    match simp.simplify(&simped, ctx) {
+                    match simp.simplify(&simped, entailed, ctx) {
                         SimplificationResult::Simplified(simped_lit, new_subs) => {
                             subs = subs.compose(&new_subs);
                             simped = simped_lit;
@@ -98,8 +117,9 @@ impl Simplifier {
                 let mut applied = false;
                 let mut simped = Vec::with_capacity(fs.len());
                 let mut subs = VarSubstitution::default();
+                let entailed = entailed && matches!(formula, Formula::And(_));
                 for f in fs.iter() {
-                    match self.simp_lits(f, ctx, simps) {
+                    match self.simp_lits(f, entailed, ctx, simps) {
                         SimplificationResult::Simplified(f, subst) => {
                             simped.push(f);
                             subs = subs.compose(&subst);
@@ -160,5 +180,10 @@ impl Simplifier {
 }
 
 pub trait LiteralSimplifier {
-    fn simplify(&self, lit: &Literal, ctx: &mut Context) -> SimplificationResult<Literal>;
+    fn simplify(
+        &self,
+        lit: &Literal,
+        entailed: bool,
+        ctx: &mut Context,
+    ) -> SimplificationResult<Literal>;
 }

@@ -8,6 +8,9 @@ use std::{
 use indexmap::IndexSet;
 use quickcheck::Arbitrary;
 
+#[cfg(test)]
+use crate::context::Context;
+
 /// Represents a pattern symbol, which can be either a constant word or a variable.
 #[derive(Clone, Debug, PartialEq, Hash, Eq)]
 pub enum Symbol {
@@ -130,6 +133,18 @@ impl Pattern {
     /// Returns the first symbol of the pattern, if it exists.
     pub fn first(&self) -> Option<&Symbol> {
         self.symbols.first()
+    }
+
+    /// Removes the first `n` symbols from the pattern and returns the result.
+    /// If `n` is greater than the length of the pattern, the empty pattern is returned.
+    pub fn strip_prefix(&self, n: usize) -> Self {
+        Self::new(self.symbols[n..].to_vec())
+    }
+
+    /// Removes the last `n` symbols from the pattern and returns the result.
+    /// If `n` is greater than the length of the pattern, the empty pattern is returned.
+    pub fn strip_suffix(&self, n: usize) -> Self {
+        Self::new(self.symbols[..self.len() - n].to_vec())
     }
 
     /// Returns the last symbol of the pattern, if it exists.
