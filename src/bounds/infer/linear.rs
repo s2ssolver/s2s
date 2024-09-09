@@ -10,7 +10,7 @@ use crate::{
         ir::{
             LinearArithTerm, LinearConstraint, LinearOperator, LinearSummand, Symbol, WordEquation,
         },
-        Variable,
+        Sorted, Variable,
     },
 };
 
@@ -26,7 +26,9 @@ pub struct LinearRefiner {
 
 impl LinearRefiner {
     /// Adds a linear constraint to the refiner.
-    pub fn add_linear(&mut self, linear: LinearConstraint) {
+    pub fn add_linear(&mut self, mut linear: LinearConstraint) {
+        // canonicalize the linear constraint before adding it
+        linear.canonicalize();
         match linear.operator() {
             LinearOperator::Ineq | LinearOperator::Eq => {
                 let leq =
@@ -105,6 +107,7 @@ impl LinearRefiner {
     fn refinement_step(&self, bounds: &Bounds, linear: &LinearConstraint) -> Option<Bounds> {
         let mut new_bounds = bounds.clone();
         let mut changed = false;
+
         for var in linear.variables() {
             let (op, term, divisor) = self.solve_for(linear, &var);
             match op {
@@ -132,8 +135,13 @@ impl LinearRefiner {
                             } else {
                                 BoundValue::Num(dived)
                             };
-                            if dived > bounds.get_lower(&var).unwrap_or(BoundValue::NegInf) {
-                                changed = true;
+                            if dived
+                                > bounds.get_lower(&var).unwrap_or(if var.sort().is_string() {
+                                    BoundValue::Num(0)
+                                } else {
+                                    BoundValue::NegInf
+                                })
+                            {
                                 new_bounds.set_lower(&var, dived);
                             }
                         }
