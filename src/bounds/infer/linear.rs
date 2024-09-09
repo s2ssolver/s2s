@@ -71,6 +71,7 @@ impl LinearRefiner {
         if self.conflict {
             return None;
         }
+
         let mut changed = true;
         let mut refined = bounds.clone();
         while changed {
@@ -115,6 +116,7 @@ impl LinearRefiner {
                             } else {
                                 BoundValue::Num(dived)
                             };
+
                             if dived < bounds.get_upper(&var).unwrap_or(BoundValue::PosInf) {
                                 changed = true;
                                 new_bounds.set_upper(&var, dived);
@@ -171,7 +173,7 @@ impl LinearRefiner {
             let op = match lc.operator() {
                 LinearOperator::Eq => LinearOperator::Eq,
                 LinearOperator::Ineq => LinearOperator::Ineq,
-                _ => lc.operator().negate(),
+                _ => lc.operator().flip(),
             };
             // We also need to negate both the divisor and the dividend to make the division positive.
             dividend.multiply_constant(-1);

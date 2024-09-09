@@ -1,6 +1,7 @@
 use std::{collections::HashMap, fmt::Display, ops::Index};
 
 use indexmap::IndexSet;
+use quickcheck::Arbitrary;
 
 use crate::repr::{Sort, Sorted, Variable};
 
@@ -344,20 +345,20 @@ impl LinearOperator {
         }
     }
 
-    /// Negate the operator.
-    /// - `<` becomes `>=`
-    /// - `<=` becomes `>`
-    /// - `>` becomes `<=`
-    /// - `>=` becomes `<`
-    /// - `=` becomes `!=`
-    pub fn negate(&self) -> Self {
+    /// Flips the operator in case of an inequality.
+    /// - `a < b` becomes `a > b`
+    /// - `a <= b` becomes `a >= b`
+    /// - `a > b` becomes `a < b`
+    /// - `a >= b` becomes `a <= b`
+    /// - `a = b` stays `a = b` and `a != b` stays `a != b`
+    pub fn flip(&self) -> Self {
         match self {
-            LinearOperator::Eq => LinearOperator::Ineq,
-            LinearOperator::Ineq => LinearOperator::Eq,
-            LinearOperator::Leq => LinearOperator::Greater,
-            LinearOperator::Less => LinearOperator::Geq,
-            LinearOperator::Geq => LinearOperator::Less,
-            LinearOperator::Greater => LinearOperator::Leq,
+            LinearOperator::Eq => LinearOperator::Eq,
+            LinearOperator::Ineq => LinearOperator::Ineq,
+            LinearOperator::Leq => LinearOperator::Geq,
+            LinearOperator::Less => LinearOperator::Greater,
+            LinearOperator::Geq => LinearOperator::Leq,
+            LinearOperator::Greater => LinearOperator::Less,
         }
     }
 }
@@ -406,11 +407,15 @@ impl LinearConstraint {
     /// - `a >= b` becomes `a < b`
     /// - `a > b` becomes `a <= b`
     pub fn negate(&self) -> Self {
-        Self {
-            lhs: self.lhs.clone(),
-            rhs: self.rhs,
-            typ: self.typ.negate(),
-        }
+        let new_op = match self.typ {
+            LinearOperator::Eq => LinearOperator::Ineq,
+            LinearOperator::Ineq => LinearOperator::Eq,
+            LinearOperator::Leq => LinearOperator::Greater,
+            LinearOperator::Less => LinearOperator::Geq,
+            LinearOperator::Geq => LinearOperator::Less,
+            LinearOperator::Greater => LinearOperator::Leq,
+        };
+        LinearConstraint::new(self.lhs.clone(), new_op, self.rhs)
     }
 }
 
@@ -457,3 +462,28 @@ impl Display for LinearConstraint {
 }
 
 // TODO: Needs testing!
+
+impl Arbitrary for LinearOperator {
+    fn arbitrary(g: &mut quickcheck::Gen) -> Self {
+        match u8::arbitrary(g) % 6 {
+            0 => LinearOperator::Eq,
+            1 => LinearOperator::Ineq,
+            2 => LinearOperator::Leq,
+            3 => LinearOperator::Less,
+            4 => LinearOperator::Geq,
+            5 => LinearOperator::Greater,
+            _ => unreachable!(),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use quickcheck_macros::quickcheck;
+
+    #[quickcheck]
+    fn test_operator_flip_flip(op: LinearOperator) -> bool {
+        op.flip().flip() == op
+    }
+}
