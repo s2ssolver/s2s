@@ -178,13 +178,13 @@ impl Solver {
         timer = Instant::now();
 
         // Initialize the alphabet
-        let alphabet = alphabet::infer(fm);
+        let alphabet = alphabet::infer(&fm_preprocessed);
         log::info!("Inferred alphabet ({:?})", timer.elapsed());
         log::debug!("Alphabet: {}", alphabet);
         timer = Instant::now();
 
         // Start CEGAR loop
-        let res = self.run(fm, abstraction, init_bounds, alphabet, ctx);
+        let res = self.run(&fm_preprocessed, abstraction, init_bounds, alphabet, ctx);
 
         log::info!("Done solving ({:?})", timer.elapsed());
         res
