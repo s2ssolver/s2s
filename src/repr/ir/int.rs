@@ -392,11 +392,17 @@ pub struct LinearConstraint {
     lhs: LinearArithTerm,
     rhs: isize,
     typ: LinearOperator,
+    is_canonical: bool,
 }
 
 impl LinearConstraint {
     pub fn new(lhs: LinearArithTerm, typ: LinearOperator, rhs: isize) -> Self {
-        Self { lhs, rhs, typ }
+        Self {
+            lhs,
+            rhs,
+            typ,
+            is_canonical: false,
+        }
     }
 
     pub fn lhs(&self) -> &LinearArithTerm {
@@ -438,15 +444,31 @@ impl LinearConstraint {
             LinearOperator::Geq => LinearOperator::Less,
             LinearOperator::Greater => LinearOperator::Leq,
         };
-        LinearConstraint::new(self.lhs.clone(), new_op, self.rhs)
+        let mut negated = LinearConstraint::new(self.lhs.clone(), new_op, self.rhs);
+        negated.is_canonical = self.is_canonical;
+        negated
     }
 
     pub fn is_canonical(&self) -> bool {
-        self.lhs.is_canonical()
+        self.is_canonical
     }
 
     pub fn canonicalize(&mut self) {
+        if self.is_canonical {
+            return;
+        }
         self.lhs.canonicalize();
+        let mut rhs_new = self.rhs;
+        let mut lhs_new = LinearArithTerm::new();
+        for f in self.lhs.iter() {
+            match f {
+                LinearSummand::Mult(_, _) => lhs_new.add_summand(f.clone()),
+                LinearSummand::Const(c) => rhs_new -= c,
+            }
+        }
+        self.lhs = lhs_new;
+        self.rhs = rhs_new;
+        self.is_canonical = true;
     }
 }
 

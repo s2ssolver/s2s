@@ -31,7 +31,8 @@ pub struct MddEncoder {
 }
 
 impl MddEncoder {
-    pub fn new(linear: LinearConstraint) -> Self {
+    pub fn new(mut linear: LinearConstraint) -> Self {
+        linear.canonicalize();
         let root_pvar = pvar();
         let mut node_map = IndexMap::new();
         let mut root_node_vals = IndexMap::new();
