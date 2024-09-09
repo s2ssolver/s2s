@@ -142,6 +142,8 @@ impl Solver {
         log::info!("Starting solver");
         let mut timer = Instant::now();
 
+        log::debug!("Solving: {}", fm);
+
         // Preprocess
         let (fm_preprocessed, applied_subst) = self.preprocess(fm.clone(), ctx)?;
         log::info!("Preprocessed ({:?})", timer.elapsed());
@@ -152,10 +154,6 @@ impl Solver {
             return Ok(SolverResult::Sat(Some(applied_subst)));
         } else if fm_preprocessed == Formula::False {
             return Ok(SolverResult::Unsat);
-        }
-
-        if self.options.dry {
-            return Ok(SolverResult::Unknown);
         }
 
         timer = Instant::now();
@@ -175,6 +173,7 @@ impl Solver {
         };
         log::info!("Initialized bounds ({:?})", timer.elapsed());
         log::debug!("Initial bounds: {}", init_bounds);
+
         timer = Instant::now();
 
         // Initialize the alphabet
@@ -183,6 +182,9 @@ impl Solver {
         log::debug!("Alphabet: {}", alphabet);
         timer = Instant::now();
 
+        if self.options.dry {
+            return Ok(SolverResult::Unknown);
+        }
         // Start CEGAR loop
         let res = self.run(&fm_preprocessed, abstraction, init_bounds, alphabet, ctx);
 
@@ -233,11 +235,12 @@ impl Solver {
                 0.into()
             };
             let upper = if let Some(upper) = v_bounds.and_then(|b| b.upper_finite()) {
-                // at most 10, but at least the lower bound
-                upper.min(10).max(lower)
+                upper
             } else {
-                10.into()
-            };
+                2.into()
+            }
+            .min(2)
+            .max(lower);
             bounds.set(var.as_ref().clone(), Interval::new(lower, upper));
         }
         Some(bounds)

@@ -68,7 +68,14 @@ impl Simplifier {
                 SimplificationResult::Trivial(b) => return SimplificationResult::Trivial(b),
                 SimplificationResult::Unchanged => {}
             }
-            log::debug!("Round {}: {}", iterations, simplified);
+            if applied {
+                log::debug!(
+                    "({}) Simpliefied to {} (using {})",
+                    iterations,
+                    simplified,
+                    subst
+                );
+            }
         }
 
         SimplificationResult::Simplified(simplified, subst)

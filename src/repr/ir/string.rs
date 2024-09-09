@@ -113,6 +113,10 @@ impl Pattern {
         alphabet
     }
 
+    pub fn at(&self, i: usize) -> Option<&Symbol> {
+        self.symbols.get(i)
+    }
+
     /// Returns true iff the pattern is a single variable.
     /// This is equivalent to `len() == 1 && symbols[0].is_variable()`.
     pub fn is_variable(&self) -> bool {

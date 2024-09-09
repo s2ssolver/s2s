@@ -107,9 +107,10 @@ impl LinearRefiner {
     fn refinement_step(&self, bounds: &Bounds, linear: &LinearConstraint) -> Option<Bounds> {
         let mut new_bounds = bounds.clone();
         let mut changed = false;
-
+        log::trace!("Refining bounds {} w.r.t. {}", bounds, linear);
         for var in linear.variables() {
             let (op, term, divisor) = self.solve_for(linear, &var);
+            log::trace!("\t {} {} ({}) / {}", var, op, term, divisor);
             match op {
                 LinearOperator::Less | LinearOperator::Leq => {
                     if let BoundValue::Num(largest) = self.eval_largest(&term, bounds) {
@@ -120,7 +121,7 @@ impl LinearRefiner {
                                 BoundValue::Num(dived)
                             };
 
-                            if dived < bounds.get_upper(&var).unwrap_or(BoundValue::PosInf) {
+                            if dived < self.ub(&var, bounds) {
                                 changed = true;
                                 new_bounds.set_upper(&var, dived);
                             }
@@ -135,13 +136,9 @@ impl LinearRefiner {
                             } else {
                                 BoundValue::Num(dived)
                             };
-                            if dived
-                                > bounds.get_lower(&var).unwrap_or(if var.sort().is_string() {
-                                    BoundValue::Num(0)
-                                } else {
-                                    BoundValue::NegInf
-                                })
-                            {
+
+                            if dived > self.lb(&var, bounds) {
+                                changed = true;
                                 new_bounds.set_lower(&var, dived);
                             }
                         }
@@ -195,6 +192,28 @@ impl LinearRefiner {
         }
     }
 
+    /// Returns the lower bound of the given variable.
+    fn lb(&self, var: &Variable, bounds: &Bounds) -> BoundValue {
+        match bounds.get_lower(var) {
+            Some(b) => b,
+            None => {
+                if var.sort().is_string() {
+                    0.into()
+                } else {
+                    BoundValue::NegInf
+                }
+            }
+        }
+    }
+
+    /// Returns the upper bound of the given variable.
+    fn ub(&self, var: &Variable, bounds: &Bounds) -> BoundValue {
+        match bounds.get_upper(var) {
+            Some(b) => b,
+            None => BoundValue::PosInf,
+        }
+    }
+
     /// Evaluates the smallest possible value of the given term under the given bounds.
     fn eval_smallest(&self, term: &LinearArithTerm, bounds: &Bounds) -> BoundValue {
         let mut smallest = 0;
@@ -204,33 +223,31 @@ impl LinearRefiner {
                 LinearSummand::Mult(v, coeff) => {
                     if *coeff >= 0 {
                         // Add the smallest possible value of the variable
-                        match bounds.get_lower(v.variable()) {
-                            Some(v) => match v * (*coeff).into() {
-                                BoundValue::Num(v) => {
-                                    if let Some(v) = smallest.checked_add(v as isize) {
-                                        smallest = v;
-                                    } else {
-                                        return BoundValue::PosInf;
-                                    }
+                        let lb = self.lb(v.variable(), bounds);
+                        match lb * (*coeff).into() {
+                            BoundValue::Num(v) => {
+                                if let Some(v) = smallest.checked_add(v as isize) {
+                                    smallest = v;
+                                } else {
+                                    return BoundValue::PosInf;
                                 }
-                                _ => return BoundValue::NegInf,
-                            },
-                            None => return BoundValue::NegInf,
+                            }
+                            _ => {
+                                return BoundValue::NegInf;
+                            }
                         }
                     } else {
                         // Subtract the largest possible value of the variable
-                        match bounds.get_upper(v.variable()) {
-                            Some(v) => match v * (*coeff).into() {
-                                BoundValue::Num(v) => {
-                                    if let Some(v) = smallest.checked_add(v as isize) {
-                                        smallest = v;
-                                    } else {
-                                        return BoundValue::PosInf;
-                                    }
+                        let ub = self.ub(v.variable(), bounds);
+                        match ub * (*coeff).into() {
+                            BoundValue::Num(v) => {
+                                if let Some(v) = smallest.checked_add(v as isize) {
+                                    smallest = v;
+                                } else {
+                                    return BoundValue::NegInf;
                                 }
-                                _ => return BoundValue::NegInf,
-                            },
-                            None => return BoundValue::NegInf,
+                            }
+                            _ => return BoundValue::NegInf,
                         }
                     }
                 }
@@ -248,34 +265,35 @@ impl LinearRefiner {
                 LinearSummand::Mult(v, coeff) => {
                     if *coeff >= 0 {
                         // add the greatest possible value of the variable
-                        match bounds.get_upper(v.variable()) {
-                            Some(v) => match v * (*coeff).into() {
-                                BoundValue::Num(v) => {
-                                    if let Some(v) = largest.checked_add(v as isize) {
-                                        largest = v;
-                                    } else {
-                                        return BoundValue::PosInf;
-                                    }
+                        let ub = self.ub(v.variable(), bounds);
+                        match ub * (*coeff).into() {
+                            BoundValue::Num(v) => {
+                                if let Some(v) = largest.checked_add(v as isize) {
+                                    largest = v;
+                                } else {
+                                    return BoundValue::PosInf;
                                 }
-                                _ => return BoundValue::NegInf,
-                            },
-                            // If the variable is not present in the bounds, the term is unbounded.
-                            None => return BoundValue::PosInf,
+                            }
+                            _ => return BoundValue::PosInf,
                         }
                     } else {
                         // subtract the least possible value of the variable
-                        match bounds.get_lower(v.variable()) {
-                            Some(v) => match v * (*coeff).into() {
-                                BoundValue::Num(v) => {
-                                    if let Some(v) = largest.checked_add(v as isize) {
-                                        largest = v;
-                                    } else {
-                                        return BoundValue::PosInf;
-                                    }
+                        let lb = self.lb(v.variable(), bounds);
+                        match lb * (*coeff).into() {
+                            BoundValue::Num(v) => {
+                                if let Some(v) = largest.checked_add(v as isize) {
+                                    largest = v;
+                                } else {
+                                    return BoundValue::PosInf;
                                 }
-                                _ => return BoundValue::PosInf,
-                            },
-                            None => return BoundValue::PosInf,
+                            }
+                            _ => {
+                                if v.variable().sort().is_string() {
+                                    return 0.into();
+                                } else {
+                                    return BoundValue::PosInf;
+                                }
+                            }
                         }
                     }
                 }
