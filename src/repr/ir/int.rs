@@ -107,11 +107,15 @@ impl Display for LinearSummand {
 #[derive(Debug, Clone, PartialEq, Eq, Default, Hash)]
 pub struct LinearArithTerm {
     factors: Vec<LinearSummand>,
+    canonical: bool,
 }
 
 impl LinearArithTerm {
     pub fn new() -> Self {
-        Self { factors: vec![] }
+        Self {
+            factors: vec![],
+            canonical: true,
+        }
     }
 
     /// Create a linear arithmetic term from ab (int or string) variable
@@ -120,9 +124,11 @@ impl LinearArithTerm {
         match x.sort() {
             Sort::Int => Self {
                 factors: vec![LinearSummand::Mult(VariableTerm::Int(x.clone()), 1)],
+                canonical: true,
             },
             Sort::String => Self {
                 factors: vec![LinearSummand::Mult(VariableTerm::Len(x.clone()), 1)],
+                canonical: true,
             },
             _ => panic!("Variable must be of sort int or string"),
         }
@@ -134,6 +140,7 @@ impl LinearArithTerm {
         assert!(x.sort().is_string(), "Variable must be of sort string");
         Self {
             factors: vec![LinearSummand::Mult(VariableTerm::Len(x.clone()), 1)],
+            canonical: true,
         }
     }
 
@@ -141,12 +148,14 @@ impl LinearArithTerm {
     pub fn from_const(c: isize) -> Self {
         Self {
             factors: vec![LinearSummand::Const(c)],
+            canonical: true,
         }
     }
 
     /// Add a single summand to the term
     pub fn add_summand(&mut self, f: LinearSummand) {
         self.factors.push(f);
+        self.canonical = false;
     }
 
     /// Multiplies every summand in the term with a constant
@@ -154,6 +163,7 @@ impl LinearArithTerm {
         for f in self.factors.iter_mut() {
             *f = f.multiply(c);
         }
+        self.canonical = false;
     }
 
     /// Tries to muliply both terms and return the result.
@@ -191,6 +201,7 @@ impl LinearArithTerm {
         for smd in other.into_iter() {
             self.add_summand(smd);
         }
+        self.canonical = false;
     }
 
     /// Subtract another linear term from this term
@@ -205,10 +216,12 @@ impl LinearArithTerm {
                 }
             }
         }
+        self.canonical = false;
     }
 
     pub fn extend(&mut self, other: Self) {
         self.factors.extend(other.factors);
+        self.canonical = false;
     }
 
     pub fn iter(&self) -> impl Iterator<Item = &LinearSummand> {
@@ -241,9 +254,16 @@ impl LinearArithTerm {
         self.factors.is_empty()
     }
 
+    pub fn is_canonical(&self) -> bool {
+        self.canonical
+    }
+
     /// Canonicalizes the term by combining all coefficients of the same variable.
     /// After calling this, there is at most one factor per variable and at most one constant.
     pub fn canonicalize(&mut self) {
+        if self.canonical {
+            return;
+        }
         let mut factors = HashMap::new();
         let mut residual = 0;
         for f in self.factors.iter() {
@@ -259,11 +279,14 @@ impl LinearArithTerm {
         }
         self.factors.clear();
         for (x, c) in factors {
-            self.factors.push(LinearSummand::Mult(x, c));
+            if c != 0 {
+                self.factors.push(LinearSummand::Mult(x, c));
+            }
         }
         if residual != 0 {
             self.factors.push(LinearSummand::Const(residual));
         }
+        self.canonical = true;
     }
 
     /// Convert an integer arithmetic term to a linear arithmetic term.
@@ -366,9 +389,9 @@ impl LinearOperator {
 /// A linear constraint
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct LinearConstraint {
-    pub lhs: LinearArithTerm,
-    pub rhs: isize,
-    pub typ: LinearOperator,
+    lhs: LinearArithTerm,
+    rhs: isize,
+    typ: LinearOperator,
 }
 
 impl LinearConstraint {
@@ -416,6 +439,14 @@ impl LinearConstraint {
             LinearOperator::Greater => LinearOperator::Leq,
         };
         LinearConstraint::new(self.lhs.clone(), new_op, self.rhs)
+    }
+
+    pub fn is_canonical(&self) -> bool {
+        self.lhs.is_canonical()
+    }
+
+    pub fn canonicalize(&mut self) {
+        self.lhs.canonicalize();
     }
 }
 

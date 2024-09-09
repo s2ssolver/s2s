@@ -115,7 +115,7 @@ impl LiteralEncoder for MddEncoder {
                             dom.string().get_len(v, l as usize).unwrap()
                         };
                         let new_value = value + l * coeff;
-                        if level + 1 < self.linear.lhs.len() {
+                        if level + 1 < self.linear.lhs().len() {
                             let child_pvar = *self
                                 .nodes
                                 .entry(level + 1)
@@ -130,44 +130,44 @@ impl LiteralEncoder for MddEncoder {
 
                             queue.push_back((level + 1, new_value, child_pvar));
                         } else {
-                            let node = match self.linear.typ {
+                            let node = match self.linear.operator() {
                                 LinearOperator::Eq => {
-                                    if new_value == self.linear.rhs {
+                                    if new_value == self.linear.rhs() {
                                         self.mdd_true
                                     } else {
                                         self.mdd_false
                                     }
                                 }
                                 LinearOperator::Ineq => {
-                                    if new_value != self.linear.rhs {
+                                    if new_value != self.linear.rhs() {
                                         self.mdd_true
                                     } else {
                                         self.mdd_false
                                     }
                                 }
                                 LinearOperator::Leq => {
-                                    if new_value <= self.linear.rhs {
+                                    if new_value <= self.linear.rhs() {
                                         self.mdd_true
                                     } else {
                                         self.mdd_false
                                     }
                                 }
                                 LinearOperator::Less => {
-                                    if new_value < self.linear.rhs {
+                                    if new_value < self.linear.rhs() {
                                         self.mdd_true
                                     } else {
                                         self.mdd_false
                                     }
                                 }
                                 LinearOperator::Geq => {
-                                    if new_value >= self.linear.rhs {
+                                    if new_value >= self.linear.rhs() {
                                         self.mdd_true
                                     } else {
                                         self.mdd_false
                                     }
                                 }
                                 LinearOperator::Greater => {
-                                    if new_value > self.linear.rhs {
+                                    if new_value > self.linear.rhs() {
                                         self.mdd_true
                                     } else {
                                         self.mdd_false
