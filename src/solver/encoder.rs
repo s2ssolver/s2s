@@ -1,6 +1,7 @@
 use std::{collections::HashMap, time::Instant};
 
 use cadical::Solver;
+use indexmap::IndexSet;
 
 use crate::{
     abstraction::Definition,
@@ -15,9 +16,46 @@ use crate::{
     sat::{nlit, plit, pvar, PLit, PVar},
 };
 
+/// A probe is a set of assumptions that determine whether the encoding of the literal is part of the unsat core.
+/// It consists of a probe variable and the assumptions that were used to encode the literal.
+/// The probe variable is added to all clauses in negated form and assumed to be true.
+/// If the probe variable or any of the assumptions introduced by the encoding `failed`, the literal is part of the unsat core.
+struct FailedProbe {
+    // The probe variable for the literal, which is added to all clauses in negated form and assumed to be true.
+    probe: PVar,
+    // The assumptions that were used to encode the literal.
+    assumptions: IndexSet<PLit>,
+}
+impl Default for FailedProbe {
+    fn default() -> Self {
+        Self {
+            probe: pvar(),
+            assumptions: IndexSet::new(),
+        }
+    }
+}
+impl FailedProbe {
+    /// Sets the assumptions introduced by the encoding of the literal.
+    pub fn set_assumptions(&mut self, assumptions: IndexSet<PLit>) {
+        self.assumptions = assumptions;
+    }
+
+    pub fn probe_var(&self) -> PVar {
+        self.probe
+    }
+
+    /// Returns an iterator over all probes. If one of the probes failed, the literal is part of the unsat core.
+    pub fn iter(&self) -> impl IntoIterator<Item = PLit> + '_ {
+        self.assumptions
+            .iter()
+            .copied()
+            .chain(std::iter::once(plit(self.probe)))
+    }
+}
+
 pub struct ProblemEncoder {
     /// The probe variable for each literal. These are used to check which literals failed, i.e., the encoding of which literals are part of the unsat core.
-    probes: HashMap<Literal, PVar>,
+    probes: HashMap<Literal, FailedProbe>,
 
     encoders: HashMap<Literal, Box<dyn LiteralEncoder>>,
     domain_encoder: DomainEncoder,
@@ -106,13 +144,16 @@ impl ProblemEncoder {
             cl.push(def);
         });
 
-        let probe = *self.probes.entry(lit.clone()).or_insert_with(|| pvar());
-        // Add probe to every clause
+        let probe = self.probes.entry(lit.clone()).or_default();
+        probe.set_assumptions(encoding.assumptions().clone());
+        let pvar = probe.probe_var();
+
+        // Add -probe to every clause
         encoding
             .iter_clauses_mut()
-            .for_each(|cl| cl.push(nlit(probe)));
+            .for_each(|cl| cl.push(nlit(pvar)));
         // assert all probes
-        encoding.add_assumption(plit(probe));
+        encoding.add_assumption(plit(pvar));
         Ok(encoding)
     }
 
@@ -127,21 +168,21 @@ impl ProblemEncoder {
 
     /// Returns the failed literals.
     pub fn get_failed_literals(&self, solver: &Solver) -> Vec<Literal> {
-        self.probes
-            .iter()
-            .filter_map(|(lit, &probe)| {
-                if solver.failed(plit(probe)) {
-                    Some(lit.clone())
-                } else {
-                    None
+        let mut failed = Vec::new();
+        for (lit, probes) in self.probes.iter() {
+            for probe in probes.iter() {
+                if solver.failed(probe) {
+                    failed.push(lit.clone());
+                    break;
                 }
-            })
-            .collect()
+            }
+        }
+        failed
     }
 
     /// Blocks the assignment of the given substitution.
     /// Returns the CNF encoding of the blocked assignment.
-    pub fn block_assignment(&self, sub: &VarSubstitution) {
+    pub fn block_assignment(&self, _sub: &VarSubstitution) {
         todo!()
     }
 
