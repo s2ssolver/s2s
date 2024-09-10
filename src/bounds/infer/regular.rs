@@ -178,7 +178,7 @@ impl InferringStrategy for RegularBoundsInferer {
                 return None;
             }
             let upper = nfa.num_states().saturating_sub(1);
-            let lower = nfa.shortest().map(|l| l.saturating_sub(1)).unwrap_or(0);
+            let lower = nfa.shortest().unwrap_or(0);
             // TODO: use shortest path to find lower bound.
             bounds.set(v.clone(), Interval::new(lower, upper));
         }
@@ -298,6 +298,7 @@ mod tests {
 
     #[test]
     fn test_infer_intersection_comp_2() {
+        // (aaa)* and not(aaa) and not epsilon ==> smallest is aaaaaa, upper bound is 6
         let mut ctx = Context::default();
         let rebuilder = ctx.ast_builder().re_builder();
         let re1 = regulaer::parse::parse_rust_regex("^(aaa)*$", rebuilder).unwrap();

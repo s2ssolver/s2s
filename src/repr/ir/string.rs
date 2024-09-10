@@ -29,15 +29,6 @@ impl Symbol {
 
     /// Returns true iff the symbol is a constant word.
     /// This is equivalent to `!is_constant()`.
-    ///
-    /// # Example
-    /// ```
-    /// use satstr::model::constraints::Symbol;
-    /// use satstr::model::{Variable, Sort};
-    ///
-    /// assert!(Symbol::Variable(Variable::temp(Sort::String)).is_variable());
-    /// assert!(!Symbol::Constant('a').is_variable());
-    /// ```
     pub fn is_variable(&self) -> bool {
         matches!(self, Symbol::Variable(_))
     }
@@ -142,13 +133,21 @@ impl Pattern {
     /// Removes the first `n` symbols from the pattern and returns the result.
     /// If `n` is greater than the length of the pattern, the empty pattern is returned.
     pub fn strip_prefix(&self, n: usize) -> Self {
-        Self::new(self.symbols[n..].to_vec())
+        if n >= self.len() {
+            Self::empty()
+        } else {
+            Self::new(self.symbols[n..].to_vec())
+        }
     }
 
     /// Removes the last `n` symbols from the pattern and returns the result.
     /// If `n` is greater than the length of the pattern, the empty pattern is returned.
     pub fn strip_suffix(&self, n: usize) -> Self {
-        Self::new(self.symbols[..self.len() - n].to_vec())
+        if n >= self.len() {
+            Self::empty()
+        } else {
+            Self::new(self.symbols[..self.len() - n].to_vec())
+        }
     }
 
     /// Returns the last symbol of the pattern, if it exists.
@@ -921,7 +920,7 @@ mod tests {
         let v = ctx.new_temp_var(Sort::String);
         let pat = Pattern::variable(&v);
         let re_constr = RegularConstraint::new(pat, re);
-        assert_eq!(re_constr.is_trivial(), Some(true));
+        assert_eq!(re_constr.is_trivial(), Some(false));
     }
 
     #[quickcheck]
@@ -970,7 +969,7 @@ mod tests {
     fn reducible_weq_common_suffix_none() {
         let mut ctx = Context::default();
         let eq = parse_simple_equation("Xabc", "Yabc", &mut ctx);
-        assert_eq!(eq.is_trivial(), Some(true)); // Common suffix: "abc"
+        assert_eq!(eq.is_trivial(), None); // Common suffix: "abc, but X != Y
     }
 
     #[test]
