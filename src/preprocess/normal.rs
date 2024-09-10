@@ -189,11 +189,11 @@ impl Normalizer {
                     // Linear constraints are in normal form by design
                     // We only need to ensure that the polarity is correct and that the lhs is canonical
                     assert!(lit.polarity());
-                    let mut lhs = lc.lhs().clone();
-                    lhs.canonicalize();
+                    let mut lc = lc.clone();
+                    lc.canonicalize();
                     let atom = ctx
                         .ir_builder()
-                        .linear_constraint(lhs, lc.operator(), lc.rhs());
+                        .register_atom(AtomType::LinearConstraint(lc));
                     Ok(ctx.ir_builder().plit(atom))
                 }
                 _ => Ok(Formula::Literal(lit)), // No rewrite required
@@ -225,7 +225,7 @@ impl Normalizer {
     fn contains_re(&self, needle: &str, ctx: &mut Context) -> Regex {
         let builder = ctx.ast_builder().re_builder();
         let all = builder.all();
-        let needle = builder.word(needle.clone().into());
+        let needle = builder.word(needle.into());
         builder.concat(vec![all.clone(), needle, all])
     }
 }
