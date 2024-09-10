@@ -120,7 +120,7 @@ impl IndependentVarReducer {
             ctx.get_nfa(&comp)
         };
 
-        let w = nfa.sample()?.to_string();
+        let w: String = nfa.sample()?.iter().collect();
 
         let mut subs = VarSubstitution::empty();
         for (i, v) in vars.iter().enumerate() {
@@ -144,7 +144,7 @@ impl RewriteSimplifier for IndependentVarReducer {
 
 #[cfg(test)]
 mod tests {
-    use regulaer::re::Regex;
+    use regulaer::{parse::parse_rust_regex, re::Regex};
 
     use super::*;
     use crate::repr::{
@@ -377,6 +377,14 @@ mod tests {
         let mut ctx = Context::default();
         let foo = ctx.ast_builder().re_builder().word("foo".into());
         let regex = ctx.ast_builder().re_builder().star(foo);
+        reduce_inre_non_empty(&regex, &mut ctx, true);
+        reduce_inre_non_empty(&regex, &mut ctx, false);
+    }
+
+    #[test]
+    fn test_reduce_inre_positive_escape_sequence() {
+        let mut ctx = Context::default();
+        let regex = parse_rust_regex("\x0a", ctx.ast_builder().re_builder()).unwrap();
         reduce_inre_non_empty(&regex, &mut ctx, true);
         reduce_inre_non_empty(&regex, &mut ctx, false);
     }
