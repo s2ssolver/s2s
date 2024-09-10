@@ -1,3 +1,4 @@
+mod identities;
 mod indep;
 mod levis;
 pub mod weq;
@@ -82,6 +83,7 @@ impl Simplifier {
     fn rewrite_simps(&self, fm: &Formula) -> Vec<Box<dyn RewriteSimplifier>> {
         vec![
             Box::new(IndependentVarReducer::new(fm)),
+            Box::new(identities::EntailedIdentities),
             Box::new(levis::LevisSimp),
         ]
     }
