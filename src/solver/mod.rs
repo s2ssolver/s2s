@@ -211,6 +211,7 @@ impl Solver {
         for lit in fm.entailed_literals() {
             inferer.add_literal(lit.clone(), ctx)
         }
+
         let mut bounds = inferer.infer()?;
         log::debug!("Inferred bounds for entailed literals: {}", bounds);
         for var in ctx
@@ -225,9 +226,9 @@ impl Solver {
                 0.into()
             };
             let upper = if let Some(upper) = v_bounds.and_then(|b| b.upper_finite()) {
-                upper
+                upper.min(2)
             } else {
-                2.into()
+                2
             }
             .max(lower)
             .max(1); // need to be at least 1
