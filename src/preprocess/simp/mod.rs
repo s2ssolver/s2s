@@ -54,10 +54,9 @@ impl Simplifier {
 
             // Apply the rewrite simplifications
             let simps = self.rewrite_simps(&simplified);
-            let rewrites = self.infer_rewrite(&simplified, ctx, &simps);
-            if !rewrites.is_empty() {
-                applied_subst = applied_subst.compose(&rewrites);
-                simplified = rewrites.apply(simplified, ctx);
+            if let Some(rewrite) = self.infer_rewrite(&simplified, ctx, &simps) {
+                simplified = rewrite.apply(simplified, ctx);
+                applied_subst = applied_subst.compose(&rewrite);
                 applied = true;
             }
 
@@ -139,51 +138,17 @@ impl Simplifier {
         fm: &Formula,
         ctx: &mut Context,
         simps: &[Box<dyn RewriteSimplifier>],
-    ) -> VarSubstitution {
-        let mut rewrites = VarSubstitution::default();
+    ) -> Option<VarSubstitution> {
         let entailed: IndexSet<_> = fm.entailed_literals().collect();
         for lit in fm.literals() {
             for simp in simps {
                 if let Some(subst) = simp.infer(lit, entailed.contains(lit), ctx) {
-                    // Try to infer as much a possible in one go.
-                    // If two simplifiers infer the same variable, the first one wins.
-                    let old = rewrites.clone();
-                    let overwrites = rewrites.extend(&subst);
-                    if !overwrites.is_empty() {
-                        rewrites = old;
-                        break;
-                    }
+                    return Some(subst);
                 }
             }
         }
-        rewrites
+        None
     }
-
-    // /// Finds equalities of the form `x = t` where `x` is a variable and `t` is a term, which are entailed by the formula.
-    // /// Replace all occurrences of `x` with `t` in the formula.
-    // fn apply_entailed_equalities(&self, fm: &Formula, ctx: &mut Context) -> SimpRule<Formula> {
-    //     let mut subst = VarSubstitution::default();
-    //     for e_lit in fm.entailed_literals().filter(|l| l.polarity()) {
-    //         match e_lit.atom().get_type() {
-    //             AtomType::WordEquation(WordEquation::VarAssignment(v, pat)) => {
-    //                 subst.set_str(v.clone(), Pattern::constant(pat));
-    //             }
-    //             AtomType::LinearConstraint(lc) if lc.operator() == LinearOperator::Eq => {
-    //                 if let Some(v) = lc.lhs().as_variable() {
-    //                     subst.set_int(v.clone(), LinearArithTerm::from_const(lc.rhs()));
-    //                 }
-    //             }
-    //             _ => (),
-    //         }
-    //     }
-    //     if subst.is_empty() {
-    //         SimpRule::Unchanged
-    //     } else {
-    //         // Apply substitution
-    //         let applied = subst.apply(fm.clone(), ctx);
-    //         SimpRule::Simplified(applied, subst)
-    //     }
-    // }
 }
 
 /// Pure simplifier takes a literals and return a simplified version of it.
