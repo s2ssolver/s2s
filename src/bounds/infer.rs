@@ -145,11 +145,10 @@ impl BoundInferer {
             WordEquation::VarAssignment(l, r) => {
                 self.reg.add_const_eq(l.clone(), r.clone(), pol, ctx);
             }
-            WordEquation::General(_, _) => {
-                if pol {
-                    self.lin.add_weq(weq);
-                }
-            }
+            WordEquation::General(_, _) => {}
+        }
+        if pol {
+            self.lin.add_weq(weq)
         }
     }
 
