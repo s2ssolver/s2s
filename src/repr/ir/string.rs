@@ -513,6 +513,12 @@ impl TrivialReducible for WordEquation {
             return Some(true);
         }
 
+        // If both sides are constants, check if they are equal
+        match (self.lhs().as_constant(), self.rhs().as_constant()) {
+            (Some(lhs), Some(rhs)) => return Some(lhs == rhs),
+            _ => (),
+        }
+
         let lhs_prefix = self.lhs().constant_prefix();
         let rhs_prefix = self.rhs().constant_prefix();
         if !lhs_prefix.starts_with(&rhs_prefix) && !rhs_prefix.starts_with(&lhs_prefix) {
