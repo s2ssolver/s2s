@@ -26,7 +26,7 @@ pub struct AstParser {
 }
 impl Default for AstParser {
     fn default() -> Self {
-        Self { smt25: true }
+        Self { smt25: false }
     }
 }
 
@@ -121,22 +121,9 @@ impl AstParser {
     fn parse_smtlib_string(&self, input: &str) -> Result<String, AstError> {
         let mut chars = input.chars().peekable();
         let mut result = String::with_capacity(input.len());
-
         let mut buffer = String::new();
         while let Some(c) = chars.next() {
             match c {
-                '"' => {
-                    if chars.peek() == Some(&'"') {
-                        // Handle double quote escape sequence
-                        chars.next();
-                        result.push('"');
-                    } else {
-                        if !buffer.is_empty() {
-                            result.push_str(&buffer);
-                            buffer.clear();
-                        }
-                    }
-                }
                 '\\' => {
                     if !buffer.is_empty() {
                         result.push_str(&buffer);
@@ -210,6 +197,7 @@ impl AstParser {
                         None => result.push('\\'),
                     }
                 }
+                '"' => buffer.push('"'), // Double " is escaped as ", but the parser seems to handle this already
                 c if (0x20..=0x7E).contains(&(c as u32)) => {
                     buffer.push(c);
                 }
