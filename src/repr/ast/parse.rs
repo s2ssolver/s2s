@@ -6,6 +6,7 @@ use super::AstError;
 use super::{
     expr::{ExprType, Expression, StrExpr},
     script::Script,
+    smt_max_char,
 };
 use crate::repr::{Sort, Variable};
 
@@ -406,7 +407,10 @@ impl AstParser {
                 Identifier::Simple { symbol } => match symbol.0.as_str() {
                     "re.all" => Ok(ctx.ast_builder().re_builder().all()),
                     "re.none" => Ok(ctx.ast_builder().re_builder().none()),
-                    "re.allchar" => Ok(ctx.ast_builder().re_builder().any_char()),
+                    "re.allchar" => Ok(ctx
+                        .ast_builder()
+                        .re_builder()
+                        .range(0u8 as char, smt_max_char())),
                     _ => Err(AstError::Unsupported(format!("{}", symbol))),
                 },
                 Identifier::Indexed { .. } => Err(AstError::Unsupported(format!("{:?}", term))),

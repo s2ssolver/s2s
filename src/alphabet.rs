@@ -76,13 +76,16 @@ pub fn infer(fm: &Formula) -> Alphabet {
     Alphabet(inferred_alphabet)
 }
 
+const SMT_MAX_CHAR: u32 = 0x2FFFF;
 /// Returns the alphabet of constants in the formula.
 /// The alphabet is not canonicalized.
 fn alphabet_of(fm: &Formula) -> InnerAlphabet {
     let mut alph = InnerAlphabet::default();
     for l in fm.literals() {
         for c in l.constants() {
-            alph.insert_char(c);
+            if c as u32 <= SMT_MAX_CHAR {
+                alph.insert_char(c);
+            }
         }
     }
 

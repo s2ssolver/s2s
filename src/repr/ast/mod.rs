@@ -15,8 +15,12 @@ pub use script::*;
 /// The maximum character value allowed in the SMT-LIB theory of strings.
 const SMT_MAX_CHAR: u32 = 0x2FFFF;
 
+pub fn smt_max_char() -> char {
+    char::from_u32(SMT_MAX_CHAR).unwrap()
+}
+
 fn convert_smtlib_char(c: char) -> String {
-    if c as u32 > SMT_MAX_CHAR {
+    if c as u32 > SMT_MAX_CHAR as u32 {
         panic!("Invalid character in SMT-LIB string: {:?}", c);
     }
     let code_point = c as u32;
