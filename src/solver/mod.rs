@@ -10,7 +10,7 @@ use crate::{
     alphabet::{self, Alphabet},
     bounds::{infer::BoundInferer, step::BoundStep, Bounds, Interval},
     context::Context,
-    preprocess::{self, simp::Simplifier, PreprocessingError},
+    preprocess::{self, simp, PreprocessingError},
     repr::{
         ir::{Formula, VarSubstitution},
         Sorted,
@@ -66,10 +66,13 @@ impl std::fmt::Display for SolverResult {
     }
 }
 
+const DEFAULT_SIMPLIFY: bool = true;
+const DEFAULT_SIMP_MAX_STEPS: usize = 500;
 #[derive(Debug, Clone)]
 pub struct SolverOptions {
     dry: bool,
     simplify: bool,
+    simp_iters: usize,
     cegar: bool,
     max_bounds: usize,
     step: BoundStep,
@@ -78,7 +81,8 @@ impl Default for SolverOptions {
     fn default() -> Self {
         Self {
             dry: false,
-            simplify: true,
+            simplify: DEFAULT_SIMPLIFY,
+            simp_iters: DEFAULT_SIMP_MAX_STEPS,
             cegar: true,
             max_bounds: usize::MAX,
             step: BoundStep::default(),
@@ -195,8 +199,7 @@ impl Solver {
     ) -> Result<(Formula, VarSubstitution), PreprocessingError> {
         let t = Instant::now();
         let (fm, subst) = if self.options.simplify {
-            let simplifier = Simplifier::default();
-            let simped = simplifier.simplify(fm.clone(), ctx);
+            let simped = simp::simplify(fm.clone(), ctx, self.options.simp_iters);
             (simped.formula, simped.subst)
         } else {
             (fm.clone(), VarSubstitution::default())

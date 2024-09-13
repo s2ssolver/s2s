@@ -8,11 +8,15 @@ use crate::{
     },
 };
 
-use super::RewriteSimplifier;
+use super::{RewriteSimplifier, Simplifier};
 
 /// Finds equalities of the form `x = t` where `x` is a variable and `t` is a term, which are entailed by the formula.
 pub struct EntailedIdentities;
-
+impl Simplifier for EntailedIdentities {
+    fn name(&self) -> &'static str {
+        "EntailedIdentities"
+    }
+}
 impl RewriteSimplifier for EntailedIdentities {
     fn infer(&self, lit: &Literal, entailed: bool, _ctx: &mut Context) -> Option<VarSubstitution> {
         if lit.polarity() && entailed {

@@ -5,7 +5,7 @@ use crate::{
     repr::ir::{AtomType, Literal, WordEquation},
 };
 
-use super::PureSimplifier;
+use super::{PureSimplifier, Simplifier};
 
 /// Removes common prefixes and suffixes from word equations.
 pub struct StripCommonPrefixSuffix;
@@ -42,6 +42,11 @@ impl StripCommonPrefixSuffix {
             Some(s) => Self::strip_common_suffix(&s),
             None => Self::strip_common_suffix(weq),
         }
+    }
+}
+impl Simplifier for StripCommonPrefixSuffix {
+    fn name(&self) -> &'static str {
+        "WeqStripCommonPrefixSuffix"
     }
 }
 impl PureSimplifier for StripCommonPrefixSuffix {

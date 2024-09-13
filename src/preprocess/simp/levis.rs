@@ -5,7 +5,7 @@ use crate::{
     repr::ir::{AtomType, Literal, Pattern, Symbol, VarSubstitution, WordEquation},
 };
 
-use super::RewriteSimplifier;
+use super::{RewriteSimplifier, Simplifier};
 
 #[derive(Clone, Default)]
 pub(super) struct LevisSimp;
@@ -58,7 +58,11 @@ impl LevisSimp {
         reversed
     }
 }
-
+impl Simplifier for LevisSimp {
+    fn name(&self) -> &'static str {
+        "Levis Lemma"
+    }
+}
 impl RewriteSimplifier for LevisSimp {
     fn infer(&self, lit: &Literal, entailed: bool, _ctx: &mut Context) -> Option<VarSubstitution> {
         if entailed && lit.polarity() {

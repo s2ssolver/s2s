@@ -13,7 +13,7 @@ use crate::{
     },
 };
 
-use super::RewriteSimplifier;
+use super::{RewriteSimplifier, Simplifier};
 
 /// We call a regular constraint independent if it has the form `x \in R` where `x` is a variable and `R` is a regular expression and `x` does not occur elsewhere in the formula.
 pub struct IndependentVarReducer {
@@ -132,7 +132,11 @@ impl IndependentVarReducer {
         Some(subs)
     }
 }
-
+impl Simplifier for IndependentVarReducer {
+    fn name(&self) -> &'static str {
+        "IndependentVarReducer"
+    }
+}
 impl RewriteSimplifier for IndependentVarReducer {
     fn infer(&self, lit: &Literal, _entailed: bool, ctx: &mut Context) -> Option<VarSubstitution> {
         match lit.atom().get_type() {
