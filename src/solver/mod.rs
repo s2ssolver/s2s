@@ -68,6 +68,7 @@ impl std::fmt::Display for SolverResult {
 
 const DEFAULT_SIMPLIFY: bool = true;
 const DEFAULT_SIMP_MAX_STEPS: usize = 500;
+const DEFAULT_CHECK_MODEL: bool = false;
 #[derive(Debug, Clone)]
 pub struct SolverOptions {
     dry: bool,
@@ -76,6 +77,7 @@ pub struct SolverOptions {
     cegar: bool,
     max_bounds: usize,
     step: BoundStep,
+    check_model: bool,
 }
 impl Default for SolverOptions {
     fn default() -> Self {
@@ -86,6 +88,7 @@ impl Default for SolverOptions {
             cegar: true,
             max_bounds: usize::MAX,
             step: BoundStep::default(),
+            check_model: DEFAULT_CHECK_MODEL,
         }
     }
 }
@@ -301,18 +304,15 @@ impl Solver {
                     // If SAT, check if model is a solution for the original formula.
                     let assign = encoder.get_model(&cadical);
                     log::info!("Found model: {}", assign);
-                    if self.check_assignment(fm, &assign, ctx) {
-                        return Ok(SolverResult::Sat(Some(assign)));
-                    } else {
-                        let refined_defs = self.refine_abstraction(&defs, &assign, &abs);
-                        if refined_defs.is_empty() {
-                            encoder.block_assignment(&assign);
-                        } else {
-                            // Refine the abstraction
-                            defs.extend(refined_defs);
-                        }
+
+                    if self.options.check_model && !self.check_assignment(fm, &assign, ctx) {
+                        // If the assignment is not a solution, we found a bug.
+                        panic!("The found model is invalid");
                     }
+                    //                    encoder.print_debug(&cadical);
+                    return Ok(SolverResult::Sat(Some(assign)));
                 }
+
                 Some(false) => {
                     log::info!("Unsat");
                     let failed = encoder.get_failed_literals(&cadical);

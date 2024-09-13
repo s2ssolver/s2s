@@ -45,7 +45,7 @@ impl Substitute {
 impl Display for Substitute {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::String(p) => write!(f, "{}", p),
+            Self::String(p) => write!(f, "\"{}\" ", p,),
             Self::Int(t) => write!(f, "{}", t),
             Self::Bool(fm) => write!(f, "{}", fm),
         }

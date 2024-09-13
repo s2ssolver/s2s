@@ -402,10 +402,7 @@ impl Substitutable for Pattern {
 impl Display for Pattern {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         for symbol in &self.symbols {
-            match symbol {
-                Symbol::Constant(word) => write!(f, "{}", word)?,
-                Symbol::Variable(var) => write!(f, "{}", var)?,
-            }
+            write!(f, "{}", symbol)?;
         }
         Ok(())
     }
@@ -414,7 +411,7 @@ impl Display for Pattern {
 impl Display for Symbol {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            Symbol::Constant(c) => write!(f, "{}", c),
+            Symbol::Constant(c) => write!(f, "{}", c.escape_default()),
             Symbol::Variable(v) => write!(f, "{}", v),
         }
     }
