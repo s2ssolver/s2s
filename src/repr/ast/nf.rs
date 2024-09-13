@@ -45,11 +45,13 @@ pub fn expression_to_nnf(
                         if !l.sort().is_bool() && !r.sort().is_bool() {
                             Ok(expr.clone())
                         } else {
-                            panic!("Can only convert BNF to NNF")
+                            let bnf = expression_to_bnf(expr, builder)?;
+                            expression_to_nnf(&bnf, builder)
                         }
                     }
                     CoreExpr::Imp(_, _) | CoreExpr::Ite(_, _, _) | CoreExpr::Distinct(_) => {
-                        panic!("Can only convert BNF to NNF")
+                        let bnf = expression_to_bnf(expr, builder)?;
+                        expression_to_nnf(&bnf, builder)
                     }
                 },
                 _ => Ok(expr.clone()), // all literals are in NNF
