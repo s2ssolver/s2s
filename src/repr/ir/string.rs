@@ -253,7 +253,7 @@ impl Pattern {
     }
 
     /// Returns the (longest) prefix of the pattern that is constant.
-    fn constant_prefix(&self) -> String {
+    pub fn constant_prefix(&self) -> String {
         let mut res = String::new();
         for symbol in &self.symbols {
             match symbol {
@@ -265,7 +265,7 @@ impl Pattern {
     }
 
     /// Returns the (longest) suffix of the pattern that is constant.
-    fn constant_suffix(&self) -> String {
+    pub fn constant_suffix(&self) -> String {
         let mut res = String::new();
         for symbol in self.symbols.iter().rev() {
             match symbol {
@@ -359,6 +359,13 @@ impl std::ops::Index<usize> for Pattern {
 impl From<Vec<Symbol>> for Pattern {
     fn from(value: Vec<Symbol>) -> Self {
         Self::new(value)
+    }
+}
+
+impl FromIterator<char> for Pattern {
+    fn from_iter<T: IntoIterator<Item = char>>(iter: T) -> Self {
+        let symbols = iter.into_iter().map(Symbol::Constant).collect();
+        Self::new(symbols)
     }
 }
 
