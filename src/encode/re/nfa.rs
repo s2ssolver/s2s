@@ -20,6 +20,7 @@ use crate::{
     context::Context,
     encode::{domain::DomainEncoding, EncodingError, EncodingResult, LiteralEncoder, LAMBDA},
     repr::{
+        ast::smt_max_char,
         ir::{RegularConstraint, Symbol},
         Variable,
     },
@@ -407,9 +408,8 @@ pub fn build_inre_encoder(
 
 /* Some auxiliary functions */
 
-const SMT_MAX_CHAR: u32 = 196607;
 fn range_any(r: &CharRange) -> bool {
-    r.start() as u32 == 0 && r.end() as u32 >= SMT_MAX_CHAR
+    r.start() as u32 == 0 && r.end() >= smt_max_char()
 }
 
 fn precompute_delta_inv(
