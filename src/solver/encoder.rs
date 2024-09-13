@@ -180,6 +180,14 @@ impl ProblemEncoder {
         failed
     }
 
+    #[allow(dead_code)]
+    pub(crate) fn print_debug(&self, solver: &Solver) {
+        for (l, enc) in self.encoders.iter() {
+            println!("Debug: {}", l);
+            enc.print_debug(solver, self.domain_encoder.encoding());
+        }
+    }
+
     /// Blocks the assignment of the given substitution.
     /// Returns the CNF encoding of the blocked assignment.
     pub fn block_assignment(&self, _sub: &VarSubstitution) {

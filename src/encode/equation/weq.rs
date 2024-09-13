@@ -1,4 +1,4 @@
-use std::cmp::min;
+use std::cmp::{max, min};
 
 use std::fmt::Display;
 use std::time::Instant;
@@ -236,6 +236,7 @@ impl SolutionWord {
 pub struct WordEquationEncoder {
     /// The original word equation
     equation: WordEquation,
+    pol: bool,
 
     /// The type of the equation, i.e., equality or inequality.
     /// If the equation is an inequality, then the first word encoding is for the LHS and the second for the RHS.
@@ -296,6 +297,7 @@ impl WordEquationEncoder {
             bound_selector: None,
             round: 0,
             bound: 0,
+            pol,
             candidates: eq_type,
             last_bound: None,
             last_var_bounds: None,
@@ -817,11 +819,21 @@ impl LiteralEncoder for WordEquationEncoder {
 
         let mut res = EncodingResult::empty();
 
-        // Must be larger than 0
-        let bound = min(
-            FilledPattern::fill(&self.equation.lhs(), bounds).length(),
-            FilledPattern::fill(&self.equation.rhs(), bounds).length(),
-        ) + 1;
+        let mut bound = if self.pol {
+            min(
+                FilledPattern::fill(&self.equation.lhs(), bounds).length(),
+                FilledPattern::fill(&self.equation.rhs(), bounds).length(),
+            )
+        } else {
+            max(
+                FilledPattern::fill(&self.equation.lhs(), bounds).length(),
+                FilledPattern::fill(&self.equation.rhs(), bounds).length(),
+            )
+        }; // + 1;
+           // Bound must be larger than 0
+           // Usually, a 0 should not occurr because every string variable has an upper bound of at least 1 or the equation is empty
+           // However, this is a failsafe
+        bound = max(bound, 1);
 
         assert!(bound >= self.bound, "Bound cannot shrink");
         assert!(bound > 0);
@@ -949,11 +961,17 @@ impl LiteralEncoder for WordEquationEncoder {
         for pos in 0..self.bound {
             for c in dom.alphabet().iter() {
                 if let Some(true) = solver.value(plit(lhs.char_at(pos, c))) {
-                    lhs_sol.push(c);
+                    lhs_sol.push_str(c.escape_default().to_string().as_str());
                 }
                 if let Some(true) = solver.value(plit(rhs.char_at(pos, c))) {
-                    rhs_sol.push(c);
+                    rhs_sol.push_str(c.escape_default().to_string().as_str());
                 }
+            }
+            if let Some(true) = solver.value(plit(lhs.char_at(pos, LAMBDA))) {
+                lhs_sol.push_str("λ");
+            }
+            if let Some(true) = solver.value(plit(rhs.char_at(pos, LAMBDA))) {
+                rhs_sol.push_str("λ");
             }
         }
         println!("SOLUTION FOR {} (BOUND: {})", self.equation, self.bound);
