@@ -246,19 +246,11 @@ fn convert_suffix_of(
 ) -> Result<Rc<Atom>, PreprocessingError> {
     let lhs = match convert_pattern(lhs) {
         Some(r) => r,
-        _ => Err(PreprocessingError::InvalidSort {
-            expr: lhs.to_string(),
-            expected: Sort::String,
-            got: lhs.sort(),
-        })?,
+        _ => Err(PreprocessingError::Unsupported(lhs.to_string()))?,
     };
     let rhs = match convert_pattern(rhs) {
         Some(r) => r,
-        _ => Err(PreprocessingError::InvalidSort {
-            expr: rhs.to_string(),
-            expected: Sort::String,
-            got: rhs.sort(),
-        })?,
+        _ => Err(PreprocessingError::Unsupported(lhs.to_string()))?,
     };
     Ok(builder.suffix_of(lhs, rhs))
 }
@@ -270,19 +262,11 @@ fn convert_contains(
 ) -> Result<Rc<Atom>, PreprocessingError> {
     let lhs = match convert_pattern(lhs) {
         Some(r) => r,
-        _ => Err(PreprocessingError::InvalidSort {
-            expr: lhs.to_string(),
-            expected: Sort::String,
-            got: lhs.sort(),
-        })?,
+        _ => Err(PreprocessingError::Unsupported(lhs.to_string()))?,
     };
     let rhs = match convert_pattern(rhs) {
         Some(r) => r,
-        _ => Err(PreprocessingError::InvalidSort {
-            expr: rhs.to_string(),
-            expected: Sort::String,
-            got: rhs.sort(),
-        })?,
+        _ => Err(PreprocessingError::Unsupported(lhs.to_string()))?,
     };
     Ok(builder.contains(lhs, rhs))
 }
@@ -399,13 +383,7 @@ fn normalize_linear(lhs: LinearArithTerm, rhs: LinearArithTerm) -> (LinearArithT
 
 #[cfg(test)]
 mod tests {
-    use crate::{
-        context::Context,
-        repr::{
-            ir::{Formula, Literal},
-            Sort,
-        },
-    };
+    use crate::{context::Context, repr::Sort};
 
     use super::convert_expr;
 

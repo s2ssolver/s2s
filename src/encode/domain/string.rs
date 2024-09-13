@@ -65,7 +65,7 @@ impl StringDomain {
         self.get_sub(var, pos, chr).map(plit)
     }
 
-    pub(super) fn inser_substitution(&mut self, var: &Variable, pos: usize, chr: char, v: PVar) {
+    pub(super) fn insert_substitution(&mut self, var: &Variable, pos: usize, chr: char, v: PVar) {
         assert!(
             var.sort() == Sort::String,
             "Variable {} is not a string",
@@ -183,13 +183,13 @@ impl StringDomainEncoder {
                 for c in alph.iter() {
                     // subvar <--> `var` at position `b` is substituted with `c`
                     let subvar = pvar();
-                    subs.inser_substitution(str_var, b, c, subvar);
+                    subs.insert_substitution(str_var, b, c, subvar);
                     pos_subs.push(subvar)
                 }
 
                 // Lambda (unused position = empty string)
                 let subvar_lambda = pvar();
-                subs.inser_substitution(str_var, b, LAMBDA, subvar_lambda);
+                subs.insert_substitution(str_var, b, LAMBDA, subvar_lambda);
                 pos_subs.push(subvar_lambda);
 
                 // If previous position is lambda, then so is this one
@@ -246,11 +246,12 @@ impl StringDomainEncoder {
                     res.add_clause(vec![nlit(choice), plit(lambda_suffix)]);
                 }
                 if len > 0 {
-                    let not_lambda_prefix = encoding
+                    let lambda_prefix = encoding
                         .string()
                         .get_sub(str_var, len as usize - 1, LAMBDA)
                         .unwrap();
-                    res.add_clause(vec![nlit(choice), nlit(not_lambda_prefix)]);
+
+                    res.add_clause(vec![nlit(choice), nlit(lambda_prefix)]);
                 }
             }
 

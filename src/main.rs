@@ -61,7 +61,8 @@ fn main() {
     let res = match solve_smt(smt, Some(opts)) {
         Ok(res) => res,
         Err(err) => {
-            eprintln!("Error: {}", err);
+            log::error!("Error: {}", err);
+            println!("unknown");
             exit(1);
         }
     };

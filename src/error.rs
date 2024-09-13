@@ -19,10 +19,6 @@ pub enum ErrorRepr {
     /// An error that occured during encoding.
     #[error("failed to encode: {0}")]
     EncodingError(EncodingError),
-
-    /// An error that occured during solving.
-    #[error("failed solving: {0}")]
-    SolverError(String),
 }
 
 // Resolve transitive conversion
