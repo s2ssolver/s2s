@@ -231,9 +231,21 @@ impl VarSubstitution {
                     .linear_constraint(new_l, lc.operator(), lc.rhs())
             }
             AtomType::BoolVar(bv) => ctx.ir_builder().bool_var(bv.clone()),
-            AtomType::PrefixOf(_) => todo!(),
-            AtomType::SuffixOf(_) => todo!(),
-            AtomType::Contains(_) => todo!(),
+            AtomType::PrefixOf(pr) => {
+                let new_p = self.apply_pattern(pr.prefix());
+                let new_of = self.apply_pattern(pr.of());
+                ctx.ir_builder().prefix_of(new_p, new_of)
+            }
+            AtomType::SuffixOf(sf) => {
+                let new_s = self.apply_pattern(sf.suffix());
+                let new_of = self.apply_pattern(sf.of());
+                ctx.ir_builder().suffix_of(new_s, new_of)
+            }
+            AtomType::Contains(ct) => {
+                let new_needle = self.apply_pattern(ct.needle());
+                let new_hayst = self.apply_pattern(ct.haystack());
+                ctx.ir_builder().contains(new_hayst, new_needle)
+            }
         }
     }
 
