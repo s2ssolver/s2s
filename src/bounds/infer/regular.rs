@@ -214,10 +214,10 @@ impl InferringStrategy for RegularBoundsInferer {
                 }
             }
         }
-        // Unroll the substitutions.
+        // Undo the substitutions.
         for (x, y) in self.eqs.iter() {
-            if let Some(bound) = bounds.get(y) {
-                bounds.set(x.clone(), bound.clone());
+            if let Some(bound) = bounds.get(x) {
+                bounds.set(y.clone(), bound.clone());
             }
         }
 
