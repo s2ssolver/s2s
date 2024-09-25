@@ -175,6 +175,10 @@ impl BoundInferer {
         self.fragment.and(&lit);
     }
 
+    pub fn literals(&self) -> &IndexSet<Literal> {
+        &self.literals
+    }
+
     /// Returns true if the literals contain a conflict, i.e., a literal and its negation.
     pub fn conflicting(&self) -> bool {
         self.conflict || self.reg.conflict() || self.lin.conflict()

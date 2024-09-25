@@ -1,6 +1,6 @@
 use std::{collections::HashMap, rc::Rc};
 
-use regulaer::re::{OptReBuilder, Regex};
+use regulaer::re::{ReBuilder, Regex};
 
 use crate::repr::{Sort, Sorted, Variable};
 
@@ -14,7 +14,7 @@ use super::{CoreExpr, ExprType, Expression, IntExpr, StrExpr};
 pub struct AstBuilder {
     next_id: usize,
     fm_registry: HashMap<ExprType, Rc<Expression>>,
-    re_buider: OptReBuilder,
+    re_buider: ReBuilder,
 }
 
 impl AstBuilder {
@@ -59,7 +59,7 @@ impl AstBuilder {
         self.intern(v)
     }
 
-    pub fn re_builder(&mut self) -> &mut OptReBuilder {
+    pub fn re_builder(&mut self) -> &mut ReBuilder {
         &mut self.re_buider
     }
 

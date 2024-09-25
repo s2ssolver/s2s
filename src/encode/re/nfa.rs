@@ -442,7 +442,7 @@ fn precompute_delta_inv(
 #[cfg(test)]
 mod test {
     use cadical::Solver;
-    use regulaer::re::{ReBuilder, Regex};
+    use regulaer::re::{Regex, RegexProps};
 
     use super::*;
 
@@ -452,7 +452,7 @@ mod test {
         let mut ctx = Context::default();
         let var = ctx.new_temp_var(Sort::String);
 
-        let mut alph = Alphabet::from(re.operator().alphabet());
+        let mut alph = Alphabet::from(re.alphabet());
         alph.insert_char('a');
 
         let nfa = ctx.get_nfa(&re);

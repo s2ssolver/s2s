@@ -58,7 +58,7 @@ impl RewriteSimplifier for EntailedIdentities {
                 }
                 AtomType::InRe(inre) => {
                     let v = inre.pattern().as_variable()?;
-                    if let RegOp::Const(w) = inre.re().operator() {
+                    if let RegOp::Const(w) = inre.re().op() {
                         let mut subst = VarSubstitution::default();
                         let mut pattern = Pattern::empty();
                         for c in w.iter() {

@@ -625,7 +625,7 @@ impl RegularConstraint {
 
     pub(crate) fn constants(&self) -> IndexSet<char> {
         let mut alph = self.pattern().constants();
-        alph.extend(self.re().operator().alphabet().iter_chars());
+        alph.extend(self.re().alphabet().iter_chars());
         alph
     }
 }
@@ -635,7 +635,7 @@ impl TrivialReducible for RegularConstraint {
     /// - if the regex is empty, returns `Some(false)``
     /// - otherwise, returns `None`
     fn is_trivial(&self) -> Option<bool> {
-        if self.re().operator().is_none().unwrap_or(false) {
+        if self.re().is_none().unwrap_or(false) {
             return Some(false);
         }
         let pat_c = self.pattern().as_constant()?;
@@ -822,7 +822,7 @@ impl Display for Contains {
 /* Arbitrary */
 
 use quickcheck;
-use regulaer::re::Regex;
+use regulaer::re::{Regex, RegexProps};
 
 use crate::repr::{Sort, Sorted, Variable};
 

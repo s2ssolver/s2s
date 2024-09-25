@@ -1,4 +1,4 @@
-use regulaer::re::{deriv::deriv_word_with, Word};
+use regulaer::re::{deriv::deriv_word, RegexProps, Word};
 
 use crate::{
     context::Context,
@@ -26,14 +26,14 @@ impl RewriteSimplifier for ConstantPrefixSuffix {
         if let AtomType::InRe(inre) = lit.atom().get_type() {
             let var = inre.pattern().as_variable()?;
             let re = inre.re();
-            if let Some(pre) = re.operator().prefix() {
+            if let Some(pre) = re.prefix() {
                 // X -> preX
                 let mut pattern = Pattern::from_iter(pre.iter());
                 pattern.push_var(var.clone());
                 let mut subst = VarSubstitution::default();
                 subst.set_str(var, pattern);
                 return Some(subst);
-            } else if let Some(suf) = re.operator().suffix() {
+            } else if let Some(suf) = re.suffix() {
                 // X -> Xsuf
                 let mut pattern = Pattern::variable(&var);
                 pattern.concat(Pattern::from_iter(suf.iter()));
@@ -68,7 +68,7 @@ impl PureSimplifier for ConstantDerivation {
             let re = if !prefix.is_empty() {
                 let w = Word::from_iter(prefix.chars());
                 simped = true;
-                deriv_word_with(inre.re(), &w, ctx.ast_builder().re_builder())
+                deriv_word(inre.re(), &w, ctx.ast_builder().re_builder())
             } else {
                 // we're just cloning an Rc, so it's cheap
                 inre.re().clone()
@@ -77,11 +77,11 @@ impl PureSimplifier for ConstantDerivation {
             let suffix = pattern.constant_suffix();
             let re = if !suffix.is_empty() {
                 let w = Word::from_iter(suffix.chars()).reversed();
-                let rev = ctx.ast_builder().re_builder().reverse(&re);
-                let rev_deriv = deriv_word_with(&rev, &w, ctx.ast_builder().re_builder());
+                let rev = ctx.ast_builder().re_builder().reversed(&re);
+                let rev_deriv = deriv_word(&rev, &w, ctx.ast_builder().re_builder());
                 simped = true;
                 // reverse back the derivative
-                ctx.ast_builder().re_builder().reverse(&rev_deriv)
+                ctx.ast_builder().re_builder().reversed(&rev_deriv)
             } else {
                 re
             };
