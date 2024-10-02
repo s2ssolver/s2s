@@ -1,15 +1,10 @@
 use std::collections::HashMap;
 
-use regulaer::re::ReBuilder;
-
 use crate::{
-    context::Context,
-    repr::{
-        ir::{
-            AtomType, Formula, LinearArithTerm, Literal, Pattern, RegularConstraint, Symbol,
-            VarSubstitution, WordEquation,
-        },
-        Variable,
+    context::{Context, Variable},
+    ir::{
+        AtomType, Formula, LinearArithTerm, Literal, Pattern, RegularConstraint, Symbol,
+        VarSubstitution, WordEquation,
     },
 };
 
@@ -79,8 +74,8 @@ impl IndependentVarReducer {
 
     fn count_linear_vars(t: &LinearArithTerm, count: &mut HashMap<Variable, usize>) {
         for var in t.iter().filter_map(|s| match s {
-            crate::repr::ir::LinearSummand::Mult(vt, _) => Some(vt.variable()),
-            crate::repr::ir::LinearSummand::Const(_) => None,
+            crate::ir::LinearSummand::Mult(vt, _) => Some(vt.variable()),
+            crate::ir::LinearSummand::Const(_) => None,
         }) {
             *count.entry(var.clone()).or_default() += 1;
         }
@@ -115,7 +110,7 @@ impl IndependentVarReducer {
         let nfa = if pol {
             ctx.get_nfa(reg)
         } else {
-            let builder = ctx.ast_builder().re_builder();
+            let builder = ctx.re_builder();
             let comp = builder.comp(reg.clone());
             ctx.get_nfa(&comp)
         };
@@ -151,9 +146,9 @@ mod tests {
     use regulaer::{parse::parse_rust_regex, re::Regex};
 
     use super::*;
-    use crate::repr::{
+    use crate::{
+        context::Sort,
         ir::{LinearArithTerm, LinearOperator, LinearSummand, VariableTerm},
-        Sort,
     };
     use std::collections::HashMap;
 
@@ -371,7 +366,7 @@ mod tests {
     #[test]
     fn test_reduce_inre_word() {
         let mut ctx = Context::default();
-        let regex = ctx.ast_builder().re_builder().word("foo".into());
+        let regex = ctx.re_builder().word("foo".into());
         reduce_inre_non_empty(&regex, &mut ctx, true);
         reduce_inre_non_empty(&regex, &mut ctx, false);
     }
@@ -379,8 +374,8 @@ mod tests {
     #[test]
     fn test_reduce_inre_positive_word_star() {
         let mut ctx = Context::default();
-        let foo = ctx.ast_builder().re_builder().word("foo".into());
-        let regex = ctx.ast_builder().re_builder().star(foo);
+        let foo = ctx.re_builder().word("foo".into());
+        let regex = ctx.re_builder().star(foo);
         reduce_inre_non_empty(&regex, &mut ctx, true);
         reduce_inre_non_empty(&regex, &mut ctx, false);
     }
@@ -388,7 +383,7 @@ mod tests {
     #[test]
     fn test_reduce_inre_positive_escape_sequence() {
         let mut ctx = Context::default();
-        let regex = parse_rust_regex("\x0a", ctx.ast_builder().re_builder()).unwrap();
+        let regex = parse_rust_regex("\x0a", ctx.re_builder()).unwrap();
         reduce_inre_non_empty(&regex, &mut ctx, true);
         reduce_inre_non_empty(&regex, &mut ctx, false);
     }

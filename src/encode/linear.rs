@@ -4,10 +4,8 @@ use indexmap::IndexMap;
 
 use crate::{
     bounds::Bounds,
-    repr::{
-        ir::{LinearConstraint, LinearOperator, LinearSummand, TrivialReducible},
-        Sorted,
-    },
+    context::Sorted,
+    ir::{LinearConstraint, LinearOperator, LinearSummand, TrivialReducible},
     sat::{nlit, plit, pvar, PVar},
 };
 

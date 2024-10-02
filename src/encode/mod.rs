@@ -2,11 +2,8 @@ use std::{fmt::Display, ops::Index, slice::Iter};
 
 use crate::{
     bounds::Bounds,
-    context::Context,
-    repr::{
-        ir::{AtomType, Literal, Pattern, Symbol},
-        Variable,
-    },
+    context::{Context, Variable},
+    ir::{AtomType, Literal, Pattern, Symbol},
     sat::{Clause, Cnf, PLit},
 };
 

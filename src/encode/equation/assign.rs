@@ -5,8 +5,8 @@ use std::cmp::Ordering;
 
 use crate::{
     bounds::Bounds,
+    context::Variable,
     encode::{domain::DomainEncoding, EncodingError, EncodingResult, LiteralEncoder, LAMBDA},
-    repr::Variable,
     sat::{nlit, plit, pvar},
 };
 

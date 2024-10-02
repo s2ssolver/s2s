@@ -12,7 +12,7 @@ use crate::{
         domain::{DomainEncoder, DomainEncoding},
         get_encoder, EncodingError, EncodingResult, LiteralEncoder,
     },
-    repr::ir::{Literal, VarSubstitution},
+    ir::{Literal, VarSubstitution},
     sat::{nlit, plit, pvar, PLit, PVar},
 };
 

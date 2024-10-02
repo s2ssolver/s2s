@@ -17,14 +17,11 @@ use regulaer::{
 
 use crate::{
     bounds::Bounds,
-    context::Context,
+    context::{Context, Variable},
     encode::{domain::DomainEncoding, EncodingError, EncodingResult, LiteralEncoder, LAMBDA},
-    repr::{
-        ast::smt_max_char,
-        ir::{RegularConstraint, Symbol},
-        Variable,
-    },
+    ir::{RegularConstraint, Symbol},
     sat::{nlit, plit, pvar, PVar},
+    smt::smt_max_char,
 };
 
 /// An encoder for regular constraints using automata.
@@ -446,7 +443,9 @@ mod test {
 
     use super::*;
 
-    use crate::{alphabet::Alphabet, bounds::Interval, encode::domain::DomainEncoder, repr::Sort};
+    use crate::{
+        alphabet::Alphabet, bounds::Interval, context::Sort, encode::domain::DomainEncoder,
+    };
 
     fn solve_with_bounds(re: Regex, pol: bool, ubounds: &[usize]) -> Option<bool> {
         let mut ctx = Context::default();
@@ -503,7 +502,7 @@ mod test {
     fn var_in_epsi() {
         let mut ctx = Context::default();
 
-        let re = ctx.ast_builder().re_builder().epsilon();
+        let re = ctx.re_builder().epsilon();
 
         assert_eq!(solve_with_bounds(re, true, &[1]), Some(true));
     }
@@ -512,7 +511,7 @@ mod test {
     fn var_in_none() {
         let mut ctx = Context::default();
 
-        let re = ctx.ast_builder().re_builder().none();
+        let re = ctx.re_builder().none();
 
         assert_eq!(solve_with_bounds(re, true, &[10]), Some(false));
     }
@@ -521,7 +520,7 @@ mod test {
     fn var_in_const_no_concat() {
         let mut ctx = Context::default();
 
-        let re = ctx.ast_builder().re_builder().word("foo".into());
+        let re = ctx.re_builder().word("foo".into());
 
         assert_eq!(solve_with_bounds(re, true, &[7]), Some(true));
     }
@@ -530,7 +529,7 @@ mod test {
     fn var_in_const_concat() {
         let mut ctx = Context::default();
 
-        let builder = ctx.ast_builder().re_builder();
+        let builder = ctx.re_builder();
 
         let args = vec![builder.word("foo".into()), builder.word("bar".into())];
         let re = builder.concat(args);

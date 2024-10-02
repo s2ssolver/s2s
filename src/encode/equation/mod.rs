@@ -8,7 +8,7 @@ use weq::WordEquationEncoder;
 
 // use crate::model::constraints::WordEquation;
 
-use crate::repr::ir::WordEquation;
+use crate::ir::WordEquation;
 
 use self::{assign::AssignmentEncoder, vareq::VareqEncoder};
 

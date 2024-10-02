@@ -1,15 +1,11 @@
 use std::rc::Rc;
 
 use indexmap::{IndexMap, IndexSet};
-use regulaer::{
-    automaton::NFA,
-    re::{ReBuilder, Regex},
-};
+use regulaer::{automaton::NFA, re::Regex};
 
 use crate::{
     bounds::{Bounds, Interval},
-    context::Context,
-    repr::Variable,
+    context::{Context, Variable},
 };
 
 use super::InferringStrategy;
@@ -43,7 +39,7 @@ impl RegularBoundsInferer {
             let re_pol = if polarity {
                 re
             } else {
-                ctx.ast_builder().re_builder().comp(re)
+                ctx.re_builder().comp(re)
             };
             let nfa = ctx.get_nfa(&re_pol);
             // TODO: Cache intersection, they are likely to be used in other inferrence steps too.
@@ -64,7 +60,7 @@ impl RegularBoundsInferer {
     }
 
     pub fn add_const_eq(&mut self, var: Variable, word: String, pol: bool, ctx: &mut Context) {
-        let builder = ctx.ast_builder().re_builder();
+        let builder = ctx.re_builder();
         let re = builder.word(word.into());
         self.add_reg(var, re, pol, ctx);
     }
@@ -231,13 +227,14 @@ impl InferringStrategy for RegularBoundsInferer {
 
 #[cfg(test)]
 mod tests {
+    use crate::context::Sort;
+
     use super::*;
-    use crate::repr::Sort;
 
     #[test]
     fn test_infer_single_re_finite() {
         let mut ctx = Context::default();
-        let rebuilder = ctx.ast_builder().re_builder();
+        let rebuilder = ctx.re_builder();
         let re = regulaer::parse::parse_rust_regex("^aa$", rebuilder).unwrap();
         let v = ctx.new_temp_var(Sort::String);
 
@@ -251,7 +248,7 @@ mod tests {
     #[test]
     fn test_infer_single_re_star() {
         let mut ctx = Context::default();
-        let rebuilder = ctx.ast_builder().re_builder();
+        let rebuilder = ctx.re_builder();
         let re = regulaer::parse::parse_rust_regex("^(aa)*$", rebuilder).unwrap();
         let v = ctx.new_temp_var(Sort::String);
 
@@ -265,7 +262,7 @@ mod tests {
     #[test]
     fn test_infer_intersection() {
         let mut ctx = Context::default();
-        let rebuilder = ctx.ast_builder().re_builder();
+        let rebuilder = ctx.re_builder();
         let re1 = regulaer::parse::parse_rust_regex("^(aa)*$", rebuilder).unwrap();
         let re2 = regulaer::parse::parse_rust_regex("^(aaa)*$", rebuilder).unwrap();
         let v = ctx.new_temp_var(Sort::String);
@@ -282,7 +279,7 @@ mod tests {
     #[test]
     fn test_infer_intersection_comp() {
         let mut ctx = Context::default();
-        let rebuilder = ctx.ast_builder().re_builder();
+        let rebuilder = ctx.re_builder();
         let re1 = regulaer::parse::parse_rust_regex("^(aaa)*$", rebuilder).unwrap();
         let re2 = regulaer::parse::parse_rust_regex("^aaa$", rebuilder).unwrap();
         let v = ctx.new_temp_var(Sort::String);
@@ -300,7 +297,7 @@ mod tests {
     fn test_infer_intersection_comp_2() {
         // (aaa)* and not(aaa) and not epsilon ==> smallest is aaaaaa, upper bound is 6
         let mut ctx = Context::default();
-        let rebuilder = ctx.ast_builder().re_builder();
+        let rebuilder = ctx.re_builder();
         let re1 = regulaer::parse::parse_rust_regex("^(aaa)*$", rebuilder).unwrap();
         let re2 = regulaer::parse::parse_rust_regex("^aaa$", rebuilder).unwrap();
         let epsi = rebuilder.epsilon();
@@ -318,7 +315,7 @@ mod tests {
     #[test]
     fn test_infer_intersection_empty() {
         let mut ctx = Context::default();
-        let rebuilder = ctx.ast_builder().re_builder();
+        let rebuilder = ctx.re_builder();
         let re1 = regulaer::parse::parse_rust_regex("^aaaa$", rebuilder).unwrap();
         let re2 = regulaer::parse::parse_rust_regex("^(aa)*$", rebuilder).unwrap();
         let v = ctx.new_temp_var(Sort::String);

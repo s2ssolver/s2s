@@ -18,7 +18,7 @@ pub use int::*;
 pub use string::*;
 pub use substitution::*;
 
-use super::Variable;
+use crate::context::Variable;
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub enum AtomType {
@@ -501,7 +501,7 @@ impl<'a> Iterator for LiteralIterator<'a> {
 
 #[cfg(test)]
 mod tests {
-    use crate::repr::Sort;
+    use crate::context::Sort;
 
     use super::*;
     #[test]

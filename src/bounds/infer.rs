@@ -5,13 +5,10 @@ use linear::LinearRefiner;
 use regular::RegularBoundsInferer;
 
 use crate::{
-    context::Context,
-    repr::{
-        ir::{
-            AtomType, LinearArithTerm, LinearConstraint, LinearOperator, Literal,
-            RegularConstraint, WordEquation,
-        },
-        Sorted, Variable,
+    context::{Context, Sorted, Variable},
+    ir::{
+        AtomType, LinearArithTerm, LinearConstraint, LinearOperator, Literal, RegularConstraint,
+        WordEquation,
     },
 };
 
@@ -173,10 +170,6 @@ impl BoundInferer {
             AtomType::LinearConstraint(lc) => self.add_linear_constraint(lc),
         }
         self.fragment.and(&lit);
-    }
-
-    pub fn literals(&self) -> &IndexSet<Literal> {
-        &self.literals
     }
 
     /// Returns true if the literals contain a conflict, i.e., a literal and its negation.

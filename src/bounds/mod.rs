@@ -8,8 +8,7 @@ use std::{cmp::Ordering, fmt::Display};
 use indexmap::IndexMap;
 use quickcheck::Arbitrary;
 
-use crate::repr::{Sort, Sorted, Variable};
-
+use crate::context::{Sort, Sorted, Variable};
 /// Represents a value that can either be a finite integer, positive infinity,
 /// or negative infinity.
 #[derive(Debug, PartialEq, Eq, Copy, Clone)]
@@ -441,7 +440,6 @@ impl Display for Bounds {
 
 #[cfg(test)]
 mod tests {
-    use crate::repr::Sort;
 
     use super::*;
 

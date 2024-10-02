@@ -12,7 +12,7 @@ use string::StringDomainEncoder;
 
 use crate::{
     alphabet::Alphabet, bounds::Bounds, context::Context, encode::EncodingResult,
-    repr::ir::VarSubstitution,
+    ir::VarSubstitution,
 };
 
 #[derive(Clone, Debug)]

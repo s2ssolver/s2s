@@ -6,12 +6,11 @@
 use std::{collections::HashMap, rc::Rc};
 
 use itertools::Itertools;
-use regulaer::re::{ReBuilder, Regex};
+use regulaer::re::Regex;
 
 use crate::{
-    context::Context,
-    repr::ir::{AtomType, Formula, Literal, Pattern},
-    repr::{Sort, Variable},
+    context::{Context, Sort, Variable},
+    ir::{AtomType, Formula, Literal, Pattern},
 };
 
 use super::PreprocessingError;
@@ -207,7 +206,7 @@ impl Normalizer {
 
     /// Creates a regular expression that matches all strings with the given prefix.
     fn prefix_re(&self, prefix: &str, ctx: &mut Context) -> Regex {
-        let builder = ctx.ast_builder().re_builder();
+        let builder = ctx.re_builder();
         let all = builder.all();
         let pref = builder.word(prefix.into());
         builder.concat(vec![pref, all])
@@ -215,7 +214,7 @@ impl Normalizer {
 
     /// Creates a regular expression that matches all strings with the given suffix.
     fn suffix_re(&self, suffix: &str, ctx: &mut Context) -> Regex {
-        let builder = ctx.ast_builder().re_builder();
+        let builder = ctx.re_builder();
         let all = builder.all();
         let suff = builder.word(suffix.into());
         builder.concat(vec![all, suff])
@@ -223,7 +222,7 @@ impl Normalizer {
 
     /// Creates a regular expression that matches all strings containing the given substring.
     fn contains_re(&self, needle: &str, ctx: &mut Context) -> Regex {
-        let builder = ctx.ast_builder().re_builder();
+        let builder = ctx.re_builder();
         let all = builder.all();
         let needle = builder.word(needle.into());
         builder.concat(vec![all.clone(), needle, all])

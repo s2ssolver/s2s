@@ -2,7 +2,7 @@ use regulaer::re::RegOp;
 
 use crate::{
     context::Context,
-    repr::ir::{
+    ir::{
         AtomType, LinearArithTerm, LinearOperator, Literal, Pattern, Symbol, VarSubstitution,
         WordEquation,
     },

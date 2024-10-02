@@ -3,7 +3,7 @@ use std::{collections::HashMap, fmt::Display, ops::Index};
 use indexmap::IndexSet;
 use quickcheck::Arbitrary;
 
-use crate::repr::{Sort, Sorted, Variable};
+use crate::context::{Sort, Sorted, Variable};
 
 use super::TrivialReducible;
 

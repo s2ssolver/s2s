@@ -2,7 +2,7 @@
 
 use crate::{
     context::Context,
-    repr::ir::{AtomType, Literal, Pattern, Symbol, VarSubstitution, WordEquation},
+    ir::{AtomType, Literal, Pattern, Symbol, VarSubstitution, WordEquation},
 };
 
 use super::{RewriteSimplifier, Simplifier};

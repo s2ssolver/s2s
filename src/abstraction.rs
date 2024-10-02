@@ -6,7 +6,7 @@ use std::{
 };
 
 use crate::{
-    repr::ir::{Atom, Formula},
+    ir::{Atom, Formula},
     sat::{nlit, plit, pvar, PFormula, PVar},
 };
 

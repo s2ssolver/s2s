@@ -1,15 +1,13 @@
 use indexmap::IndexMap;
 
 use super::DomainEncoding;
+use crate::context::Sorted;
 use crate::sat::{plit, PVar};
 use crate::{
     bounds::{Bounds, Interval},
-    context::Context,
+    context::{Context, Sort, Variable},
     encode::{card::IncrementalEO, EncodingResult},
-    repr::{
-        ir::{LinearArithTerm, VarSubstitution},
-        Sort, Sorted, Variable,
-    },
+    ir::{LinearArithTerm, VarSubstitution},
     sat::pvar,
 };
 

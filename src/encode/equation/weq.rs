@@ -5,12 +5,12 @@ use std::time::Instant;
 
 use crate::bounds::Bounds;
 
+use crate::context::Variable;
 use crate::encode::card::{exactly_one, IncrementalALO};
 use crate::encode::domain::DomainEncoding;
 use crate::encode::{EncodingError, EncodingResult, FilledPattern, LiteralEncoder, LAMBDA};
 
-use crate::repr::ir::{Pattern, Symbol, WordEquation};
-use crate::repr::Variable;
+use crate::ir::{Pattern, Symbol, WordEquation};
 use crate::sat::{nlit, plit, pvar, Cnf, PVar};
 
 use indexmap::{indexset, IndexMap};
@@ -1058,11 +1058,8 @@ mod tests {
             step::{update_bounds, BoundStep},
             Interval,
         },
-        context::Context,
-        repr::{
-            ir::{parse_simple_equation, Substitutable, TrivialReducible},
-            Sort,
-        },
+        context::{Context, Sort},
+        ir::{parse_simple_equation, Substitutable, TrivialReducible},
     };
     use std::collections::HashSet;
 
