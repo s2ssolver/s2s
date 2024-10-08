@@ -73,7 +73,7 @@ pub struct SolverOptions {
     simplify: bool,
     simp_iters: usize,
     cegar: bool,
-    max_bounds: usize,
+    max_bounds: Option<Interval>,
     step: BoundStep,
     check_model: bool,
     unsat_on_max_bound: bool,
@@ -85,7 +85,7 @@ impl Default for SolverOptions {
             simplify: DEFAULT_SIMPLIFY,
             simp_iters: DEFAULT_SIMP_MAX_STEPS,
             cegar: true,
-            max_bounds: usize::MAX,
+            max_bounds: None,
             step: BoundStep::default(),
             check_model: DEFAULT_CHECK_MODEL,
             unsat_on_max_bound: DEFAULT_UNSAT_ON_MAX_BOUND,
@@ -124,8 +124,8 @@ impl SolverOptions {
     /// The maximum upper bound the solver will try to find a solution for.
     /// If no solution is found within this bound, the solver returns `unknown`.
     /// Use `unsat_on_max_bound` to change this behavior to return `unsat` instead.
-    pub fn max_bounds(&mut self, max_bounds: usize) -> &mut Self {
-        self.max_bounds = max_bounds;
+    pub fn max_bounds(&mut self, max_bounds: u32) -> &mut Self {
+        self.max_bounds = Some(Interval::new(max_bounds, max_bounds));
         self
     }
 
@@ -247,8 +247,9 @@ impl Solver {
             .max(1); // need to be at least 1
             bounds.set(var.as_ref().clone(), Interval::new(lower, upper));
         }
+        let clamped = self.clamp_bounds(bounds);
         // Clamp the bounds to the maximum bounds, if set
-        Some(self.clamp_bounds(&bounds))
+        Some(clamped)
     }
 
     fn run(
@@ -328,7 +329,7 @@ impl Solver {
                     // Refine bounds. If bounds are at max, return UNSAT. Otherwise, continue with new bounds.
                     match refine::refine_bounds(&failed, &bounds, fm, self.options.step, ctx) {
                         refine::BoundRefinement::Refined(b) => {
-                            let clamped = self.clamp_bounds(&b);
+                            let clamped = self.clamp_bounds(b);
                             // if the clamped bound are equal to the bounds we used in this round, nothing changed
                             // in that case, the limit is reached
                             if clamped == bounds {
@@ -378,20 +379,16 @@ impl Solver {
     }
 
     /// Clamp the bounds to the maximum bounds.
-    fn clamp_bounds(&self, bounds: &Bounds) -> Bounds {
-        let mut new_bounds = bounds.clone();
-        for (var, bound) in bounds.iter() {
-            let new_bound = if var.sort().is_string() {
-                bound.intersect(Interval::new(0, self.options.max_bounds))
-            } else {
-                bound.intersect(Interval::new(
-                    -(self.options.max_bounds as isize),
-                    self.options.max_bounds,
-                ))
-            };
-
-            new_bounds.set(var.clone(), new_bound);
+    fn clamp_bounds(&self, bounds: Bounds) -> Bounds {
+        if let Some(max_bound) = self.options.max_bounds {
+            let mut new_bounds = bounds.clone();
+            for (var, bound) in bounds.iter() {
+                let new_bound = bound.intersect(max_bound);
+                new_bounds.set(var.clone(), new_bound);
+            }
+            new_bounds
+        } else {
+            bounds
         }
-        new_bounds
     }
 }

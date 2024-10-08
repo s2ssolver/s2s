@@ -21,7 +21,7 @@ struct Options {
 
     /// The maximum variable bound to check before returning `unknown`
     #[arg(short = 'B', long, value_enum, default_value = None)]
-    max_bound: Option<usize>,
+    max_bound: Option<u32>,
 
     /// The minimal initial variable bound to start the search with
     #[arg(long, short = 'b', value_enum, default_value = "1")]
