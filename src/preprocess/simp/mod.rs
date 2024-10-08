@@ -1,3 +1,4 @@
+mod entailedvar;
 mod identities;
 mod indep;
 mod levis;
@@ -77,6 +78,7 @@ fn pure_simps() -> Vec<Box<dyn PureSimplifier>> {
 
 fn rewrite_simps(fm: &Formula) -> Vec<Box<dyn RewriteSimplifier>> {
     vec![
+        Box::new(entailedvar::EntailedBooleanVars),
         Box::new(identities::EntailedIdentities),
         Box::new(IndependentVarReducer::new(fm)),
         Box::new(substring::ConstantPrefixSuffix),
