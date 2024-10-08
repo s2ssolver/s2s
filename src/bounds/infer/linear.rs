@@ -6,12 +6,8 @@ use indexmap::IndexSet;
 
 use crate::{
     bounds::{BoundValue, Bounds},
-    repr::{
-        ir::{
-            LinearArithTerm, LinearConstraint, LinearOperator, LinearSummand, Symbol, WordEquation,
-        },
-        Sorted, Variable,
-    },
+    context::{Sorted, Variable},
+    ir::{LinearArithTerm, LinearConstraint, LinearOperator, LinearSummand, Symbol, WordEquation},
 };
 
 use super::InferringStrategy;

@@ -13,16 +13,17 @@ mod bounds;
 mod context;
 mod encode;
 mod error;
+mod ir;
 mod preprocess;
-mod repr;
 mod sat;
+mod smt;
 mod solver;
 
 use std::{io::BufRead, time::Instant};
 
 use context::Context;
 pub use error::PublicError as Error;
-use repr::ast::parse::AstParser;
+use smt::parse::AstParser;
 pub use solver::{Solver, SolverOptions, SolverResult};
 
 /// Solves an SMT problem over the theory of strings.
@@ -36,7 +37,7 @@ pub fn solve_smt(smt: impl BufRead, options: Option<SolverOptions>) -> Result<So
 
     // Parse the input problem
     let parser = AstParser::default();
-    let script = parser.parse_script(smt, &mut ctx)?;
+    let script = parser.parse_script(smt)?;
     log::info!("Parsed in {:?}", t.elapsed());
     t = Instant::now();
 

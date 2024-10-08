@@ -2,7 +2,7 @@ use regulaer::re::{deriv::deriv_word, RegexProps, Word};
 
 use crate::{
     context::Context,
-    repr::ir::{AtomType, Literal, Pattern, VarSubstitution},
+    ir::{AtomType, Literal, Pattern, VarSubstitution},
 };
 
 use super::{PureSimplifier, RewriteSimplifier, Simplifier};
@@ -68,7 +68,7 @@ impl PureSimplifier for ConstantDerivation {
             let re = if !prefix.is_empty() {
                 let w = Word::from_iter(prefix.chars());
                 simped = true;
-                deriv_word(inre.re(), &w, ctx.ast_builder().re_builder())
+                deriv_word(inre.re(), &w, ctx.re_builder())
             } else {
                 // we're just cloning an Rc, so it's cheap
                 inre.re().clone()
@@ -77,11 +77,11 @@ impl PureSimplifier for ConstantDerivation {
             let suffix = pattern.constant_suffix();
             let re = if !suffix.is_empty() {
                 let w = Word::from_iter(suffix.chars()).reversed();
-                let rev = ctx.ast_builder().re_builder().reversed(&re);
-                let rev_deriv = deriv_word(&rev, &w, ctx.ast_builder().re_builder());
+                let rev = ctx.re_builder().reversed(&re);
+                let rev_deriv = deriv_word(&rev, &w, ctx.re_builder());
                 simped = true;
                 // reverse back the derivative
-                ctx.ast_builder().re_builder().reversed(&rev_deriv)
+                ctx.re_builder().reversed(&rev_deriv)
             } else {
                 re
             };

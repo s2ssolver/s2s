@@ -6,7 +6,7 @@ use std::{
 };
 
 use crate::{
-    repr::ir::{Atom, Formula},
+    ir::{Atom, Formula},
     sat::{nlit, plit, pvar, PFormula, PVar},
 };
 
@@ -73,11 +73,6 @@ impl Definition {
             self.polarity,
             DefinitionType::NegativeImplication | DefinitionType::Equivalence
         )
-    }
-
-    /// Returns true if the definition is equivalent.
-    pub fn is_equiv(&self) -> bool {
-        matches!(self.polarity, DefinitionType::Equivalence)
     }
 }
 

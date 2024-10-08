@@ -3,7 +3,7 @@ use indexmap::IndexSet;
 use crate::{
     bounds::{infer::BoundInferer, step::BoundStep, Bounds, Interval},
     context::Context,
-    repr::ir::{Formula, Literal},
+    ir::{Formula, Literal},
 };
 
 pub enum BoundRefinement {

@@ -824,7 +824,7 @@ impl Display for Contains {
 use quickcheck;
 use regulaer::re::{Regex, RegexProps};
 
-use crate::repr::{Sort, Sorted, Variable};
+use crate::context::{Sort, Sorted, Variable};
 
 use super::{Substitutable, TrivialReducible};
 
@@ -871,7 +871,6 @@ impl Arbitrary for Pattern {
 #[cfg(test)]
 mod tests {
     use quickcheck_macros::quickcheck;
-    use regulaer::re::ReBuilder;
 
     use crate::context::Context;
 
@@ -926,7 +925,7 @@ mod tests {
     #[test]
     fn reducible_re_none() {
         let mut ctx = Context::default();
-        let re = ctx.ast_builder().re_builder().none();
+        let re = ctx.re_builder().none();
         let v = ctx.new_temp_var(Sort::String);
         let pat = Pattern::variable(&v);
         let re_constr = RegularConstraint::new(pat, re);

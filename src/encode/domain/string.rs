@@ -6,15 +6,12 @@ use itertools::Itertools;
 use crate::{
     alphabet::Alphabet,
     bounds::Bounds,
-    context::Context,
+    context::{Context, Sort, Sorted, Variable},
     encode::{
         card::{exactly_one, IncrementalEO},
         EncodingResult, LAMBDA,
     },
-    repr::{
-        ir::{Pattern, VarSubstitution},
-        Sort, Sorted, Variable,
-    },
+    ir::{Pattern, VarSubstitution},
     sat::{nlit, plit, pvar, Cnf, PLit, PVar},
 };
 
@@ -292,9 +289,8 @@ mod tests {
             step::{update_bounds, BoundStep},
             Bounds, Interval,
         },
-        context::Context,
+        context::{Context, Sort},
         encode::{domain::DomainEncoding, LAMBDA},
-        repr::Sort,
         sat::plit,
     };
 

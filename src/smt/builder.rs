@@ -2,7 +2,7 @@ use std::{collections::HashMap, rc::Rc};
 
 use regulaer::re::{ReBuilder, Regex};
 
-use crate::repr::{Sort, Sorted, Variable};
+use crate::context::{Sort, Sorted, Variable};
 
 use super::{CoreExpr, ExprType, Expression, IntExpr, StrExpr};
 
@@ -29,34 +29,6 @@ impl AstBuilder {
             self.fm_registry.insert(op, rc.clone());
             rc
         }
-    }
-
-    /// Creates a new variable expression based on the sort of the variable.
-    pub fn var(&mut self, v: Rc<Variable>) -> Rc<Expression> {
-        match v.sort() {
-            Sort::Bool => self.bool_var(v),
-            Sort::String => self.string_var(v),
-            Sort::Int => self.int_var(v),
-            Sort::RegLang => unreachable!("Regular language variables are not supported"),
-        }
-    }
-
-    fn bool_var(&mut self, v: Rc<Variable>) -> Rc<Expression> {
-        assert!(v.sort().is_bool());
-        let v = ExprType::Core(CoreExpr::Var(v));
-        self.intern(v)
-    }
-
-    fn string_var(&mut self, v: Rc<Variable>) -> Rc<Expression> {
-        assert!(v.sort().is_string());
-        let v = ExprType::String(StrExpr::Var(v));
-        self.intern(v)
-    }
-
-    fn int_var(&mut self, v: Rc<Variable>) -> Rc<Expression> {
-        assert!(v.sort().is_int());
-        let v = ExprType::Int(IntExpr::Var(v));
-        self.intern(v)
     }
 
     pub fn re_builder(&mut self) -> &mut ReBuilder {
@@ -374,7 +346,7 @@ impl AstBuilder {
 #[cfg(test)]
 mod tests {
 
-    use crate::{context::Context, repr::Sort};
+    use crate::context::{Context, Sort};
 
     use super::*;
 

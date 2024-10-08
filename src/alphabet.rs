@@ -2,9 +2,9 @@ use std::fmt::{self, Display, Formatter};
 
 use indexmap::IndexSet;
 
-use crate::repr::{
+use crate::{
+    context::Sorted,
     ir::{util::partition_by_vars, AtomType, Formula, Literal},
-    Sorted,
 };
 
 use regulaer::alph::Alphabet as InnerAlphabet;
@@ -166,21 +166,15 @@ mod tests {
 
     use super::*;
     use crate::{
-        context::Context,
-        repr::{
-            ir::{
-                Atom, LinearArithTerm, LinearOperator, LinearSummand, Literal, Pattern,
-                WordEquation,
-            },
-            Sort,
+        context::{Context, Sort},
+        ir::{
+            Atom, LinearArithTerm, LinearOperator, LinearSummand, Literal, Pattern, WordEquation,
         },
     };
 
-    use regulaer::re::ReBuilder;
-
     fn make_in_re(var: &str, ctx: &mut Context) -> Rc<Atom> {
         let x = ctx.make_var(var.to_string(), Sort::String).unwrap();
-        let re = ctx.ast_builder().re_builder().word("foo".into());
+        let re = ctx.re_builder().word("foo".into());
         ctx.ir_builder().in_re(Pattern::variable(x.as_ref()), re)
     }
 

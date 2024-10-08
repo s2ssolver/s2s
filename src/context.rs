@@ -1,17 +1,117 @@
+use std::hash::{Hash, Hasher};
 use std::{
     //cell::{RefCell, RefMut},
     collections::{HashMap, HashSet},
+    fmt::Display,
     rc::Rc,
     time::Instant,
 };
 
+use regulaer::re::ReBuilder;
 use regulaer::{
     automaton::NFA,
     compiler::{Compiler, Thompson},
     re::Regex,
 };
 
-use crate::repr::{ast::AstBuilder, ir::IrBuilder, Sort, Sorted, Variable};
+use crate::ir::IrBuilder;
+
+pub type Id = usize;
+
+/// The SMT-LIB sorts.
+/// Currently, only Int, String, and Bool are supported.
+#[derive(Debug, Clone, Copy, Hash, Eq, PartialEq)]
+pub enum Sort {
+    Int,
+    String,
+    RegLan,
+    Bool,
+}
+impl Sort {
+    /// Returns true if the sort is Bool.
+    pub fn is_bool(&self) -> bool {
+        matches!(self, Sort::Bool)
+    }
+
+    /// Returns true if the sort is Int.
+    pub fn is_int(&self) -> bool {
+        matches!(self, Sort::Int)
+    }
+
+    /// Returns true if the sort is String.
+    pub fn is_string(&self) -> bool {
+        matches!(self, Sort::String)
+    }
+
+    /// Returns true if the sort is RegLang.
+    pub fn is_reglang(&self) -> bool {
+        matches!(self, Sort::RegLan)
+    }
+}
+impl Display for Sort {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Sort::Int => write!(f, "Int"),
+            Sort::String => write!(f, "String"),
+            Sort::RegLan => write!(f, "RegLang"),
+            Sort::Bool => write!(f, "Bool"),
+        }
+    }
+}
+pub trait Sorted {
+    fn sort(&self) -> Sort;
+}
+
+/// A variable.
+/// Variables are uniquely identified by their name.
+/// Every variable has a sort.
+#[derive(Debug, Clone)]
+pub struct Variable {
+    id: Id,
+    name: String,
+    sort: Sort,
+}
+impl Variable {
+    pub(crate) fn new(id: Id, name: String, sort: Sort) -> Self {
+        assert!(!name.chars().any(|c| c == '|'));
+        Self { id, name, sort }
+    }
+
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    /// Returns the unique identifier of the variable.
+    #[allow(dead_code)]
+    pub(crate) fn id(&self) -> Id {
+        self.id
+    }
+}
+impl PartialEq for Variable {
+    fn eq(&self, other: &Self) -> bool {
+        self.id == other.id
+    }
+}
+impl Eq for Variable {}
+impl Hash for Variable {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.id.hash(state);
+    }
+}
+impl Display for Variable {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if self.name.chars().all(|c| c.is_ascii_alphabetic()) {
+            write!(f, "{}", self.name)
+        } else {
+            write!(f, "|{}|", self.name)
+        }
+    }
+}
+impl Sorted for Variable {
+    fn sort(&self) -> Sort {
+        self.sort
+    }
+}
 
 #[derive(Default)]
 pub struct Context {
@@ -21,15 +121,17 @@ pub struct Context {
     temp_vars: HashSet<Rc<Variable>>,
 
     //ast_builder: RefCell<AstBuilder>,
-    ast_builder: AstBuilder,
+
     //ir_builder: RefCell<IrBuilder>,
     ir_builder: IrBuilder,
+    re_builder: ReBuilder,
 
     nfa_cache: HashMap<Regex, Rc<NFA>>,
 }
 
 impl Context {
     /// Creates a new variable.
+    /// If no variable with the same name exists, a new variable is created and returned.
     /// If a variable with the same name and same sort already exists, it is returned.
     /// If a variable with the same name but different sort already exists, None is returned.
     pub fn make_var(&mut self, name: String, sort: Sort) -> Option<Rc<Variable>> {
@@ -90,18 +192,24 @@ impl Context {
     // /// The [AstBuilder] is used to create AST nodes.
     // /// The builder also allows access to the [ReBuilder] that is used to create regular expressions.
     // /// Regular expressions built using the [ReBuilder] are used in both the AST as well as in the IR.
-    pub fn ast_builder(&mut self) -> &mut AstBuilder {
-        &mut self.ast_builder
-    }
+    // pub fn ast_builder(&mut self) -> &mut AstBuilder {
+    //     &mut self.ast_builder
+    // }
 
     // pub fn ast_builder(&self) -> RefMut<AstBuilder> {
     //     self.ast_builder.borrow_mut()
     // }
 
-    // /// Returns the instance of the [IrBuilder] that is shared by this context.
-    // /// The [IrBuilder] is used to create IR nodes.
+    /// Returns the instance of the [IrBuilder] that is shared by this context.
+    /// The [IrBuilder] is used to create IR nodes.
     pub fn ir_builder(&mut self) -> &mut IrBuilder {
         &mut self.ir_builder
+    }
+
+    /// Returns the instance of the [ReBuilder] that is shared by this context.
+    /// The [ReBuilder] is used to create regular expressions.
+    pub fn re_builder(&mut self) -> &mut ReBuilder {
+        &mut self.re_builder
     }
 
     /// Returns the NFA for the given regular expression.
@@ -111,7 +219,7 @@ impl Context {
         let nfa = if let Some(nfa) = self.nfa_cache.get(regex) {
             nfa.clone()
         } else {
-            let builder = self.ast_builder().re_builder();
+            let builder = self.re_builder();
 
             let nfa = Thompson::default()
                 .compile(regex, builder)

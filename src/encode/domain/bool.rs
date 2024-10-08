@@ -3,8 +3,8 @@ use std::rc::Rc;
 use indexmap::IndexMap;
 
 use crate::{
-    context::Context,
-    repr::{ir::VarSubstitution, Sort, Variable},
+    context::{Context, Sort, Variable},
+    ir::VarSubstitution,
     sat::{plit, pvar, PVar},
 };
 

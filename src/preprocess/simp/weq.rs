@@ -2,7 +2,7 @@
 
 use crate::{
     context::Context,
-    repr::ir::{AtomType, Literal, WordEquation},
+    ir::{AtomType, Literal, WordEquation},
 };
 
 use super::{PureSimplifier, Simplifier};

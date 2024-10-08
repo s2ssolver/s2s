@@ -5,8 +5,9 @@ pub mod simp;
 use thiserror::Error;
 
 use crate::{
-    context::Context,
-    repr::{ir::Formula, Sort},
+    context::{Context, Sort},
+    ir::Formula,
+    smt::Symbol,
 };
 
 pub use convert::convert_script;
@@ -22,6 +23,10 @@ pub enum PreprocessingError {
         expected: Sort,
         got: Sort,
     },
+    #[error("Undeclared variable: {0}")]
+    UndeclaredVariable(Symbol),
+    #[error("Variable `{0}` has already been declared")]
+    AlreadyDeclared(Symbol),
     #[error("Negation of {0} introduces unsupported quantifier")]
     InvalidNegationQuantifier(String),
     #[error("Not in NNF: {0}")]

@@ -1,6 +1,6 @@
 //! Functions for increasing bounds on variables.
 
-use crate::repr::Sorted;
+use crate::context::Sorted;
 
 use super::{BoundValue, Bounds, Interval};
 
@@ -119,6 +119,7 @@ impl BoundStep {
     }
 }
 
+#[allow(dead_code)]
 pub fn update_bounds(bounds: &Bounds, step: BoundStep) -> Bounds {
     let mut new_bounds = Bounds::default();
     for (var, interval) in bounds.iter() {

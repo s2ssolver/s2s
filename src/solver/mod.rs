@@ -9,12 +9,9 @@ use crate::{
     abstraction::{abstract_fm, Abstraction, Definition},
     alphabet::{self, Alphabet},
     bounds::{infer::BoundInferer, step::BoundStep, Bounds, Interval},
-    context::Context,
+    context::{Context, Sorted},
+    ir::{Formula, VarSubstitution},
     preprocess::{self, simp, PreprocessingError},
-    repr::{
-        ir::{Formula, VarSubstitution},
-        Sorted,
-    },
     sat::to_cnf,
 };
 

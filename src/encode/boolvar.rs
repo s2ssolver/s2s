@@ -2,7 +2,7 @@ use std::rc::Rc;
 
 use crate::{
     bounds::Bounds,
-    repr::{Sorted, Variable},
+    context::{Sorted, Variable},
     sat::{nlit, plit},
 };
 

@@ -10,7 +10,7 @@ use indexmap::IndexSet;
 
 use crate::{
     context::Context,
-    repr::ir::{Formula, Literal, VarSubstitution},
+    ir::{Formula, Literal, VarSubstitution},
 };
 
 pub struct SimpResult {

@@ -4,8 +4,8 @@ use std::cmp::{min, Ordering};
 
 use crate::{
     bounds::Bounds,
+    context::Variable,
     encode::{domain::DomainEncoding, EncodingError, EncodingResult, LiteralEncoder, LAMBDA},
-    repr::Variable,
     sat::{nlit, plit, pvar, PVar},
 };
 

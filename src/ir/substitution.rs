@@ -3,10 +3,7 @@ use std::collections::HashMap;
 use std::fmt::{Display, Write};
 use std::rc::Rc;
 
-use crate::{
-    context::Context,
-    repr::{Sort, Sorted, Variable},
-};
+use crate::context::{Context, Sort, Sorted, Variable};
 
 use super::{int::LinearSummand, string::Symbol, AtomType, Formula, LinearArithTerm, Pattern};
 use super::{Atom, Literal, VariableTerm};
