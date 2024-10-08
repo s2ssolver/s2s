@@ -38,7 +38,7 @@ impl TermVisitor<Constant, Identifier, Keyword, SExpr, Symbol, Sort> for AstPars
                     "false" => Ok(CoreExpr::Bool(false).into()),
                     "re.all" => Ok(StrExpr::ReAll.into()),
                     "re.none" => Ok(StrExpr::ReNone.into()),
-                    "re.allchar" => Ok(StrExpr::ReAll.into()),
+                    "re.allchar" => Ok(StrExpr::ReAllChar.into()),
                     _ => Err(AstError::Undeclared(name.clone())),
                 },
             }
@@ -175,7 +175,7 @@ impl TermVisitor<Constant, Identifier, Keyword, SExpr, Symbol, Sort> for AstPars
                         fname.indices()[0]
                     )));
                 };
-                StrExpr::ReLoop(std::mem::take(&mut args[0]), 0, exp).into()
+                StrExpr::RePow(std::mem::take(&mut args[0]), exp).into()
             }
 
             // int
@@ -255,5 +255,80 @@ impl TermVisitor<Constant, Identifier, Keyword, SExpr, Symbol, Sort> for AstPars
         )>,
     ) -> Result<Self::T, Self::E> {
         Err(AstError::Unsupported("attributes".to_string()))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+
+    use super::*;
+
+    fn parse_term(term: &str) -> Expression {
+        let script = format!("(assert {})", term);
+
+        let parser = AstParser::default();
+        let script = parser.parse_script(script.as_bytes()).unwrap();
+        match &script.commands()[0] {
+            crate::smt::SmtCommand::Assert(expression) => expression.clone(),
+            _ => unreachable!(),
+        }
+    }
+
+    #[test]
+    fn parse_re_all() {
+        let term = parse_term(r#"re.all"#);
+        assert_eq!(term, StrExpr::ReAll.into());
+    }
+
+    #[test]
+    fn parse_re_none() {
+        let term = parse_term(r#"re.none"#);
+        assert_eq!(term, StrExpr::ReNone.into());
+    }
+
+    #[test]
+    fn parse_re_allchar() {
+        let term = parse_term(r#"re.allchar"#);
+        assert_eq!(term, StrExpr::ReAllChar.into());
+    }
+
+    #[test]
+    fn parse_re_plus() {
+        let term = parse_term(r#"(re.+ (str.to_re "a"))"#);
+        if let Expression::String(expr) = term {
+            assert!(matches!(*expr, StrExpr::RePlus(_)));
+        } else {
+            panic!("Expected a re.+ expression");
+        }
+    }
+
+    #[test]
+    fn parse_re_comp() {
+        let term = parse_term(r#"(re.comp (str.to_re "a"))"#);
+        if let Expression::String(expr) = term {
+            assert!(matches!(*expr, StrExpr::ReComp(_)));
+        } else {
+            panic!("Expected a re.+ expression");
+        }
+    }
+
+    #[test]
+    fn parse_re_loop() {
+        let term = parse_term(r#"((_ re.loop 1 2) (str.to_re "a"))"#);
+        if let Expression::String(expr) = term {
+            assert!(matches!(*expr, StrExpr::ReLoop(_, 1, 2)));
+        } else {
+            panic!("Expected a re.loop expression");
+        }
+    }
+
+    #[test]
+    fn parse_re_pow() {
+        let term = parse_term(r#"((_ re.^ 2) (str.to_re "a"))"#);
+        if let Expression::String(expr) = term {
+            assert!(matches!(*expr, StrExpr::RePow(_, 2)), "{}", expr);
+        } else {
+            panic!("Expected a re.loop expression");
+        }
     }
 }
