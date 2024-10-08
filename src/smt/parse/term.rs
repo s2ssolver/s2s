@@ -149,9 +149,9 @@ impl TermVisitor<Constant, Identifier, Keyword, SExpr, Symbol, Sort> for AstPars
             "re.union" => StrExpr::ReUnion(args).into(),
             "re.inter" => StrExpr::ReInter(args).into(),
             "re.*" if args.len() == 1 => StrExpr::ReStar(std::mem::take(&mut args[0])).into(),
-            "re.+" if args.len() == 1 => StrExpr::ReStar(std::mem::take(&mut args[0])).into(),
-            "re.opt" if args.len() == 1 => StrExpr::ReStar(std::mem::take(&mut args[0])).into(),
-            "re.comp" if args.len() == 1 => StrExpr::ReStar(std::mem::take(&mut args[0])).into(),
+            "re.+" if args.len() == 1 => StrExpr::RePlus(std::mem::take(&mut args[0])).into(),
+            "re.opt" if args.len() == 1 => StrExpr::ReOpt(std::mem::take(&mut args[0])).into(),
+            "re.comp" if args.len() == 1 => StrExpr::ReComp(std::mem::take(&mut args[0])).into(),
             "re.loop" if fname.indices().len() == 2 && args.len() == 1 => {
                 let (lower, upper) = if let (Index::Num(l), Index::Num(u)) =
                     (fname.indices()[0].clone(), fname.indices()[1].clone())
