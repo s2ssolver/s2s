@@ -66,6 +66,7 @@ impl std::fmt::Display for SolverResult {
 const DEFAULT_SIMPLIFY: bool = true;
 const DEFAULT_SIMP_MAX_STEPS: usize = 500;
 const DEFAULT_CHECK_MODEL: bool = false;
+const DEFAULT_UNSAT_ON_MAX_BOUND: bool = false;
 #[derive(Debug, Clone)]
 pub struct SolverOptions {
     dry: bool,
@@ -75,6 +76,7 @@ pub struct SolverOptions {
     max_bounds: usize,
     step: BoundStep,
     check_model: bool,
+    unsat_on_max_bound: bool,
 }
 impl Default for SolverOptions {
     fn default() -> Self {
@@ -86,6 +88,7 @@ impl Default for SolverOptions {
             max_bounds: usize::MAX,
             step: BoundStep::default(),
             check_model: DEFAULT_CHECK_MODEL,
+            unsat_on_max_bound: DEFAULT_UNSAT_ON_MAX_BOUND,
         }
     }
 }
@@ -119,9 +122,16 @@ impl SolverOptions {
     }
 
     /// The maximum upper bound the solver will try to find a solution for.
-    /// If no solution is found within this bound, the solver returns `Unknown`.
+    /// If no solution is found within this bound, the solver returns `unknown`.
+    /// Use `unsat_on_max_bound` to change this behavior to return `unsat` instead.
     pub fn max_bounds(&mut self, max_bounds: usize) -> &mut Self {
         self.max_bounds = max_bounds;
+        self
+    }
+
+    /// If a maximum bound is set (using [`max_bounds`](Self::max_bounds)), the solver will return `unsat` instead of `unknown` if the maximum bound is reached.
+    pub fn unsat_on_max_bound(&mut self, unsat_on_max_bound: bool) -> &mut Self {
+        self.unsat_on_max_bound = unsat_on_max_bound;
         self
     }
 }
@@ -237,7 +247,8 @@ impl Solver {
             .max(1); // need to be at least 1
             bounds.set(var.as_ref().clone(), Interval::new(lower, upper));
         }
-        Some(bounds)
+        // Clamp the bounds to the maximum bounds, if set
+        Some(self.clamp_bounds(&bounds))
     }
 
     fn run(
@@ -267,8 +278,7 @@ impl Solver {
 
         // Initialize the problem encoder
 
-        // TODO: Filter defintions to only include supported literals
-        let mut defs = abs.definitions().cloned().collect_vec();
+        let defs = abs.definitions().cloned().collect_vec();
         let mut encoder = ProblemEncoder::new(alphabet);
 
         // Initialize the bounds
@@ -317,7 +327,20 @@ impl Solver {
                     log::debug!("Failed literals: {}", failed.iter().join(", "));
                     // Refine bounds. If bounds are at max, return UNSAT. Otherwise, continue with new bounds.
                     match refine::refine_bounds(&failed, &bounds, fm, self.options.step, ctx) {
-                        refine::BoundRefinement::Refined(b) => bounds = b,
+                        refine::BoundRefinement::Refined(b) => {
+                            let clamped = self.clamp_bounds(&b);
+                            // if the clamped bound are equal to the bounds we used in this round, nothing changed
+                            // in that case, the limit is reached
+                            if clamped == bounds {
+                                if self.options.unsat_on_max_bound {
+                                    return Ok(SolverResult::Unsat);
+                                } else {
+                                    return Ok(SolverResult::Unknown);
+                                }
+                            } else {
+                                bounds = clamped;
+                            }
+                        }
                         refine::BoundRefinement::SmallModelReached => {
                             // If we blocked an assignment, we can't be sure that the formula is unsat.
                             // Otherwise, we can return UNSAT.
@@ -326,10 +349,6 @@ impl Solver {
                             } else {
                                 return Ok(SolverResult::Unsat);
                             }
-                        }
-                        refine::BoundRefinement::LimitReached => {
-                            // TODO: specify in the options what should be returned here
-                            return Ok(SolverResult::Unknown);
                         }
                     }
                 }
@@ -356,5 +375,23 @@ impl Solver {
         abs: &Abstraction,
     ) -> Vec<Definition> {
         todo!("Refine the abstraction")
+    }
+
+    /// Clamp the bounds to the maximum bounds.
+    fn clamp_bounds(&self, bounds: &Bounds) -> Bounds {
+        let mut new_bounds = bounds.clone();
+        for (var, bound) in bounds.iter() {
+            let new_bound = if var.sort().is_string() {
+                bound.intersect(Interval::new(0, self.options.max_bounds))
+            } else {
+                bound.intersect(Interval::new(
+                    -(self.options.max_bounds as isize),
+                    self.options.max_bounds,
+                ))
+            };
+
+            new_bounds.set(var.clone(), new_bound);
+        }
+        new_bounds
     }
 }

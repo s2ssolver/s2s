@@ -12,8 +12,6 @@ pub enum BoundRefinement {
     /// The bounds are already equal to or larger than the bounds of the smallest model of the combination of literals.
     /// If there is no satisfying assignment within the current bounds, then the formula is unsatisfiable.
     SmallModelReached,
-    /// The (user-defined) limit of bounds has been reached for every variable.
-    LimitReached,
 }
 
 pub(super) fn refine_bounds(

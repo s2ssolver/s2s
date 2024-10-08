@@ -1,6 +1,6 @@
 use std::{path::Path, process::exit, time::Instant};
 
-use clap::{Parser as ClapParser, ValueEnum};
+use clap::Parser as ClapParser;
 
 use satstr::{solve_smt, SolverOptions, SolverResult};
 
@@ -8,10 +8,6 @@ use satstr::{solve_smt, SolverOptions, SolverResult};
 #[derive(ClapParser, Debug)]
 #[command(author, version, about, long_about = None)] // Read from `Cargo.toml`
 struct Options {
-    /// The format of the input file
-    #[arg(short, long, value_enum, default_value = "auto")]
-    format: Format,
-
     #[arg(long)]
     skip_simp: bool,
 
@@ -23,12 +19,17 @@ struct Options {
     #[arg(long)]
     dry: bool,
 
-    /// The maximum variable bound to check before returning `unsat`
-    #[arg(short = 'b', long, value_enum, default_value = None)]
+    /// The maximum variable bound to check before returning `unknown`
+    #[arg(short = 'B', long, value_enum, default_value = None)]
     max_bound: Option<usize>,
+
     /// The minimal initial variable bound to start the search with
-    #[arg(long, short = 'm', value_enum, default_value = "1")]
+    #[arg(long, short = 'b', value_enum, default_value = "1")]
     min_bound: usize,
+
+    /// If set, returns `unsat` instead of `unknown` if the maximum bound set by `max_bound` is reached
+    #[arg(long)]
+    unsat_on_max_bound: bool,
 
     /// Print the model
     #[arg(long)]
@@ -36,14 +37,6 @@ struct Options {
 
     /// The input file to use, must be either in SMT2 or WOORPJE format, according to the `format` argument
     file: String,
-}
-
-#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum, Debug)]
-enum Format {
-    Woorpje,
-    Smt,
-    // Detect format using file extension
-    Auto,
 }
 
 /// The main function of the solver. Parses the command line arguments and runs the solver.
@@ -91,6 +84,9 @@ fn convert_options(options: &Options) -> SolverOptions {
     }
     if options.skip_simp {
         opts.simplify(false);
+    }
+    if options.unsat_on_max_bound {
+        opts.unsat_on_max_bound(true);
     }
     opts
 }
