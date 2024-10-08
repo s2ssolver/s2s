@@ -5,7 +5,11 @@ use std::{
     time::Instant,
 };
 
-use regulaer::{automaton::NFA, compiler::Compiler, re::Regex};
+use regulaer::{
+    automaton::NFA,
+    compiler::{Compiler, Thompson},
+    re::Regex,
+};
 
 use crate::repr::{ast::AstBuilder, ir::IrBuilder, Sort, Sorted, Variable};
 
@@ -109,8 +113,8 @@ impl Context {
         } else {
             let builder = self.ast_builder().re_builder();
 
-            let nfa = Compiler::Thompson
-                .nfa(regex, builder)
+            let nfa = Thompson::default()
+                .compile(regex, builder)
                 .map(|nfa| nfa.remove_epsilons().expect("Failed to compile regex"))
                 .expect("Failed to compile regex");
 
