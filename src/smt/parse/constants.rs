@@ -118,10 +118,13 @@ impl visitors::ConstantVisitor for AstParser {
     }
 
     fn visit_decimal_constant(&mut self, value: smt2parser::Decimal) -> Result<Self::T, Self::E> {
-        Err(AstError::Unsupported(format!(
-            "Decimal constant: {}",
-            value
-        )))
+        value
+            .to_f64()
+            .map(|n| Constant::Real(n))
+            .ok_or(AstError::Unsupported(format!(
+                "Decimal constant: {}",
+                value
+            )))
     }
 
     fn visit_hexadecimal_constant(

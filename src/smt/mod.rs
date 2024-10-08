@@ -130,6 +130,7 @@ impl Display for Sort {
 pub enum Constant {
     String(String),
     Int(isize),
+    Real(f64),
 }
 
 impl Display for Constant {
@@ -137,6 +138,7 @@ impl Display for Constant {
         match self {
             Constant::String(s) => write!(f, "\"{}\"", s),
             Constant::Int(i) => write!(f, "{}", i),
+            Constant::Real(r) => write!(f, "{}", r),
         }
     }
 }

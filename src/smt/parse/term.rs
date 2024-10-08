@@ -17,6 +17,7 @@ impl TermVisitor<Constant, Identifier, Keyword, SExpr, Symbol, Sort> for AstPars
         let expr = match constant {
             Constant::String(s) => StrExpr::Constant(s).into(),
             Constant::Int(i) => IntExpr::Constant(i).into(),
+            Constant::Real(_) => return Err(AstError::Unsupported("Real constant".to_string())),
         };
         Ok(expr)
     }
