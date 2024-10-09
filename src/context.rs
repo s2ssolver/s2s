@@ -100,11 +100,7 @@ impl Hash for Variable {
 }
 impl Display for Variable {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        if self.name.chars().all(|c| c.is_ascii_alphabetic()) {
-            write!(f, "{}", self.name)
-        } else {
-            write!(f, "|{}|", self.name)
-        }
+        write!(f, "[{}]", self.name)
     }
 }
 impl Sorted for Variable {

@@ -401,8 +401,40 @@ impl Substitutable for Pattern {
 /* Pretty Printing */
 impl Display for Pattern {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        let mut word = String::new();
+        let mut first = true;
         for symbol in &self.symbols {
-            write!(f, "{}", symbol)?;
+            match symbol {
+                Symbol::Constant(c) => {
+                    if c.is_ascii() && !c.is_ascii_control() {
+                        word.push(*c);
+                    } else {
+                        word.push_str(c.escape_unicode().to_string().as_str())
+                    }
+                }
+                Symbol::Variable(variable) => {
+                    if !word.is_empty() {
+                        if !first {
+                            write!(f, "⋅")?;
+                        }
+                        write!(f, "{}", word)?;
+                        word.clear();
+                        first = false;
+                    }
+                    if !first {
+                        write!(f, "⋅")?;
+                    }
+                    write!(f, "{}", variable)?;
+                    first = false;
+                }
+            }
+        }
+        if !word.is_empty() {
+            if !first {
+                write!(f, "⋅")?;
+            }
+            write!(f, "{}", word)?;
+            word.clear();
         }
         Ok(())
     }
