@@ -77,6 +77,7 @@ pub struct SolverOptions {
     step: BoundStep,
     check_model: bool,
     unsat_on_max_bound: bool,
+    init_upper_bound: i32,
 }
 impl Default for SolverOptions {
     fn default() -> Self {
@@ -89,6 +90,7 @@ impl Default for SolverOptions {
             step: BoundStep::default(),
             check_model: DEFAULT_CHECK_MODEL,
             unsat_on_max_bound: DEFAULT_UNSAT_ON_MAX_BOUND,
+            init_upper_bound: 2,
         }
     }
 }
@@ -132,6 +134,13 @@ impl SolverOptions {
     /// If a maximum bound is set (using [`max_bounds`](Self::max_bounds)), the solver will return `unsat` instead of `unknown` if the maximum bound is reached.
     pub fn unsat_on_max_bound(&mut self, unsat_on_max_bound: bool) -> &mut Self {
         self.unsat_on_max_bound = unsat_on_max_bound;
+        self
+    }
+
+    /// The initial upper bound for the variables.
+    /// This bounds is used to initialize the upper bounds for the variables for the first round of solving.
+    pub fn init_upper_bound(&mut self, init_upper_bound: i32) -> &mut Self {
+        self.init_upper_bound = init_upper_bound;
         self
     }
 }
@@ -239,9 +248,9 @@ impl Solver {
                 0.into()
             };
             let upper = if let Some(upper) = v_bounds.and_then(|b| b.upper_finite()) {
-                upper.min(2)
+                upper.min(self.options.init_upper_bound as i32)
             } else {
-                2
+                self.options.init_upper_bound as i32
             }
             .max(lower)
             .max(1); // need to be at least 1
@@ -311,6 +320,7 @@ impl Solver {
                 Some(true) => {
                     // If SAT, check if model is a solution for the original formula.
                     let assign = encoder.get_model(&cadical);
+
                     log::info!("Found model: {}", assign);
 
                     if self.options.check_model && !self.check_assignment(fm, &assign, ctx) {
