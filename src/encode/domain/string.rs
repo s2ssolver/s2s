@@ -37,6 +37,11 @@ impl StringDomain {
             .map(|((var, pos, chr), v)| (var, *pos, *chr, v))
     }
 
+    #[allow(dead_code)]
+    pub fn iter_lengths(&self) -> impl Iterator<Item = (&Variable, usize, &PVar)> {
+        self.lengths.iter().map(|((var, len), v)| (var, *len, v))
+    }
+
     pub fn get_sub(&self, var: &Variable, pos: usize, chr: char) -> Option<PVar> {
         assert!(
             var.sort() == Sort::String,
@@ -124,7 +129,7 @@ impl StringDomain {
     }
 }
 
-pub struct StringDomainEncoder {
+pub(super) struct StringDomainEncoder {
     last_bounds: Option<Bounds>,
     alphabet: Alphabet,
     /// Maps each variable to an Incremental exact-one encoder that is used to encode the variable's length.
@@ -225,6 +230,18 @@ impl StringDomainEncoder {
                 .unwrap_or(0);
             debug_assert!(lower >= 0);
             let lower = lower as usize;
+
+            if last_bound > 0 {
+                let len = last_bound - 1;
+                let choice = encoding.string().get_len(str_var, len).unwrap();
+                // if the variable has this length, then only lambdas follow
+                // we can only add this here because the following positions after last_bound - 1 were not yet defined in previous rounds
+                if len < bounds.get_upper_finite(&str_var).unwrap() as usize {
+                    let lambda_suffix = encoding.string().get_sub(str_var, len, LAMBDA).unwrap();
+                    res.add_clause(vec![nlit(choice), plit(lambda_suffix)]);
+                }
+            }
+
             for len in last_bound..=bounds.get_upper_finite(&str_var).unwrap() as usize {
                 let choice = pvar();
                 len_choices.push(choice);
