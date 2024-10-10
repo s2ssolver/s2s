@@ -221,7 +221,7 @@ impl Solver {
             let simped = simp::simplify(fm.clone(), ctx, self.options.simp_iters);
             (simped.formula, simped.subst)
         } else {
-            (fm.clone(), VarSubstitution::default())
+            (fm.reduce(), VarSubstitution::default())
         };
         log::info!("Simplified formula ({:?})", t.elapsed());
 

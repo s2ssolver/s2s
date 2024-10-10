@@ -1,4 +1,7 @@
-use std::fmt::{self, Display, Formatter};
+use std::{
+    fmt::{self, Display, Formatter},
+    rc::Rc,
+};
 
 use indexmap::IndexSet;
 
@@ -11,17 +14,24 @@ use regulaer::alph::Alphabet as InnerAlphabet;
 
 /// A wrapper around the regular crate's alphabet
 #[derive(Debug, Clone, Default)]
-pub struct Alphabet(InnerAlphabet);
+pub struct Alphabet {
+    inner: Rc<InnerAlphabet>,
+    size: usize,
+}
 
 impl Alphabet {
+    fn new(inner: Rc<InnerAlphabet>) -> Self {
+        let size = inner.iter_chars().count();
+        Alphabet { inner, size }
+    }
     /// Returns an iterator over the characters in the alphabet
     pub fn iter(&self) -> impl Iterator<Item = char> + '_ {
-        self.0.iter_chars()
+        self.inner.iter_chars()
     }
 
-    #[allow(dead_code)]
-    pub fn insert_char(&mut self, c: char) {
-        self.0.insert_char(c);
+    /// Returns the number of characters in the alphabet
+    pub fn len(&self) -> usize {
+        self.size
     }
 }
 
@@ -31,18 +41,18 @@ impl FromIterator<char> for Alphabet {
         for c in iter {
             alph.insert_char(c);
         }
-        Alphabet(alph)
+        Alphabet::new(Rc::new(alph))
     }
 }
 impl From<InnerAlphabet> for Alphabet {
     fn from(alph: InnerAlphabet) -> Self {
-        Alphabet(alph)
+        Alphabet::new(Rc::new(alph))
     }
 }
 
 impl Display for Alphabet {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        write!(f, "{}", self.0)
+        write!(f, "{}", self.inner)
     }
 }
 
@@ -73,7 +83,7 @@ pub fn infer(fm: &Formula) -> Alphabet {
 
     inferred_alphabet.canonicalize();
 
-    Alphabet(inferred_alphabet)
+    Alphabet::new(Rc::new(inferred_alphabet))
 }
 
 const SMT_MAX_CHAR: u32 = 0x2FFFF;
