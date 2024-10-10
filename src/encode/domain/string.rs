@@ -318,20 +318,18 @@ mod tests {
         let mut ctx = Context::default();
         let var = ctx.new_temp_var(Sort::String);
 
-        let alphabet = Alphabet::from_iter(vec!['a', 'b', 'c']);
-        let mut alphabet_lambda = alphabet.clone();
-        alphabet_lambda.insert_char(LAMBDA);
+        let alphabet = Alphabet::from_iter(vec!['a', 'b', 'c', LAMBDA]);
 
         let mut encoder = StringDomainEncoder::new(alphabet.clone());
         let mb = 10;
         let mut bounds = Bounds::default();
         bounds.set(var.as_ref().clone(), Interval::new(0, mb));
 
-        let mut encoding = DomainEncoding::new(alphabet, bounds.clone());
+        let mut encoding = DomainEncoding::new(alphabet.clone(), bounds.clone());
         encoder.encode_substitutions(&bounds, &mut encoding, &ctx);
 
         for b in 0..mb {
-            for c in alphabet_lambda.iter() {
+            for c in alphabet.iter() {
                 assert!(
                     encoding.string().get_sub_lit(&var, b as usize, c).is_some(),
                     "{:?}[{}] = {} not defined {:?}",
@@ -349,21 +347,19 @@ mod tests {
         let mut ctx = Context::default();
         let var = ctx.new_temp_var(Sort::String);
 
-        let alphabet = Alphabet::from_iter(vec!['a', 'b', 'c']);
-        let mut alphabet_lambda = alphabet.clone();
-        alphabet_lambda.insert_char(LAMBDA);
+        let alphabet = Alphabet::from_iter(vec!['a', 'b', 'c', LAMBDA]);
 
         let mut encoder = StringDomainEncoder::new(alphabet.clone());
         let mut bounds = Bounds::default();
         bounds.set(var.as_ref().clone(), Interval::new(0, 5));
 
-        let mut encoding = DomainEncoding::new(alphabet, bounds.clone());
+        let mut encoding = DomainEncoding::new(alphabet.clone(), bounds.clone());
         encoder.encode_substitutions(&bounds, &mut encoding, &ctx);
         bounds.set(var.as_ref().clone(), Interval::new(0, 10));
         encoder.encode_substitutions(&bounds, &mut encoding, &ctx);
 
         for b in 0..10 {
-            for c in alphabet_lambda.iter() {
+            for c in alphabet.iter() {
                 assert!(encoding.string().get_sub_lit(&var, b, c).is_some());
             }
         }

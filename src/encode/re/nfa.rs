@@ -451,8 +451,7 @@ mod test {
         let mut ctx = Context::default();
         let var = ctx.new_temp_var(Sort::String);
 
-        let mut alph = Alphabet::from(re.alphabet());
-        alph.insert_char('a');
+        let alph = Alphabet::from(re.alphabet());
 
         let nfa = ctx.get_nfa(&re);
 

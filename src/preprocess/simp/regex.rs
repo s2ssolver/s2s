@@ -26,14 +26,14 @@ impl RewriteSimplifier for ConstantPrefixSuffix {
         if let AtomType::InRe(inre) = lit.atom().get_type() {
             let var = inre.pattern().as_variable()?;
             let re = inre.re();
-            if let Some(pre) = re.prefix() {
+            if let Some(pre) = re.prefix().filter(|p| !p.is_empty()) {
                 // X -> preX
                 let mut pattern = Pattern::from_iter(pre.iter());
                 pattern.push_var(var.clone());
                 let mut subst = VarSubstitution::default();
                 subst.set_str(var, pattern);
                 return Some(subst);
-            } else if let Some(suf) = re.suffix() {
+            } else if let Some(suf) = re.suffix().filter(|s| !s.is_empty()) {
                 // X -> Xsuf
                 let mut pattern = Pattern::variable(&var);
                 pattern.concat(Pattern::from_iter(suf.iter()));
