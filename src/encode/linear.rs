@@ -4,15 +4,12 @@ use indexmap::IndexMap;
 
 use crate::{
     bounds::Bounds,
-    error::Error,
-    model::{
-        constraints::{LinearArithFactor, LinearConstraint, LinearConstraintType},
-        Evaluable, Sort, Substitution, Variable,
-    },
-    sat::{as_lit, neg, pvar, PVar},
+    context::Sorted,
+    ir::{LinearConstraint, LinearOperator, LinearSummand, TrivialReducible},
+    sat::{nlit, plit, pvar, PVar},
 };
 
-use super::{domain::DomainEncoding, ConstraintEncoder, EncodingResult};
+use super::{domain::DomainEncoding, EncodingError, EncodingResult, LiteralEncoder};
 
 /// Encodes linear constraints by using multi-valued decision diagrams.
 pub struct MddEncoder {
@@ -32,7 +29,8 @@ pub struct MddEncoder {
 }
 
 impl MddEncoder {
-    pub fn new(linear: LinearConstraint) -> Self {
+    pub fn new(mut linear: LinearConstraint) -> Self {
+        linear.canonicalize();
         let root_pvar = pvar();
         let mut node_map = IndexMap::new();
         let mut root_node_vals = IndexMap::new();
@@ -49,21 +47,9 @@ impl MddEncoder {
             last_bounds: None,
         }
     }
-
-    fn last_bound(&self, var: &Variable) -> isize {
-        let v = if var.sort() == Sort::String {
-            var.len_var().unwrap()
-        } else {
-            var.clone()
-        };
-        self.last_bounds
-            .as_ref()
-            .map(|b| b.get_upper(&v).unwrap_or(0))
-            .unwrap_or(0)
-    }
 }
 
-impl ConstraintEncoder for MddEncoder {
+impl LiteralEncoder for MddEncoder {
     fn is_incremental(&self) -> bool {
         true
     }
@@ -72,21 +58,22 @@ impl ConstraintEncoder for MddEncoder {
         todo!()
     }
 
-    fn encode(&mut self, bounds: &Bounds, dom: &DomainEncoding) -> Result<EncodingResult, Error> {
+    fn encode(
+        &mut self,
+        bounds: &Bounds,
+        dom: &DomainEncoding,
+    ) -> Result<EncodingResult, EncodingError> {
         self.round += 1;
         let mut res = EncodingResult::empty();
 
-        log::debug!("Encoding {}", self.linear);
-
         // Check if trivial
-        match self.linear.eval(&Substitution::new()) {
+
+        match self.linear.is_trivial() {
             Some(true) => {
-                log::debug!("Trivially true");
                 return Ok(res);
             }
             Some(false) => {
-                log::debug!("Trivially false");
-                res.add_clause(vec![neg(self.mdd_root), as_lit(self.mdd_false)]);
+                res.add_clause(vec![nlit(self.mdd_root), plit(self.mdd_false)]);
                 return Ok(res);
             }
             None => {}
@@ -98,17 +85,36 @@ impl ConstraintEncoder for MddEncoder {
 
         while let Some((level, value, node_var)) = queue.pop_front() {
             match &self.linear.lhs()[level] {
-                LinearArithFactor::VarCoeff(v, coeff) => {
-                    let last_bound = match self.last_bound(v) {
-                        0 => 0,
-                        b => b + 1,
-                    };
+                LinearSummand::Mult(var, coeff) => {
+                    let v = var.variable();
+                    let current_u_bound =
+                        bounds.get_upper_finite(v).expect("Unbounded variable") as isize;
+                    let current_l_bound =
+                        bounds.get_lower_finite(v).expect("Unbounded variable") as isize;
 
-                    let current_bound = bounds.get_upper(v).expect("Unbounded variable");
-                    for l in last_bound..=current_bound {
-                        let len_assign_var = dom.int().get(v, l).unwrap();
+                    for l in current_l_bound..=current_u_bound {
+                        if let Some(last_bounds) = self.last_bounds.as_ref() {
+                            if last_bounds
+                                .get_lower_finite(v)
+                                .map(|ll| l >= ll as isize)
+                                .unwrap_or(false)
+                                && last_bounds
+                                    .get_upper_finite(v)
+                                    .map(|uu| l <= uu as isize)
+                                    .unwrap_or(false)
+                            {
+                                // Already encoded
+                                continue;
+                            }
+                        }
+                        // If string: get length encoding, if int: get int encoding
+                        let len_assign_var = if v.sort().is_int() {
+                            dom.int().get(v, l).unwrap()
+                        } else {
+                            dom.string().get_len(v, l as usize).unwrap()
+                        };
                         let new_value = value + l * coeff;
-                        if level + 1 < self.linear.lhs.len() {
+                        if level + 1 < self.linear.lhs().len() {
                             let child_pvar = *self
                                 .nodes
                                 .entry(level + 1)
@@ -116,70 +122,72 @@ impl ConstraintEncoder for MddEncoder {
                                 .entry(new_value)
                                 .or_insert_with(pvar);
                             res.add_clause(vec![
-                                neg(node_var),
-                                neg(len_assign_var),
-                                as_lit(child_pvar),
+                                nlit(node_var),
+                                nlit(len_assign_var),
+                                plit(child_pvar),
                             ]);
 
                             queue.push_back((level + 1, new_value, child_pvar));
                         } else {
-                            let node = match self.linear.typ {
-                                LinearConstraintType::Eq => {
-                                    if new_value == self.linear.rhs {
+                            let node = match self.linear.operator() {
+                                LinearOperator::Eq => {
+                                    if new_value == self.linear.rhs() {
                                         self.mdd_true
                                     } else {
                                         self.mdd_false
                                     }
                                 }
-                                LinearConstraintType::Ineq => {
-                                    if new_value != self.linear.rhs {
+                                LinearOperator::Ineq => {
+                                    if new_value != self.linear.rhs() {
                                         self.mdd_true
                                     } else {
                                         self.mdd_false
                                     }
                                 }
-                                LinearConstraintType::Leq => {
-                                    if new_value <= self.linear.rhs {
+                                LinearOperator::Leq => {
+                                    if new_value <= self.linear.rhs() {
                                         self.mdd_true
                                     } else {
                                         self.mdd_false
                                     }
                                 }
-                                LinearConstraintType::Less => {
-                                    if new_value < self.linear.rhs {
+                                LinearOperator::Less => {
+                                    if new_value < self.linear.rhs() {
                                         self.mdd_true
                                     } else {
                                         self.mdd_false
                                     }
                                 }
-                                LinearConstraintType::Geq => {
-                                    if new_value >= self.linear.rhs {
+                                LinearOperator::Geq => {
+                                    if new_value >= self.linear.rhs() {
                                         self.mdd_true
                                     } else {
                                         self.mdd_false
                                     }
                                 }
-                                LinearConstraintType::Greater => {
-                                    if new_value > self.linear.rhs {
+                                LinearOperator::Greater => {
+                                    if new_value > self.linear.rhs() {
                                         self.mdd_true
                                     } else {
                                         self.mdd_false
                                     }
                                 }
                             };
-                            res.add_clause(vec![neg(node_var), neg(len_assign_var), as_lit(node)]);
+                            res.add_clause(vec![nlit(node_var), nlit(len_assign_var), plit(node)]);
                         }
                     }
                 }
-                LinearArithFactor::Const(_) => {
+                LinearSummand::Const(_) => {
                     todo!("Consts not supported: {}", self.linear)
                 }
             }
         }
         if self.round == 1 {
-            res.add_clause(vec![as_lit(self.mdd_root)]);
-            res.add_clause(vec![neg(self.mdd_false)]);
+            res.add_clause(vec![plit(self.mdd_root)]);
+            res.add_clause(vec![nlit(self.mdd_false)]);
         }
+        // TODO: This leads to soundness errors, need to investigate!
+        //self.last_bounds = Some(bounds.clone());
         Ok(res)
     }
 }

@@ -5,10 +5,9 @@ use std::cmp::Ordering;
 
 use crate::{
     bounds::Bounds,
-    encode::{domain::DomainEncoding, ConstraintEncoder, EncodingResult, LAMBDA},
-    error::Error,
-    model::Variable,
-    sat::{as_lit, neg, pvar},
+    context::Variable,
+    encode::{domain::DomainEncoding, EncodingError, EncodingResult, LiteralEncoder, LAMBDA},
+    sat::{nlit, plit, pvar},
 };
 
 pub struct AssignmentEncoder {
@@ -32,39 +31,44 @@ impl AssignmentEncoder {
         &mut self,
         bounds: &Bounds,
         dom: &DomainEncoding,
-    ) -> Result<EncodingResult, Error> {
-        let len_var = self.lhs.len_var().unwrap();
+    ) -> Result<EncodingResult, EncodingError> {
         let len_rhs = self.rhs.len();
-        let bound = bounds.get_upper(&len_var).unwrap() as usize;
+        let bound = bounds.get_upper_finite(&self.lhs).unwrap() as usize;
 
         let mut result = EncodingResult::empty();
         if bound < len_rhs {
             // Trivially unsatisfiable
             let p = pvar();
-            result.add_clause(vec![as_lit(p)]);
-            result.add_assumption(neg(p));
+            result.add_clause(vec![plit(p)]);
+            result.add_assumption(nlit(p));
             return Ok(result);
         }
 
         let last_bound = self.last_bound.unwrap_or(0);
+        if last_bound == bound {
+            // Already encoded for this bound
+            return Ok(result);
+        }
+
         // Haven't encoded anything yet, was trivially unsatisfiable in previous call
         match last_bound.cmp(&len_rhs) {
             Ordering::Less => {
                 for i in 0..len_rhs {
                     let chr = self.rhs[i];
-                    let sub_var = dom.string().get(&self.lhs, i, chr).unwrap();
-                    result.add_clause(vec![as_lit(sub_var)]);
+                    let sub_var = dom.string().get_sub(&self.lhs, i, chr).unwrap();
+                    result.add_clause(vec![plit(sub_var)]);
                 }
                 if bound > len_rhs {
                     // Make sure the rest of lhs is empty
-                    let lambda_sub = dom.string().get(&self.lhs, len_rhs, LAMBDA).unwrap();
-                    result.add_clause(vec![as_lit(lambda_sub)]);
+                    let lambda_sub = dom.string().get_sub(&self.lhs, len_rhs, LAMBDA).unwrap();
+                    result.add_clause(vec![plit(lambda_sub)]);
                 }
             }
             Ordering::Equal => {
-                // Make sure the rest of lhs is empty, was not encoded in previous call due to bound exacly equal to rhs length
-                let lambda_sub = dom.string().get(&self.lhs, len_rhs, LAMBDA).unwrap();
-                result.add_clause(vec![as_lit(lambda_sub)]);
+                // Already encoded up to rhs length in previous iteration, make sure the rest of lhs is empty.
+                let lambda_sub = dom.string().get_sub(&self.lhs, len_rhs, LAMBDA).unwrap();
+
+                result.add_clause(vec![plit(lambda_sub)]);
             }
             Ordering::Greater => (), // Already encoded that remainder of lhs is empty
         }
@@ -78,10 +82,9 @@ impl AssignmentEncoder {
         &mut self,
         bounds: &Bounds,
         dom: &DomainEncoding,
-    ) -> Result<EncodingResult, Error> {
-        let len_var = self.lhs.len_var().unwrap();
+    ) -> Result<EncodingResult, EncodingError> {
         let len_rhs = self.rhs.len();
-        let bound = bounds.get_upper(&len_var).unwrap() as usize;
+        let bound = bounds.get_upper_finite(&self.lhs).unwrap() as usize;
 
         let mut result = EncodingResult::empty();
 
@@ -98,24 +101,24 @@ impl AssignmentEncoder {
             let mut clause = Vec::with_capacity(len_rhs);
             for i in 0..len_rhs {
                 let chr = self.rhs[i];
-                let sub_var = dom.string().get(&self.lhs, i, chr).unwrap();
-                clause.push(neg(sub_var));
+                let sub_var = dom.string().get_sub(&self.lhs, i, chr).unwrap();
+                clause.push(nlit(sub_var));
             }
 
             match len_rhs.cmp(&bound) {
                 Ordering::Less => {
                     // lhs might also be longer than rhs
-                    let lambda_sub = dom.string().get(&self.lhs, len_rhs, LAMBDA).unwrap();
+                    let lambda_sub = dom.string().get_sub(&self.lhs, len_rhs, LAMBDA).unwrap();
 
-                    clause.push(neg(lambda_sub));
+                    clause.push(nlit(lambda_sub));
                     result.add_clause(clause);
                 }
                 Ordering::Equal => {
                     // Select the clause, in next iteration we will make sure the rest of lhs can also be non-empty
                     let selector = pvar();
-                    clause.push(neg(selector));
+                    clause.push(nlit(selector));
                     result.add_clause(clause);
-                    result.add_assumption(as_lit(selector));
+                    result.add_assumption(plit(selector));
                 }
                 Ordering::Greater => (),
             }
@@ -127,7 +130,7 @@ impl AssignmentEncoder {
     }
 }
 
-impl ConstraintEncoder for AssignmentEncoder {
+impl LiteralEncoder for AssignmentEncoder {
     fn is_incremental(&self) -> bool {
         true
     }
@@ -140,7 +143,7 @@ impl ConstraintEncoder for AssignmentEncoder {
         &mut self,
         bounds: &Bounds,
         substitution: &DomainEncoding,
-    ) -> Result<EncodingResult, Error> {
+    ) -> Result<EncodingResult, EncodingError> {
         if self.sign {
             self.encode_eq(bounds, substitution)
         } else {

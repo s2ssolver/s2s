@@ -1,11 +1,14 @@
 use std::path::Path;
 
-use satstr::{solve, Parser, SolverResult};
+use satstr::solve_smt;
 use test_generator::test_resources;
 
 #[test_resources("res/tests_sat/*.smt2")]
 fn test_sat(smt: &str) {
     let file = Path::new(smt);
-    let mut instance = Parser::Smt2Parser.parse(file.to_path_buf()).unwrap();
-    assert!(matches!(solve(&mut instance), Ok(SolverResult::Sat(_))));
+    let smt = std::io::BufReader::new(std::fs::File::open(file).unwrap());
+    match solve_smt(smt, None) {
+        Ok(res) => assert!(res.is_sat()),
+        Err(err) => panic!("{}", err),
+    }
 }

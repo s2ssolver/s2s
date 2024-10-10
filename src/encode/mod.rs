@@ -1,17 +1,14 @@
-use std::{fmt::Display, ops::Index, slice::Iter};
+use std::fmt::Display;
 
 use crate::{
     bounds::Bounds,
-    error::Error,
-    model::{
-        constraints::{Pattern, Symbol},
-        Constraint, Variable,
-    },
+    context::Context,
+    ir::{AtomType, Literal},
     sat::{Clause, Cnf, PLit},
 };
 
 use self::{
-    boolvar::BoolVarEncoder, domain::DomainEncoding, linear::MddEncoder, re::build_re_encoder,
+    boolvar::BoolVarEncoder, domain::DomainEncoding, linear::MddEncoder, re::build_inre_encoder,
 };
 
 /// Facilities for encoding cardinality constraints
@@ -33,65 +30,6 @@ use indexmap::IndexSet;
 
 /// The character used to represent unused positions
 const LAMBDA: char = char::REPLACEMENT_CHARACTER;
-
-/// A position in a filled pattern.
-/// Either a constant word or a position within a variable.
-#[derive(Debug, Clone, PartialEq, Eq)]
-enum FilledPos {
-    Const(char),
-    FilledPos(Variable, usize),
-}
-/// A filled pattern is a pattern with a set of bounds on the variables.
-/// Each position in the pattern is either a constant word or a position within a variable.
-struct FilledPattern {
-    positions: Vec<FilledPos>,
-}
-
-impl FilledPattern {
-    fn fill(pattern: &Pattern, bounds: &Bounds) -> Self {
-        Self {
-            positions: Self::convert(pattern, bounds),
-        }
-    }
-
-    fn convert(pattern: &Pattern, bounds: &Bounds) -> Vec<FilledPos> {
-        let mut positions = vec![];
-        for symbol in pattern.symbols() {
-            match symbol {
-                Symbol::Constant(c) => positions.push(FilledPos::Const(*c)),
-                Symbol::Variable(v) => {
-                    let len_var = &v.len_var().unwrap();
-                    let len = bounds.get_upper(len_var).unwrap() as usize;
-                    for i in 0..len {
-                        positions.push(FilledPos::FilledPos(v.clone(), i))
-                    }
-                }
-            }
-        }
-        positions
-    }
-
-    pub fn length(&self) -> usize {
-        self.positions.len()
-    }
-
-    fn at(&self, i: usize) -> Option<&FilledPos> {
-        self.positions.get(i)
-    }
-
-    #[allow(dead_code)]
-    fn iter(&self) -> Iter<FilledPos> {
-        self.positions.iter()
-    }
-}
-
-impl Index<usize> for FilledPattern {
-    type Output = FilledPos;
-
-    fn index(&self, index: usize) -> &Self::Output {
-        &self.positions[index]
-    }
-}
 
 pub enum EncodingResult {
     /// The CNF encoding of the problem
@@ -162,7 +100,7 @@ impl EncodingResult {
     }
 
     /// Joins two encoding results, consumes the other one
-    pub fn join(&mut self, other: EncodingResult) {
+    pub fn extend(&mut self, other: EncodingResult) {
         match self {
             EncodingResult::Cnf(ref mut cnf, ref mut asms) => match other {
                 EncodingResult::Cnf(mut cnf_other, asm_other) => {
@@ -174,6 +112,13 @@ impl EncodingResult {
             },
             EncodingResult::Trivial(true) => *self = other,
             EncodingResult::Trivial(false) => {}
+        }
+    }
+
+    pub fn into_inner(self) -> (Cnf, IndexSet<PLit>) {
+        match self {
+            EncodingResult::Cnf(cnf, asms) => (cnf, asms),
+            EncodingResult::Trivial(_) => (vec![], IndexSet::new()),
         }
     }
 }
@@ -198,6 +143,27 @@ impl Display for EncodingResult {
     }
 }
 
+#[derive(Debug, thiserror::Error)]
+pub struct EncodingError {
+    msg: String,
+}
+impl EncodingError {
+    pub fn new(msg: &str) -> Self {
+        Self {
+            msg: msg.to_string(),
+        }
+    }
+
+    pub fn not_epsi_free() -> Self {
+        Self::new("NFA must be epsilon-free")
+    }
+}
+impl Display for EncodingError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Encoding error: {}", self.msg)
+    }
+}
+
 /// This trait is implemented by structs that encode predicates. It is a general trait that is
 /// subtyped for specific predicates.
 /// Moreover, it serves as an indicator of whether or not the encoder performs an incremental encoding of the problem, when called with increased variable bounds.
@@ -205,7 +171,7 @@ impl Display for EncodingResult {
 /// the SAT solver will lead to a speedup.
 ///
 /// Note that if an incremental encoder can be used in a non-incremental way by simply resetting its state when updating the bounds.
-pub trait ConstraintEncoder {
+pub trait LiteralEncoder {
     /// Returns true if the encoder performs incremental encoding.
     fn is_incremental(&self) -> bool;
     /// Resets the encoder to the initial state.
@@ -217,16 +183,23 @@ pub trait ConstraintEncoder {
         &mut self,
         bounds: &Bounds,
         substitution: &DomainEncoding,
-    ) -> Result<EncodingResult, Error>;
+    ) -> Result<EncodingResult, EncodingError>;
 
     fn print_debug(&self, _solver: &cadical::Solver, _dom: &DomainEncoding) {}
 }
 
-pub fn get_encoder(constraint: &Constraint) -> Box<dyn ConstraintEncoder> {
-    match constraint {
-        Constraint::WordEquation(eq) => equation::get_encoder(eq),
-        Constraint::LinearConstraint(lc) => Box::new(MddEncoder::new(lc.clone())),
-        Constraint::RegularConstraint(rec) => build_re_encoder(rec.clone()).unwrap(),
-        Constraint::BoolVarConstraint(v, pol) => Box::new(BoolVarEncoder::new(v.clone(), *pol)),
+pub fn get_encoder(
+    lit: &Literal,
+    ctx: &mut Context,
+) -> Result<Box<dyn LiteralEncoder>, EncodingError> {
+    let pol = lit.polarity();
+    match lit.atom().get_type() {
+        AtomType::BoolVar(v) => Ok(Box::new(BoolVarEncoder::new(v, pol))),
+        AtomType::InRe(inre) => build_inre_encoder(inre, pol, ctx),
+        AtomType::WordEquation(weq) => Ok(equation::get_encoder(weq, pol)),
+        AtomType::PrefixOf(_) => todo!(),
+        AtomType::SuffixOf(_) => todo!(),
+        AtomType::Contains(_) => todo!(),
+        AtomType::LinearConstraint(lc) => Ok(Box::new(MddEncoder::new(lc.clone()))),
     }
 }

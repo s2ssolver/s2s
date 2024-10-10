@@ -7,80 +7,48 @@
 //! The solver terminates when a model is found or when the bounds are relaxed to the point where the problem is unsatisfiable.
 //! Note however, that the solver does not guarantee that unsatisfiability is detected and thus might not terminate.
 
-mod abstr;
+mod abstraction;
+mod alphabet;
 mod bounds;
+mod context;
 mod encode;
-pub mod error;
-mod instance;
-pub mod model;
-mod parse;
+mod error;
+mod ir;
 mod preprocess;
 mod sat;
+mod smt;
 mod solver;
 
-use std::time::Instant;
+use std::{io::BufRead, time::Instant};
 
-use error::Error;
-use instance::Instance;
-pub use parse::Parser;
-pub use preprocess::{preprocess, PreprocessingResult};
-pub use solver::{get_solver, Solver, SolverResult};
+use context::Context;
+pub use error::PublicError as Error;
+use smt::parse::AstParser;
+pub use solver::{Solver, SolverOptions, SolverResult};
 
-use crate::model::{Evaluable, Substitution};
+/// Solves an SMT problem over the theory of strings.
+/// The input problem must be in SMT-LIB format.
+/// Returns the result of the satisfiability check.
+/// Optionally, the solver can be configured with additional options.
+/// If no options are given, the solver uses the default options.
+pub fn solve_smt(smt: impl BufRead, options: Option<SolverOptions>) -> Result<SolverResult, Error> {
+    let mut ctx = Context::default();
+    let mut t = Instant::now();
 
-pub fn solve(instance: &mut Instance) -> Result<SolverResult, Error> {
-    // Preprocess the formula
+    // Parse the input problem
+    let parser = AstParser::default();
+    let script = parser.parse_script(smt)?;
+    log::info!("Parsed in {:?}", t.elapsed());
+    t = Instant::now();
 
-    log::trace!("Solving formula {}", instance.get_formula());
+    // Convert the input problem to a formula
+    let formula = preprocess::convert_script(&script, &mut ctx)?;
+    log::info!("Converted in {:?}", t.elapsed());
 
-    let ts = Instant::now();
-
-    let mut subs = Substitution::new();
-
-    if instance.preprocess() {
-        match preprocess(instance) {
-            (PreprocessingResult::Unchanged(_), s) => {
-                assert!(s.is_empty());
-                log::debug!("No preprocessing applied.");
-            }
-            (PreprocessingResult::Changed(c), s) => {
-                subs = s;
-                instance.set_formula(c.into())
-            }
-        }
-        log::info!("Preprocessing done ({}ms).", ts.elapsed().as_millis());
-    }
-    log::debug!("Solving formula {}", instance.get_formula());
-
-    // Check if the formula is trivial
-    match instance.get_formula().eval(&subs) {
-        Some(true) => {
-            log::info!("Formula is trivially true");
-            subs.use_defaults();
-            return Ok(SolverResult::Sat(subs));
-        }
-        Some(false) => {
-            log::info!("Formula is trivially false");
-            return Ok(SolverResult::Unsat);
-        }
-        _ => (),
-    }
-
-    if instance.dry_run() {
-        log::info!("Dry run, terminating.");
-        return Ok(SolverResult::Unknown);
-    }
-
-    // not trivally satifable or unsatisfiable
-    let mut solver = get_solver(instance.clone())?;
-
-    match solver.solve()? {
-        SolverResult::Sat(m) => {
-            let mut model = subs.compose(&m);
-            model.use_defaults();
-            Ok(SolverResult::Sat(model))
-        }
-        SolverResult::Unsat => Ok(SolverResult::Unsat),
-        SolverResult::Unknown => Ok(SolverResult::Unknown),
-    }
+    // Solve the formula
+    t = Instant::now();
+    let mut solver = Solver::with_options(options.unwrap_or_default());
+    let res = solver.solve(&formula, &mut ctx);
+    log::info!("Solved in {:?}", t.elapsed());
+    res
 }

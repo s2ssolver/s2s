@@ -1,26 +1,36 @@
-mod alignment;
 mod assign;
-mod iwoorpje;
+// mod weq_old;
+// mod iwoorpje;
 mod vareq;
-mod woorpje;
-use alignment::AlignmentEncoder;
+mod weq;
 
-use crate::model::constraints::WordEquation;
+use weq::{WordEquationEncoder, WordInEquationEncoder};
+// mod woorpje;
+
+// use crate::model::constraints::WordEquation;
+
+use crate::ir::WordEquation;
 
 use self::{assign::AssignmentEncoder, vareq::VareqEncoder};
 
-use super::ConstraintEncoder;
+use super::LiteralEncoder;
 
-pub fn get_encoder(equation: &WordEquation) -> Box<dyn ConstraintEncoder> {
+pub fn get_encoder(equation: &WordEquation, pol: bool) -> Box<dyn LiteralEncoder> {
+    // Both constants => panic
     match equation {
-        WordEquation::VarEquality { lhs, rhs, eq_type } => {
-            Box::new(VareqEncoder::new(lhs, rhs, eq_type.is_equality()))
-        }
-        WordEquation::Assignment { lhs, rhs, eq_type } => Box::new(AssignmentEncoder::new(
+        WordEquation::ConstantEquality(_, _) => panic!("Constant equations cannot be encoded"),
+        WordEquation::VarEquality(lhs, rhs) => return Box::new(VareqEncoder::new(lhs, rhs, pol)),
+        WordEquation::VarAssignment(lhs, rhs) => Box::new(AssignmentEncoder::new(
             lhs.clone(),
-            rhs.clone(),
-            eq_type.is_equality(),
+            rhs.chars().collect(),
+            pol,
         )),
-        WordEquation::Generic { .. } => Box::new(AlignmentEncoder::new(equation.clone())),
+        WordEquation::General(_, _) => {
+            if pol {
+                Box::new(WordEquationEncoder::new(equation.clone()))
+            } else {
+                Box::new(WordInEquationEncoder::new(equation.clone()))
+            }
+        } //Box::new(WordEquationEncoderOld::new(equation.clone(), pol)),
     }
 }

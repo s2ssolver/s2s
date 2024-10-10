@@ -1,3 +1,3 @@
 mod nfa;
 
-pub use nfa::build_re_encoder;
+pub use nfa::build_inre_encoder;

@@ -594,7 +594,7 @@ mod tests {
 
     use crate::{
         bounds::IntDomain,
-        encode::domain::{get_substitutions, DomainEncoder},
+        encode::domain::{get_str_substitutions, DomainEncoder},
         instance::Instance,
         model::{constraints::Pattern, Evaluable, Sort, Substitutable, Substitution, Variable},
     };
@@ -631,7 +631,7 @@ mod tests {
         }
         let res = solver.solve_with(assumptions.into_iter());
         if let Some(true) = res {
-            let solution = get_substitutions(dom_encoder.encoding(), &instance, &solver);
+            let solution = get_str_substitutions(dom_encoder.encoding(), &instance, &solver);
             let solution = Substitution::from(solution);
             assert!(
                 eq.eval(&solution).unwrap(),
@@ -679,10 +679,10 @@ mod tests {
             done = bounds.uppers_geq(limit as isize);
 
             bounds.next_square_uppers();
-            bounds.clamp_uppers(limit as isize);
+            bounds.clamp(0, limit as isize);
         }
         if let Some(true) = result {
-            let sol = get_substitutions(dom_encoder.encoding(), &instance, &solver);
+            let sol = get_str_substitutions(dom_encoder.encoding(), &instance, &solver);
             let solution = Substitution::from(sol);
 
             assert!(

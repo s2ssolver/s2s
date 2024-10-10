@@ -311,7 +311,7 @@ mod tests {
 
     use crate::{
         bounds::IntDomain,
-        encode::domain::{get_substitutions, DomainEncoder},
+        encode::domain::{get_str_substitutions, DomainEncoder},
         instance::Instance,
         model::{constraints::Pattern, Evaluable, Sort, Substitutable, Substitution, Variable},
     };
@@ -398,7 +398,7 @@ mod tests {
         let res = solver.solve();
         if let Some(true) = res {
             let solution =
-                Substitution::from(get_substitutions(dom_encoder.encoding(), &vm, &solver));
+                Substitution::from(get_str_substitutions(dom_encoder.encoding(), &vm, &solver));
 
             assert!(
                 eq.eval(&solution).unwrap(),

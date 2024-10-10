@@ -1,0 +1,136 @@
+use indexmap::IndexMap;
+
+use super::DomainEncoding;
+use crate::context::Sorted;
+use crate::sat::{plit, PVar};
+use crate::{
+    bounds::{Bounds, Interval},
+    context::{Context, Sort, Variable},
+    encode::{card::IncrementalEO, EncodingResult},
+    ir::{LinearArithTerm, VarSubstitution},
+    sat::pvar,
+};
+
+#[derive(Clone, Debug, Default)]
+pub struct IntDomain {
+    encodings: IndexMap<(Variable, isize), PVar>,
+}
+
+impl IntDomain {
+    /// Sets the Boolean variable that is true if the variable has the given length.
+    /// Panics if the variable was already set.
+    pub fn insert(&mut self, var: Variable, value: isize, pvar: PVar) {
+        assert!(
+            var.sort() == Sort::Int,
+            "Variable {} is not an integer",
+            var
+        );
+        let ok = self.encodings.insert((var, value), pvar);
+        assert!(ok.is_none());
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = (&Variable, isize, &PVar)> {
+        self.encodings
+            .iter()
+            .map(|((var, value), v)| (var, *value, v))
+    }
+
+    pub fn get(&self, var: &Variable, value: isize) -> Option<PVar> {
+        assert!(
+            var.sort() == Sort::Int,
+            "Variable {} is not an integer",
+            var
+        );
+
+        self.encodings.get(&(var.clone(), value)).cloned()
+    }
+
+    pub(crate) fn get_model(&self, solver: &cadical::Solver) -> VarSubstitution {
+        if solver.status() != Some(true) {
+            panic!("Solver is not in a SAT state")
+        }
+        let mut model = VarSubstitution::empty();
+        for (var, l, v) in self.iter() {
+            if let Some(true) = solver.value(plit(*v)) {
+                let ok = model.set_int(var.clone(), LinearArithTerm::from_const(l));
+                assert!(ok.is_none());
+            }
+        }
+        model
+    }
+}
+
+pub struct IntegerEncoder {
+    last_domains: Option<Bounds>,
+    /// Maps each variable to an Incremental exact-one encoder that is used to encode the variable's domain.
+    var_len_eo_encoders: IndexMap<Variable, IncrementalEO>,
+}
+
+impl IntegerEncoder {
+    pub fn new() -> Self {
+        Self {
+            last_domains: None,
+            var_len_eo_encoders: IndexMap::new(),
+        }
+    }
+
+    pub fn encode(
+        &mut self,
+        bounds: &Bounds,
+        encoding: &mut DomainEncoding,
+        ctx: &Context,
+    ) -> EncodingResult {
+        let res = self.encode_int_vars(bounds, encoding, ctx);
+
+        self.last_domains = Some(bounds.clone());
+        res
+    }
+
+    fn get_last_dom(&self, var: &Variable) -> Option<Interval> {
+        self.last_domains.as_ref().and_then(|doms| doms.get(var))
+    }
+
+    fn encode_int_vars(
+        &mut self,
+        bounds: &Bounds,
+        encoding: &mut DomainEncoding,
+        ctx: &Context,
+    ) -> EncodingResult {
+        let mut res = EncodingResult::empty();
+
+        for int_var in ctx.int_vars() {
+            let mut len_choices = vec![];
+            let last_upper_bound = self
+                .get_last_dom(int_var)
+                .map(|b| (b.upper_finite().unwrap()));
+            // from last_upper_bound to upper bound
+            let last_lower_bound = self
+                .get_last_dom(int_var)
+                .map(|b| b.lower_finite().unwrap());
+
+            let lower = bounds.get_lower_finite(int_var).unwrap_or(0);
+            let upper = bounds.get_upper_finite(int_var).unwrap();
+            for len in lower..=upper {
+                if last_lower_bound.map(|ll| len < ll).unwrap_or(true)
+                    || last_upper_bound.map(|lu| len > lu).unwrap_or(true)
+                {
+                    // This lenght is not in the previous domain, so we need to encode it
+                    let choice = pvar();
+                    len_choices.push(choice);
+                    encoding
+                        .int
+                        .insert(int_var.as_ref().clone(), len as isize, choice);
+                }
+            }
+            // Exactly one length must be true
+            let eo = self
+                .var_len_eo_encoders
+                .entry(int_var.as_ref().clone())
+                .or_default()
+                .add(&len_choices);
+
+            res.extend(eo);
+        }
+        res
+    }
+}

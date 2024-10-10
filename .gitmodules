@@ -1,0 +1,3 @@
+[submodule "ext/regulaer"]
+	path = ext/regulaer
+	url = git@github.com:lotzk/regulaer.git
