@@ -327,7 +327,7 @@ impl Solver {
                         // If the assignment is not a solution, we found a bug.
                         panic!("The found model is invalid");
                     }
-                    //                    encoder.print_debug(&cadical);
+                    // encoder.print_debug(&cadical);
                     return Ok(SolverResult::Sat(Some(assign)));
                 }
 

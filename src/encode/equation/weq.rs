@@ -276,8 +276,6 @@ pub struct WordEquationEncoder {
     /// The variable-solution matching variables.
     var_matches: IndexMap<(Variable, usize, usize), PVar>,
 
-    var_cand_match_cache: IndexMap<(Variable, usize, usize), PVar>,
-
     mismatch_alo: IncrementalALO,
 }
 
@@ -306,7 +304,7 @@ impl WordEquationEncoder {
             //segs_starts_amo: IndexMap::new(),
             segments_lsh: lhs_segs,
             segments_rhs: rhs_segs,
-            var_cand_match_cache: IndexMap::new(),
+
             mismatch_alo: IncrementalALO::new(),
             var_matches: IndexMap::new(),
         }
@@ -477,7 +475,6 @@ impl WordEquationEncoder {
                             } else {
                                 // Cannot start here with length l with current bound
                                 let selector = self.bound_selector.unwrap();
-
                                 res.add_clause(vec![nlit(selector), nlit(svar), nlit(has_length)]);
                             }
                         }
@@ -616,7 +613,7 @@ impl WordEquationEncoder {
                                     .bound
                                     .saturating_sub(segments.suffix_min_len(i, bounds))
                             {
-                                // If segment starts here, then the next |w| positions must match substitution of x
+                                // If segment starts here, then the next l positions must match substitution of x
                                 match l {
                                     1 => {
                                         let m_var: u32 = pvar();
@@ -646,37 +643,53 @@ impl WordEquationEncoder {
                                         let pred_m_var = self.var_matches[&(x.clone(), p, l - 1)];
                                         clauses.push(vec![nlit(m_var), plit(pred_m_var)]);
                                         self.var_matches.insert((x.clone(), p, l), m_var);
+
+                                        // THIS CACHING IS NOT WORKING IF WE HAVE INEQUALITY: The caching assumes we match against the same word, but in case of inequality, we match against two different words, and the cache is invalid.
                                         // Cache this with variable
                                         // I.e., match(x[l-1], cand[p+l-1]) -> EX c. such that they match
-                                        let mv = match self.var_cand_match_cache.get(&(
-                                            x.clone(),
-                                            l - 1,
-                                            p + (l - 1),
-                                        )) {
-                                            Some(mv) => *mv,
-                                            None => {
-                                                let mv = pvar();
-                                                for c in dom.alphabet().iter() {
-                                                    let cand_c = word.char_at(p + (l - 1), c);
-                                                    let sub_c = subs.get_sub(x, l - 1, c).unwrap();
-                                                    clauses.push(vec![
-                                                        nlit(mv),
-                                                        nlit(cand_c),
-                                                        plit(sub_c),
-                                                    ]);
-                                                    clauses.push(vec![
-                                                        nlit(mv),
-                                                        plit(cand_c),
-                                                        nlit(sub_c),
-                                                    ]);
-                                                }
-                                                self.var_cand_match_cache
-                                                    .insert((x.clone(), l - 1, p + (l - 1)), mv);
-                                                mv
-                                            }
-                                        };
+                                        // let mv = match self.var_cand_match_cache.get(&(
+                                        //     x.clone(),
+                                        //     l - 1,
+                                        //     p + (l - 1),
+                                        // )) {
+                                        //     Some(mv) => *mv,
+                                        //     None => {
+                                        //         let mv = pvar();
+                                        //         for c in dom.alphabet().iter() {
+                                        //             let cand_c = word.char_at(p + (l - 1), c);
+                                        //             let sub_c = subs.get_sub(x, l - 1, c).unwrap();
+                                        //             clauses.push(vec![
+                                        //                 nlit(mv),
+                                        //                 nlit(cand_c),
+                                        //                 plit(sub_c),
+                                        //             ]);
+                                        //             clauses.push(vec![
+                                        //                 nlit(mv),
+                                        //                 plit(cand_c),
+                                        //                 nlit(sub_c),
+                                        //             ]);
+                                        //         }
+                                        //         self.var_cand_match_cache
+                                        //             .insert((x.clone(), l - 1, p + (l - 1)), mv);
+                                        //         mv
+                                        //     }
+                                        // };
+                                        // clauses.push(vec![nlit(m_var), plit(mv)]);
 
-                                        clauses.push(vec![nlit(m_var), plit(mv)]);
+                                        for c in dom.alphabet().iter() {
+                                            let cand_c = word.char_at(p + (l - 1), c);
+                                            let sub_c = subs.get_sub(x, l - 1, c).unwrap();
+                                            clauses.push(vec![
+                                                nlit(m_var),
+                                                nlit(cand_c),
+                                                plit(sub_c),
+                                            ]);
+                                            clauses.push(vec![
+                                                nlit(m_var),
+                                                plit(cand_c),
+                                                nlit(sub_c),
+                                            ]);
+                                        }
 
                                         clauses.push(vec![
                                             nlit(start_var),
@@ -819,7 +832,7 @@ impl LiteralEncoder for WordEquationEncoder {
 
         let mut res = EncodingResult::empty();
 
-        let mut bound = if self.pol {
+        let bound = if self.pol {
             min(
                 FilledPattern::fill(&self.equation.lhs(), bounds).length(),
                 FilledPattern::fill(&self.equation.rhs(), bounds).length(),
@@ -829,11 +842,9 @@ impl LiteralEncoder for WordEquationEncoder {
                 FilledPattern::fill(&self.equation.lhs(), bounds).length(),
                 FilledPattern::fill(&self.equation.rhs(), bounds).length(),
             )
-        }; // + 1;
-           // Bound must be larger than 0
-           // Usually, a 0 should not occurr because every string variable has an upper bound of at least 1 or the equation is empty
-           // However, this is a failsafe
-        bound = max(bound, 1);
+        } + 1;
+        // we need to add 1 to the bound to allow empty variables to start somewhere
+        // For example in aX = a, if we set the bound to 1, then variable X cannot start at position 2 (even if empty).
 
         assert!(bound >= self.bound, "Bound cannot shrink");
         assert!(bound > 0);
@@ -909,6 +920,7 @@ impl LiteralEncoder for WordEquationEncoder {
             suffix_enc_rhs.clauses()
         );
         res.extend(suffix_enc_rhs);
+
         let ts = Instant::now();
         let vars_match_lhs_enc = self.match_candidate(dom, bounds, &EqSide::Lhs);
 
