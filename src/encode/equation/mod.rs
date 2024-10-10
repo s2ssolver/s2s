@@ -1,10 +1,11 @@
 mod assign;
-mod weq;
+// mod weq_old;
 // mod iwoorpje;
 mod vareq;
+mod weq;
 
+use weq::{WordEquationEncoder, WordInEquationEncoder};
 // mod woorpje;
-use weq::WordEquationEncoder;
 
 // use crate::model::constraints::WordEquation;
 
@@ -24,6 +25,12 @@ pub fn get_encoder(equation: &WordEquation, pol: bool) -> Box<dyn LiteralEncoder
             rhs.chars().collect(),
             pol,
         )),
-        WordEquation::General(_, _) => Box::new(WordEquationEncoder::new(equation.clone(), pol)),
+        WordEquation::General(_, _) => {
+            if pol {
+                Box::new(WordEquationEncoder::new(equation.clone()))
+            } else {
+                Box::new(WordInEquationEncoder::new(equation.clone()))
+            }
+        } //Box::new(WordEquationEncoderOld::new(equation.clone(), pol)),
     }
 }

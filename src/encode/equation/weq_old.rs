@@ -233,7 +233,7 @@ impl SolutionWord {
 
 /// The alignment-based encoder for word equations.
 /// This encoder is based on the following idea that segments of the LHS and RHS need to be aligned with a solution word.
-pub struct WordEquationEncoder {
+pub struct WordEquationEncoderOld {
     /// The original word equation
     equation: WordEquation,
     pol: bool,
@@ -279,7 +279,7 @@ pub struct WordEquationEncoder {
     mismatch_alo: IncrementalALO,
 }
 
-impl WordEquationEncoder {
+impl WordEquationEncoderOld {
     pub fn new(equation: WordEquation, pol: bool) -> Self {
         let lhs_segs = SegmentedPattern::new(&equation.lhs());
         let rhs_segs = SegmentedPattern::new(&equation.rhs());
@@ -822,7 +822,7 @@ impl WordEquationEncoder {
     }
 }
 
-impl LiteralEncoder for WordEquationEncoder {
+impl LiteralEncoder for WordEquationEncoderOld {
     fn encode(
         &mut self,
         bounds: &Bounds,
@@ -1153,7 +1153,7 @@ mod tests {
         let dom_cnf = dom_encoder.encode(&bounds, ctx);
         encoding.extend(dom_cnf);
 
-        let mut encoder = WordEquationEncoder::new(eq.clone(), true);
+        let mut encoder = WordEquationEncoderOld::new(eq.clone(), true);
         encoding.extend(encoder.encode(&bounds, dom_encoder.encoding()).unwrap());
 
         let mut solver: Solver = Solver::default();
@@ -1215,7 +1215,7 @@ mod tests {
         alphabet: &Alphabet,
         ctx: &mut Context,
     ) -> Option<bool> {
-        let mut encoder = WordEquationEncoder::new(eq.clone(), true);
+        let mut encoder = WordEquationEncoderOld::new(eq.clone(), true);
 
         let mut dom_encoder = DomainEncoder::new(alphabet.clone());
 

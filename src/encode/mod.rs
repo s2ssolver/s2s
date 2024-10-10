@@ -1,9 +1,9 @@
-use std::{fmt::Display, ops::Index, slice::Iter};
+use std::fmt::Display;
 
 use crate::{
     bounds::Bounds,
-    context::{Context, Variable},
-    ir::{AtomType, Literal, Pattern, Symbol},
+    context::Context,
+    ir::{AtomType, Literal},
     sat::{Clause, Cnf, PLit},
 };
 
@@ -30,64 +30,6 @@ use indexmap::IndexSet;
 
 /// The character used to represent unused positions
 const LAMBDA: char = char::REPLACEMENT_CHARACTER;
-
-/// A position in a filled pattern.
-/// Either a constant word or a position within a variable.
-#[derive(Debug, Clone, PartialEq, Eq)]
-enum FilledPos {
-    Const(char),
-    FilledPos(Variable, usize),
-}
-/// A filled pattern is a pattern with a set of bounds on the variables.
-/// Each position in the pattern is either a constant word or a position within a variable.
-struct FilledPattern {
-    positions: Vec<FilledPos>,
-}
-
-impl FilledPattern {
-    fn fill(pattern: &Pattern, bounds: &Bounds) -> Self {
-        Self {
-            positions: Self::convert(pattern, bounds),
-        }
-    }
-
-    fn convert(pattern: &Pattern, bounds: &Bounds) -> Vec<FilledPos> {
-        let mut positions = vec![];
-        for symbol in pattern.symbols() {
-            match symbol {
-                Symbol::Constant(c) => positions.push(FilledPos::Const(*c)),
-                Symbol::Variable(v) => {
-                    let len = bounds.get_upper_finite(v).unwrap() as usize;
-                    for i in 0..len {
-                        positions.push(FilledPos::FilledPos(v.clone(), i))
-                    }
-                }
-            }
-        }
-        positions
-    }
-
-    pub fn length(&self) -> usize {
-        self.positions.len()
-    }
-
-    fn at(&self, i: usize) -> Option<&FilledPos> {
-        self.positions.get(i)
-    }
-
-    #[allow(dead_code)]
-    fn iter(&self) -> Iter<FilledPos> {
-        self.positions.iter()
-    }
-}
-
-impl Index<usize> for FilledPattern {
-    type Output = FilledPos;
-
-    fn index(&self, index: usize) -> &Self::Output {
-        &self.positions[index]
-    }
-}
 
 pub enum EncodingResult {
     /// The CNF encoding of the problem
