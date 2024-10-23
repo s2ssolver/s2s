@@ -10,7 +10,7 @@ use crate::{
     alphabet::{self, Alphabet},
     bounds::{infer::BoundInferer, step::BoundStep, Bounds, Interval},
     context::{Context, Sorted},
-    ir::{Formula, VarSubstitution},
+    ir::{self, Formula, VarSubstitution},
     preprocess::{self, simp, PreprocessingError},
     sat::to_cnf,
 };
@@ -78,6 +78,7 @@ pub struct SolverOptions {
     check_model: bool,
     unsat_on_max_bound: bool,
     init_upper_bound: i32,
+    print_preprocessed: bool,
 }
 impl Default for SolverOptions {
     fn default() -> Self {
@@ -91,6 +92,7 @@ impl Default for SolverOptions {
             check_model: DEFAULT_CHECK_MODEL,
             unsat_on_max_bound: DEFAULT_UNSAT_ON_MAX_BOUND,
             init_upper_bound: 2,
+            print_preprocessed: false,
         }
     }
 }
@@ -143,6 +145,12 @@ impl SolverOptions {
         self.init_upper_bound = init_upper_bound;
         self
     }
+
+    /// Prints the preprocessed formula in SMT-LIB format.
+    pub fn print_preprocessed(&mut self) -> &mut Self {
+        self.print_preprocessed = true;
+        self
+    }
 }
 
 /// The solver.
@@ -167,6 +175,10 @@ impl Solver {
         let (fm_preprocessed, applied_subst) = self.preprocess(fm.clone(), ctx)?;
         log::info!("Preprocessed ({:?})", timer.elapsed());
         log::debug!("Preprocessed formula: {}", fm_preprocessed);
+        if self.options.print_preprocessed {
+            let smt = ir::smt::to_smtlib(&fm_preprocessed);
+            println!("{}", smt);
+        }
 
         // Early return if the formula is trivially sat/unsat
         if fm_preprocessed == Formula::True {

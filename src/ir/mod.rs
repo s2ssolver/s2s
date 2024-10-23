@@ -10,6 +10,7 @@ use indexmap::IndexSet;
 use regulaer::re::Regex;
 
 mod int;
+pub mod smt;
 mod string;
 mod substitution;
 pub mod util;
@@ -311,6 +312,14 @@ impl Formula {
     /// If false, it is unknown if the formula implies the literal.
     pub(crate) fn entails(&self, l: &&Literal) -> bool {
         self.entailed_literals().any(|lit| lit == *l)
+    }
+
+    pub fn variables(&self) -> IndexSet<Variable> {
+        let mut vars = IndexSet::new();
+        for lit in self.literals() {
+            vars.extend(lit.variables());
+        }
+        vars
     }
 }
 impl Display for Formula {

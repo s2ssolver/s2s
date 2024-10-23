@@ -35,6 +35,11 @@ struct Options {
     #[arg(long)]
     model: bool,
 
+    /// Print the preprocessed formula in SMT-LIB format
+    /// Use together with `--dry` to only preprocess the formula
+    #[arg(long)]
+    print_preprocessed: bool,
+
     /// The input file to use, must be either in SMT2 or WOORPJE format, according to the `format` argument
     file: String,
 }
@@ -90,6 +95,9 @@ fn convert_options(options: &Options) -> SolverOptions {
     }
     if let Some(b) = options.init_bound {
         opts.init_upper_bound(b);
+    }
+    if options.print_preprocessed {
+        opts.print_preprocessed();
     }
     opts
 }
