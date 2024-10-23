@@ -1,6 +1,7 @@
 mod entailedvar;
 mod identities;
 mod indep;
+mod length;
 mod levis;
 mod regex;
 mod substring;
@@ -83,6 +84,7 @@ fn rewrite_simps(fm: &Formula) -> Vec<Box<dyn RewriteSimplifier>> {
         Box::new(IndependentVarReducer::new(fm)),
         Box::new(substring::ConstantPrefixSuffix),
         Box::new(regex::ConstantPrefixSuffix),
+        Box::new(length::ZeroLengthEpsilon),
         Box::new(levis::LevisSimp),
     ]
 }
