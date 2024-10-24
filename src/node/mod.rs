@@ -4,6 +4,7 @@ use crate::context::Variable;
 
 mod manager;
 mod normal;
+mod subs;
 
 pub use manager::NodeManager;
 use regulaer::re::Regex;
