@@ -13,6 +13,7 @@ mod bounds;
 mod context;
 mod encode;
 mod error;
+mod interpret;
 mod ir;
 pub mod node;
 mod preprocess;
@@ -26,7 +27,9 @@ use std::{io::BufRead, time::Instant};
 
 use context::Context;
 pub use error::PublicError as Error;
-use smt::parse::AstParser;
+use interpret::Interpreter;
+use node::NodeManager;
+use smt::{parse_old::AstParser, ScriptBuilder};
 pub use solver::{Solver, SolverOptions, SolverResult};
 
 /// Solves an SMT problem over the theory of strings.
@@ -34,7 +37,28 @@ pub use solver::{Solver, SolverOptions, SolverResult};
 /// Returns the result of the satisfiability check.
 /// Optionally, the solver can be configured with additional options.
 /// If no options are given, the solver uses the default options.
-pub fn solve_smt(smt: impl BufRead, options: Option<SolverOptions>) -> Result<SolverResult, Error> {
+pub fn solve_smt(smt: impl BufRead, options: Option<SolverOptions>) -> Result<(), Error> {
+    let mut mngr = NodeManager::default();
+
+    let t = Instant::now();
+    // Parse the input problem
+    let parser = ScriptBuilder::new(&mut mngr);
+    let script = parser.parse_script(smt)?;
+    log::info!("Parsed in {:?}", t.elapsed());
+
+    let mut interpreter = Interpreter::new(script, options.unwrap_or_default(), &mut mngr);
+    interpreter.run()
+}
+
+/// Solves an SMT problem over the theory of strings.
+/// The input problem must be in SMT-LIB format.
+/// Returns the result of the satisfiability check.
+/// Optionally, the solver can be configured with additional options.
+/// If no options are given, the solver uses the default options.
+pub fn solve_smt_old(
+    smt: impl BufRead,
+    options: Option<SolverOptions>,
+) -> Result<SolverResult, Error> {
     let mut ctx = Context::default();
     let mut t = Instant::now();
 
@@ -51,7 +75,7 @@ pub fn solve_smt(smt: impl BufRead, options: Option<SolverOptions>) -> Result<So
     // Solve the formula
     t = Instant::now();
     let mut solver = Solver::with_options(options.unwrap_or_default());
-    let res = solver.solve(&formula, &mut ctx);
+    let res = solver.solve_old(&formula, &mut ctx);
     log::info!("Solved in {:?}", t.elapsed());
     res
 }

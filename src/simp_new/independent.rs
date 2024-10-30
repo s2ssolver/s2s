@@ -73,13 +73,18 @@ impl IndependentVariableAssignment {
         pol: bool,
         mngr: &mut NodeManager,
     ) -> Option<NodeSubstitution> {
-        log::warn!("TODO: Implement try_reduce_reg_membership");
-
         match lhs.kind() {
             NodeKind::Variable(v) if self.independent(v) => {
                 let mut subs = NodeSubstitution::default();
                 let rhs = regulaer::re::sampling::try_sample(regex, mngr.re_builder(), pol, 200)?;
-                let rhs = mngr.const_str(&rhs.to_string());
+                if pol {
+                    debug_assert!(regex.accepts(&rhs));
+                } else {
+                    debug_assert!(!regex.accepts(&rhs));
+                }
+                let rhs_str = rhs.iter().collect::<String>();
+                debug_assert!(rhs_str.len() == rhs.len());
+                let rhs = mngr.const_string(rhs_str);
                 subs.add(lhs.clone(), rhs, mngr);
                 return Some(subs);
             }

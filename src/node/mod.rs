@@ -2,10 +2,10 @@ use std::{fmt::Display, hash::Hash, ops::Index, rc::Rc};
 
 use crate::context::{Sort, Sorted, Variable};
 
-mod canonical;
+pub mod canonical;
 pub mod error;
 mod manager;
-mod normal;
+pub mod normal;
 mod subs;
 pub mod utils;
 
@@ -91,6 +91,9 @@ impl NodeKind {
     pub fn is_atom(&self) -> bool {
         match self {
             NodeKind::InRe | NodeKind::PrefixOf | NodeKind::SuffixOf | NodeKind::Contains => true,
+            NodeKind::Eq => true,
+            NodeKind::Variable(v) => v.sort().is_bool(),
+            NodeKind::Bool(_) => true,
             _ => false,
         }
     }

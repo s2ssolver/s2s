@@ -11,6 +11,7 @@ use crate::{
     bounds::{infer::BoundInferer, step::BoundStep, Bounds, Interval},
     context::{Context, Sorted},
     ir::{self, Formula, VarSubstitution},
+    node::{Node, NodeKind, NodeManager, NodeSubstitution},
     preprocess::{self, simp, PreprocessingError},
     sat::to_cnf,
 };
@@ -19,6 +20,7 @@ use crate::error::PublicError as Error;
 
 //mod analysis;
 mod encoder;
+mod preprocessing;
 mod refine;
 //mod engine;
 //mod manager;
@@ -27,6 +29,7 @@ mod refine;
 pub enum SolverResult {
     /// The instance is satisfiable. The model, if given, is a solution to the instance.
     Sat(Option<VarSubstitution>),
+    SatNew(Option<NodeSubstitution>),
     /// The instance is unsatisfiable
     Unsat,
     /// The solver could not determine the satisfiability of the instance
@@ -56,7 +59,7 @@ impl SolverResult {
 impl std::fmt::Display for SolverResult {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            SolverResult::Sat(_) => write!(f, "sat"),
+            SolverResult::Sat(_) | SolverResult::SatNew(_) => write!(f, "sat"),
             SolverResult::Unsat => write!(f, "unsat"),
             SolverResult::Unknown => write!(f, "unknown"),
         }
@@ -71,7 +74,7 @@ const DEFAULT_UNSAT_ON_MAX_BOUND: bool = false;
 pub struct SolverOptions {
     dry: bool,
     simplify: bool,
-    simp_iters: usize,
+    prep_passes: usize,
     cegar: bool,
     max_bounds: Option<Interval>,
     step: BoundStep,
@@ -85,7 +88,7 @@ impl Default for SolverOptions {
         Self {
             dry: false,
             simplify: DEFAULT_SIMPLIFY,
-            simp_iters: DEFAULT_SIMP_MAX_STEPS,
+            prep_passes: DEFAULT_SIMP_MAX_STEPS,
             cegar: true,
             max_bounds: None,
             step: BoundStep::default(),
@@ -165,7 +168,68 @@ impl Solver {
         Self { options }
     }
 
-    pub fn solve(&mut self, fm: &Formula, ctx: &mut Context) -> Result<SolverResult, Error> {
+    pub fn solve(&mut self, root: &Node, mngr: &mut NodeManager) -> Result<SolverResult, Error> {
+        log::info!("Starting solver");
+        let mut timer = Instant::now();
+
+        log::debug!("Solving: {}", root);
+
+        // Preprocess
+        let mut preprocessor = preprocessing::Preprocessor::default();
+        let preprocessed = preprocessor.apply(root, self.options.prep_passes, mngr)?;
+        log::info!("Preprocessed ({:?})", timer.elapsed());
+        if self.options.print_preprocessed {
+            //let smt = ir::smt::to_smtlib(&preprocessed);
+            println!("{}", preprocessed);
+        }
+
+        // Early return if the formula is trivially sat/unsat
+        if let NodeKind::Bool(v) = *preprocessed.kind() {
+            return Ok(if v {
+                SolverResult::SatNew(Some(preprocessor.applied_subsitutions().clone()))
+            } else {
+                SolverResult::Unsat
+            });
+        }
+        todo!()
+
+        // timer = Instant::now();
+
+        // // Build the Boolean abstraction
+        // let abstraction = abstract_fm(&fm_preprocessed);
+        // log::info!("Built abstraction ({:?})", timer.elapsed());
+        // timer = Instant::now();
+
+        // // Initialize the bounds
+        // let init_bounds = match self.init_bounds(&fm_preprocessed, ctx) {
+        //     Some(bs) => bs,
+        //     None => {
+        //         log::info!("No valid initial bounds. Unsat.");
+        //         return Ok(SolverResult::Unsat);
+        //     }
+        // };
+        // log::info!("Initialized bounds ({:?})", timer.elapsed());
+        // log::debug!("Initial bounds: {}", init_bounds);
+
+        // timer = Instant::now();
+
+        // // Initialize the alphabet
+        // let alphabet = alphabet::infer(&fm_preprocessed);
+        // log::info!("Inferred alphabet ({:?})", timer.elapsed());
+        // log::debug!("Alphabet: {}", alphabet);
+        // timer = Instant::now();
+
+        // if self.options.dry {
+        //     return Ok(SolverResult::Unknown);
+        // }
+        // // Start CEGAR loop
+        // let res = self.run(&fm_preprocessed, abstraction, init_bounds, alphabet, ctx);
+
+        // log::info!("Done solving ({:?})", timer.elapsed());
+        // res
+    }
+
+    pub fn solve_old(&mut self, fm: &Formula, ctx: &mut Context) -> Result<SolverResult, Error> {
         log::info!("Starting solver");
         let mut timer = Instant::now();
 
@@ -230,7 +294,7 @@ impl Solver {
     ) -> Result<(Formula, VarSubstitution), PreprocessingError> {
         let t = Instant::now();
         let (fm, subst) = if self.options.simplify {
-            let simped = simp::simplify(fm.clone(), ctx, self.options.simp_iters);
+            let simped = simp::simplify(fm.clone(), ctx, self.options.prep_passes);
             (simped.formula, simped.subst)
         } else {
             (fm.reduce(), VarSubstitution::default())

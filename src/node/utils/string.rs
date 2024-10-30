@@ -32,13 +32,8 @@ impl<'a> SymbolIterator<'a> {
     pub fn peek(&self) -> Option<Symbol> {
         match self.node.kind() {
             NodeKind::String(s) => {
-                // Process constant characters within the string
-                if self.index < s.len() {
-                    let ch = s.chars().nth(self.index)?;
-                    return Some(Symbol::Const(ch));
-                } else {
-                    None
-                }
+                let mut chars = s.chars();
+                chars.nth(self.index).map(Symbol::Const)
             }
             NodeKind::Variable(v) if v.sort().is_string() => {
                 // Return the variable symbol and move to the next child

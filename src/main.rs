@@ -2,7 +2,7 @@ use std::{path::Path, process::exit, time::Instant};
 
 use clap::Parser as ClapParser;
 
-use satstr::{solve_smt, SolverOptions, SolverResult};
+use satstr::{solve_smt, solve_smt_old, SolverOptions, SolverResult};
 
 /// The command line interface for the solver
 #[derive(ClapParser, Debug)]
@@ -56,8 +56,8 @@ fn main() {
 
     let opts = convert_options(&cli);
     let smt = std::io::BufReader::new(std::fs::File::open(file).unwrap());
-    let res = match solve_smt(smt, Some(opts)) {
-        Ok(res) => res,
+    match solve_smt(smt, Some(opts)) {
+        Ok(_) => (),
         Err(err) => {
             log::error!("Error: {}", err);
             println!("unknown");
@@ -66,19 +66,6 @@ fn main() {
     };
 
     log::info!("Done ({}ms).", ts.elapsed().as_millis());
-    match res {
-        SolverResult::Sat(Some(model)) => {
-            println!("sat");
-            if cli.model {
-                println!("{}", model);
-            }
-        }
-        SolverResult::Sat(None) => {
-            println!("sat");
-        }
-        SolverResult::Unsat => println!("unsat"),
-        SolverResult::Unknown => println!("unknown"),
-    }
 }
 
 fn convert_options(options: &Options) -> SolverOptions {

@@ -1,5 +1,8 @@
 //! Rules that simplify the formula by replacing entailed literals with their values.
 
+use indexmap::{IndexMap, IndexSet};
+use itertools::Itertools;
+
 use crate::{
     context::Sorted,
     node::{Node, NodeKind, NodeManager, NodeSubstitution},
@@ -66,18 +69,44 @@ impl SimpRule for EntailedAssigments {
 
 /// Removes all other occurrences of entailed literals from the formula by replacing them with `true` or `false`.
 #[derive(Clone, Default)]
-pub struct RemoveEntailed;
+pub struct RemoveEntailed {
+    // All nodes that have a non-entailed occurrence.
+    non_entailed: IndexSet<Node>,
+}
+
+impl RemoveEntailed {
+    fn occurs_non_entailed(&self, node: &Node) -> bool {
+        self.non_entailed.contains(node)
+    }
+
+    fn update_non_entailed(&mut self, node: &Node, entailed: bool) {
+        if !node.sort().is_bool() {
+            return;
+        }
+
+        if !entailed {
+            self.non_entailed.insert(node.clone());
+        }
+
+        let entailed = entailed && *node.kind() == NodeKind::And;
+        for child in node.children() {
+            self.update_non_entailed(child, entailed);
+        }
+    }
+}
 
 impl SimpRule for RemoveEntailed {
     fn apply(&self, node: &Node, entailed: bool, mngr: &mut NodeManager) -> Option<Simplification> {
-        if entailed {
-            if node.is_literal() {
-                let mut subs = NodeSubstitution::default();
-                subs.add(node.clone(), mngr.ttrue(), mngr);
-                // we need to add back the node, otherwise it will be removed completely
-                return Some(Simplification::new(subs, Some(node.clone())));
-            }
+        if entailed && node.sort().is_bool() && self.occurs_non_entailed(node) {
+            let mut subs = NodeSubstitution::default();
+            subs.add(node.clone(), mngr.ttrue(), mngr);
+            // we need to add back the node, otherwise it will be removed completely
+            return Some(Simplification::new(subs, Some(node.clone())));
         }
         None
+    }
+
+    fn init(&mut self, root: &Node) {
+        self.update_non_entailed(root, true);
     }
 }

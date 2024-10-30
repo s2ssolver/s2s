@@ -82,7 +82,15 @@ impl<'a> TermVisitor<Constant, Identifier, Keyword, SExpr, Symbol, Sort> for Scr
             "=" if args.len() == 2 => {
                 let right = args.pop().unwrap();
                 let left = args.pop().unwrap();
-                self.mngr.eq(left, right)
+                if right.sort() == left.sort() {
+                    if right.sort().is_bool() {
+                        self.mngr.equiv(left, right)
+                    } else {
+                        self.mngr.eq(left, right)
+                    }
+                } else {
+                    return Err(AstError::Unsupported(format!("= {} {}", left, right)));
+                }
             }
             "ite" if args.len() == 3 => {
                 let else_branch = args.pop().unwrap();

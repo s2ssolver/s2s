@@ -31,7 +31,11 @@ impl Default for Rewriter {
                 Box::new(boolean::BoolConstFolding),
                 Box::new(weq::WeqStripPrefix),
                 Box::new(weq::WeqStripSuffix),
-                Box::new(regex::ReStripConstant),
+                Box::new(weq::WeqConstMismatch),
+                Box::new(regex::FoldConstantInRe),
+                Box::new(regex::FoldConstantRegex),
+                Box::new(regex::ReStripConstantPrefix),
+                Box::new(regex::ReStripConstantSuffix),
             ],
             rewrite_cache: IndexMap::new(),
             applied_rules: Vec::new(),
@@ -48,7 +52,8 @@ impl Rewriter {
         self.applied_rules.clear();
         let mut current = None;
         for _ in 0..passes {
-            current = self.rewrite_pass(node, mngr);
+            current = self.rewrite_pass(current.as_ref().unwrap_or(node), mngr);
+
             if current.is_none() {
                 break;
             }
@@ -77,11 +82,12 @@ impl Rewriter {
                 children.push(child.clone());
             }
         }
-        let new_node = mngr.create_node(node.kind().clone(), children);
+        let mut new_node = mngr.create_node(node.kind().clone(), children);
         for rule in &self.rules {
             if let Some(result) = rule.apply(&new_node, mngr) {
                 self.applied_rules.push((new_node.clone(), result.clone()));
                 applied = true;
+                new_node = result;
                 break;
             }
         }

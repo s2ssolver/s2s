@@ -22,7 +22,9 @@ impl SimpRule for ConstantPrefixSuffix {
                     if let NodeKind::Regex(regex) = &node.children()[1].kind() {
                         if let Some(pre) = regex.prefix().filter(|p| !p.is_empty()) {
                             // X -> preX
-                            let prefix_w = mngr.const_string(pre.to_string());
+                            let as_string = pre.iter().collect::<String>();
+                            debug_assert!(as_string.len() == pre.len());
+                            let prefix_w = mngr.const_string(as_string);
                             let pattern = mngr.concat(vec![prefix_w, lhs.clone()]);
 
                             let mut subst = NodeSubstitution::default();

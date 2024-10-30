@@ -4,7 +4,7 @@ mod ints;
 mod levis;
 mod reprefix;
 
-use crate::node::{Node, NodeManager, NodeSubstitution};
+use crate::node::{Node, NodeKind, NodeManager, NodeSubstitution};
 
 /// A simplification inferred by a simplification rule.
 /// Consists of a node substitution `h` and an optional entailment `n`.
@@ -72,6 +72,12 @@ impl Simplifier {
         let mut result = None;
         for _ in 0..passes {
             let current = result.as_ref().unwrap_or_else(|| node);
+
+            for r in self.rules.iter_mut() {
+                // initialize the rules with the current node
+                r.init(current);
+            }
+
             if let Some(simp) = self.apply(node, true, mngr) {
                 let (subs, entailed) = simp.into();
                 let mut applied = subs.apply(current, mngr);
@@ -101,9 +107,10 @@ impl Simplifier {
                 return Some(simplification);
             }
         }
+        let entailed: bool = entailed && *node.kind() == NodeKind::And;
         // Else, descend into the children.
         for child in node.children() {
-            if let Some(simplification) = self.apply(child, false, mngr) {
+            if let Some(simplification) = self.apply(child, entailed, mngr) {
                 return Some(simplification);
             }
         }

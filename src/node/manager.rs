@@ -70,17 +70,17 @@ impl NodeManager {
             NodeKind::PrefixOf if children.len() == 2 => {
                 let r = children.pop().unwrap();
                 let l = children.pop().unwrap();
-                todo!()
+                self.prefix_of(l, r)
             }
             NodeKind::SuffixOf if children.len() == 2 => {
                 let r = children.pop().unwrap();
                 let l = children.pop().unwrap();
-                todo!()
+                self.suffix_of(l, r)
             }
             NodeKind::Contains if children.len() == 2 => {
                 let r = children.pop().unwrap();
                 let l = children.pop().unwrap();
-                todo!()
+                self.contains(l, r)
             }
             NodeKind::Add => self.add(children),
             NodeKind::Sub => self.sub(children),
@@ -88,22 +88,22 @@ impl NodeManager {
             NodeKind::Lt if children.len() == 2 => {
                 let r = children.pop().unwrap();
                 let l = children.pop().unwrap();
-                todo!()
+                self.lt(l, r)
             }
             NodeKind::Le if children.len() == 2 => {
                 let r = children.pop().unwrap();
                 let l = children.pop().unwrap();
-                todo!()
+                self.le(l, r)
             }
             NodeKind::Gt if children.len() == 2 => {
                 let r = children.pop().unwrap();
                 let l = children.pop().unwrap();
-                todo!()
+                self.gt(l, r)
             }
             NodeKind::Ge if children.len() == 2 => {
                 let r = children.pop().unwrap();
                 let l = children.pop().unwrap();
-                todo!()
+                self.ge(l, r)
             }
             _ => panic!("Invalid arity ({}) for kind {kind}", children.len()),
         }
