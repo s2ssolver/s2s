@@ -17,7 +17,11 @@ pub trait RewriteRule {
 pub struct Rewriter {
     rules: Vec<Box<dyn RewriteRule>>,
     rewrite_cache: IndexMap<Node, Node>,
-    max_passes: usize,
+    // The applied rules are stored as pairs of (original, rewritten) nodes.
+    // This is used for debugging and logging purposes.
+    // Only contains the rewrite on the level where the rule was applied.
+    // If that lead to parent nodes being affected, they are not included (as they are in rewrite_cache).
+    applied_rules: Vec<(Node, Node)>,
 }
 
 impl Default for Rewriter {
@@ -30,7 +34,7 @@ impl Default for Rewriter {
                 Box::new(regex::ReStripConstant),
             ],
             rewrite_cache: IndexMap::new(),
-            max_passes: 100,
+            applied_rules: Vec::new(),
         }
     }
 }
@@ -39,10 +43,11 @@ impl Rewriter {
     /// Rewrite the given node using the rules in this rewriter.
     /// Performs up to `max_passes` passes over the node.
     /// Each pass traverses the AST in post-order, applying the rules.
-    pub fn rewrite(&mut self, node: &Node, mngr: &mut NodeManager) -> Option<Node> {
+    pub fn rewrite(&mut self, node: &Node, passes: usize, mngr: &mut NodeManager) -> Option<Node> {
         self.rewrite_cache.clear();
+        self.applied_rules.clear();
         let mut current = None;
-        for _ in 0..self.max_passes {
+        for _ in 0..passes {
             current = self.rewrite_pass(node, mngr);
             if current.is_none() {
                 break;
@@ -75,7 +80,9 @@ impl Rewriter {
         let new_node = mngr.create_node(node.kind().clone(), children);
         for rule in &self.rules {
             if let Some(result) = rule.apply(&new_node, mngr) {
-                return Some(result);
+                self.applied_rules.push((new_node.clone(), result.clone()));
+                applied = true;
+                break;
             }
         }
         if applied {
@@ -85,5 +92,10 @@ impl Rewriter {
         } else {
             None
         }
+    }
+
+    /// Returns the applied rules.
+    pub fn applied(&self) -> &[(Node, Node)] {
+        &self.applied_rules
     }
 }
