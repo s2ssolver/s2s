@@ -1,8 +1,8 @@
 use smt2parser::visitors;
 
-use super::ScriptBuilder;
+use super::AstParser;
 
-impl<'a> visitors::KeywordVisitor for ScriptBuilder<'a> {
+impl visitors::KeywordVisitor for AstParser {
     type T = String;
 
     type E = super::AstError;

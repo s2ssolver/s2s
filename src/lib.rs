@@ -18,6 +18,7 @@ pub mod node;
 mod preprocess;
 mod rewrite;
 mod sat;
+mod simp_new;
 mod smt;
 mod solver;
 

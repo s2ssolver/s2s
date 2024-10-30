@@ -1,5 +1,6 @@
 /// Rewrite rules for transforming Boolean nodes.
 mod boolean;
+mod int;
 mod regex;
 mod weq;
 

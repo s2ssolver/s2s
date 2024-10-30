@@ -12,13 +12,13 @@ use super::{Node, NodeManager};
 /// The substitution is guarantueed to be consistent. This means that the substitution is an homomorphism:
 /// Applying the substitution to node `n` is equivalent to applying the substitution to all children of `n` and then creating a new node with the same kind as `n` and the substituted children.
 /// This is ensured by the `add` function, which essentially only allows composing the substitution with other substitutions that are also consistent.
-/// This specifically means that substitutions are enforced to be acyclic. That is, if there is a substitution `a -> b`, then there cannot be a substitution `r -> a` where `r` is a child of `b`.
+/// Substitutions might be ciclic, but they are always guaranteed to terminate.
 #[derive(Debug, Clone, Default)]
-pub struct NodeSubstution {
+pub struct NodeSubstitution {
     map: HashMap<Node, Node>,
 }
 
-impl NodeSubstution {
+impl NodeSubstitution {
     /// Insert a key-value pair into the substitution map.
     /// This function might break the consistency condition of the substitution.
     /// It thus not intended to be used directly, but only used internallay
@@ -30,8 +30,7 @@ impl NodeSubstution {
     /// Add a new key-value pair to the substitution map.
     /// This takes O(n) time, where n is the number of key-value pairs in the substitution map.
     pub fn add(&mut self, key: Node, value: Node, mngr: &mut NodeManager) {
-        assert!(!value.contains(&key));
-        let mut as_sub = NodeSubstution::default();
+        let mut as_sub = NodeSubstitution::default();
         as_sub.insert(key.clone(), value.clone());
 
         let mut new_map = HashMap::with_capacity(self.map.len() + 1);
@@ -39,7 +38,6 @@ impl NodeSubstution {
         for (k, v) in self.map.iter() {
             let composed_v = as_sub.apply(v, mngr);
             let composed_k = as_sub.apply(k, mngr);
-            assert!(!composed_v.contains(&composed_k));
             new_map.insert(composed_k.clone(), composed_v);
         }
         // Insert the new key-value pair into the substitution map.
@@ -85,7 +83,7 @@ impl NodeSubstution {
     }
 }
 
-impl Display for NodeSubstution {
+impl Display for NodeSubstitution {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         for (key, value) in self.map.iter() {
             writeln!(f, "{} -> {}", key, value)?;
@@ -105,7 +103,7 @@ mod tests {
     fn add_var_to_var() {
         let mut ctx = Context::default();
         let mut mngr = NodeManager::default();
-        let mut subst = NodeSubstution::default();
+        let mut subst = NodeSubstitution::default();
 
         let a = ctx.new_temp_var(Sort::Bool);
         let b = ctx.new_temp_var(Sort::Bool);
@@ -122,7 +120,7 @@ mod tests {
     fn add_var_to_var_transitive() {
         let mut ctx = Context::default();
         let mut mngr = NodeManager::default();
-        let mut subst = NodeSubstution::default();
+        let mut subst = NodeSubstitution::default();
 
         let a = ctx.new_temp_var(Sort::Bool);
         let b = ctx.new_temp_var(Sort::Bool);
@@ -144,7 +142,7 @@ mod tests {
     fn add_var_refl() {
         let mut ctx = Context::default();
         let mut mngr = NodeManager::default();
-        let mut subst = NodeSubstution::default();
+        let mut subst = NodeSubstitution::default();
 
         let a = ctx.new_temp_var(Sort::Bool);
 
@@ -157,7 +155,7 @@ mod tests {
     fn add_var_refl_transitive() {
         let mut ctx = Context::default();
         let mut mngr = NodeManager::default();
-        let mut subst = NodeSubstution::default();
+        let mut subst = NodeSubstitution::default();
 
         let a = ctx.new_temp_var(Sort::Bool);
         let b = ctx.new_temp_var(Sort::Bool);
@@ -176,7 +174,7 @@ mod tests {
         // a&b -> c
         let mut ctx = Context::default();
         let mut mngr = NodeManager::default();
-        let mut subst = NodeSubstution::default();
+        let mut subst = NodeSubstitution::default();
 
         let a = ctx.new_temp_var(Sort::Bool);
         let b = ctx.new_temp_var(Sort::Bool);
@@ -196,7 +194,7 @@ mod tests {
         // This is not invalid because there is no substitution for a
         let mut ctx = Context::default();
         let mut mngr = NodeManager::default();
-        let mut subst = NodeSubstution::default();
+        let mut subst = NodeSubstitution::default();
 
         let a = ctx.new_temp_var(Sort::Bool);
         let b = ctx.new_temp_var(Sort::Bool);
@@ -217,7 +215,7 @@ mod tests {
         // a && b -> c, a -> b => b && b -> c
         let mut ctx = Context::default();
         let mut mngr = NodeManager::default();
-        let mut subst = NodeSubstution::default();
+        let mut subst = NodeSubstitution::default();
 
         let a = ctx.new_temp_var(Sort::Bool);
         let b = ctx.new_temp_var(Sort::Bool);

@@ -235,7 +235,7 @@ mod tests {
     fn test_infer_single_re_finite() {
         let mut ctx = Context::default();
         let rebuilder = ctx.re_builder();
-        let re = regulaer::parse::parse_rust_regex("^aa$", rebuilder).unwrap();
+        let re = regulaer::parse::parse_rust("^aa$", rebuilder).unwrap();
         let v = ctx.new_temp_var(Sort::String);
 
         let mut inferer = RegularBoundsInferer::default();
@@ -249,7 +249,7 @@ mod tests {
     fn test_infer_single_re_star() {
         let mut ctx = Context::default();
         let rebuilder = ctx.re_builder();
-        let re = regulaer::parse::parse_rust_regex("^(aa)*$", rebuilder).unwrap();
+        let re = regulaer::parse::parse_rust("^(aa)*$", rebuilder).unwrap();
         let v = ctx.new_temp_var(Sort::String);
 
         let mut inferer = RegularBoundsInferer::default();
@@ -263,8 +263,8 @@ mod tests {
     fn test_infer_intersection() {
         let mut ctx = Context::default();
         let rebuilder = ctx.re_builder();
-        let re1 = regulaer::parse::parse_rust_regex("^(aa)*$", rebuilder).unwrap();
-        let re2 = regulaer::parse::parse_rust_regex("^(aaa)*$", rebuilder).unwrap();
+        let re1 = regulaer::parse::parse_rust("^(aa)*$", rebuilder).unwrap();
+        let re2 = regulaer::parse::parse_rust("^(aaa)*$", rebuilder).unwrap();
         let v = ctx.new_temp_var(Sort::String);
 
         let mut inferer = RegularBoundsInferer::default();
@@ -280,8 +280,8 @@ mod tests {
     fn test_infer_intersection_comp() {
         let mut ctx = Context::default();
         let rebuilder = ctx.re_builder();
-        let re1 = regulaer::parse::parse_rust_regex("^(aaa)*$", rebuilder).unwrap();
-        let re2 = regulaer::parse::parse_rust_regex("^aaa$", rebuilder).unwrap();
+        let re1 = regulaer::parse::parse_rust("^(aaa)*$", rebuilder).unwrap();
+        let re2 = regulaer::parse::parse_rust("^aaa$", rebuilder).unwrap();
         let v = ctx.new_temp_var(Sort::String);
 
         let mut inferer = RegularBoundsInferer::default();
@@ -298,8 +298,8 @@ mod tests {
         // (aaa)* and not(aaa) and not epsilon ==> smallest is aaaaaa, upper bound is 6
         let mut ctx = Context::default();
         let rebuilder = ctx.re_builder();
-        let re1 = regulaer::parse::parse_rust_regex("^(aaa)*$", rebuilder).unwrap();
-        let re2 = regulaer::parse::parse_rust_regex("^aaa$", rebuilder).unwrap();
+        let re1 = regulaer::parse::parse_rust("^(aaa)*$", rebuilder).unwrap();
+        let re2 = regulaer::parse::parse_rust("^aaa$", rebuilder).unwrap();
         let epsi = rebuilder.epsilon();
         let v = ctx.new_temp_var(Sort::String);
 
@@ -316,8 +316,8 @@ mod tests {
     fn test_infer_intersection_empty() {
         let mut ctx = Context::default();
         let rebuilder = ctx.re_builder();
-        let re1 = regulaer::parse::parse_rust_regex("^aaaa$", rebuilder).unwrap();
-        let re2 = regulaer::parse::parse_rust_regex("^(aa)*$", rebuilder).unwrap();
+        let re1 = regulaer::parse::parse_rust("^aaaa$", rebuilder).unwrap();
+        let re2 = regulaer::parse::parse_rust("^(aa)*$", rebuilder).unwrap();
         let v = ctx.new_temp_var(Sort::String);
 
         let mut inferer = RegularBoundsInferer::default();

@@ -1,12 +1,9 @@
 use itertools::Itertools;
 use smt2parser::visitors;
 
-use crate::{
-    context::Sort,
-    smt::{AstError, Symbol},
-};
+use crate::smt::{AstError, Sort, Symbol};
 
-impl<'a> visitors::SortVisitor<Symbol> for super::ScriptBuilder<'a> {
+impl visitors::SortVisitor<Symbol> for super::AstParser {
     type T = Sort;
 
     type E = AstError;

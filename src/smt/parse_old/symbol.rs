@@ -2,9 +2,9 @@ use smt2parser::visitors;
 
 use crate::smt::{AstError, Symbol};
 
-use super::ScriptBuilder;
+use super::AstParser;
 
-impl<'a> visitors::SymbolVisitor for ScriptBuilder<'a> {
+impl visitors::SymbolVisitor for AstParser {
     type T = Symbol;
 
     type E = AstError;

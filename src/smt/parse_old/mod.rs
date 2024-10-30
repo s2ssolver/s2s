@@ -7,24 +7,26 @@ mod sort;
 mod symbol;
 mod term;
 
-use crate::context::Sort;
-use crate::node::{Node, NodeManager};
-
+use super::{ast::Expression, Constant, Identifier, Keyword, SExpr, SmtCommand, Sort};
 use super::{AstError, Script, Symbol};
-use super::{Constant, Identifier, Keyword, SExpr, SmtCommand};
 
+use indexmap::IndexMap;
 use smt2parser::visitors::Smt2Visitor;
 
-pub struct ScriptBuilder<'a> {
+pub struct AstParser {
     smt25: bool,
-    mngr: &'a mut NodeManager,
+    declared_vars: IndexMap<Symbol, Sort>,
+}
+impl Default for AstParser {
+    fn default() -> Self {
+        Self {
+            smt25: false,
+            declared_vars: IndexMap::new(),
+        }
+    }
 }
 
-impl<'a> ScriptBuilder<'a> {
-    pub fn new(mngr: &'a mut NodeManager) -> Self {
-        Self { smt25: false, mngr }
-    }
-
+impl AstParser {
     pub fn parse_script(self, smt: impl std::io::BufRead) -> Result<Script, AstError> {
         let cmds = smt2parser::CommandStream::new(smt, self, None);
         let mut script = Script::default();
@@ -35,7 +37,7 @@ impl<'a> ScriptBuilder<'a> {
     }
 }
 
-impl<'a> Smt2Visitor for ScriptBuilder<'a> {
+impl Smt2Visitor for AstParser {
     type Error = AstError;
 
     type Constant = Constant;
@@ -50,7 +52,7 @@ impl<'a> Smt2Visitor for ScriptBuilder<'a> {
 
     type Symbol = Symbol;
 
-    type Term = Node;
+    type Term = Expression;
 
     type Command = SmtCommand;
 

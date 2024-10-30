@@ -1,4 +1,10 @@
-use crate::node::{Node, NodeKind, NodeManager};
+use crate::{
+    context::Sorted,
+    node::{
+        utils::{reverse, SymbolIterator},
+        Node, NodeKind, NodeManager,
+    },
+};
 
 use super::RewriteRule;
 
@@ -16,32 +22,29 @@ impl RewriteRule for WeqStripPrefix {
             let lhs = &node.children()[0];
             let rhs = &node.children()[1];
 
-            // Attempt to patternize both sides of the equation
-            let lhs_pattern = mngr.patternize(lhs)?;
-            let rhs_pattern = mngr.patternize(rhs)?;
+            let mut lhs_iter = SymbolIterator::new(lhs);
+            let mut rhs_iter = SymbolIterator::new(rhs);
 
-            // Find the longest common prefix
             let mut i = 0;
-            while i < lhs_pattern.len() && i < rhs_pattern.len() && lhs_pattern[i] == rhs_pattern[i]
-            {
+            let mut next_lhs = lhs_iter.peek();
+            let mut next_rhs = rhs_iter.peek();
+            while next_lhs.is_some() && next_rhs.is_some() && next_lhs == next_rhs {
                 i += 1;
+                lhs_iter.next();
+                rhs_iter.next();
+                next_lhs = lhs_iter.peek();
+                next_rhs = rhs_iter.peek();
             }
 
             if i > 0 {
-                if i == lhs_pattern.len() && i == rhs_pattern.len() {
-                    // If the common prefix is the entire word, then the equation is trivially true
+                if lhs_iter.peek().is_none() && rhs_iter.peek().is_none() {
+                    // Consumed the entire word, so the equation is trivially true
                     return Some(mngr.ttrue());
+                } else {
+                    let lhs_new = lhs_iter.to_node(mngr)?;
+                    let rhs_new = rhs_iter.to_node(mngr)?;
+                    return Some(mngr.eq(lhs_new, rhs_new));
                 }
-
-                // Strip the common prefix and depatternize the remaining parts
-                let stripped_lhs = lhs_pattern.strip_prefix(i);
-                let stripped_rhs = rhs_pattern.strip_prefix(i);
-
-                let new_lhs = mngr.depatternize(&stripped_lhs);
-                let new_rhs = mngr.depatternize(&stripped_rhs);
-
-                // Return the new equation without the common prefix
-                return Some(mngr.eq(new_lhs, new_rhs));
             }
         }
         None
@@ -53,44 +56,13 @@ pub struct WeqStripSuffix;
 
 impl RewriteRule for WeqStripSuffix {
     fn apply(&self, node: &Node, mngr: &mut NodeManager) -> Option<Node> {
-        if *node.kind() == NodeKind::Eq {
-            debug_assert!(node.children().len() == 2);
-            let lhs = &node.children()[0];
-            let rhs = &node.children()[1];
-
-            // Attempt to patternize both sides of the equation
-            let lhs_pattern = mngr.patternize(lhs)?;
-            let rhs_pattern = mngr.patternize(rhs)?;
-
-            // Find the longest common prefix
-            let mut i = 1;
-            let lhs_len = lhs_pattern.len();
-            let rhs_len = rhs_pattern.len();
-            while i <= lhs_pattern.len()
-                && i <= rhs_pattern.len()
-                && lhs_pattern[lhs_len - i] == rhs_pattern[rhs_len - i]
-            {
-                i += 1;
-            }
-
-            if i > 0 {
-                if i == lhs_pattern.len() && i == rhs_pattern.len() {
-                    // If the common prefix is the entire word, then the equation is trivially true
-                    return Some(mngr.ttrue());
-                }
-
-                // Strip the common prefix and depatternize the remaining parts
-                let stripped_lhs = lhs_pattern.strip_suffix(i);
-                let stripped_rhs = rhs_pattern.strip_suffix(i);
-
-                let new_lhs = mngr.depatternize(&stripped_lhs);
-                let new_rhs = mngr.depatternize(&stripped_rhs);
-
-                // Return the new equation without the common prefix
-                return Some(mngr.eq(new_lhs, new_rhs));
-            }
+        if *node.kind() == NodeKind::Eq && node.children()[0].sort().is_string() {
+            let mut reversed = reverse(node, mngr);
+            let stripped_rev = WeqStripPrefix.apply(&mut reversed, mngr)?;
+            Some(reverse(&stripped_rev, mngr))
+        } else {
+            None
         }
-        None
     }
 }
 
@@ -106,6 +78,7 @@ impl RewriteRule for WeqConstMismatch {
 
             // Check for first character mismatch
             if let (Some(lhs_char), Some(rhs_char)) = (first_char(lhs), first_char(rhs)) {
+                println!("lhs_char: {}, rhs_char: {}", lhs_char, rhs_char);
                 if lhs_char != rhs_char {
                     return Some(mngr.ffalse());
                 }
@@ -113,6 +86,7 @@ impl RewriteRule for WeqConstMismatch {
 
             // Check for last character mismatch
             if let (Some(lhs_char), Some(rhs_char)) = (last_char(lhs), last_char(rhs)) {
+                println!("lhs_char: {}, rhs_char: {}", lhs_char, rhs_char);
                 if lhs_char != rhs_char {
                     return Some(mngr.ffalse());
                 }
@@ -126,12 +100,8 @@ fn first_char(node: &Node) -> Option<char> {
     match node.kind() {
         NodeKind::String(s) => s.chars().next(),
         NodeKind::Concat => {
-            for child in node.children() {
-                if let Some(c) = first_char(child) {
-                    return Some(c);
-                }
-            }
-            None
+            let first_child = node.children().first()?;
+            first_char(first_child)
         }
         _ => None,
     }
@@ -141,12 +111,8 @@ fn last_char(node: &Node) -> Option<char> {
     match node.kind() {
         NodeKind::String(s) => s.chars().last(),
         NodeKind::Concat => {
-            for child in node.children().iter().rev() {
-                if let Some(c) = last_char(child) {
-                    return Some(c);
-                }
-            }
-            None
+            let first_child = node.children().last()?;
+            last_char(first_child)
         }
         _ => None,
     }
@@ -154,7 +120,7 @@ fn last_char(node: &Node) -> Option<char> {
 
 #[cfg(test)]
 mod tests {
-    use crate::context::{Context, Sort};
+    use crate::node::testutils::parse_equation;
 
     use super::*;
 
@@ -162,69 +128,31 @@ mod tests {
     fn test_strip_common_prefix_with_constants() {
         let mut mngr = NodeManager::default();
 
-        // Test case where lhs and rhs have a common prefix "ab"
-        let lhs = mngr.const_str("abx");
-        let rhs = mngr.const_str("aby");
-
-        let equation = mngr.eq(lhs.clone(), rhs.clone());
-
+        let equation = parse_equation("abx", "aby", &mut mngr);
         let rule = WeqStripPrefix;
         let result = rule.apply(&equation, &mut mngr);
-
-        // Expect the result to be `x = y` after stripping the common prefix "ab"
-        let expected_lhs = mngr.const_str("x");
-        let expected_rhs = mngr.const_str("y");
-        let expected = mngr.eq(expected_lhs, expected_rhs);
+        let expected = parse_equation("x", "y", &mut mngr);
 
         assert_eq!(result, Some(expected));
     }
 
     #[test]
     fn test_strip_common_prefix_with_variables() {
-        let mut ctx = Context::default();
         let mut mngr = NodeManager::default();
-
-        // Test case where lhs and rhs have a common prefix "ab"
-        let var_x = ctx.new_temp_var(Sort::String);
-        let var_y = ctx.new_temp_var(Sort::String);
-
-        let lhs_str_ab = mngr.const_str("ab");
-        let lhs_var_x = mngr.var(var_x.clone());
-        let rhs_str_ab = mngr.const_str("ab");
-        let rhs_var_y = mngr.var(var_y.clone());
-
-        let lhs = mngr.concat(vec![lhs_str_ab, lhs_var_x]);
-        let rhs = mngr.concat(vec![rhs_str_ab, rhs_var_y]);
-        let equation = mngr.eq(lhs.clone(), rhs.clone());
-
+        let equation = parse_equation("abX", "abY", &mut mngr);
         let rule = WeqStripPrefix;
         let result = rule.apply(&equation, &mut mngr);
 
-        // Expect the result to be `x = y` after stripping the common prefix "ab"
-        let expected_lhs = mngr.var(var_x);
-        let expected_rhs = mngr.var(var_y);
-        let expected = mngr.eq(expected_lhs, expected_rhs);
+        let expected = parse_equation("X", "Y", &mut mngr);
 
         assert_eq!(result, Some(expected));
     }
 
     #[test]
     fn test_no_common_prefix_with_variables() {
-        let mut ctx = Context::default();
         let mut mngr = NodeManager::default();
 
-        // Test case where lhs and rhs have no common prefix
-        let var_x = ctx.new_temp_var(Sort::String);
-        let var_y = ctx.new_temp_var(Sort::String);
-
-        let lhs_str_a = mngr.const_str("a");
-        let lhs_var_x = mngr.var(var_x);
-        let rhs_str_b = mngr.const_str("b");
-        let rhs_var_y = mngr.var(var_y);
-
-        let lhs = mngr.concat(vec![lhs_str_a, lhs_var_x]);
-        let rhs = mngr.concat(vec![rhs_str_b, rhs_var_y]);
-        let equation = mngr.eq(lhs.clone(), rhs.clone());
+        let equation = parse_equation("aX", "bY", &mut mngr);
 
         let rule = WeqStripPrefix;
         let result = rule.apply(&equation, &mut mngr);
@@ -235,71 +163,28 @@ mod tests {
 
     #[test]
     fn test_strip_partial_prefix_with_variables() {
-        let mut ctx = Context::default();
         let mut mngr = NodeManager::default();
-
-        // Test case where lhs and rhs have a partial common prefix with variables
-        let var_x = ctx.new_temp_var(Sort::String);
-        let var_y = ctx.new_temp_var(Sort::String);
-
-        let lhs_str_a = mngr.const_str("a");
-        let lhs_var_x = mngr.var(var_x.clone());
-        let rhs_str_abc = mngr.const_str("abc");
-        let var_y = mngr.var(var_y.clone());
-
-        let lhs = mngr.concat(vec![lhs_str_a, lhs_var_x]);
-        let rhs = mngr.concat(vec![rhs_str_abc, var_y.clone()]);
-        let equation = mngr.eq(lhs.clone(), rhs.clone());
-
+        let equation = parse_equation("aX", "abcY", &mut mngr);
         let rule = WeqStripPrefix;
         let result = rule.apply(&equation, &mut mngr);
-
-        // Expect the result to be `x = y` after stripping the common prefix "abc"
-
-        let expected_lhs = mngr.var(var_x);
-        let str_bc = mngr.const_str("bc");
-        let expected_rhs = mngr.concat(vec![str_bc, var_y]);
-        let expected = mngr.eq(expected_lhs, expected_rhs);
-
+        let expected = parse_equation("X", "bcY", &mut mngr);
         assert_eq!(result, Some(expected));
     }
 
     #[test]
     fn test_exact_match_with_variables() {
-        let mut ctx = Context::default();
         let mut mngr = NodeManager::default();
-
-        // Test case where lhs and rhs are exactly the same
-        let var_x = ctx.new_temp_var(Sort::String);
-        let var_x_node = mngr.var(var_x);
-        let str_abc = mngr.const_str("abc");
-
-        let lhs = mngr.concat(vec![str_abc.clone(), var_x_node.clone()]);
-        let rhs = mngr.concat(vec![str_abc.clone(), var_x_node.clone()]);
-        let equation = mngr.eq(lhs.clone(), rhs.clone());
-
+        let equation = parse_equation("abcX", "abcX", &mut mngr);
         let rule = WeqStripPrefix;
         let result = rule.apply(&equation, &mut mngr);
-
-        // Expect the result to be `true` since the equation is trivially true
         let expected = mngr.ttrue();
-
         assert_eq!(result, Some(expected));
     }
 
     #[test]
     fn test_mismatch_first_char() {
-        let mut ctx = Context::default();
         let mut mngr = NodeManager::default();
-
-        // Test case where first characters of lhs and rhs differ
-        let abc = mngr.const_str("abc");
-        let xyz = mngr.const_str("xyz");
-        let x = mngr.var(ctx.new_temp_var(Sort::String));
-        let y = mngr.var(ctx.new_temp_var(Sort::String));
-        let lhs = mngr.concat(vec![abc, x]);
-        let rhs = mngr.concat(vec![xyz, y]);
-        let equation = mngr.eq(lhs.clone(), rhs.clone());
+        let equation = parse_equation("abcX", "yX", &mut mngr);
 
         let rule = WeqConstMismatch;
         let result = rule.apply(&equation, &mut mngr);
@@ -310,17 +195,8 @@ mod tests {
 
     #[test]
     fn test_mismatch_last_char() {
-        let mut ctx = Context::default();
         let mut mngr = NodeManager::default();
-
-        // Test case where first characters of lhs and rhs differ
-        let abc = mngr.const_str("abc");
-        let xyz = mngr.const_str("xyz");
-        let x = mngr.var(ctx.new_temp_var(Sort::String));
-        let y = mngr.var(ctx.new_temp_var(Sort::String));
-        let lhs = mngr.concat(vec![x, abc]);
-        let rhs = mngr.concat(vec![y, xyz]);
-        let equation = mngr.eq(lhs.clone(), rhs.clone());
+        let equation = parse_equation("Xab", "Xac", &mut mngr);
 
         let rule = WeqConstMismatch;
         let result = rule.apply(&equation, &mut mngr);
@@ -331,38 +207,17 @@ mod tests {
 
     #[test]
     fn test_no_mismatch() {
-        let mut ctx = Context::default();
         let mut mngr = NodeManager::default();
 
-        // Test case where first and last characters of lhs and rhs match
-        let abc = mngr.const_str("abc");
-        let x = mngr.var(ctx.new_temp_var(Sort::String));
-        let y = mngr.var(ctx.new_temp_var(Sort::String));
-        let lhs = mngr.concat(vec![abc.clone(), x]);
-        let rhs = mngr.concat(vec![abc.clone(), y]);
-        let equation = mngr.eq(lhs.clone(), rhs.clone());
-
-        let rule = WeqConstMismatch;
-        let result = rule.apply(&equation, &mut mngr);
-
-        // No mismatch, so the result should be None (no rewrite)
-        assert_eq!(result, None);
+        let equation = parse_equation("Xab", "XaY", &mut mngr);
+        assert!(WeqConstMismatch.apply(&equation, &mut mngr).is_none());
     }
 
     #[test]
     fn test_empty_lhs_rhs() {
-        // Edge case test where both lhs and rhs are empty strings
         let mut mngr = NodeManager::default();
 
-        // Test case where both lhs and rhs are empty strings
-        let lhs = mngr.const_str("");
-        let rhs = mngr.const_str("");
-        let equation = mngr.eq(lhs.clone(), rhs.clone());
-
-        let rule = WeqConstMismatch;
-        let result = rule.apply(&equation, &mut mngr);
-
-        // No mismatch, both sides are empty, so no rewrite should happen
-        assert_eq!(result, None);
+        let equation = parse_equation("", "", &mut mngr);
+        assert!(WeqConstMismatch.apply(&equation, &mut mngr).is_none());
     }
 }

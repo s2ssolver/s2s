@@ -1,20 +1,16 @@
 use smt2parser::visitors::CommandVisitor;
 
-use crate::{
-    context::Sort,
-    node::Node,
-    smt::{AstError, Constant, Keyword, SExpr, SmtCommand, Symbol},
-};
+use crate::smt::{AstError, Constant, Expression, Keyword, SExpr, SmtCommand, Sort, Symbol};
 
-use super::ScriptBuilder;
+use super::AstParser;
 
-impl<'a> CommandVisitor<Node, Symbol, Sort, Keyword, Constant, SExpr> for ScriptBuilder<'a> {
+impl CommandVisitor<Expression, Symbol, Sort, Keyword, Constant, SExpr> for AstParser {
     type T = SmtCommand;
 
     type E = AstError;
 
-    fn visit_assert(&mut self, term: Node) -> Result<Self::T, Self::E> {
-        Ok(SmtCommand::AssertNew(term))
+    fn visit_assert(&mut self, term: Expression) -> Result<Self::T, Self::E> {
+        Ok(SmtCommand::Assert(term))
     }
 
     fn visit_check_sat(&mut self) -> Result<Self::T, Self::E> {
@@ -29,9 +25,9 @@ impl<'a> CommandVisitor<Node, Symbol, Sort, Keyword, Constant, SExpr> for Script
     }
 
     fn visit_declare_const(&mut self, symbol: Symbol, sort: Sort) -> Result<Self::T, Self::E> {
-        match self.mngr.new_var(symbol.clone(), sort) {
-            Ok(_) => Ok(SmtCommand::NoOp),
-            Err(_) => return Err(AstError::AlreadyDeclared(symbol)),
+        match self.declared_vars.insert(symbol.clone(), sort) {
+            Some(_) => Err(AstError::AlreadyDeclared(symbol)),
+            None => Ok(SmtCommand::DeclareConst(symbol, sort)),
         }
     }
 
@@ -78,7 +74,7 @@ impl<'a> CommandVisitor<Node, Symbol, Sort, Keyword, Constant, SExpr> for Script
     fn visit_define_fun(
         &mut self,
         _sig: smt2parser::visitors::FunctionDec<Symbol, Sort>,
-        _term: Node,
+        _term: Expression,
     ) -> Result<Self::T, Self::E> {
         Err(AstError::Unsupported("define-fun".to_string()))
     }
@@ -86,14 +82,14 @@ impl<'a> CommandVisitor<Node, Symbol, Sort, Keyword, Constant, SExpr> for Script
     fn visit_define_fun_rec(
         &mut self,
         _sig: smt2parser::visitors::FunctionDec<Symbol, Sort>,
-        _term: Node,
+        _term: Expression,
     ) -> Result<Self::T, Self::E> {
         Err(AstError::Unsupported("define-fun-rec".to_string()))
     }
 
     fn visit_define_funs_rec(
         &mut self,
-        _funs: Vec<(smt2parser::visitors::FunctionDec<Symbol, Sort>, Node)>,
+        _funs: Vec<(smt2parser::visitors::FunctionDec<Symbol, Sort>, Expression)>,
     ) -> Result<Self::T, Self::E> {
         Err(AstError::Unsupported("define-funs-rec".to_string()))
     }
@@ -147,7 +143,7 @@ impl<'a> CommandVisitor<Node, Symbol, Sort, Keyword, Constant, SExpr> for Script
         Err(AstError::Unsupported("get-unsat-core".to_string()))
     }
 
-    fn visit_get_value(&mut self, _terms: Vec<Node>) -> Result<Self::T, Self::E> {
+    fn visit_get_value(&mut self, _terms: Vec<Expression>) -> Result<Self::T, Self::E> {
         Err(AstError::Unsupported("get-value".to_string()))
     }
 

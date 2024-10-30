@@ -13,7 +13,10 @@ mod error;
 pub(crate) mod nf;
 
 /// Parsing of SMT-LIB formulas.
-pub mod parse;
+pub mod parse_old;
+
+mod parse;
+pub use parse::ScriptBuilder;
 
 /// Representation of SMT-LIB scripts.
 mod script;

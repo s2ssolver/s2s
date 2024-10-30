@@ -2,9 +2,9 @@ use smt2parser::visitors::SExprVisitor;
 
 use crate::smt::{AstError, Constant, Keyword, SExpr, Symbol};
 
-use super::ScriptBuilder;
+use super::AstParser;
 
-impl<'a> SExprVisitor<Constant, Symbol, Keyword> for ScriptBuilder<'a> {
+impl SExprVisitor<Constant, Symbol, Keyword> for AstParser {
     type T = SExpr;
 
     type E = AstError;

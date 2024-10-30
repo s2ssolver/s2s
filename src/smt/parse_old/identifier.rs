@@ -1,12 +1,9 @@
-use crate::{
-    context::Sort,
-    smt::{AstError, Identifier, Index, Symbol},
-};
+use crate::smt::{AstError, Identifier, Index, Sort, Symbol};
 use num_traits::cast::ToPrimitive;
 use smt2parser::visitors::{self};
 
-impl<'a> visitors::QualIdentifierVisitor<smt2parser::concrete::Identifier<Symbol>, Sort>
-    for super::ScriptBuilder<'a>
+impl visitors::QualIdentifierVisitor<smt2parser::concrete::Identifier<Symbol>, Sort>
+    for super::AstParser
 {
     type T = Identifier;
 

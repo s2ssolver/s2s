@@ -3,9 +3,9 @@ use smt2parser::visitors;
 
 use crate::smt::{AstError, Constant};
 
-use super::ScriptBuilder;
+use super::AstParser;
 
-impl<'a> ScriptBuilder<'a> {
+impl AstParser {
     fn parse_smtlib_string(&self, input: &str) -> Result<String, AstError> {
         let mut chars = input.chars().peekable();
         let mut result = String::with_capacity(input.len());
@@ -101,7 +101,7 @@ impl<'a> ScriptBuilder<'a> {
     }
 }
 
-impl<'a> visitors::ConstantVisitor for ScriptBuilder<'a> {
+impl visitors::ConstantVisitor for AstParser {
     type T = Constant;
 
     type E = AstError;
@@ -147,14 +147,11 @@ impl<'a> visitors::ConstantVisitor for ScriptBuilder<'a> {
 
 #[cfg(test)]
 mod tests {
-    use crate::node::NodeManager;
-
     use super::*;
 
     #[test]
     fn test_parse_smt_string_printable_ascii() {
-        let mut mngr = NodeManager::default();
-        let parser = ScriptBuilder::new(&mut mngr);
+        let parser = AstParser::default();
         assert_eq!(parser.parse_smtlib_string("A").unwrap(), "A");
         assert_eq!(parser.parse_smtlib_string("Hello").unwrap(), "Hello");
         assert_eq!(parser.parse_smtlib_string("12345").unwrap(), "12345");
@@ -163,8 +160,7 @@ mod tests {
 
     #[test]
     fn test_parse_smt_string_non_printable_ascii() {
-        let mut mngr = NodeManager::default();
-        let parser = ScriptBuilder::new(&mut mngr);
+        let parser = AstParser::default();
         assert_eq!(parser.parse_smtlib_string("\\u000A").unwrap(), "\n");
         assert_eq!(parser.parse_smtlib_string("\\u000D").unwrap(), "\r");
         assert_eq!(parser.parse_smtlib_string("\\u0009").unwrap(), "\t");
@@ -172,8 +168,7 @@ mod tests {
 
     #[test]
     fn test_parse_smt_string_invalid_escape() {
-        let mut mngr = NodeManager::default();
-        let parser = ScriptBuilder::new(&mut mngr);
+        let parser = AstParser::default();
 
         let cases = vec!["\\ux", "\\u{abz}", "\\u{110000}, \\u{}"];
         for case in cases {
@@ -186,8 +181,7 @@ mod tests {
 
     #[test]
     fn test_parse_smt_string_non_ascii() {
-        let mut mngr = NodeManager::default();
-        let parser = ScriptBuilder::new(&mut mngr);
+        let parser = AstParser::default();
         assert_eq!(parser.parse_smtlib_string("\\u00A9").unwrap(), "©");
         assert_eq!(parser.parse_smtlib_string("\\u20AC").unwrap(), "€");
         assert_eq!(parser.parse_smtlib_string("\\u{1F600}").unwrap(), "😀");
@@ -195,8 +189,7 @@ mod tests {
 
     #[test]
     fn test_parse_smt_string_backslash_no_escape() {
-        let mut mngr = NodeManager::default();
-        let parser = ScriptBuilder::new(&mut mngr);
+        let parser = AstParser::default();
         assert_eq!(parser.parse_smtlib_string("\\L").unwrap(), "\\L");
         assert_eq!(parser.parse_smtlib_string("\\n").unwrap(), "\\n");
         assert_eq!(parser.parse_smtlib_string("\\r").unwrap(), "\\r");
@@ -204,39 +197,34 @@ mod tests {
 
     #[test]
     fn test_parse_smt_25_escape() {
-        let mut mngr = NodeManager::default();
-        let mut parser = ScriptBuilder::new(&mut mngr);
+        let mut parser = AstParser::default();
         parser.smt25 = true;
         assert_eq!(parser.parse_smtlib_string("\\xA9").unwrap(), "©");
     }
 
     #[test]
     fn test_parse_no_smt_25_escape() {
-        let mut mngr = NodeManager::default();
-        let mut parser = ScriptBuilder::new(&mut mngr);
+        let mut parser = AstParser::default();
         parser.smt25 = false;
         assert_eq!(parser.parse_smtlib_string("\\xA9").unwrap(), "\\xA9");
     }
 
     #[test]
     fn test_parse_smt_string_unicode_escape() {
-        let mut mngr = NodeManager::default();
-        let parser = ScriptBuilder::new(&mut mngr);
+        let parser = AstParser::default();
         assert_eq!(parser.parse_smtlib_string("\\u{10348}").unwrap(), "𐍈");
         assert_eq!(parser.parse_smtlib_string("\\u{1F600}").unwrap(), "😀");
     }
 
     #[test]
     fn test_parse_smt_string_unicode_invalid_smt() {
-        let mut mngr = NodeManager::default();
-        let parser = ScriptBuilder::new(&mut mngr);
+        let parser = AstParser::default();
         assert!(parser.parse_smtlib_string("\\u{3FFFF}").is_err());
     }
 
     #[test]
     fn test_parse_smt_string_mixed_string() {
-        let mut mngr = NodeManager::default();
-        let parser = ScriptBuilder::new(&mut mngr);
+        let parser = AstParser::default();
         assert_eq!(parser.parse_smtlib_string("A\\u000AB").unwrap(), "A\nB");
         assert_eq!(
             parser.parse_smtlib_string("Hello\\u0020World").unwrap(),
@@ -258,8 +246,7 @@ mod tests {
 
     #[test]
     fn test_parse_smt_string_invalid_escape_sequence() {
-        let mut mngr = NodeManager::default();
-        let parser = ScriptBuilder::new(&mut mngr);
+        let parser = AstParser::default();
         assert!(parser.parse_smtlib_string("\\uXYZ").is_err());
         assert!(parser.parse_smtlib_string("\\u{XYZ}").is_err());
         assert!(parser.parse_smtlib_string("\\u{110000}").is_err()); // Invalid Unicode code point

@@ -1,5 +1,7 @@
 use std::fmt::{self, Display, Formatter};
 
+use crate::node::Node;
+
 use super::{ast::Expression, Sort, Symbol};
 
 #[derive(Debug, Default, Clone)]
@@ -51,6 +53,7 @@ impl Display for Script {
 #[derive(Debug, Clone)]
 pub enum SmtCommand {
     Assert(Expression),
+    AssertNew(Node),
     CheckSat,
     DeclareConst(Symbol, Sort),
     Echo(String),
@@ -64,6 +67,7 @@ impl Display for SmtCommand {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         match self {
             SmtCommand::Assert(expr) => write!(f, "(assert {})", expr),
+            SmtCommand::AssertNew(node) => write!(f, "(assert {})", node),
             SmtCommand::CheckSat => write!(f, "(check-sat)"),
             SmtCommand::DeclareConst(symbol, sort) => {
                 write!(f, "(declare-const {} {})", symbol, sort)

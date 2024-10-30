@@ -3,44 +3,126 @@ use std::rc::Rc;
 use indexmap::IndexMap;
 
 use crate::{
-    context::{Sorted, Variable},
+    context::{Sort, Sorted, Variable},
     ir::{Pattern, Symbol},
 };
 
-use super::{Node, NodeKind, OwnedNode};
+use super::{error::NodeError, Node, NodeKind, OwnedNode};
 
 /// The type we use for hash-consing nodes
-type ConsType = (NodeKind, Vec<Node>);
+type NodeKey = (NodeKind, Vec<Node>);
 
 #[derive(Default)]
 pub struct NodeManager {
     /// Counter for unique identifiers
-    counter: usize,
+    next_id: usize,
 
+    /// Regular expression builder
     re_builder: regulaer::re::ReBuilder,
 
     /// Registry of nodes
-    node_registry: IndexMap<ConsType, Node>,
+    node_registry: IndexMap<NodeKey, Node>,
+
+    /// Registry of variables, indexed by name
+    variables: IndexMap<String, Rc<Variable>>,
 
     /// Registry of patterns, indexed by node
     patterns: IndexMap<Node, Rc<Pattern>>,
 }
 
 impl NodeManager {
-    pub(crate) fn create_node(&mut self, kind: NodeKind, children: Vec<Node>) -> Node {
+    pub fn create_node(&mut self, kind: NodeKind, mut children: Vec<Node>) -> Node {
+        match kind {
+            NodeKind::Bool(_)
+            | NodeKind::String(_)
+            | NodeKind::Int(_)
+            | NodeKind::Regex(_)
+            | NodeKind::Variable(_)
+                if children.is_empty() =>
+            {
+                self.intern_node(kind, children)
+            }
+            NodeKind::Or => self.or(children),
+            NodeKind::And => self.and(children),
+            NodeKind::Imp if children.len() == 2 => {
+                let r = children.pop().unwrap();
+                let l = children.pop().unwrap();
+                self.imp(l, r)
+            }
+            NodeKind::Equiv if children.len() == 2 => {
+                let r = children.pop().unwrap();
+                let l = children.pop().unwrap();
+                self.equiv(l, r)
+            }
+            NodeKind::Not if children.len() == 1 => self.not(children.pop().unwrap()),
+            NodeKind::Eq if children.len() == 2 => {
+                let r = children.pop().unwrap();
+                let l = children.pop().unwrap();
+                self.eq(l, r)
+            }
+            NodeKind::Concat => self.concat(children),
+            NodeKind::Length if children.len() == 1 => children.pop().unwrap(),
+            NodeKind::InRe if children.len() == 2 => {
+                let r = children.pop().unwrap();
+                let l = children.pop().unwrap();
+                self.in_re(l, r)
+            }
+            NodeKind::PrefixOf if children.len() == 2 => {
+                let r = children.pop().unwrap();
+                let l = children.pop().unwrap();
+                todo!()
+            }
+            NodeKind::SuffixOf if children.len() == 2 => {
+                let r = children.pop().unwrap();
+                let l = children.pop().unwrap();
+                todo!()
+            }
+            NodeKind::Contains if children.len() == 2 => {
+                let r = children.pop().unwrap();
+                let l = children.pop().unwrap();
+                todo!()
+            }
+            NodeKind::Add => self.add(children),
+            NodeKind::Sub => self.sub(children),
+            NodeKind::Mul => self.mul(children),
+            NodeKind::Lt if children.len() == 2 => {
+                let r = children.pop().unwrap();
+                let l = children.pop().unwrap();
+                todo!()
+            }
+            NodeKind::Le if children.len() == 2 => {
+                let r = children.pop().unwrap();
+                let l = children.pop().unwrap();
+                todo!()
+            }
+            NodeKind::Gt if children.len() == 2 => {
+                let r = children.pop().unwrap();
+                let l = children.pop().unwrap();
+                todo!()
+            }
+            NodeKind::Ge if children.len() == 2 => {
+                let r = children.pop().unwrap();
+                let l = children.pop().unwrap();
+                todo!()
+            }
+            _ => panic!("Invalid arity ({}) for kind {kind}", children.len()),
+        }
+    }
+
+    pub(crate) fn intern_node(&mut self, kind: NodeKind, children: Vec<Node>) -> Node {
         let key = (kind.clone(), children.clone());
         let res = if let Some(rc_node) = self.node_registry.get(&key) {
             return rc_node.clone();
         } else {
-            let node = OwnedNode::new(self.counter, kind, children);
+            let node = OwnedNode::new(self.next_id, kind, children);
             let rc_node = Rc::new(node.clone());
             self.node_registry.insert(key, rc_node.clone());
-            self.counter += 1;
+            self.next_id += 1;
             rc_node
         };
 
         // every 100 nodes, garbage collect
-        if (self.counter + 1) % 100 == 0 {
+        if (self.next_id + 1) % 100 == 0 {
             self.gc();
         }
         res
@@ -107,7 +189,7 @@ impl NodeManager {
                 }
                 Symbol::Variable(variable) => {
                     if !word.is_empty() {
-                        nodes.push(self.create_node(NodeKind::String(word.clone()), vec![]));
+                        nodes.push(self.intern_node(NodeKind::String(word.clone()), vec![]));
                         word.clear();
                     }
                     nodes.push(self.var(Rc::new(variable.clone())));
@@ -116,7 +198,7 @@ impl NodeManager {
             }
         }
         if !word.is_empty() {
-            nodes.push(self.create_node(NodeKind::String(word.clone()), vec![]));
+            nodes.push(self.intern_node(NodeKind::String(word.clone()), vec![]));
             word.clear();
         }
         if nodes.is_empty() {
@@ -129,62 +211,88 @@ impl NodeManager {
         }
     }
 
+    /* Variables */
+
+    /// Creates a new variable with a given name and sort.
+    /// If that variable already exists, returns the existing variable.
+    /// If a variable with the same name but different sort exists, panics.
+    pub fn new_var(&mut self, name: String, sort: Sort) -> Result<Rc<Variable>, NodeError> {
+        if let Some(var) = self.variables.get(&name) {
+            if var.sort() != sort {
+                return Err(NodeError::AlreadyDeclared(name, sort, var.sort()));
+            }
+            Ok(var.clone())
+        } else {
+            let var = Rc::new(Variable::new(self.next_id, name.clone(), sort));
+            self.next_id += 1;
+            self.variables.insert(name.clone(), var.clone());
+            Ok(var)
+        }
+    }
+
+    /// Creates a new temporary variable with a given sort.
+    pub fn temp_var(&mut self, sort: Sort) -> Rc<Variable> {
+        let name = format!("__temp_{}", self.next_id);
+        self.next_id += 1;
+        self.new_var(name, sort).unwrap() // safe to unwrap
+    }
+
     /* Constructions */
 
     /* Boolean Functions */
 
     /// A variable
     pub fn var(&mut self, var: Rc<Variable>) -> Node {
-        self.create_node(NodeKind::Variable(var), vec![])
+        self.intern_node(NodeKind::Variable(var), vec![])
     }
 
     /// The Boolean constant `false`
     pub fn ffalse(&mut self) -> Node {
-        self.create_node(NodeKind::Bool(false), vec![])
+        self.intern_node(NodeKind::Bool(false), vec![])
     }
 
     /// The Boolean constant `true`
     pub fn ttrue(&mut self) -> Node {
-        self.create_node(NodeKind::Bool(true), vec![])
+        self.intern_node(NodeKind::Bool(true), vec![])
     }
 
     /// Boolean conjunction
     pub fn and(&mut self, rs: Vec<Node>) -> Node {
-        self.create_node(NodeKind::And, rs)
+        self.intern_node(NodeKind::And, rs)
     }
 
     /// Boolean disjunction
     pub fn or(&mut self, rs: Vec<Node>) -> Node {
-        self.create_node(NodeKind::Or, rs)
+        self.intern_node(NodeKind::Or, rs)
     }
 
     /// Boolean negation
     pub fn not(&mut self, r: Node) -> Node {
-        self.create_node(NodeKind::Not, vec![r])
+        self.intern_node(NodeKind::Not, vec![r])
     }
 
     /// Boolean implication
     pub fn imp(&mut self, l: Node, r: Node) -> Node {
-        self.create_node(NodeKind::Imp, vec![l, r])
+        self.intern_node(NodeKind::Imp, vec![l, r])
     }
 
     /// Boolean equivalence
     pub fn equiv(&mut self, l: Node, r: Node) -> Node {
-        self.create_node(NodeKind::Equiv, vec![l, r])
+        self.intern_node(NodeKind::Equiv, vec![l, r])
     }
 
     /* Equality */
 
     /// Equality
     pub fn eq(&mut self, l: Node, r: Node) -> Node {
-        self.create_node(NodeKind::Eq, vec![l, r])
+        self.intern_node(NodeKind::Eq, vec![l, r])
     }
 
     /* String Functions */
 
     /// A string constant
     pub fn const_string(&mut self, s: String) -> Node {
-        self.create_node(NodeKind::String(s), vec![])
+        self.intern_node(NodeKind::String(s), vec![])
     }
 
     /// A string constant, given a string slice.
@@ -195,6 +303,53 @@ impl NodeManager {
 
     /// String concatenation
     pub fn concat(&mut self, rs: Vec<Node>) -> Node {
-        self.create_node(NodeKind::Concat, rs)
+        // Flatten the concatenation and remove empty strings
+        let flattened = rs
+            .into_iter()
+            .flat_map(|node| {
+                if let NodeKind::Concat = node.kind() {
+                    node.children().to_vec()
+                } else {
+                    vec![node]
+                }
+            })
+            .filter(|n| !matches!(n.kind(), NodeKind::String(s) if s.is_empty()));
+
+        // if there is only one node, return it
+        let mut flattened = flattened.collect::<Vec<_>>();
+        if flattened.is_empty() {
+            self.const_str("")
+        } else if flattened.len() == 1 {
+            flattened.pop().unwrap()
+        } else {
+            self.intern_node(NodeKind::Concat, flattened)
+        }
+    }
+
+    /// Regular Membership
+    pub fn in_re(&mut self, l: Node, r: Node) -> Node {
+        self.intern_node(NodeKind::InRe, vec![l, r])
+    }
+
+    /* Int Functions */
+
+    /// An integer constant
+    pub fn int(&mut self, i: i64) -> Node {
+        self.intern_node(NodeKind::Int(i), vec![])
+    }
+
+    /// Addition
+    pub fn add(&mut self, rs: Vec<Node>) -> Node {
+        self.intern_node(NodeKind::Add, rs)
+    }
+
+    /// Multiplication
+    pub fn mul(&mut self, rs: Vec<Node>) -> Node {
+        self.intern_node(NodeKind::Mul, rs)
+    }
+
+    /// Subtraction
+    pub fn sub(&mut self, rs: Vec<Node>) -> Node {
+        self.intern_node(NodeKind::Sub, rs)
     }
 }
