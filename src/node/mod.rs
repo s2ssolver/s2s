@@ -40,9 +40,13 @@ pub enum NodeKind {
     /// Negation
     Not,
 
+    /// If-then-else
+    Ite,
+
     /// Equality.
     /// Equalty is overloaded to work with both strings and integers.
     /// Equality between Boolean values is represented as Equiv.
+    /// It is a logical error to construct Eq nodes with children of of different sorts or of sort Bool.
     Eq,
 
     /* String Functions */
@@ -62,6 +66,8 @@ pub enum NodeKind {
     /* Linear Integer Functions */
     /// Addition
     Add,
+    /// Negation of an integer
+    Neg,
     /// Subtraction
     Sub,
     /// Multiplication
@@ -134,11 +140,26 @@ impl OwnedNode {
         matches!(self.kind, NodeKind::Bool(false))
     }
 
-    pub fn is_atomic(&self) -> bool {
-        self.children.is_empty() && self.kind.is_atom()
+    /// Returns true if the node is a variable.
+    pub fn is_var(&self) -> bool {
+        matches!(self.kind, NodeKind::Variable(_))
     }
 
-    /// Returns true if the node is a literal.
+    /// Returns true if the node is a constant.
+    /// A node is a constant if it is a boolean, string, integer, or regex constant.
+    pub fn is_const(&self) -> bool {
+        matches!(
+            self.kind,
+            NodeKind::Bool(_) | NodeKind::String(_) | NodeKind::Int(_) | NodeKind::Regex(_)
+        )
+    }
+
+    /// Returns true if the node is an atomic proposition within the theory.
+    pub fn is_atomic(&self) -> bool {
+        self.kind.is_atom()
+    }
+
+    /// Returns true if the node is a literal in the theory.
     /// A node is a literal if it is either a an atomic formula or a negation of an atomic formula.
     pub fn is_literal(&self) -> bool {
         if self.kind().is_atom() {
@@ -152,6 +173,21 @@ impl OwnedNode {
         } else {
             false
         }
+    }
+
+    /// Returns true if the node is a pure boolean function, i.e., its arguments are all boolean and it returns a boolean.
+    /// Boolean variables and constants are not considered boolean functions.
+    /// In other words, this returns true iff the kind of the node is one of the following:
+    /// - Or
+    /// - And
+    /// - Imp
+    /// - Equiv
+    /// - Not
+    pub fn is_bool_fun(&self) -> bool {
+        matches!(
+            self.kind,
+            NodeKind::Or | NodeKind::And | NodeKind::Imp | NodeKind::Equiv | NodeKind::Not
+        )
     }
 
     /// Returns true if this node contains the given node as a sub-node.
@@ -229,6 +265,24 @@ impl Sorted for OwnedNode {
                 }
             }
 
+            NodeKind::Ite => {
+                debug_assert!(self.children().len() == 3);
+                let cond = self.children().first().unwrap();
+                let then = self.children().get(1).unwrap();
+                let els = self.children().last().unwrap();
+                if cond.sort().is_bool() {
+                    let then_sort = then.sort();
+                    let els_sort = els.sort();
+                    if then_sort == els_sort {
+                        then_sort
+                    } else {
+                        unreachable!("If-then-else with different sorts ({then_sort}, {els_sort})")
+                    }
+                } else {
+                    unreachable!("Condition of if-then-else is not a boolean")
+                }
+            }
+
             NodeKind::Regex(_) => Sort::RegLan,
             NodeKind::Variable(v) => v.sort(),
 
@@ -237,9 +291,12 @@ impl Sorted for OwnedNode {
                 Sort::Bool
             }
 
-            NodeKind::Length | NodeKind::Int(_) | NodeKind::Add | NodeKind::Sub | NodeKind::Mul => {
-                Sort::Int
-            }
+            NodeKind::Length
+            | NodeKind::Int(_)
+            | NodeKind::Add
+            | NodeKind::Neg
+            | NodeKind::Sub
+            | NodeKind::Mul => Sort::Int,
             NodeKind::Lt | NodeKind::Le | NodeKind::Gt | NodeKind::Ge => Sort::Bool,
         }
     }
@@ -259,6 +316,7 @@ impl Display for NodeKind {
             NodeKind::Imp => write!(f, "=>"),
             NodeKind::Equiv => write!(f, "<=>"),
             NodeKind::Not => write!(f, "not"),
+            NodeKind::Ite => write!(f, "ite"),
             NodeKind::Eq => write!(f, "="),
             NodeKind::Concat => write!(f, "concat"),
             NodeKind::Length => write!(f, "len"),
@@ -267,7 +325,7 @@ impl Display for NodeKind {
             NodeKind::SuffixOf => write!(f, "suffixof"),
             NodeKind::Contains => write!(f, "contains"),
             NodeKind::Add => write!(f, "+"),
-            NodeKind::Sub => write!(f, "-"),
+            NodeKind::Sub | NodeKind::Neg => write!(f, "-"),
             NodeKind::Mul => write!(f, "*"),
             NodeKind::Lt => write!(f, "<"),
             NodeKind::Le => write!(f, "<="),

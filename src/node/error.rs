@@ -13,4 +13,7 @@ pub enum NodeError {
 
     #[error("The node {0} is not well-formed")]
     NotWellFormed(Node),
+
+    #[error("Expected sort {1} but got {2} (in {0})")]
+    SortMismatch(Node, Sort, Sort),
 }

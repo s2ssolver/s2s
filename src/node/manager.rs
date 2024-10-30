@@ -136,6 +136,7 @@ impl NodeManager {
                 to_remove.push(key.clone());
             }
         }
+        log::trace!("GC: Removing {} nodes", to_remove.len());
         for key in to_remove {
             // Remove the node from the pattern registry
             self.patterns.remove(&self.node_registry[&key]);
@@ -230,6 +231,10 @@ impl NodeManager {
         }
     }
 
+    pub fn get_var(&self, name: &str) -> Option<Rc<Variable>> {
+        self.variables.get(name).cloned()
+    }
+
     /// Creates a new temporary variable with a given sort.
     pub fn temp_var(&mut self, sort: Sort) -> Rc<Variable> {
         let name = format!("__temp_{}", self.next_id);
@@ -281,6 +286,10 @@ impl NodeManager {
         self.intern_node(NodeKind::Equiv, vec![l, r])
     }
 
+    pub fn ite(&mut self, ifc: Node, then_branch: Node, else_branch: Node) -> Node {
+        self.create_node(NodeKind::Ite, vec![ifc, then_branch, else_branch])
+    }
+
     /* Equality */
 
     /// Equality
@@ -326,6 +335,22 @@ impl NodeManager {
         }
     }
 
+    pub fn str_len(&mut self, s: Node) -> Node {
+        self.intern_node(NodeKind::Length, vec![s])
+    }
+
+    pub fn prefix_of(&mut self, l: Node, r: Node) -> Node {
+        self.intern_node(NodeKind::PrefixOf, vec![l, r])
+    }
+
+    pub fn suffix_of(&mut self, l: Node, r: Node) -> Node {
+        self.intern_node(NodeKind::SuffixOf, vec![l, r])
+    }
+
+    pub fn contains(&mut self, l: Node, r: Node) -> Node {
+        self.intern_node(NodeKind::Contains, vec![l, r])
+    }
+
     /// Regular Membership
     pub fn in_re(&mut self, l: Node, r: Node) -> Node {
         self.intern_node(NodeKind::InRe, vec![l, r])
@@ -351,5 +376,30 @@ impl NodeManager {
     /// Subtraction
     pub fn sub(&mut self, rs: Vec<Node>) -> Node {
         self.intern_node(NodeKind::Sub, rs)
+    }
+
+    /// Negation
+    pub fn neg(&mut self, r: Node) -> Node {
+        self.intern_node(NodeKind::Neg, vec![r])
+    }
+
+    /// Less than
+    pub fn lt(&mut self, l: Node, r: Node) -> Node {
+        self.intern_node(NodeKind::Lt, vec![l, r])
+    }
+
+    /// Less than or equal
+    pub fn le(&mut self, l: Node, r: Node) -> Node {
+        self.intern_node(NodeKind::Le, vec![l, r])
+    }
+
+    /// Greater than
+    pub fn gt(&mut self, l: Node, r: Node) -> Node {
+        self.intern_node(NodeKind::Gt, vec![l, r])
+    }
+
+    /// Greater than or equal
+    pub fn ge(&mut self, l: Node, r: Node) -> Node {
+        self.intern_node(NodeKind::Ge, vec![l, r])
     }
 }
