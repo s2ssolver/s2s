@@ -9,6 +9,7 @@ use super::*;
 /// - if `x \in wR` then  x -> wx
 /// - if `x \in Rw` then  x -> xw
 /// This interplays with [ConstantDerivation], which will subsequently strip the constant from the variable by using derivatives on the regular expressions or reduces the constant prefix/suffix constraints.
+#[derive(Clone, Default)]
 pub struct ConstantPrefixSuffix;
 
 impl SimpRule for ConstantPrefixSuffix {

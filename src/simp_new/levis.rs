@@ -10,6 +10,7 @@ use super::*;
 /// Applies levi's rule to simplify word equations.
 /// If the node is a word equation of the form "a\beta = Y\alpha" or "Y\alpha = a\beta" and Y cannot be set to the empty string without violating the equation,
 /// then the rule infers that Y must start with 'a', i.e., will return the substitution "Y -> aY".
+#[derive(Clone, Default)]
 pub struct LevisWeq;
 
 impl SimpRule for LevisWeq {

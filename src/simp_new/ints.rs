@@ -1,7 +1,5 @@
 use std::{collections::HashSet, rc::Rc};
 
-use regulaer::re;
-
 use crate::{
     context::{Sorted, Variable},
     node::NodeKind,
@@ -12,6 +10,7 @@ use super::*;
 /// Finds asserted terms of the form `L = 0` or `L <= 0`, where
 /// all terms in L are of the form c|x| with c>0
 /// and returns `x = epsilon` for all c|x| in L.`
+#[derive(Clone, Default)]
 pub struct ZeroLengthEpsilon;
 
 impl ZeroLengthEpsilon {

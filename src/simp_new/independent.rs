@@ -9,17 +9,12 @@ use crate::{context::Variable, node::NodeKind};
 use super::*;
 
 /// Finds variables that occur only once in the formula and replaces them with a constant, based on the literal they occur in.
+#[derive(Clone, Default)]
 pub struct IndependentVariableAssignment {
     vcount: HashMap<Rc<Variable>, usize>,
 }
 
 impl IndependentVariableAssignment {
-    pub fn new(root: &Node) -> Self {
-        let mut vcount = HashMap::new();
-        Self::count_variables(root, &mut vcount);
-        IndependentVariableAssignment { vcount }
-    }
-
     fn count_variables(node: &Node, counter: &mut HashMap<Rc<Variable>, usize>) {
         match node.kind() {
             NodeKind::Variable(v) => {
@@ -95,7 +90,7 @@ impl IndependentVariableAssignment {
     }
 
     fn apply(&self, atom: &Node, polarity: bool, mngr: &mut NodeManager) -> Option<Simplification> {
-        assert!(atom.is_atomic());
+        debug_assert!(atom.is_atomic(), "{} is not an atomic formula", atom);
         match atom.kind() {
             NodeKind::Variable(rc) => {
                 let mut subs = NodeSubstitution::default();
@@ -144,5 +139,9 @@ impl SimpRule for IndependentVariableAssignment {
         } else {
             None
         }
+    }
+
+    fn init(&mut self, root: &Node) {
+        Self::count_variables(root, &mut self.vcount);
     }
 }

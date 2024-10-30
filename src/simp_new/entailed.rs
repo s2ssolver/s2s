@@ -8,6 +8,7 @@ use crate::{
 use super::{SimpRule, Simplification};
 
 /// Finds entailed boolean variables and replaces them with their values.
+#[derive(Clone, Default)]
 pub struct EntailedBooleanVars;
 
 impl SimpRule for EntailedBooleanVars {
@@ -38,6 +39,7 @@ impl SimpRule for EntailedBooleanVars {
 /// Finds entailed equalities of the form `x = n` where `x` is a variable and `n` is a node.
 /// Returns the substitution `x -> n`.
 /// A rewrite pass will reduce the atom to `true` afterward.
+#[derive(Clone, Default)]
 pub struct EntailedAssigments;
 
 impl SimpRule for EntailedAssigments {
@@ -63,6 +65,7 @@ impl SimpRule for EntailedAssigments {
 }
 
 /// Removes all other occurrences of entailed literals from the formula by replacing them with `true` or `false`.
+#[derive(Clone, Default)]
 pub struct RemoveEntailed;
 
 impl SimpRule for RemoveEntailed {
