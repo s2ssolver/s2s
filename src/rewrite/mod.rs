@@ -29,6 +29,7 @@ impl Default for Rewriter {
         Rewriter {
             rules: vec![
                 Box::new(boolean::BoolConstFolding),
+                Box::new(weq::FoldTrivialEquations),
                 Box::new(weq::WeqStripPrefix),
                 Box::new(weq::WeqStripSuffix),
                 Box::new(weq::WeqConstMismatch),
