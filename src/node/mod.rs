@@ -1,4 +1,10 @@
-use std::{fmt::Display, hash::Hash, ops::Index, rc::Rc};
+use std::{
+    cell::RefCell,
+    fmt::{Debug, Display},
+    hash::Hash,
+    ops::Index,
+    rc::Rc,
+};
 
 use crate::context::{Sort, Sorted, Variable};
 
@@ -9,6 +15,8 @@ pub mod normal;
 mod subs;
 pub mod utils;
 
+use canonical::CanonicalLit;
+use indexmap::IndexSet;
 pub use manager::NodeManager;
 use regulaer::re::Regex;
 pub use subs::NodeSubstitution;
@@ -106,6 +114,15 @@ impl NodeKind {
             NodeKind::Lt | NodeKind::Le | NodeKind::Gt | NodeKind::Ge => true,
         }
     }
+
+    /// If this node is a variable, returns a reference to the variable.
+    /// Otherwise, returns None.
+    pub fn as_variable(&self) -> Option<&Rc<Variable>> {
+        match self {
+            NodeKind::Variable(v) => Some(v),
+            _ => None,
+        }
+    }
 }
 
 pub type Node = Rc<OwnedNode>;
@@ -121,6 +138,8 @@ pub struct OwnedNode {
     /// List of children
     /// TODO: use smallvec
     children: Vec<Node>,
+
+    canonical: RefCell<Option<CanonicalLit>>,
 }
 
 impl OwnedNode {
@@ -129,6 +148,7 @@ impl OwnedNode {
             id,
             kind: node_type,
             children,
+            canonical: RefCell::new(None),
         }
     }
 
@@ -219,6 +239,40 @@ impl OwnedNode {
     pub fn iter(&self) -> impl Iterator<Item = &Node> {
         self.children.iter()
     }
+
+    pub fn as_variable(&self) -> Option<&Rc<Variable>> {
+        if let NodeKind::Variable(v) = self.kind() {
+            Some(v)
+        } else {
+            None
+        }
+    }
+
+    pub fn as_int_const(&self) -> Option<i64> {
+        if let NodeKind::Int(i) = self.kind() {
+            Some(*i)
+        } else {
+            None
+        }
+    }
+
+    /// Attaches data to the node and returns the old data if it exists.
+    pub(super) fn set_canonical(&self, canonical: CanonicalLit) -> Option<CanonicalLit> {
+        let mut borrow = self.canonical.borrow_mut();
+        let old = borrow.replace(canonical);
+        old
+    }
+
+    pub fn canonical(&self) -> Option<CanonicalLit> {
+        self.canonical.borrow().clone()
+    }
+
+    /// Detaches the data from the node and returns it.
+    /// Returns None if no data is attached.
+    pub fn detach(&self) -> Option<CanonicalLit> {
+        let mut borrow = self.canonical.borrow_mut();
+        borrow.take()
+    }
 }
 
 impl Hash for OwnedNode {
@@ -250,6 +304,17 @@ impl Index<usize> for OwnedNode {
     fn index(&self, index: usize) -> &Self::Output {
         &self.children[index]
     }
+}
+
+pub fn get_entailed(node: &Node) -> IndexSet<Node> {
+    let mut entailed = IndexSet::new();
+    entailed.insert(node.clone());
+    if node.kind() == &NodeKind::And {
+        for child in node.children() {
+            entailed.extend(get_entailed(child));
+        }
+    }
+    entailed
 }
 
 /* Sorting */

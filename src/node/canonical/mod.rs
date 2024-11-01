@@ -1,5 +1,14 @@
 //! Conversion of nodes into canonical form.
 
+mod int;
+mod string;
+
+pub use int::LinearConstraint;
+use int::{LinearArithTerm, LinearOperator};
+use string::Pattern;
+pub use string::{FactorConstraint, FactorConstraintType, RegularConstraint, WordEquation};
+use utils::SymbolIterator;
+
 use super::*;
 use error::NodeError;
 use indexmap::IndexMap;
@@ -16,6 +25,7 @@ struct Canonicalizer {
     /// Identities of the form t = v, where t is a term and v is a variable.
     /// Theses dentities are introduced during the canonicalization process if a term is not in canonical form.
     def_identities: HashMap<Node, Rc<Variable>>,
+    mapper: CanonicalMapper,
 }
 
 impl Canonicalizer {
@@ -58,7 +68,7 @@ impl Canonicalizer {
     ) -> Result<Node, NodeError> {
         debug_assert!(node.is_literal());
 
-        match node.kind() {
+        let canonicalized = match node.kind() {
             NodeKind::Variable(v) => {
                 debug_assert!(v.sort().is_bool());
                 Ok(node)
@@ -76,7 +86,7 @@ impl Canonicalizer {
                     if lhs.is_string() {
                         self.canonicalize_weq(node, pol, mngr)
                     } else if lhs.is_int() {
-                        self.canonicalize_arithmetic(node, pol, mngr)
+                        self.canonicalize_arithmetic_constraint(node, pol, mngr)
                     } else {
                         Err(NodeError::NotWellFormed(node))
                     }
@@ -85,10 +95,14 @@ impl Canonicalizer {
                 }
             }
             NodeKind::Gt | NodeKind::Ge | NodeKind::Lt | NodeKind::Le => {
-                self.canonicalize_arithmetic(node, pol, mngr)
+                self.canonicalize_arithmetic_constraint(node, pol, mngr)
             }
             _ => unreachable!("Expected atomic formula but got '{}'", node),
+        }?;
+        if let Some(canonical) = self.mapper.lit2ir(&canonicalized) {
+            canonicalized.set_canonical(canonical);
         }
+        Ok(canonicalized)
     }
 
     fn canonicalize_in_re(
@@ -249,7 +263,7 @@ impl Canonicalizer {
         mngr.var(v)
     }
 
-    fn canonicalize_arithmetic(
+    fn canonicalize_arithmetic_constraint(
         &mut self,
         node: Node,
         pol: bool,
@@ -525,6 +539,188 @@ impl Canonicalizer {
                 Ok(mngr.add(sums))
             }
             _ => Err(NodeError::NotWellFormed(node)),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum CanonicalAtom {
+    WordEquation(WordEquation),
+    InRe(RegularConstraint),
+    FactorConstraint(FactorConstraint),
+    Linear(LinearConstraint),
+}
+impl Display for CanonicalAtom {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            CanonicalAtom::WordEquation(we) => write!(f, "{}", we),
+            CanonicalAtom::InRe(re) => write!(f, "{}", re),
+            CanonicalAtom::FactorConstraint(fc) => write!(f, "{}", fc),
+            CanonicalAtom::Linear(lc) => write!(f, "{}", lc),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum CanonicalLit {
+    Positive(CanonicalAtom),
+    Negative(CanonicalAtom),
+}
+
+impl Display for CanonicalLit {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            CanonicalLit::Positive(atom) => write!(f, "{}", atom),
+            CanonicalLit::Negative(atom) => write!(f, "!({})", atom),
+        }
+    }
+}
+
+#[derive(Default)]
+pub(super) struct CanonicalMapper {
+    node2ir: IndexMap<Node, CanonicalAtom>,
+    patterns: IndexMap<Node, Pattern>,
+}
+
+impl CanonicalMapper {
+    pub fn lit2ir(&mut self, lit: &Node) -> Option<CanonicalLit> {
+        let converted = if lit.is_atomic() {
+            CanonicalLit::Positive(self.atom2ir(lit)?)
+        } else {
+            debug_assert!(*lit.kind() == NodeKind::Not);
+            debug_assert!(lit.children().len() == 1);
+            CanonicalLit::Negative(self.atom2ir(&lit[0])?)
+        };
+        Some(converted)
+    }
+
+    pub fn atom2ir(&mut self, atom: &Node) -> Option<CanonicalAtom> {
+        let converted = match atom.kind() {
+            NodeKind::Eq => {
+                debug_assert!(atom.children().len() == 2);
+                let l = &atom[0];
+                let r = &atom[1];
+                debug_assert!(l.sort() == r.sort());
+                if l.sort().is_string() {
+                    self.convert_word_equation(l, r)
+                } else if l.sort().is_int() {
+                    self.convert_linear_constraint(atom)
+                } else {
+                    unreachable!()
+                }
+            }
+            NodeKind::Ge | NodeKind::Gt | NodeKind::Le | NodeKind::Lt => {
+                self.convert_linear_constraint(atom)
+            }
+            NodeKind::InRe => {
+                debug_assert!(atom.children().len() == 2);
+                let l = &atom[0];
+                let r = &atom[1];
+                self.convert_in_re(l, r)
+            }
+            _ => return None,
+        };
+        self.node2ir.insert(atom.clone(), converted.clone());
+        Some(converted)
+    }
+
+    fn convert_word_equation(&mut self, lhs: &Node, rhs: &Node) -> CanonicalAtom {
+        let lhs = self.convert_pattern(lhs);
+        let rhs = self.convert_pattern(rhs);
+        CanonicalAtom::WordEquation(WordEquation::new(lhs, rhs))
+    }
+
+    fn convert_pattern(&mut self, node: &Node) -> Pattern {
+        if let Some(p) = self.patterns.get(node) {
+            return p.clone();
+        }
+        let mut result = Pattern::empty();
+        let mut iter = SymbolIterator::new(node);
+        while let Some(s) = iter.next() {
+            match s {
+                crate::node::utils::Symbol::Const(c) => result.push_char(c),
+                crate::node::utils::Symbol::Variable(rc) => result.push_var(rc.clone()),
+            };
+        }
+
+        self.patterns.insert(node.clone(), result.clone());
+        result
+    }
+
+    fn convert_in_re(&self, lhs: &Node, rhs: &Node) -> CanonicalAtom {
+        let var = lhs.as_variable().expect("Not in canonical form");
+        if let NodeKind::Regex(re) = rhs.kind() {
+            CanonicalAtom::InRe(RegularConstraint::new(var.clone(), re.clone()))
+        } else {
+            unreachable!("Not in canonical form")
+        }
+    }
+
+    fn convert_linear_constraint(&self, node: &Node) -> CanonicalAtom {
+        assert!(node.children().len() == 2);
+        let lhs = self.convert_linarith_lerm(&node[0]);
+        let rhs = node[1].as_int_const().expect("Not in canonical form");
+        let op = match node.kind() {
+            NodeKind::Eq => LinearOperator::Eq,
+            NodeKind::Lt => LinearOperator::Less,
+            NodeKind::Le => LinearOperator::Leq,
+            NodeKind::Gt => LinearOperator::Greater,
+            NodeKind::Ge => LinearOperator::Geq,
+            _ => unreachable!("Not a linear constraint"),
+        };
+        let lc = LinearConstraint::new(lhs, op, rhs as isize);
+        CanonicalAtom::Linear(lc)
+    }
+
+    fn convert_linarith_lerm(&self, node: &Node) -> LinearArithTerm {
+        match node.kind() {
+            NodeKind::Int(i) => LinearArithTerm::from_const(*i as isize),
+            NodeKind::Variable(var) => LinearArithTerm::from_var(var.clone()),
+            NodeKind::Length => {
+                assert!(node.children().len() == 1);
+                if let Some(v) = node[0].as_variable() {
+                    LinearArithTerm::from_var(v.clone())
+                } else {
+                    unreachable!("Not in canonical form")
+                }
+            }
+            NodeKind::Add => {
+                let mut result = LinearArithTerm::new();
+                for c in node.children() {
+                    let term = self.convert_linarith_lerm(c);
+                    result.add(term);
+                }
+                result
+            }
+            NodeKind::Neg => {
+                assert!(node.children().len() == 1);
+                let mut res = self.convert_linarith_lerm(&node[0]);
+                res.multiply_constant(-1);
+                res
+            }
+            NodeKind::Sub => {
+                let mut result = LinearArithTerm::new();
+                for c in node.children() {
+                    let mut term = self.convert_linarith_lerm(c);
+                    term.multiply_constant(-1);
+                    result.add(term);
+                }
+                result
+            }
+            NodeKind::Mul => {
+                assert!(node.children().len() == 2);
+                let s = node[0].as_int_const();
+                match node[1].kind() {
+                    NodeKind::Variable(v) => LinearArithTerm::from_var(v.clone()),
+                    NodeKind::Length => {
+                        assert!(node[1].children().len() == 1);
+                        let v = node[1][0].as_variable().expect("Not in canonical form");
+                        LinearArithTerm::from_var_len(v.clone())
+                    }
+                    _ => unreachable!("Not in canonical form"),
+                }
+            }
+            _ => unreachable!("Not in canonical form"),
         }
     }
 }

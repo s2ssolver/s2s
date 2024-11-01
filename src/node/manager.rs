@@ -1,6 +1,11 @@
-use std::rc::Rc;
+use std::{rc::Rc, time::Instant};
 
 use indexmap::IndexMap;
+use regulaer::{
+    automaton::NFA,
+    compiler::{Compiler, Thompson},
+    re::Regex,
+};
 
 use crate::{
     context::{Sort, Sorted, Variable},
@@ -28,6 +33,8 @@ pub struct NodeManager {
 
     /// Registry of patterns, indexed by node
     patterns: IndexMap<Node, Rc<Pattern>>,
+
+    nfas: IndexMap<Regex, Rc<NFA>>,
 }
 
 impl NodeManager {
@@ -154,6 +161,28 @@ impl NodeManager {
         &mut self.re_builder
     }
 
+    /// Returns the NFA for the given regular expression.
+    /// Computes the NFA if it has not been computed yet.
+    pub fn get_nfa(&mut self, regex: &Regex) -> Rc<NFA> {
+        let t = Instant::now();
+        let nfa = if let Some(nfa) = self.nfas.get(regex) {
+            nfa.clone()
+        } else {
+            let builder = self.re_builder();
+
+            let nfa = Thompson::default()
+                .compile(regex, builder)
+                .map(|nfa| nfa.remove_epsilons().expect("Failed to compile regex"))
+                .expect("Failed to compile regex");
+
+            let nfa = Rc::new(nfa);
+            self.nfas.insert(regex.clone(), nfa.clone());
+            nfa
+        };
+        log::debug!("Compiled NFA ({:?})", t.elapsed());
+        nfa
+    }
+
     /* Node to Pattern conversions */
 
     /// Convert a node to a pattern.
@@ -166,7 +195,7 @@ impl NodeManager {
             NodeKind::String(s) => Pattern::constant(s),
             NodeKind::Variable(rc) => {
                 debug_assert!(rc.sort().is_string());
-                Pattern::variable(rc.as_ref())
+                Pattern::variable(rc)
             }
             NodeKind::Concat => {
                 let mut pattern = Pattern::empty();
@@ -196,7 +225,8 @@ impl NodeManager {
                         nodes.push(self.intern_node(NodeKind::String(word.clone()), vec![]));
                         word.clear();
                     }
-                    nodes.push(self.var(Rc::new(variable.clone())));
+                    let v = self.get_var(variable.name()).unwrap();
+                    nodes.push(self.var(v));
                     word.clear();
                 }
             }
@@ -243,6 +273,10 @@ impl NodeManager {
         let name = format!("__temp_{}", self.next_id);
         self.next_id += 1;
         self.new_var(name, sort).unwrap() // safe to unwrap
+    }
+
+    pub fn vars(&self) -> impl Iterator<Item = &Rc<Variable>> {
+        self.variables.values()
     }
 
     /* Constructions */

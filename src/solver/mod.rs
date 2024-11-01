@@ -6,7 +6,7 @@ use encoder::ProblemEncoder;
 use itertools::Itertools;
 
 use crate::{
-    abstraction::{abstract_fm, Abstraction, Definition},
+    abstraction::{abstract_fm, abstract_node, AbstractionOld, DefinitionOld},
     alphabet::{self, Alphabet},
     bounds::{infer::BoundInferer, step::BoundStep, Bounds, Interval},
     context::{Context, Sorted},
@@ -20,6 +20,7 @@ use crate::error::PublicError as Error;
 
 //mod analysis;
 mod encoder;
+
 mod preprocessing;
 mod refine;
 //mod engine;
@@ -198,26 +199,18 @@ impl Solver {
         println!("Abstraction: {}", abstraction);
 
         timer = Instant::now();
+
+        // Initialize the bounds
+        let init_bounds = match self.init_bounds(&preprocessed, mngr) {
+            Some(bs) => bs,
+            None => {
+                log::info!("No valid initial bounds. Unsat.");
+                return Ok(SolverResult::Unsat);
+            }
+        };
+        log::info!("Initialized bounds ({:?})", timer.elapsed());
+        log::debug!("Initial bounds: {}", init_bounds);
         todo!()
-
-        // timer = Instant::now();
-
-        // // Build the Boolean abstraction
-        // let abstraction = abstract_fm(&fm_preprocessed);
-        // log::info!("Built abstraction ({:?})", timer.elapsed());
-        // timer = Instant::now();
-
-        // // Initialize the bounds
-        // let init_bounds = match self.init_bounds(&fm_preprocessed, ctx) {
-        //     Some(bs) => bs,
-        //     None => {
-        //         log::info!("No valid initial bounds. Unsat.");
-        //         return Ok(SolverResult::Unsat);
-        //     }
-        // };
-        // log::info!("Initialized bounds ({:?})", timer.elapsed());
-        // log::debug!("Initial bounds: {}", init_bounds);
-
         // timer = Instant::now();
 
         // // Initialize the alphabet
@@ -266,7 +259,7 @@ impl Solver {
         timer = Instant::now();
 
         // Initialize the bounds
-        let init_bounds = match self.init_bounds(&fm_preprocessed, ctx) {
+        let init_bounds = match self.init_bounds_old(&fm_preprocessed, ctx) {
             Some(bs) => bs,
             None => {
                 log::info!("No valid initial bounds. Unsat.");
@@ -311,7 +304,17 @@ impl Solver {
         Ok((preprocess::normalize(fm, ctx)?, subst))
     }
 
-    fn init_bounds(&self, fm: &Formula, ctx: &mut Context) -> Option<Bounds> {
+    fn init_bounds(&self, root: &Node, mngr: &mut NodeManager) -> Option<Bounds> {
+        if let Some(canon) = root.canonical() {
+            println!("{} <--> {}", root, canon);
+        }
+        for c in root.children() {
+            self.init_bounds(c, mngr);
+        }
+        todo!()
+    }
+
+    fn init_bounds_old(&self, fm: &Formula, ctx: &mut Context) -> Option<Bounds> {
         let mut inferer = BoundInferer::default();
         for lit in fm.entailed_literals() {
             inferer.add_literal(lit.clone(), ctx)
