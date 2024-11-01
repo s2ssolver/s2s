@@ -2,6 +2,7 @@
 
 use super::*;
 use error::NodeError;
+use indexmap::IndexMap;
 
 use std::collections::HashMap;
 
@@ -75,7 +76,7 @@ impl Canonicalizer {
                     if lhs.is_string() {
                         self.canonicalize_weq(node, pol, mngr)
                     } else if lhs.is_int() {
-                        self.canonical_arith(node, pol, mngr)
+                        self.canonicalize_arithmetic(node, pol, mngr)
                     } else {
                         Err(NodeError::NotWellFormed(node))
                     }
@@ -83,7 +84,9 @@ impl Canonicalizer {
                     Err(NodeError::SortMismatch(node, lhs, rhs))
                 }
             }
-            NodeKind::Gt | NodeKind::Ge | NodeKind::Lt | NodeKind::Le => todo!(),
+            NodeKind::Gt | NodeKind::Ge | NodeKind::Lt | NodeKind::Le => {
+                self.canonicalize_arithmetic(node, pol, mngr)
+            }
             _ => unreachable!("Expected atomic formula but got '{}'", node),
         }
     }
@@ -246,37 +249,282 @@ impl Canonicalizer {
         mngr.var(v)
     }
 
-    fn canonicalize_linear(
-        &mut self,
-        node: Node,
-        mngr: &mut NodeManager,
-    ) -> Result<Node, NodeError> {
-        debug_assert!(node.children().len() == 2);
-        todo!()
-    }
-
-    fn canonical_arith(
+    fn canonicalize_arithmetic(
         &mut self,
         node: Node,
         pol: bool,
         mngr: &mut NodeManager,
     ) -> Result<Node, NodeError> {
-        match node.kind() {
-            NodeKind::Add => {
-                let mut rec: Vec<Node> = Vec::with_capacity(node.children().len());
-                for c in node.children() {
-                    rec.push(self.canonical_arith(c.clone(), pol, mngr)?);
+        debug_assert!(node.children().len() == 2);
+        let lhs = node.children().first().unwrap();
+        let rhs = node.children().last().unwrap();
+        debug_assert!(lhs.sort().is_int() && rhs.sort().is_int());
+        // Bring it into the form LHS <> c where c is a constant, <> is one of {<, <=, >, >=, =}
+        // and LHS is a linear arithmetic term.
+
+        let lhs = self.canonicalize_linear_arith_term(lhs.clone(), mngr)?;
+        let rhs = self.canonicalize_linear_arith_term(rhs.clone(), mngr)?;
+
+        let lhs = match lhs.kind() {
+            NodeKind::Int(_) | NodeKind::Variable(_) | NodeKind::Length | NodeKind::Mul => {
+                vec![lhs]
+            }
+            NodeKind::Add => lhs.children().to_vec(),
+            _ => unreachable!("Expected linear arithmetic term but got '{}'", lhs),
+        };
+        let rhs = match rhs.kind() {
+            NodeKind::Int(_) | NodeKind::Variable(_) | NodeKind::Length | NodeKind::Mul => {
+                vec![rhs]
+            }
+            NodeKind::Add => rhs.children().to_vec(),
+            _ => unreachable!("Expected linear arithmetic term but got '{}'", rhs),
+        };
+        let mut lhs_scalings = IndexMap::<Node, i64>::new();
+        let mut const_rhs = 0;
+        for l in lhs {
+            match l.kind() {
+                NodeKind::Int(i) => const_rhs -= *i,
+                NodeKind::Variable(_) | NodeKind::Length => {
+                    *lhs_scalings.entry(l).or_default() += 1;
                 }
-                Ok(mngr.add(rec))
+                NodeKind::Mul => {
+                    debug_assert!(l.children().len() == 2);
+                    let mut iter = l.children().iter();
+                    let i = iter.next().unwrap();
+                    let v = iter.next().unwrap();
+                    match (i.kind(), v.kind()) {
+                        (NodeKind::Int(i), NodeKind::Variable(_))
+                        | (NodeKind::Int(i), NodeKind::Length)
+                        | (NodeKind::Variable(_), NodeKind::Int(i))
+                        | (NodeKind::Length, NodeKind::Int(i)) => {
+                            *lhs_scalings.entry(v.clone()).or_default() += *i;
+                        }
+                        _ => unreachable!("Expected linear term but got '{}'", l),
+                    }
+                }
+                _ => unreachable!("Expected linear term but got '{}'", l),
+            }
+        }
+        for r in rhs {
+            match r.kind() {
+                NodeKind::Int(i) => const_rhs += *i,
+                NodeKind::Variable(_) | NodeKind::Length => {
+                    *lhs_scalings.entry(r).or_default() -= 1;
+                }
+                NodeKind::Mul => {
+                    debug_assert!(r.children().len() == 2);
+                    let mut iter = r.children().iter();
+                    let i = iter.next().unwrap();
+                    let v = iter.next().unwrap();
+                    match (i.kind(), v.kind()) {
+                        (NodeKind::Int(i), NodeKind::Variable(_))
+                        | (NodeKind::Variable(_), NodeKind::Int(i)) => {
+                            *lhs_scalings.entry(v.clone()).or_default() -= *i;
+                        }
+                        _ => unreachable!("Expected linear term but got '{}'", r),
+                    }
+                }
+                _ => unreachable!("Expected linear term but got '{}'", r),
+            }
+        }
+        let mut canonical_lhs = Vec::with_capacity(lhs_scalings.len());
+        for (v, i) in lhs_scalings {
+            if i == 0 {
+                continue;
+            }
+            let scaling = mngr.int(i);
+            let scaled = mngr.mul(vec![scaling, v]);
+            canonical_lhs.push(scaled);
+        }
+        let canonical_lhs = match canonical_lhs.len() {
+            0 => mngr.int(0),
+            1 => canonical_lhs.pop().unwrap(),
+            _ => mngr.add(canonical_lhs),
+        };
+        let canonical_rhs = mngr.int(const_rhs);
+        match node.kind() {
+            NodeKind::Eq => {
+                let canonical = mngr.eq(canonical_lhs, canonical_rhs);
+                if pol {
+                    Ok(canonical)
+                } else {
+                    Ok(mngr.not(canonical))
+                }
+            }
+            NodeKind::Lt if pol => Ok(mngr.lt(canonical_lhs, canonical_rhs)),
+            NodeKind::Lt if !pol => Ok(mngr.ge(canonical_lhs, canonical_rhs)),
+            NodeKind::Le if pol => Ok(mngr.le(canonical_lhs, canonical_rhs)),
+            NodeKind::Le if !pol => Ok(mngr.gt(canonical_lhs, canonical_rhs)),
+            NodeKind::Gt if pol => Ok(mngr.gt(canonical_lhs, canonical_rhs)),
+            NodeKind::Gt if !pol => Ok(mngr.le(canonical_lhs, canonical_rhs)),
+            NodeKind::Ge if pol => Ok(mngr.ge(canonical_lhs, canonical_rhs)),
+            NodeKind::Ge if !pol => Ok(mngr.lt(canonical_lhs, canonical_rhs)),
+            _ => unreachable!("Expected comparison but got '{}'", node),
+        }
+    }
+
+    /// Takes a node representing a linear arithmetic term and brings it into canonical form.
+    /// The canonical form is a sum of terms of the form `c` or `c * v` where c is a constant and v is either an integer variable or the length of a string variable.
+    fn canonicalize_linear_arith_term(
+        &mut self,
+        node: Node,
+        mngr: &mut NodeManager,
+    ) -> Result<Node, NodeError> {
+        debug_assert!(
+            node.sort().is_int(),
+            "Expected integer term but got '{}'",
+            node
+        );
+        match node.kind() {
+            NodeKind::Variable(v) => {
+                if v.sort().is_int() {
+                    Ok(node)
+                } else {
+                    Err(NodeError::SortMismatch(node.clone(), Sort::Int, v.sort()))
+                }
+            }
+            NodeKind::Int(_) => Ok(node),
+            NodeKind::Add => {
+                let mut sums = Vec::with_capacity(node.children().len());
+                for c in node.children() {
+                    let canonical = self.canonicalize_linear_arith_term(c.clone(), mngr)?;
+                    if canonical.kind() == &NodeKind::Add {
+                        // flatten the sum
+                        sums.extend(canonical.children().to_vec());
+                    } else {
+                        sums.push(canonical);
+                    }
+                }
+                Ok(mngr.add(sums))
+            }
+            NodeKind::Neg => {
+                debug_assert!(node.children().len() == 1);
+                // rewrite (- t) as (-1 * t)
+                let negone = mngr.int(-1);
+                let as_mult = mngr.mul(vec![negone, node.clone()]);
+                self.canonicalize_linear_arith_term(as_mult, mngr)
             }
             NodeKind::Sub => {
-                let mut rec: Vec<Node> = Vec::with_capacity(node.children().len());
-                for c in node.children() {
-                    rec.push(self.canonical_arith(c.clone(), pol, mngr)?);
-                }
-                Ok(mngr.sub(rec))
+                // rewrite (- t1 ... tn) as (+ (- t1) ... (- tn))
+                let norm = node
+                    .children()
+                    .iter()
+                    .map(|s| mngr.neg(s.clone()))
+                    .collect();
+                let as_addition = mngr.add(norm);
+                self.canonicalize_linear_arith_term(as_addition, mngr)
             }
-            _ => unreachable!("Expected arithmetic expression"),
+            NodeKind::Mul => {
+                let canonicalized = node
+                    .children()
+                    .into_iter()
+                    .map(|c| self.canonicalize_linear_arith_term(c.clone(), mngr))
+                    .collect::<Result<Vec<Node>, _>>()?;
+                // distribute the multiplication, abort if we have non-linear terms
+
+                let mut left = canonicalized.first().unwrap().clone();
+                for right in canonicalized.iter().skip(1) {
+                    // left and right are in canonical form, i.e. linear terms.
+                    // We build the cartesian product of the two terms and add them.
+                    match (left.kind(), right.kind()) {
+                        (NodeKind::Variable(v), NodeKind::Int(1))
+                        | (NodeKind::Int(1), NodeKind::Variable(v)) => {
+                            mngr.var(v.clone());
+                        }
+                        (NodeKind::Int(_), NodeKind::Variable(_))
+                        | (NodeKind::Int(_), NodeKind::Length) => {
+                            left = mngr.mul(vec![left, right.clone()]);
+                        }
+                        (NodeKind::Variable(_), NodeKind::Int(_))
+                        | (NodeKind::Length, NodeKind::Int(_)) => {
+                            left = mngr.mul(vec![right.clone(), left]);
+                        }
+                        (NodeKind::Int(l), NodeKind::Int(r)) => {
+                            left = mngr.int(l * r);
+                        }
+                        (NodeKind::Variable(_), NodeKind::Variable(_)) => {
+                            return Err(NodeError::NonLinearArithmetic(node))
+                        }
+                        (NodeKind::Int(_), NodeKind::Add) => {
+                            // scale all terms in the sum
+                            let mut scaled = Vec::with_capacity(right.children().len());
+                            for c in right.children() {
+                                let scaled_c = mngr.mul(vec![left.clone(), c.clone()]);
+                                let canon = self.canonicalize_linear_arith_term(scaled_c, mngr)?;
+                                scaled.push(canon);
+                            }
+                        }
+                        (NodeKind::Add, NodeKind::Int(_)) => {
+                            // scale all terms in the sum
+                            let mut scaled = Vec::with_capacity(left.children().len());
+                            for c in right.children() {
+                                let scaled_c = mngr.mul(vec![right.clone(), c.clone()]);
+                                let canon = self.canonicalize_linear_arith_term(scaled_c, mngr)?;
+                                scaled.push(canon);
+                            }
+                        }
+                        _ => {
+                            return Err(NodeError::NotWellFormed(node));
+                        }
+                    }
+                }
+                debug_assert!(
+                    matches!(left.kind(), &NodeKind::Variable(_))
+                        || matches!(left.kind(), &NodeKind::Length)
+                        || matches!(left.kind(), &NodeKind::Mul)
+                        || matches!(left.kind(), &NodeKind::Int(_))
+                        || matches!(left.kind(), &NodeKind::Add),
+                    "Expected linear term but got '{}'",
+                    left
+                );
+                Ok(left)
+            }
+            NodeKind::Length => self.canonicalize_string_length(node, mngr),
+            _ => Err(NodeError::NotWellFormed(node)),
+        }
+    }
+
+    /// Canonicalizes a node of the form (length t), where t is a string term.
+    /// If t is of the form (concat r1 ... rm), the result is a new node (+ (length r1) ... (length rm))
+    /// If t is a variable, the result is the same node.
+    /// If t is a constant, the result is a new node with the constant length.
+    fn canonicalize_string_length(
+        &mut self,
+        node: Node,
+        mngr: &mut NodeManager,
+    ) -> Result<Node, NodeError> {
+        debug_assert!(node.sort().is_int());
+        debug_assert!(node.kind() == &NodeKind::Length);
+        debug_assert!(node.children().len() == 1);
+        let child = node.children().first().unwrap();
+        match child.kind() {
+            NodeKind::String(s) => {
+                let len = s.chars().count();
+                assert!(len < i64::MAX as usize, "String '{}' too long", s);
+                Ok(mngr.int(len as i64))
+            }
+            NodeKind::Variable(v) => {
+                if v.sort().is_string() {
+                    Ok(node)
+                } else {
+                    Err(NodeError::SortMismatch(
+                        node.clone(),
+                        Sort::String,
+                        v.sort(),
+                    ))
+                }
+            }
+            NodeKind::Concat => {
+                let mut sums = Vec::with_capacity(child.children().len());
+                let canonical = self.canonicalize_concat(child.clone(), mngr);
+                for c in canonical.children() {
+                    let len = mngr.str_len(c.clone());
+                    let canonical_len = self.canonicalize_string_length(len, mngr)?;
+                    sums.push(canonical_len);
+                }
+                Ok(mngr.add(sums))
+            }
+            _ => Err(NodeError::NotWellFormed(node)),
         }
     }
 }

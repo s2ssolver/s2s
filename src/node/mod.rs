@@ -90,11 +90,20 @@ impl NodeKind {
     /// - a Boolean variable or constant
     pub fn is_atom(&self) -> bool {
         match self {
-            NodeKind::InRe | NodeKind::PrefixOf | NodeKind::SuffixOf | NodeKind::Contains => true,
-            NodeKind::Eq => true,
-            NodeKind::Variable(v) => v.sort().is_bool(),
+            NodeKind::String(_) | NodeKind::Int(_) | NodeKind::Regex(_) => false,
+            NodeKind::Variable(b) => b.sort().is_bool(),
             NodeKind::Bool(_) => true,
-            _ => false,
+            NodeKind::Or
+            | NodeKind::And
+            | NodeKind::Imp
+            | NodeKind::Equiv
+            | NodeKind::Not
+            | NodeKind::Ite => false,
+            NodeKind::Eq => true,
+            NodeKind::Concat | NodeKind::Length => false,
+            NodeKind::InRe | NodeKind::PrefixOf | NodeKind::SuffixOf | NodeKind::Contains => true,
+            NodeKind::Add | NodeKind::Neg | NodeKind::Sub | NodeKind::Mul => false,
+            NodeKind::Lt | NodeKind::Le | NodeKind::Gt | NodeKind::Ge => true,
         }
     }
 }

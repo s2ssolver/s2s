@@ -16,4 +16,7 @@ pub enum NodeError {
 
     #[error("Expected sort {1} but got {2} (in {0})")]
     SortMismatch(Node, Sort, Sort),
+
+    #[error("Non-linear integer arithmetic is not supported ({0})")]
+    NonLinearArithmetic(Node),
 }

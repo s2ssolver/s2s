@@ -61,7 +61,10 @@ impl NodeManager {
                 self.eq(l, r)
             }
             NodeKind::Concat => self.concat(children),
-            NodeKind::Length if children.len() == 1 => children.pop().unwrap(),
+            NodeKind::Length if children.len() == 1 => {
+                let c = children.pop().unwrap();
+                self.str_len(c)
+            }
             NodeKind::InRe if children.len() == 2 => {
                 let r = children.pop().unwrap();
                 let l = children.pop().unwrap();
@@ -365,41 +368,53 @@ impl NodeManager {
 
     /// Addition
     pub fn add(&mut self, rs: Vec<Node>) -> Node {
+        debug_assert!(rs.iter().all(|n| n.sort().is_int()));
         self.intern_node(NodeKind::Add, rs)
     }
 
     /// Multiplication
     pub fn mul(&mut self, rs: Vec<Node>) -> Node {
+        debug_assert!(rs.iter().all(|n| n.sort().is_int()));
         self.intern_node(NodeKind::Mul, rs)
     }
 
     /// Subtraction
     pub fn sub(&mut self, rs: Vec<Node>) -> Node {
+        debug_assert!(rs.iter().all(|n| n.sort().is_int()));
         self.intern_node(NodeKind::Sub, rs)
     }
 
     /// Negation
     pub fn neg(&mut self, r: Node) -> Node {
+        debug_assert!(r.sort().is_int());
         self.intern_node(NodeKind::Neg, vec![r])
     }
 
     /// Less than
     pub fn lt(&mut self, l: Node, r: Node) -> Node {
+        debug_assert!(l.sort().is_int());
+        debug_assert!(r.sort().is_int());
         self.intern_node(NodeKind::Lt, vec![l, r])
     }
 
     /// Less than or equal
     pub fn le(&mut self, l: Node, r: Node) -> Node {
+        debug_assert!(l.sort().is_int());
+        debug_assert!(r.sort().is_int());
         self.intern_node(NodeKind::Le, vec![l, r])
     }
 
     /// Greater than
     pub fn gt(&mut self, l: Node, r: Node) -> Node {
+        debug_assert!(l.sort().is_int());
+        debug_assert!(r.sort().is_int());
         self.intern_node(NodeKind::Gt, vec![l, r])
     }
 
     /// Greater than or equal
     pub fn ge(&mut self, l: Node, r: Node) -> Node {
+        debug_assert!(l.sort().is_int());
+        debug_assert!(r.sort().is_int());
         self.intern_node(NodeKind::Ge, vec![l, r])
     }
 }
