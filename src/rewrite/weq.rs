@@ -8,11 +8,39 @@ use crate::{
 
 use super::RewriteRule;
 
+/// Fold trivial equations as follows:
+/// - if the left-hand side and right-hand side are equal, return `true`
+/// - if the left-hand side and right-hand side are both constants words and are not equal, return `false`
+pub struct FoldTrivialEquations;
+
+impl RewriteRule for FoldTrivialEquations {
+    fn apply(&self, node: &Node, mngr: &mut NodeManager) -> Option<Node> {
+        if *node.kind() == NodeKind::Eq {
+            debug_assert!(node.children().len() == 2);
+            let lhs = &node.children()[0];
+            let rhs = &node.children()[1];
+
+            if lhs == rhs {
+                return Some(mngr.ttrue());
+            } else {
+                match (lhs.kind(), rhs.kind()) {
+                    (NodeKind::String(lhs), NodeKind::String(rhs)) => {
+                        if lhs != rhs {
+                            return Some(mngr.ffalse());
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+        None
+    }
+}
+
 /// Tries to strip the longest common constant prefix from the two sides of a word equation.
 /// Let `lhs = rhs` be a word equation and p be the longest common prefix of lhs and rhs.
 /// Then `lhs = p.lhs' and rhs = p.rhs'` for some lhs' and rhs'.
 /// If p is non-empty, then the rule returns `lhs' = rhs'`.
-/// A special case is when lhs = rhs, in which case the rule returns `true`.
 pub struct WeqStripPrefix;
 
 impl RewriteRule for WeqStripPrefix {
@@ -78,7 +106,6 @@ impl RewriteRule for WeqConstMismatch {
 
             // Check for first character mismatch
             if let (Some(lhs_char), Some(rhs_char)) = (first_char(lhs), first_char(rhs)) {
-                println!("lhs_char: {}, rhs_char: {}", lhs_char, rhs_char);
                 if lhs_char != rhs_char {
                     return Some(mngr.ffalse());
                 }
