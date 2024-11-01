@@ -1,6 +1,9 @@
 //! Provides types and functions for propositional logic and SAT solving
 
-use std::sync::atomic::{AtomicU32, Ordering};
+use std::{
+    fmt::Display,
+    sync::atomic::{AtomicU32, Ordering},
+};
 
 use indexmap::IndexMap;
 
@@ -28,6 +31,34 @@ impl PFormula {
 
     pub fn nlit(var: PVar) -> Self {
         PFormula::Lit(nlit(var))
+    }
+}
+
+impl Display for PFormula {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            PFormula::And(fs) => {
+                write!(f, "(")?;
+                for (i, fm) in fs.iter().enumerate() {
+                    write!(f, "{}", fm)?;
+                    if i < fs.len() - 1 {
+                        write!(f, " && ")?;
+                    }
+                }
+                write!(f, ")")
+            }
+            PFormula::Or(fs) => {
+                write!(f, "(")?;
+                for (i, fm) in fs.iter().enumerate() {
+                    write!(f, "{}", fm)?;
+                    if i < fs.len() - 1 {
+                        write!(f, " || ")?;
+                    }
+                }
+                write!(f, ")")
+            }
+            PFormula::Lit(l) => write!(f, "{}", l),
+        }
     }
 }
 
