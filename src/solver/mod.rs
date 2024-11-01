@@ -191,6 +191,13 @@ impl Solver {
                 SolverResult::Unsat
             });
         }
+
+        timer = Instant::now();
+        let abstraction = abstract_node(&preprocessed, mngr)?;
+        log::info!("Built abstraction ({:?})", timer.elapsed());
+        println!("Abstraction: {}", abstraction);
+
+        timer = Instant::now();
         todo!()
 
         // timer = Instant::now();
@@ -340,7 +347,7 @@ impl Solver {
     fn run(
         &mut self,
         fm: &Formula,
-        abs: Abstraction,
+        abs: AbstractionOld,
         init_bounds: Bounds,
         alphabet: Alphabet,
         ctx: &mut Context,
@@ -457,10 +464,10 @@ impl Solver {
     /// If the abstraction is already fully refined, returns an empty vector.
     fn refine_abstraction(
         &self,
-        current_defs: &[Definition],
+        current_defs: &[DefinitionOld],
         assign: &VarSubstitution,
-        abs: &Abstraction,
-    ) -> Vec<Definition> {
+        abs: &AbstractionOld,
+    ) -> Vec<DefinitionOld> {
         todo!("Refine the abstraction")
     }
 

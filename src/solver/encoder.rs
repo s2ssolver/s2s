@@ -4,7 +4,7 @@ use cadical::Solver;
 use indexmap::IndexSet;
 
 use crate::{
-    abstraction::Definition,
+    abstraction::DefinitionOld,
     alphabet::Alphabet,
     bounds::Bounds,
     context::Context,
@@ -72,7 +72,7 @@ impl ProblemEncoder {
 
     pub fn encode(
         &mut self,
-        defs: &[Definition],
+        defs: &[DefinitionOld],
         bounds: &Bounds,
         ctx: &mut Context,
     ) -> Result<EncodingResult, EncodingError> {
@@ -97,7 +97,7 @@ impl ProblemEncoder {
 
     fn encode_def(
         &mut self,
-        def: &Definition,
+        def: &DefinitionOld,
         bounds: &Bounds,
         dom: &DomainEncoding,
         ctx: &mut Context,

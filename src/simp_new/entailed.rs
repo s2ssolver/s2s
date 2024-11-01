@@ -1,7 +1,6 @@
 //! Rules that simplify the formula by replacing entailed literals with their values.
 
-use indexmap::{IndexMap, IndexSet};
-use itertools::Itertools;
+use indexmap::IndexSet;
 
 use crate::{
     context::Sorted,
