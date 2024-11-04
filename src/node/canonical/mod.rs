@@ -3,17 +3,15 @@
 mod int;
 mod string;
 
-pub use int::LinearConstraint;
-use int::{LinearArithTerm, LinearOperator};
-use string::Pattern;
-pub use string::{FactorConstraint, FactorConstraintType, RegularConstraint, WordEquation};
+pub use int::*;
+pub use string::*;
 use utils::SymbolIterator;
 
 use super::*;
 use error::NodeError;
 use indexmap::IndexMap;
 
-use std::collections::HashMap;
+use std::{collections::HashMap, hash::Hasher};
 
 pub fn canonicalize(node: Node, mngr: &mut NodeManager) -> Result<Node, NodeError> {
     let mut canonicalizer = Canonicalizer::default();
@@ -543,59 +541,168 @@ impl Canonicalizer {
     }
 }
 
-#[derive(Debug, Clone)]
-pub enum CanonicalAtom {
+#[derive(Debug, Clone, Hash)]
+pub enum AtomKind {
     WordEquation(WordEquation),
     InRe(RegularConstraint),
     FactorConstraint(FactorConstraint),
     Linear(LinearConstraint),
 }
-impl Display for CanonicalAtom {
+impl AtomKind {
+    fn variables(&self) -> IndexSet<Rc<Variable>> {
+        match self {
+            AtomKind::WordEquation(eq) => eq.variables(),
+            AtomKind::InRe(inre) => {
+                let mut vars = IndexSet::new();
+                vars.insert(inre.lhs().clone());
+                vars
+            }
+            AtomKind::FactorConstraint(_fc) => todo!(),
+            AtomKind::Linear(lc) => lc.variables(),
+        }
+    }
+}
+impl Display for AtomKind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            CanonicalAtom::WordEquation(we) => write!(f, "{}", we),
-            CanonicalAtom::InRe(re) => write!(f, "{}", re),
-            CanonicalAtom::FactorConstraint(fc) => write!(f, "{}", fc),
-            CanonicalAtom::Linear(lc) => write!(f, "{}", lc),
+            AtomKind::WordEquation(we) => write!(f, "{}", we),
+            AtomKind::InRe(re) => write!(f, "{}", re),
+            AtomKind::FactorConstraint(fc) => write!(f, "{}", fc),
+            AtomKind::Linear(lc) => write!(f, "{}", lc),
         }
     }
 }
 
 #[derive(Debug, Clone)]
-pub enum CanonicalLit {
-    Positive(CanonicalAtom),
-    Negative(CanonicalAtom),
+pub struct Atom {
+    kind: AtomKind,
+    id: usize,
 }
 
-impl Display for CanonicalLit {
+impl Atom {
+    pub fn new(kind: AtomKind, id: usize) -> Self {
+        debug_assert!(id > 0);
+        Self { kind, id }
+    }
+
+    pub fn kind(&self) -> &AtomKind {
+        &self.kind
+    }
+}
+
+impl PartialEq for Atom {
+    fn eq(&self, other: &Self) -> bool {
+        self.id == other.id
+    }
+}
+impl Eq for Atom {}
+impl Hash for Atom {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.id.hash(state);
+    }
+}
+impl Display for Atom {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            CanonicalLit::Positive(atom) => write!(f, "{}", atom),
-            CanonicalLit::Negative(atom) => write!(f, "!({})", atom),
+        write!(f, "{}", self.kind)
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct Literal {
+    pol: bool,
+    atom: Rc<Atom>,
+}
+
+impl Literal {
+    fn new(pol: bool, atom: Rc<Atom>) -> Self {
+        Self { pol, atom }
+    }
+
+    pub fn polarity(&self) -> bool {
+        self.pol
+    }
+
+    pub fn atom(&self) -> &AtomKind {
+        &self.atom.kind
+    }
+
+    pub fn flip_polarity(&self) -> Self {
+        Self {
+            pol: !self.pol,
+            atom: self.atom.clone(),
+        }
+    }
+
+    pub(crate) fn id(&self) -> isize {
+        if self.pol {
+            self.atom.id as isize
+        } else {
+            -(self.atom.id as isize)
+        }
+    }
+
+    pub(crate) fn variables(&self) -> IndexSet<Rc<Variable>> {
+        self.atom().variables()
+    }
+}
+
+impl PartialEq for Literal {
+    fn eq(&self, other: &Self) -> bool {
+        self.id() == other.id()
+    }
+}
+
+impl Eq for Literal {}
+impl Hash for Literal {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.id().hash(state);
+    }
+}
+
+impl Display for Literal {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if self.pol {
+            write!(f, "{}", self.atom)
+        } else {
+            write!(f, "!({})", self.atom)
         }
     }
 }
 
-#[derive(Default)]
 pub(super) struct CanonicalMapper {
-    node2ir: IndexMap<Node, CanonicalAtom>,
+    next_id: usize,
+    node2atom: IndexMap<Node, Rc<Atom>>,
     patterns: IndexMap<Node, Pattern>,
 }
 
+impl Default for CanonicalMapper {
+    fn default() -> Self {
+        Self {
+            next_id: 1,
+            node2atom: IndexMap::new(),
+            patterns: IndexMap::new(),
+        }
+    }
+}
 impl CanonicalMapper {
-    pub fn lit2ir(&mut self, lit: &Node) -> Option<CanonicalLit> {
-        let converted = if lit.is_atomic() {
-            CanonicalLit::Positive(self.atom2ir(lit)?)
-        } else {
-            debug_assert!(*lit.kind() == NodeKind::Not);
+    pub fn lit2ir(&mut self, lit: &Node) -> Option<Literal> {
+        debug_assert!(lit.is_literal());
+        let (atom, pol) = if *lit.kind() == NodeKind::Not {
             debug_assert!(lit.children().len() == 1);
-            CanonicalLit::Negative(self.atom2ir(&lit[0])?)
+            (&lit[0], false)
+        } else {
+            (lit, true)
         };
-        Some(converted)
+        let catom = self.atom2ir(atom)?;
+        let canon_lit = Literal::new(pol, catom);
+        Some(canon_lit)
     }
 
-    pub fn atom2ir(&mut self, atom: &Node) -> Option<CanonicalAtom> {
-        let converted = match atom.kind() {
+    pub fn atom2ir(&mut self, atom: &Node) -> Option<Rc<Atom>> {
+        if let Some(catom) = self.node2atom.get(atom) {
+            return Some(catom.clone());
+        }
+        let kind = match atom.kind() {
             NodeKind::Eq => {
                 debug_assert!(atom.children().len() == 2);
                 let l = &atom[0];
@@ -620,14 +727,17 @@ impl CanonicalMapper {
             }
             _ => return None,
         };
-        self.node2ir.insert(atom.clone(), converted.clone());
-        Some(converted)
+        let id = self.next_id;
+        self.next_id += 1;
+        let catom = Rc::new(Atom::new(kind, id));
+        self.node2atom.insert(atom.clone(), catom.clone());
+        Some(catom)
     }
 
-    fn convert_word_equation(&mut self, lhs: &Node, rhs: &Node) -> CanonicalAtom {
+    fn convert_word_equation(&mut self, lhs: &Node, rhs: &Node) -> AtomKind {
         let lhs = self.convert_pattern(lhs);
         let rhs = self.convert_pattern(rhs);
-        CanonicalAtom::WordEquation(WordEquation::new(lhs, rhs))
+        AtomKind::WordEquation(WordEquation::new(lhs, rhs))
     }
 
     fn convert_pattern(&mut self, node: &Node) -> Pattern {
@@ -647,18 +757,18 @@ impl CanonicalMapper {
         result
     }
 
-    fn convert_in_re(&self, lhs: &Node, rhs: &Node) -> CanonicalAtom {
+    fn convert_in_re(&self, lhs: &Node, rhs: &Node) -> AtomKind {
         let var = lhs.as_variable().expect("Not in canonical form");
         if let NodeKind::Regex(re) = rhs.kind() {
-            CanonicalAtom::InRe(RegularConstraint::new(var.clone(), re.clone()))
+            AtomKind::InRe(RegularConstraint::new(var.clone(), re.clone()))
         } else {
             unreachable!("Not in canonical form")
         }
     }
 
-    fn convert_linear_constraint(&self, node: &Node) -> CanonicalAtom {
+    fn convert_linear_constraint(&self, node: &Node) -> AtomKind {
         assert!(node.children().len() == 2);
-        let lhs = self.convert_linarith_lerm(&node[0]);
+        let lhs = self.convert_linarith_term(&node[0]);
         let rhs = node[1].as_int_const().expect("Not in canonical form");
         let op = match node.kind() {
             NodeKind::Eq => LinearOperator::Eq,
@@ -669,10 +779,10 @@ impl CanonicalMapper {
             _ => unreachable!("Not a linear constraint"),
         };
         let lc = LinearConstraint::new(lhs, op, rhs as isize);
-        CanonicalAtom::Linear(lc)
+        AtomKind::Linear(lc)
     }
 
-    fn convert_linarith_lerm(&self, node: &Node) -> LinearArithTerm {
+    fn convert_linarith_term(&self, node: &Node) -> LinearArithTerm {
         match node.kind() {
             NodeKind::Int(i) => LinearArithTerm::from_const(*i as isize),
             NodeKind::Variable(var) => LinearArithTerm::from_var(var.clone()),
@@ -687,21 +797,21 @@ impl CanonicalMapper {
             NodeKind::Add => {
                 let mut result = LinearArithTerm::new();
                 for c in node.children() {
-                    let term = self.convert_linarith_lerm(c);
+                    let term = self.convert_linarith_term(c);
                     result.add(term);
                 }
                 result
             }
             NodeKind::Neg => {
                 assert!(node.children().len() == 1);
-                let mut res = self.convert_linarith_lerm(&node[0]);
+                let mut res = self.convert_linarith_term(&node[0]);
                 res.multiply_constant(-1);
                 res
             }
             NodeKind::Sub => {
                 let mut result = LinearArithTerm::new();
                 for c in node.children() {
-                    let mut term = self.convert_linarith_lerm(c);
+                    let mut term = self.convert_linarith_term(c);
                     term.multiply_constant(-1);
                     result.add(term);
                 }
@@ -709,8 +819,8 @@ impl CanonicalMapper {
             }
             NodeKind::Mul => {
                 assert!(node.children().len() == 2);
-                let s = node[0].as_int_const();
-                match node[1].kind() {
+                let s = node[0].as_int_const().expect("Not in canonical form");
+                let mut v = match node[1].kind() {
                     NodeKind::Variable(v) => LinearArithTerm::from_var(v.clone()),
                     NodeKind::Length => {
                         assert!(node[1].children().len() == 1);
@@ -718,7 +828,9 @@ impl CanonicalMapper {
                         LinearArithTerm::from_var_len(v.clone())
                     }
                     _ => unreachable!("Not in canonical form"),
-                }
+                };
+                v.multiply_constant(s.try_into().unwrap());
+                v
             }
             _ => unreachable!("Not in canonical form"),
         }

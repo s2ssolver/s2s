@@ -1,14 +1,19 @@
 mod linear;
 mod regular;
+use std::rc::Rc;
+
 use indexmap::IndexSet;
 use linear::LinearRefiner;
 use regular::RegularBoundsInferer;
 
 use crate::{
-    context::{Context, Sorted, Variable},
-    ir::{
-        AtomType, LinearArithTerm, LinearConstraint, LinearOperator, Literal, RegularConstraint,
-        WordEquation,
+    context::{Sorted, Variable},
+    node::{
+        canonical::{
+            AtomKind, LinearArithTerm, LinearConstraint, LinearOperator, Literal,
+            RegularConstraint, WordEquation,
+        },
+        Node, NodeManager,
     },
 };
 
@@ -25,46 +30,48 @@ enum Fragment {
     RegLin,
     WeqLin(bool),
     RegWeqLin(bool),
+    Unknown,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 struct FragmentFinder {
     // The set of variables that appear in an inequality
-    ineq_vars: IndexSet<Variable>,
+    ineq_vars: IndexSet<Rc<Variable>>,
     // The set of variables that appear in a proper word equation.
-    weq_vars: IndexSet<Variable>,
+    weq_vars: IndexSet<Rc<Variable>>,
     /// The set of variables that appear in a regular constraint
-    in_re_vars: IndexSet<Variable>,
+    in_re_vars: IndexSet<Rc<Variable>>,
     /// The set of variables that appear in a linear constraint
-    lin_vars: IndexSet<Variable>,
+    lin_vars: IndexSet<Rc<Variable>>,
+    is_unknown: bool,
 }
 
 impl FragmentFinder {
-    pub fn and(&mut self, lit: &Literal) {
-        let pol = lit.polarity();
-        match lit.atom().get_type() {
-            AtomType::InRe(x) => {
-                if let Some(v) = x.pattern().as_variable() {
-                    self.in_re_vars.insert(v);
-                } else {
-                    unreachable!("Regular constraints are only supported on variables.")
+    pub fn and(&mut self, lit: &Node) {
+        debug_assert!(lit.is_literal());
+        if let Some(canonical) = lit.canonical() {
+            let pol = canonical.polarity();
+            match canonical.atom() {
+                AtomKind::InRe(x) => {
+                    self.in_re_vars.insert(x.lhs().clone());
                 }
-            }
-            AtomType::WordEquation(weq) => {
-                if !pol {
-                    for v in weq.variables() {
-                        self.ineq_vars.insert(v);
+                AtomKind::WordEquation(weq) => {
+                    if !pol {
+                        for v in weq.variables() {
+                            self.ineq_vars.insert(v);
+                        }
+                    }
+                    if let WordEquation::General(_, _) = weq {
+                        self.weq_vars.extend(weq.variables());
                     }
                 }
-                if let WordEquation::General(_, _) = weq {
-                    self.weq_vars.extend(weq.variables());
+                AtomKind::FactorConstraint(_) => todo!(),
+                AtomKind::Linear(lc) => {
+                    self.lin_vars.extend(lc.variables());
                 }
             }
-            AtomType::PrefixOf(_) | AtomType::SuffixOf(_) | AtomType::Contains(_) => todo!(),
-            AtomType::LinearConstraint(lc) => {
-                self.lin_vars.extend(lc.variables());
-            }
-            _ => (),
+        } else {
+            self.is_unknown = true;
         }
     }
 
@@ -93,15 +100,19 @@ impl FragmentFinder {
     }
 
     pub fn get_fragment(&self) -> Fragment {
-        match (self.has_regular(), self.has_weq(), self.has_linear()) {
-            (false, false, false) => Fragment::Empty,
-            (true, false, false) => Fragment::Reg,
-            (false, true, false) => Fragment::Weq(self.has_negated_weq()),
-            (false, false, true) => Fragment::Lin,
-            (true, true, false) => Fragment::RegWeq(self.has_negated_weq()),
-            (true, false, true) => Fragment::RegLin,
-            (false, true, true) => Fragment::WeqLin(self.has_negated_weq()),
-            (true, true, true) => Fragment::RegWeqLin(self.has_negated_weq()),
+        if self.is_unknown {
+            Fragment::Unknown
+        } else {
+            match (self.has_regular(), self.has_weq(), self.has_linear()) {
+                (false, false, false) => Fragment::Empty,
+                (true, false, false) => Fragment::Reg,
+                (false, true, false) => Fragment::Weq(self.has_negated_weq()),
+                (false, false, true) => Fragment::Lin,
+                (true, true, false) => Fragment::RegWeq(self.has_negated_weq()),
+                (true, false, true) => Fragment::RegLin,
+                (false, true, true) => Fragment::WeqLin(self.has_negated_weq()),
+                (true, true, true) => Fragment::RegWeqLin(self.has_negated_weq()),
+            }
         }
     }
 }
@@ -110,6 +121,9 @@ impl FragmentFinder {
 pub struct BoundInferer {
     /// The set of literals for which we infer bounds
     literals: IndexSet<Literal>,
+
+    vars: IndexSet<Rc<Variable>>,
+
     /// Set to true if literals contain a conflict, i.e., a literal and its negation
     conflict: bool,
 
@@ -124,23 +138,20 @@ pub struct BoundInferer {
 }
 
 impl BoundInferer {
-    fn add_reg(&mut self, reg: &RegularConstraint, pol: bool, ctx: &mut Context) {
-        let v = reg
-            .pattern()
-            .as_variable()
-            .expect("Regular constraints are only supported on variables.");
+    fn add_reg(&mut self, reg: &RegularConstraint, pol: bool, mngr: &mut NodeManager) {
+        let v = reg.lhs();
         let re = reg.re().clone();
-        self.reg.add_reg(v, re, pol, ctx);
+        self.reg.add_reg(v.clone(), re, pol, mngr);
     }
 
-    fn add_weq(&mut self, weq: &WordEquation, pol: bool, ctx: &mut Context) {
+    fn add_weq(&mut self, weq: &WordEquation, pol: bool, mngr: &mut NodeManager) {
         match weq {
             WordEquation::ConstantEquality(_, _) => (),
             WordEquation::VarEquality(l, r) => {
                 self.reg.add_var_eq(l.clone(), r.clone(), pol);
             }
             WordEquation::VarAssignment(l, r) => {
-                self.reg.add_const_eq(l.clone(), r.clone(), pol, ctx);
+                self.reg.add_const_eq(l.clone(), r.clone(), pol, mngr);
             }
             WordEquation::General(_, _) => {}
         }
@@ -153,22 +164,26 @@ impl BoundInferer {
         self.lin.add_linear(lc.clone());
     }
 
-    pub fn add_literal(&mut self, lit: Literal, ctx: &mut Context) {
-        self.literals.insert(lit.clone());
+    pub fn add_literal(&mut self, lit: Node, mngr: &mut NodeManager) {
+        debug_assert!(lit.is_literal(), "expected a literal, got {}", lit);
 
-        self.conflict |= self.literals.contains(&lit.inverse());
+        if let Some(canonical) = lit.canonical() {
+            self.literals.insert(canonical.clone());
 
-        // skip this if there is a conflict
-        let pol = lit.polarity();
-        match lit.atom().get_type() {
-            AtomType::BoolVar(_) => (),
-            AtomType::InRe(reg) => self.add_reg(reg, pol, ctx),
-            AtomType::WordEquation(weq) => self.add_weq(weq, pol, ctx),
-            AtomType::PrefixOf(_) | AtomType::SuffixOf(_) | AtomType::Contains(_) => {
-                unreachable!("Formula not in normal form.")
+            self.conflict |= self.literals.contains(&canonical.flip_polarity());
+            if !self.conflict {
+                let pol = canonical.polarity();
+
+                match canonical.atom() {
+                    AtomKind::WordEquation(weq) => self.add_weq(weq, pol, mngr),
+                    AtomKind::InRe(inre) => self.add_reg(inre, pol, mngr),
+                    AtomKind::FactorConstraint(_factor) => todo!(),
+                    AtomKind::Linear(lc) if pol => self.add_linear_constraint(lc),
+                    _ => (),
+                }
             }
-            AtomType::LinearConstraint(lc) => self.add_linear_constraint(lc),
         }
+        self.vars.extend(lit.variables());
         self.fragment.and(&lit);
     }
 
@@ -185,6 +200,7 @@ impl BoundInferer {
         let frag = self.fragment.get_fragment();
 
         let bounds = match frag {
+            Fragment::Unknown => Some(Bounds::default()),
             Fragment::Empty => Some(Bounds::default()),
             Fragment::Reg => self.reg.infer(),
             Fragment::Weq(_) => {
@@ -202,13 +218,13 @@ impl BoundInferer {
                         if let Some(max) = nfa.longest() {
                             // This is none if the nfa contains cycles
                             // Add "|v| <= max" to the bounds
-                            let lhs = LinearArithTerm::from_var(v);
+                            let lhs = LinearArithTerm::from_var(v.clone());
                             let lc = LinearConstraint::new(lhs, LinearOperator::Leq, max as isize);
                             self.lin.add_linear(lc);
                         }
                         if let Some(min) = nfa.shortest() {
                             // Add "|v| >= max" to the bounds
-                            let lhs = LinearArithTerm::from_var(v);
+                            let lhs = LinearArithTerm::from_var(v.clone());
                             let lc = LinearConstraint::new(lhs, LinearOperator::Geq, min as isize);
                             self.lin.add_linear(lc);
                         }
@@ -232,16 +248,15 @@ impl BoundInferer {
     /// If a variable is not present in the bounds, it is set to unbounded.
     fn sanitize_bounds(&mut self, bounds: &mut Bounds) {
         for v in self
-            .literals
+            .vars
             .iter()
-            .flat_map(|l| l.variables())
             .filter(|v| v.sort().is_string() || v.sort().is_int())
         {
             if bounds.get(&v).is_none() {
                 if v.sort().is_string() {
-                    bounds.set(v, Interval::bounded_below(0));
+                    bounds.set(v.as_ref().clone(), Interval::bounded_below(0));
                 } else {
-                    bounds.set(v, Interval::unbounded());
+                    bounds.set(v.as_ref().clone(), Interval::unbounded());
                 }
             }
         }

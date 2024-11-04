@@ -21,7 +21,7 @@ impl VariableTerm {
         matches!(self, VariableTerm::Int(_))
     }
 
-    pub fn variable(&self) -> &Variable {
+    pub fn variable(&self) -> &Rc<Variable> {
         match self {
             VariableTerm::Int(x) => x,
             VariableTerm::Len(x) => x,
@@ -413,7 +413,7 @@ impl LinearConstraint {
         self.typ
     }
 
-    pub(crate) fn variables(&self) -> IndexSet<Variable> {
+    pub(crate) fn variables(&self) -> IndexSet<Rc<Variable>> {
         let mut vars = IndexSet::new();
         for f in self.lhs.iter() {
             match f {

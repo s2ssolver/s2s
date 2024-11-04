@@ -7,7 +7,9 @@ use indexmap::IndexSet;
 use crate::{
     bounds::{BoundValue, Bounds},
     context::{Sorted, Variable},
-    ir::{LinearArithTerm, LinearConstraint, LinearOperator, LinearSummand, Symbol, WordEquation},
+    node::canonical::{
+        LinearArithTerm, LinearConstraint, LinearOperator, LinearSummand, Symbol, WordEquation,
+    },
 };
 
 use super::InferringStrategy;
@@ -76,7 +78,6 @@ impl LinearRefiner {
             changed = false;
             for linear in &self.linears {
                 if let Some(new_bounds) = self.refinement_step(&refined, linear) {
-                    log::trace!("Refined bounds: {}", new_bounds);
                     if self.any_empty(&new_bounds) {
                         // the linear constraints are unsatisfiable
                         self.conflict = true;
@@ -159,7 +160,7 @@ impl LinearRefiner {
     fn solve_for(
         &self,
         lc: &LinearConstraint,
-        var: &Variable,
+        var: &Rc<Variable>,
     ) -> (LinearOperator, LinearArithTerm, usize) {
         let mut divisor = 0;
         let mut dividend = LinearArithTerm::from_const(lc.rhs());
@@ -309,7 +310,7 @@ pub fn length_abstraction(weq: &WordEquation) -> LinearConstraint {
     let mut constant_counter = 0;
     let lhs = weq.lhs();
     let rhs = weq.rhs();
-    for s in lhs.iter() {
+    for s in lhs.symbols() {
         match s {
             Symbol::Variable(v) => {
                 let counter = var_occurrences.entry(v).or_insert(0);
@@ -320,7 +321,7 @@ pub fn length_abstraction(weq: &WordEquation) -> LinearConstraint {
             }
         }
     }
-    for s in rhs.iter() {
+    for s in rhs.symbols() {
         match s {
             Symbol::Variable(v) => {
                 let counter = var_occurrences.entry(v).or_insert(0);

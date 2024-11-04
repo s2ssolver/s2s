@@ -526,7 +526,7 @@ impl RegularConstraint {
     }
 
     /// Returns the left-hand side of the regular constraint.
-    pub fn pattern(&self) -> &Rc<Variable> {
+    pub fn lhs(&self) -> &Rc<Variable> {
         &self.lhs
     }
 
@@ -543,7 +543,7 @@ impl RegularConstraint {
 
 impl Display for RegularConstraint {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{} ∈ {}", self.pattern(), self.re())
+        write!(f, "{} ∈ {}", self.lhs(), self.re())
     }
 }
 

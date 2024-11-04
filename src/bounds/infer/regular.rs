@@ -5,13 +5,14 @@ use regulaer::{automaton::NFA, re::Regex};
 
 use crate::{
     bounds::{Bounds, Interval},
-    context::{Context, Variable},
+    context::Variable,
+    node::NodeManager,
 };
 
 use super::InferringStrategy;
 
-type InRe = (Variable, Regex, bool);
-type VarEq = (Variable, Variable);
+type InRe = (Rc<Variable>, Regex, bool);
+type VarEq = (Rc<Variable>, Rc<Variable>);
 
 #[derive(Debug, Clone, Default)]
 pub(super) struct RegularBoundsInferer {
@@ -25,13 +26,19 @@ pub(super) struct RegularBoundsInferer {
 
     /// The intersection of all automata for each variable.
     /// The NFAs are wrapped in an RC to make cloning cheap.
-    intersections: IndexMap<Variable, Rc<NFA>>,
+    intersections: IndexMap<Rc<Variable>, Rc<NFA>>,
 
     conflict: bool,
 }
 
 impl RegularBoundsInferer {
-    pub fn add_reg(&mut self, var: Variable, re: Regex, polarity: bool, ctx: &mut Context) {
+    pub fn add_reg(
+        &mut self,
+        var: Rc<Variable>,
+        re: Regex,
+        polarity: bool,
+        mngr: &mut NodeManager,
+    ) {
         // cloning the regex is cheap, it is an Rc.
         self.regs.insert((var.clone(), re.clone(), polarity));
         if !self.conflict {
@@ -39,9 +46,9 @@ impl RegularBoundsInferer {
             let re_pol = if polarity {
                 re
             } else {
-                ctx.re_builder().comp(re)
+                mngr.re_builder().comp(re)
             };
-            let nfa = ctx.get_nfa(&re_pol);
+            let nfa = mngr.get_nfa(&re_pol);
             // TODO: Cache intersection, they are likely to be used in other inferrence steps too.
             match self.intersections.entry(var) {
                 indexmap::map::Entry::Occupied(o) => {
@@ -59,13 +66,19 @@ impl RegularBoundsInferer {
         }
     }
 
-    pub fn add_const_eq(&mut self, var: Variable, word: String, pol: bool, ctx: &mut Context) {
-        let builder = ctx.re_builder();
+    pub fn add_const_eq(
+        &mut self,
+        var: Rc<Variable>,
+        word: String,
+        pol: bool,
+        mngr: &mut NodeManager,
+    ) {
+        let builder = mngr.re_builder();
         let re = builder.word(word.into());
-        self.add_reg(var, re, pol, ctx);
+        self.add_reg(var, re, pol, mngr);
     }
 
-    pub fn add_var_eq(&mut self, x: Variable, y: Variable, polarity: bool) {
+    pub fn add_var_eq(&mut self, x: Rc<Variable>, y: Rc<Variable>, polarity: bool) {
         if polarity {
             // For all existing reg constraints `v \in R`, replace `v` with `x` if `v == y`.
             let mut new_regs = IndexSet::new();
@@ -114,7 +127,7 @@ impl RegularBoundsInferer {
     /// Returns a vector of equivalence classes such that all variables in the same class must not be equal.
     /// In other words, two variables are in the same class iff
     /// - there is a x
-    fn partition_neqs(&self) -> Vec<Vec<Variable>> {
+    fn partition_neqs(&self) -> Vec<Vec<Rc<Variable>>> {
         let egdes = self
             .neqs
             .iter()
@@ -156,7 +169,7 @@ impl RegularBoundsInferer {
         components
     }
 
-    pub fn iter_intersections(&self) -> impl Iterator<Item = (&Variable, &Rc<NFA>)> {
+    pub fn iter_intersections(&self) -> impl Iterator<Item = (&Rc<Variable>, &Rc<NFA>)> {
         self.intersections.iter()
     }
 }
@@ -176,7 +189,7 @@ impl InferringStrategy for RegularBoundsInferer {
             let upper = nfa.num_states().saturating_sub(1);
             let lower = nfa.shortest().unwrap_or(0);
             // TODO: use shortest path to find lower bound.
-            bounds.set(v.clone(), Interval::new(lower, upper));
+            bounds.set(v.as_ref().clone(), Interval::new(lower, upper));
         }
 
         // Adjust based on the non-equality constraints.
@@ -202,10 +215,10 @@ impl InferringStrategy for RegularBoundsInferer {
             for var in &component {
                 match prod {
                     Some(prod) => {
-                        bounds.set(var.clone(), Interval::new(0, prod));
+                        bounds.set(var.as_ref().clone(), Interval::new(0, prod));
                     }
                     None => {
-                        bounds.set(var.clone(), Interval::bounded_below(0));
+                        bounds.set(var.as_ref().clone(), Interval::bounded_below(0));
                     }
                 }
             }
@@ -213,7 +226,7 @@ impl InferringStrategy for RegularBoundsInferer {
         // Undo the substitutions.
         for (x, y) in self.eqs.iter() {
             if let Some(bound) = bounds.get(x) {
-                bounds.set(y.clone(), bound.clone());
+                bounds.set(y.as_ref().clone(), bound.clone());
             }
         }
 
@@ -233,13 +246,13 @@ mod tests {
 
     #[test]
     fn test_infer_single_re_finite() {
-        let mut ctx = Context::default();
-        let rebuilder = ctx.re_builder();
+        let mut mngr = NodeManager::default();
+        let rebuilder = mngr.re_builder();
         let re = regulaer::parse::parse_rust("^aa$", rebuilder).unwrap();
-        let v = ctx.new_temp_var(Sort::String);
+        let v = mngr.temp_var(Sort::String);
 
         let mut inferer = RegularBoundsInferer::default();
-        inferer.add_reg(v.as_ref().clone(), re, true, &mut ctx);
+        inferer.add_reg(v.clone(), re, true, &mut mngr);
 
         let bounds = inferer.infer().unwrap();
         assert_eq!(bounds.get(&v), Some(Interval::new(2, 2)));
@@ -247,13 +260,13 @@ mod tests {
 
     #[test]
     fn test_infer_single_re_star() {
-        let mut ctx = Context::default();
-        let rebuilder = ctx.re_builder();
+        let mut mngr = NodeManager::default();
+        let rebuilder = mngr.re_builder();
         let re = regulaer::parse::parse_rust("^(aa)*$", rebuilder).unwrap();
-        let v = ctx.new_temp_var(Sort::String);
+        let v = mngr.temp_var(Sort::String);
 
         let mut inferer = RegularBoundsInferer::default();
-        inferer.add_reg(v.as_ref().clone(), re, true, &mut ctx);
+        inferer.add_reg(v.clone(), re, true, &mut mngr);
 
         let bounds = inferer.infer().unwrap();
         assert_eq!(bounds.get(&v), Some(Interval::new(0, 2)));
@@ -261,15 +274,15 @@ mod tests {
 
     #[test]
     fn test_infer_intersection() {
-        let mut ctx = Context::default();
-        let rebuilder = ctx.re_builder();
+        let mut mngr = NodeManager::default();
+        let rebuilder = mngr.re_builder();
         let re1 = regulaer::parse::parse_rust("^(aa)*$", rebuilder).unwrap();
         let re2 = regulaer::parse::parse_rust("^(aaa)*$", rebuilder).unwrap();
-        let v = ctx.new_temp_var(Sort::String);
+        let v = mngr.temp_var(Sort::String);
 
         let mut inferer = RegularBoundsInferer::default();
-        inferer.add_reg(v.as_ref().clone(), re1, true, &mut ctx);
-        inferer.add_reg(v.as_ref().clone(), re2, true, &mut ctx);
+        inferer.add_reg(v.clone(), re1, true, &mut mngr);
+        inferer.add_reg(v.clone(), re2, true, &mut mngr);
 
         let bounds = inferer.infer().unwrap();
 
@@ -278,15 +291,15 @@ mod tests {
 
     #[test]
     fn test_infer_intersection_comp() {
-        let mut ctx = Context::default();
-        let rebuilder = ctx.re_builder();
+        let mut mngr = NodeManager::default();
+        let rebuilder = mngr.re_builder();
         let re1 = regulaer::parse::parse_rust("^(aaa)*$", rebuilder).unwrap();
         let re2 = regulaer::parse::parse_rust("^aaa$", rebuilder).unwrap();
-        let v = ctx.new_temp_var(Sort::String);
+        let v = mngr.temp_var(Sort::String);
 
         let mut inferer = RegularBoundsInferer::default();
-        inferer.add_reg(v.as_ref().clone(), re1, true, &mut ctx);
-        inferer.add_reg(v.as_ref().clone(), re2, false, &mut ctx);
+        inferer.add_reg(v.clone(), re1, true, &mut mngr);
+        inferer.add_reg(v.clone(), re2, false, &mut mngr);
 
         let bounds = inferer.infer().unwrap();
 
@@ -296,17 +309,17 @@ mod tests {
     #[test]
     fn test_infer_intersection_comp_2() {
         // (aaa)* and not(aaa) and not epsilon ==> smallest is aaaaaa, upper bound is 6
-        let mut ctx = Context::default();
-        let rebuilder = ctx.re_builder();
+        let mut mngr = NodeManager::default();
+        let rebuilder = mngr.re_builder();
         let re1 = regulaer::parse::parse_rust("^(aaa)*$", rebuilder).unwrap();
         let re2 = regulaer::parse::parse_rust("^aaa$", rebuilder).unwrap();
         let epsi = rebuilder.epsilon();
-        let v = ctx.new_temp_var(Sort::String);
+        let v = mngr.temp_var(Sort::String);
 
         let mut inferer = RegularBoundsInferer::default();
-        inferer.add_reg(v.as_ref().clone(), re1, true, &mut ctx);
-        inferer.add_reg(v.as_ref().clone(), re2, false, &mut ctx);
-        inferer.add_reg(v.as_ref().clone(), epsi, false, &mut ctx);
+        inferer.add_reg(v.clone(), re1, true, &mut mngr);
+        inferer.add_reg(v.clone(), re2, false, &mut mngr);
+        inferer.add_reg(v.clone(), epsi, false, &mut mngr);
 
         let bounds = inferer.infer().unwrap();
         assert_eq!(bounds.get(&v), Some(Interval::new(6, 6)));
@@ -314,15 +327,15 @@ mod tests {
 
     #[test]
     fn test_infer_intersection_empty() {
-        let mut ctx = Context::default();
-        let rebuilder = ctx.re_builder();
+        let mut mngr = NodeManager::default();
+        let rebuilder = mngr.re_builder();
         let re1 = regulaer::parse::parse_rust("^aaaa$", rebuilder).unwrap();
         let re2 = regulaer::parse::parse_rust("^(aa)*$", rebuilder).unwrap();
-        let v = ctx.new_temp_var(Sort::String);
+        let v = mngr.temp_var(Sort::String);
 
         let mut inferer = RegularBoundsInferer::default();
-        inferer.add_reg(v.as_ref().clone(), re1, true, &mut ctx);
-        inferer.add_reg(v.as_ref().clone(), re2, false, &mut ctx);
+        inferer.add_reg(v.clone(), re1, true, &mut mngr);
+        inferer.add_reg(v.clone(), re2, false, &mut mngr);
 
         let bounds = inferer.infer();
 

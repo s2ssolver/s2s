@@ -15,7 +15,7 @@ pub mod normal;
 mod subs;
 pub mod utils;
 
-use canonical::CanonicalLit;
+use canonical::Literal;
 use indexmap::IndexSet;
 pub use manager::NodeManager;
 use regulaer::re::Regex;
@@ -139,7 +139,7 @@ pub struct OwnedNode {
     /// TODO: use smallvec
     children: Vec<Node>,
 
-    canonical: RefCell<Option<CanonicalLit>>,
+    canonical: RefCell<Option<Literal>>,
 }
 
 impl OwnedNode {
@@ -222,6 +222,17 @@ impl OwnedNode {
         )
     }
 
+    pub fn variables(&self) -> IndexSet<Rc<Variable>> {
+        let mut vars = IndexSet::new();
+        for child in self.children() {
+            vars.extend(child.variables());
+        }
+        if let NodeKind::Variable(v) = self.kind() {
+            vars.insert(v.clone());
+        }
+        vars
+    }
+
     /// Returns true if this node contains the given node as a sub-node.
     pub fn contains(&self, other: &Node) -> bool {
         if self == other.as_ref() {
@@ -257,19 +268,19 @@ impl OwnedNode {
     }
 
     /// Attaches data to the node and returns the old data if it exists.
-    pub(super) fn set_canonical(&self, canonical: CanonicalLit) -> Option<CanonicalLit> {
+    pub(super) fn set_canonical(&self, canonical: Literal) -> Option<Literal> {
         let mut borrow = self.canonical.borrow_mut();
         let old = borrow.replace(canonical);
         old
     }
 
-    pub fn canonical(&self) -> Option<CanonicalLit> {
+    pub fn canonical(&self) -> Option<Literal> {
         self.canonical.borrow().clone()
     }
 
     /// Detaches the data from the node and returns it.
     /// Returns None if no data is attached.
-    pub fn detach(&self) -> Option<CanonicalLit> {
+    pub fn detach(&self) -> Option<Literal> {
         let mut borrow = self.canonical.borrow_mut();
         borrow.take()
     }

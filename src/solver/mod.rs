@@ -11,7 +11,7 @@ use crate::{
     bounds::{infer::BoundInferer, step::BoundStep, Bounds, Interval},
     context::{Context, Sorted},
     ir::{self, Formula, VarSubstitution},
-    node::{Node, NodeKind, NodeManager, NodeSubstitution},
+    node::{get_entailed, Node, NodeKind, NodeManager, NodeSubstitution},
     preprocess::{self, simp, PreprocessingError},
     sat::to_cnf,
 };
@@ -196,7 +196,6 @@ impl Solver {
         timer = Instant::now();
         let abstraction = abstract_node(&preprocessed, mngr)?;
         log::info!("Built abstraction ({:?})", timer.elapsed());
-        println!("Abstraction: {}", abstraction);
 
         timer = Instant::now();
 
@@ -305,28 +304,12 @@ impl Solver {
     }
 
     fn init_bounds(&self, root: &Node, mngr: &mut NodeManager) -> Option<Bounds> {
-        if let Some(canon) = root.canonical() {
-            println!("{} <--> {}", root, canon);
-        }
-        for c in root.children() {
-            self.init_bounds(c, mngr);
-        }
-        todo!()
-    }
-
-    fn init_bounds_old(&self, fm: &Formula, ctx: &mut Context) -> Option<Bounds> {
         let mut inferer = BoundInferer::default();
-        for lit in fm.entailed_literals() {
-            inferer.add_literal(lit.clone(), ctx)
+        for entailed in get_entailed(root).into_iter().filter(|e| e.is_literal()) {
+            inferer.add_literal(entailed, mngr)
         }
-
         let mut bounds = inferer.infer()?;
-        log::debug!("Inferred bounds for entailed literals: {}", bounds);
-        for var in ctx
-            .vars()
-            .filter(|v| v.sort().is_int() || v.sort().is_string())
-        {
-            // TODO: Check options for initial min/max bounds
+        for var in mngr.vars() {
             let v_bounds = bounds.get(var.as_ref());
             let lower = if let Some(lower) = v_bounds.and_then(|b| b.lower_finite()) {
                 lower
@@ -345,6 +328,42 @@ impl Solver {
         let clamped = self.clamp_bounds(bounds);
         // Clamp the bounds to the maximum bounds, if set
         Some(clamped)
+    }
+
+    fn init_bounds_old(&self, fm: &Formula, ctx: &mut Context) -> Option<Bounds> {
+        // let mut inferer = BoundInferer::default();
+        // for lit in fm.entailed_literals() {
+        //     inferer
+        //         .add_literal(lit.clone(), ctx)
+        //         .filter(|v| v.sort().is_int() || v.sort().is_string())
+        // }
+
+        // let mut bounds = inferer.infer()?;
+        // log::debug!("Inferred bounds for entailed literals: {}", bounds);
+        // for var in ctx
+        //     .vars()
+        //     .filter(|v| v.sort().is_int() || v.sort().is_string())
+        // {
+        //     // TODO: Check options for initial min/max bounds
+        //     let v_bounds = bounds.get(var.as_ref());
+        //     let lower = if let Some(lower) = v_bounds.and_then(|b| b.lower_finite()) {
+        //         lower
+        //     } else {
+        //         0.into()
+        //     };
+        //     let upper = if let Some(upper) = v_bounds.and_then(|b| b.upper_finite()) {
+        //         upper.min(self.options.init_upper_bound as i32)
+        //     } else {
+        //         self.options.init_upper_bound as i32
+        //     }
+        //     .max(lower)
+        //     .max(1); // need to be at least 1
+        //     bounds.set(var.as_ref().clone(), Interval::new(lower, upper));
+        // }
+        // let clamped = self.clamp_bounds(bounds);
+        // // Clamp the bounds to the maximum bounds, if set
+        // Some(clamped)
+        todo!()
     }
 
     fn run(
@@ -384,74 +403,75 @@ impl Solver {
         let mut round = 0;
 
         // Start Solving Loop
-        loop {
-            round += 1;
-            log::info!("Round {} with bounds {}", round, bounds);
-            // Encode and Solve
-            t = Instant::now();
-            let encoding = encoder.encode(&defs, &bounds, ctx)?;
-            let (cnf, asm) = encoding.into_inner();
-            log::info!("Encoded ({} clauses) ({:?})", cnf.len(), t.elapsed());
-            t = Instant::now();
-            for clause in cnf {
-                cadical.add_clause(clause);
-            }
-            log::info!("Added clauses to cadical ({:?})", t.elapsed());
+        // loop {
+        //     round += 1;
+        //     log::info!("Round {} with bounds {}", round, bounds);
+        //     // Encode and Solve
+        //     t = Instant::now();
+        //     let encoding = encoder.encode(&defs, &bounds, ctx)?;
+        //     let (cnf, asm) = encoding.into_inner();
+        //     log::info!("Encoded ({} clauses) ({:?})", cnf.len(), t.elapsed());
+        //     t = Instant::now();
+        //     for clause in cnf {
+        //         cadical.add_clause(clause);
+        //     }
+        //     log::info!("Added clauses to cadical ({:?})", t.elapsed());
 
-            t = Instant::now();
-            let res = cadical.solve_with(asm.into_iter());
-            log::info!("Done SAT solving: {:?} ({:?})", res, t.elapsed());
+        //     t = Instant::now();
+        //     let res = cadical.solve_with(asm.into_iter());
+        //     log::info!("Done SAT solving: {:?} ({:?})", res, t.elapsed());
 
-            match res {
-                Some(true) => {
-                    // If SAT, check if model is a solution for the original formula.
-                    let assign = encoder.get_model(&cadical);
+        //     match res {
+        //         Some(true) => {
+        //             // If SAT, check if model is a solution for the original formula.
+        //             let assign = encoder.get_model(&cadical);
 
-                    log::info!("Found model: {}", assign);
+        //             log::info!("Found model: {}", assign);
 
-                    if self.options.check_model && !self.check_assignment(fm, &assign, ctx) {
-                        // If the assignment is not a solution, we found a bug.
-                        panic!("The found model is invalid");
-                    }
-                    // encoder.print_debug(&cadical);
-                    return Ok(SolverResult::Sat(Some(assign)));
-                }
+        //             if self.options.check_model && !self.check_assignment(fm, &assign, ctx) {
+        //                 // If the assignment is not a solution, we found a bug.
+        //                 panic!("The found model is invalid");
+        //             }
+        //             // encoder.print_debug(&cadical);
+        //             return Ok(SolverResult::Sat(Some(assign)));
+        //         }
 
-                Some(false) => {
-                    log::info!("Unsat");
-                    let failed = encoder.get_failed_literals(&cadical);
-                    log::info!("{} Failed literal(s)", failed.len());
-                    log::debug!("Failed literals: {}", failed.iter().join(", "));
-                    // Refine bounds. If bounds are at max, return UNSAT. Otherwise, continue with new bounds.
-                    match refine::refine_bounds(&failed, &bounds, fm, self.options.step, ctx) {
-                        refine::BoundRefinement::Refined(b) => {
-                            let clamped = self.clamp_bounds(b);
-                            // if the clamped bound are equal to the bounds we used in this round, nothing changed
-                            // in that case, the limit is reached
-                            if clamped == bounds {
-                                if self.options.unsat_on_max_bound {
-                                    return Ok(SolverResult::Unsat);
-                                } else {
-                                    return Ok(SolverResult::Unknown);
-                                }
-                            } else {
-                                bounds = clamped;
-                            }
-                        }
-                        refine::BoundRefinement::SmallModelReached => {
-                            // If we blocked an assignment, we can't be sure that the formula is unsat.
-                            // Otherwise, we can return UNSAT.
-                            if _blocked_assignments > 0 {
-                                return Ok(SolverResult::Unknown);
-                            } else {
-                                return Ok(SolverResult::Unsat);
-                            }
-                        }
-                    }
-                }
-                None => panic!("Cadical failed to solve"),
-            }
-        }
+        //         Some(false) => {
+        //             log::info!("Unsat");
+        //             let failed = encoder.get_failed_literals(&cadical);
+        //             log::info!("{} Failed literal(s)", failed.len());
+        //             log::debug!("Failed literals: {}", failed.iter().join(", "));
+        //             // Refine bounds. If bounds are at max, return UNSAT. Otherwise, continue with new bounds.
+        //             match refine::refine_bounds(&failed, &bounds, fm, self.options.step, ctx) {
+        //                 refine::BoundRefinement::Refined(b) => {
+        //                     let clamped = self.clamp_bounds(b);
+        //                     // if the clamped bound are equal to the bounds we used in this round, nothing changed
+        //                     // in that case, the limit is reached
+        //                     if clamped == bounds {
+        //                         if self.options.unsat_on_max_bound {
+        //                             return Ok(SolverResult::Unsat);
+        //                         } else {
+        //                             return Ok(SolverResult::Unknown);
+        //                         }
+        //                     } else {
+        //                         bounds = clamped;
+        //                     }
+        //                 }
+        //                 refine::BoundRefinement::SmallModelReached => {
+        //                     // If we blocked an assignment, we can't be sure that the formula is unsat.
+        //                     // Otherwise, we can return UNSAT.
+        //                     if _blocked_assignments > 0 {
+        //                         return Ok(SolverResult::Unknown);
+        //                     } else {
+        //                         return Ok(SolverResult::Unsat);
+        //                     }
+        //                 }
+        //             }
+        //         }
+        //         None => panic!("Cadical failed to solve"),
+        //     }
+        // }
+        todo!()
     }
 
     /// Check if the assignment is a solution for the formula.

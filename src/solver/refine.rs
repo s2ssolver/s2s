@@ -2,8 +2,7 @@ use indexmap::IndexSet;
 
 use crate::{
     bounds::{infer::BoundInferer, step::BoundStep, Bounds, Interval},
-    context::Context,
-    ir::{Formula, Literal},
+    node::{get_entailed, Node, NodeManager},
 };
 
 pub enum BoundRefinement {
@@ -15,14 +14,14 @@ pub enum BoundRefinement {
 }
 
 pub(super) fn refine_bounds(
-    literals: &[Literal],
+    literals: &[Node],
     bounds: &Bounds,
-    fm: &Formula,
+    root: &Node,
     step: BoundStep,
-    ctx: &mut Context,
+    mngr: &mut NodeManager,
 ) -> BoundRefinement {
     // Find the small-model bounds of any combination of the literal
-    let smp_bounds = match small_model_bounds(literals, fm, ctx) {
+    let smp_bounds = match small_model_bounds(literals, root, mngr) {
         Some(b) => b,
         None => return BoundRefinement::SmallModelReached, // No satisfying assignment
     };
@@ -48,7 +47,7 @@ pub(super) fn refine_bounds(
                 small_model_reached = false;
             }
             // TODO: Check if the limit is reached
-            bounds.set(v.clone(), new_bounds);
+            bounds.set(v.as_ref().clone(), new_bounds);
         }
     }
 
@@ -60,13 +59,15 @@ pub(super) fn refine_bounds(
 }
 
 /// Computes the small-model bounds for any combinations given literals that can be satisfied by the formula.
-fn small_model_bounds(literals: &[Literal], fm: &Formula, ctx: &mut Context) -> Option<Bounds> {
+fn small_model_bounds(literals: &[Node], root: &Node, mngr: &mut NodeManager) -> Option<Bounds> {
     // Split literals into entailed and not entailed
-    let (entailed, not_entailed): (Vec<_>, Vec<_>) = literals.iter().partition(|l| fm.entails(l));
+    let entailed = get_entailed(root);
+    let (entailed, not_entailed): (Vec<_>, Vec<_>) =
+        literals.iter().partition(|l| entailed.contains(*l));
 
     let mut base_inferer = BoundInferer::default();
     for l in entailed {
-        base_inferer.add_literal(l.clone(), ctx);
+        base_inferer.add_literal(l.clone(), mngr);
     }
     // The bounds of the conjunction of all entailed literals.
     // If these are conflicting, then any combination of literals is conflicting.
@@ -84,7 +85,7 @@ fn small_model_bounds(literals: &[Literal], fm: &Formula, ctx: &mut Context) -> 
         let mut new_combinations = Vec::new();
         for (inferer, _) in &combinations {
             let mut new_inferer = inferer.clone();
-            new_inferer.add_literal(l.clone(), ctx);
+            new_inferer.add_literal(l.clone(), mngr);
             if let Some(bounds) = new_inferer.infer() {
                 new_combinations.push((new_inferer, bounds));
             }
