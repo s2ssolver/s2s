@@ -4,8 +4,6 @@
 //! > Kulczynski, M., Lotz, K., Nowotka, D., Poulsen, D.B. (2022). *Solving String Theories Involving Regular Membership Predicates Using SAT*. In: Legunsen, O., Rosu, G. (eds) Model Checking Software. SPIN 2022. Lecture Notes in Computer Science, vol 13255. Springer, Cham. https://doi.org/10.1007/978-3-031-15077-7_8
 //!
 //! This module contains the enhanced version of the encoding, which allows for incremental solving. This version is described in the paper
-//!
-//! > TODO: Add CAV paper reference
 
 use std::rc::Rc;
 
@@ -17,9 +15,9 @@ use regulaer::{
 
 use crate::{
     bounds::Bounds,
+    canonical::RegularConstraint,
     context::{Context, Variable},
     encode::{domain::DomainEncoding, EncodingError, EncodingResult, LiteralEncoder, LAMBDA},
-    ir::{RegularConstraint, Symbol},
     sat::{nlit, plit, pvar, PVar},
     smt::smt_max_char,
 };
@@ -388,18 +386,10 @@ pub fn build_inre_encoder(
     pol: bool,
     ctx: &mut Context,
 ) -> Result<Box<dyn LiteralEncoder>, EncodingError> {
-    let p = inre.pattern();
+    let v = inre.lhs();
     let re = inre.re();
-    let encoder: Box<dyn LiteralEncoder> = if p.is_variable() {
-        if let Some(Symbol::Variable(v)) = p.first() {
-            let nfa = ctx.get_nfa(re);
-            Box::new(NFAEncoder::new(v, nfa, pol))
-        } else {
-            unreachable!()
-        }
-    } else {
-        panic!("Cannot encode non-singleton patterns")
-    };
+    let nfa = ctx.get_nfa(re);
+    let encoder: Box<dyn LiteralEncoder> = Box::new(NFAEncoder::new(v, nfa, pol));
     Ok(encoder)
 }
 

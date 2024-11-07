@@ -1,18 +1,19 @@
 use std::{collections::HashMap, time::Instant};
 
 use cadical::Solver;
-use indexmap::IndexSet;
+use indexmap::{IndexMap, IndexSet};
 
 use crate::{
-    abstraction::DefinitionOld,
+    abstraction::LitDefinition,
     alphabet::Alphabet,
     bounds::Bounds,
+    canonical::Literal,
     context::Context,
     encode::{
         domain::{DomainEncoder, DomainEncoding},
         get_encoder, EncodingError, EncodingResult, LiteralEncoder,
     },
-    ir::{Literal, VarSubstitution},
+    node::NodeSubstitution,
     sat::{nlit, plit, pvar, PLit, PVar},
 };
 
@@ -55,24 +56,24 @@ impl FailedProbe {
 
 pub struct ProblemEncoder {
     /// The probe variable for each literal. These are used to check which literals failed, i.e., the encoding of which literals are part of the unsat core.
-    probes: HashMap<Literal, FailedProbe>,
+    probes: IndexMap<Literal, FailedProbe>,
 
-    encoders: HashMap<Literal, Box<dyn LiteralEncoder>>,
+    encoders: IndexMap<Literal, Box<dyn LiteralEncoder>>,
     domain_encoder: DomainEncoder,
 }
 
 impl ProblemEncoder {
     pub fn new(alphabet: Alphabet) -> Self {
         Self {
-            probes: HashMap::new(),
-            encoders: HashMap::new(),
+            probes: IndexMap::new(),
+            encoders: IndexMap::new(),
             domain_encoder: DomainEncoder::new(alphabet),
         }
     }
 
     pub fn encode(
         &mut self,
-        defs: &[DefinitionOld],
+        defs: &[LitDefinition],
         bounds: &Bounds,
         ctx: &mut Context,
     ) -> Result<EncodingResult, EncodingError> {
@@ -97,36 +98,12 @@ impl ProblemEncoder {
 
     fn encode_def(
         &mut self,
-        def: &DefinitionOld,
+        def: &LitDefinition,
         bounds: &Bounds,
         dom: &DomainEncoding,
         ctx: &mut Context,
     ) -> Result<EncodingResult, EncodingError> {
-        let atom = def.atom();
-
-        // Check if atom is regex and definition is equivalence, then use specialized encoding
-
-        let mut res = EncodingResult::empty();
-
-        if def.is_pos() {
-            // def_var -> atom
-            let lit = Literal::Positive(atom.clone());
-            let def_lit = nlit(def.def_var());
-
-            let encoding = self.encode_literal(&lit, def_lit, bounds, dom, ctx)?;
-            res.extend(encoding);
-        }
-
-        if def.is_neg() {
-            // -def_var -> -atom
-            let lit = Literal::Negative(atom.clone());
-            let def_lit = plit(def.def_var());
-
-            let encoding = self.encode_literal(&lit, def_lit, bounds, dom, ctx)?;
-            res.extend(encoding);
-        }
-
-        Ok(res)
+        self.encode_literal(def.defined(), def.defining(), bounds, dom, ctx)
     }
 
     fn encode_literal(
@@ -190,12 +167,12 @@ impl ProblemEncoder {
 
     /// Blocks the assignment of the given substitution.
     /// Returns the CNF encoding of the blocked assignment.
-    pub fn block_assignment(&self, _sub: &VarSubstitution) {
+    pub fn block_assignment(&self, _sub: &NodeSubstitution) {
         todo!()
     }
 
     /// Returns the model of the current assignment.
-    pub fn get_model(&self, solver: &Solver) -> VarSubstitution {
+    pub fn get_model(&self, solver: &Solver) -> NodeSubstitution {
         self.domain_encoder.encoding().get_model(solver)
     }
 }

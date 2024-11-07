@@ -8,14 +8,12 @@ use std::{
 
 use crate::context::{Sort, Sorted, Variable};
 
-pub mod canonical;
 pub mod error;
 mod manager;
 pub mod normal;
 mod subs;
 pub mod utils;
 
-use canonical::Literal;
 use indexmap::IndexSet;
 pub use manager::NodeManager;
 use regulaer::re::Regex;
@@ -138,8 +136,6 @@ pub struct OwnedNode {
     /// List of children
     /// TODO: use smallvec
     children: Vec<Node>,
-
-    canonical: RefCell<Option<Literal>>,
 }
 
 impl OwnedNode {
@@ -148,7 +144,6 @@ impl OwnedNode {
             id,
             kind: node_type,
             children,
-            canonical: RefCell::new(None),
         }
     }
 
@@ -267,22 +262,12 @@ impl OwnedNode {
         }
     }
 
-    /// Attaches data to the node and returns the old data if it exists.
-    pub(super) fn set_canonical(&self, canonical: Literal) -> Option<Literal> {
-        let mut borrow = self.canonical.borrow_mut();
-        let old = borrow.replace(canonical);
-        old
-    }
-
-    pub fn canonical(&self) -> Option<Literal> {
-        self.canonical.borrow().clone()
-    }
-
-    /// Detaches the data from the node and returns it.
-    /// Returns None if no data is attached.
-    pub fn detach(&self) -> Option<Literal> {
-        let mut borrow = self.canonical.borrow_mut();
-        borrow.take()
+    pub fn as_str_const(&self) -> Option<&str> {
+        if let NodeKind::String(s) = self.kind() {
+            Some(s)
+        } else {
+            None
+        }
     }
 }
 

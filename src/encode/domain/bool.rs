@@ -3,8 +3,8 @@ use std::rc::Rc;
 use indexmap::IndexMap;
 
 use crate::{
+    canonical::Assignment,
     context::{Context, Sort, Variable},
-    ir::VarSubstitution,
     sat::{plit, pvar, PVar},
 };
 
@@ -33,19 +33,19 @@ impl BoolDomain {
         self.var_map.get(var).cloned()
     }
 
-    pub(crate) fn get_model(&self, solver: &cadical::Solver) -> VarSubstitution {
+    pub(crate) fn get_model(&self, solver: &cadical::Solver) -> Assignment {
         if solver.status() != Some(true) {
             panic!("Solver is not in a SAT state")
         }
-        let mut model = VarSubstitution::empty();
+        let mut model = Assignment::default();
         for (var, v) in self.iter() {
             match solver.value(plit(*v)) {
                 Some(true) => {
-                    let ok = model.set_bool(var.as_ref().clone(), true);
+                    let ok = model.assign(var.clone(), true);
                     assert!(ok.is_none());
                 }
                 Some(false) => {
-                    let ok = model.set_bool(var.as_ref().clone(), false);
+                    let ok = model.assign(var.clone(), false);
                     assert!(ok.is_none());
                 }
                 None => {

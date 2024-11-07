@@ -2,8 +2,8 @@ use std::fmt::Display;
 
 use crate::{
     bounds::Bounds,
+    canonical::{AtomKind, Literal},
     context::Context,
-    ir::{AtomType, Literal},
     sat::{Clause, Cnf, PLit},
 };
 
@@ -193,13 +193,11 @@ pub fn get_encoder(
     ctx: &mut Context,
 ) -> Result<Box<dyn LiteralEncoder>, EncodingError> {
     let pol = lit.polarity();
-    match lit.atom().get_type() {
-        AtomType::BoolVar(v) => Ok(Box::new(BoolVarEncoder::new(v, pol))),
-        AtomType::InRe(inre) => build_inre_encoder(inre, pol, ctx),
-        AtomType::WordEquation(weq) => Ok(equation::get_encoder(weq, pol)),
-        AtomType::PrefixOf(_) => todo!(),
-        AtomType::SuffixOf(_) => todo!(),
-        AtomType::Contains(_) => todo!(),
-        AtomType::LinearConstraint(lc) => Ok(Box::new(MddEncoder::new(lc.clone()))),
+    match lit.atom().kind() {
+        AtomKind::Boolvar(v) => Ok(Box::new(BoolVarEncoder::new(v, pol))),
+        AtomKind::InRe(inre) => build_inre_encoder(inre, pol, ctx),
+        AtomKind::WordEquation(weq) => Ok(equation::get_encoder(weq, pol)),
+        AtomKind::FactorConstraint(_) => todo!(),
+        AtomKind::Linear(lc) => Ok(Box::new(MddEncoder::new(lc.clone()))),
     }
 }

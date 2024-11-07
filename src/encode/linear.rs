@@ -4,8 +4,8 @@ use indexmap::IndexMap;
 
 use crate::{
     bounds::Bounds,
+    canonical::{LinearConstraint, ArithOperator, LinearSummand},
     context::Sorted,
-    ir::{LinearConstraint, LinearOperator, LinearSummand, TrivialReducible},
     sat::{nlit, plit, pvar, PVar},
 };
 
@@ -66,19 +66,6 @@ impl LiteralEncoder for MddEncoder {
         self.round += 1;
         let mut res = EncodingResult::empty();
 
-        // Check if trivial
-
-        match self.linear.is_trivial() {
-            Some(true) => {
-                return Ok(res);
-            }
-            Some(false) => {
-                res.add_clause(vec![nlit(self.mdd_root), plit(self.mdd_false)]);
-                return Ok(res);
-            }
-            None => {}
-        }
-
         let mut queue = VecDeque::new();
         // (level, value, pvar)
         queue.push_back((0, 0, self.mdd_root));
@@ -130,42 +117,42 @@ impl LiteralEncoder for MddEncoder {
                             queue.push_back((level + 1, new_value, child_pvar));
                         } else {
                             let node = match self.linear.operator() {
-                                LinearOperator::Eq => {
+                                ArithOperator::Eq => {
                                     if new_value == self.linear.rhs() {
                                         self.mdd_true
                                     } else {
                                         self.mdd_false
                                     }
                                 }
-                                LinearOperator::Ineq => {
+                                ArithOperator::Ineq => {
                                     if new_value != self.linear.rhs() {
                                         self.mdd_true
                                     } else {
                                         self.mdd_false
                                     }
                                 }
-                                LinearOperator::Leq => {
+                                ArithOperator::Leq => {
                                     if new_value <= self.linear.rhs() {
                                         self.mdd_true
                                     } else {
                                         self.mdd_false
                                     }
                                 }
-                                LinearOperator::Less => {
+                                ArithOperator::Less => {
                                     if new_value < self.linear.rhs() {
                                         self.mdd_true
                                     } else {
                                         self.mdd_false
                                     }
                                 }
-                                LinearOperator::Geq => {
+                                ArithOperator::Geq => {
                                     if new_value >= self.linear.rhs() {
                                         self.mdd_true
                                     } else {
                                         self.mdd_false
                                     }
                                 }
-                                LinearOperator::Greater => {
+                                ArithOperator::Greater => {
                                     if new_value > self.linear.rhs() {
                                         self.mdd_true
                                     } else {

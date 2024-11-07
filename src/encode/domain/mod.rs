@@ -11,8 +11,8 @@ pub use string::StringDomain;
 use string::StringDomainEncoder;
 
 use crate::{
-    alphabet::Alphabet, bounds::Bounds, context::Context, encode::EncodingResult,
-    ir::VarSubstitution,
+    alphabet::Alphabet, bounds::Bounds, canonical::Assignment, context::Context,
+    encode::EncodingResult,
 };
 
 #[derive(Clone, Debug)]
@@ -60,12 +60,12 @@ impl DomainEncoding {
         &self.alphabet
     }
 
-    pub fn get_model(&self, solver: &cadical::Solver) -> VarSubstitution {
+    pub fn get_model(&self, solver: &cadical::Solver) -> Assignment {
         let mut model = self.string.get_model(solver, &self.bounds);
         let overwrite = model.extend(&self.int.get_model(solver));
-        assert!(overwrite.is_empty());
+        assert!(overwrite == 0);
         let overwrite = model.extend(&self.bool.get_model(solver));
-        assert!(overwrite.is_empty());
+        assert!(overwrite == 0);
         model
     }
 }

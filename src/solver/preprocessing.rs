@@ -1,8 +1,6 @@
 use crate::{
-    node::{
-        canonical::canonicalize, error::NodeError, normal::to_nnf, Node, NodeManager,
-        NodeSubstitution,
-    },
+    canonical::{canonicalize, Formula},
+    node::{error::NodeError, normal::to_nnf, Node, NodeManager, NodeSubstitution},
     rewrite::Rewriter,
     simp_new::Simplifier,
 };
@@ -18,13 +16,13 @@ impl Preprocessor {
         root: &Node,
         passes: usize,
         mngr: &mut NodeManager,
-    ) -> Result<Node, NodeError> {
+    ) -> Result<Formula, NodeError> {
         // convert to nnf
         let nnf = to_nnf(root, mngr);
         // simplify
         let simplified = self.simplify(&nnf, passes, mngr);
         // canonicalize
-        canonicalize(simplified, mngr)
+        canonicalize(&simplified, mngr)
     }
 
     fn simplify(&mut self, root: &Node, passes: usize, mngr: &mut NodeManager) -> Node {

@@ -6,12 +6,12 @@ use encoder::ProblemEncoder;
 use itertools::Itertools;
 
 use crate::{
-    abstraction::{abstract_fm, abstract_node, AbstractionOld, DefinitionOld},
+    abstraction::{build_abstraction, Abstraction},
     alphabet::{self, Alphabet},
     bounds::{infer::BoundInferer, step::BoundStep, Bounds, Interval},
+    canonical::Formula,
     context::{Context, Sorted},
-    ir::{self, Formula, VarSubstitution},
-    node::{get_entailed, Node, NodeKind, NodeManager, NodeSubstitution},
+    node::{Node, NodeKind, NodeManager, NodeSubstitution},
     preprocess::{self, simp, PreprocessingError},
     sat::to_cnf,
 };
@@ -29,8 +29,7 @@ mod refine;
 /// The result of a satisfiability check
 pub enum SolverResult {
     /// The instance is satisfiable. The model, if given, is a solution to the instance.
-    Sat(Option<VarSubstitution>),
-    SatNew(Option<NodeSubstitution>),
+    Sat(Option<NodeSubstitution>),
     /// The instance is unsatisfiable
     Unsat,
     /// The solver could not determine the satisfiability of the instance
@@ -44,7 +43,7 @@ impl SolverResult {
     }
 
     /// Returns the model if the instance is satisfiable
-    pub fn get_model(&self) -> Option<&VarSubstitution> {
+    pub fn get_model(&self) -> Option<&NodeSubstitution> {
         match self {
             SolverResult::Sat(model) => model.as_ref(),
             _ => None,
@@ -60,7 +59,7 @@ impl SolverResult {
 impl std::fmt::Display for SolverResult {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            SolverResult::Sat(_) | SolverResult::SatNew(_) => write!(f, "sat"),
+            SolverResult::Sat(_) => write!(f, "sat"),
             SolverResult::Unsat => write!(f, "unsat"),
             SolverResult::Unknown => write!(f, "unknown"),
         }
@@ -181,25 +180,20 @@ impl Solver {
         log::info!("Preprocessed ({:?})", timer.elapsed());
         if self.options.print_preprocessed {
             //let smt = ir::smt::to_smtlib(&preprocessed);
-            println!("{}", preprocessed);
+            println!("{}", preprocessed.node());
         }
 
         // Early return if the formula is trivially sat/unsat
-        if let NodeKind::Bool(v) = *preprocessed.kind() {
+        if let NodeKind::Bool(v) = *preprocessed.node().kind() {
             return Ok(if v {
-                SolverResult::SatNew(Some(preprocessor.applied_subsitutions().clone()))
+                SolverResult::Sat(Some(preprocessor.applied_subsitutions().clone()))
             } else {
                 SolverResult::Unsat
             });
         }
 
-        timer = Instant::now();
-        let abstraction = abstract_node(&preprocessed, mngr)?;
-        log::info!("Built abstraction ({:?})", timer.elapsed());
-
-        timer = Instant::now();
-
         // Initialize the bounds
+        timer = Instant::now();
         let init_bounds = match self.init_bounds(&preprocessed, mngr) {
             Some(bs) => bs,
             None => {
@@ -207,6 +201,11 @@ impl Solver {
                 return Ok(SolverResult::Unsat);
             }
         };
+
+        timer = Instant::now();
+        let abstraction = build_abstraction(&preprocessed)?;
+        log::info!("Built abstraction ({:?})", timer.elapsed());
+
         log::info!("Initialized bounds ({:?})", timer.elapsed());
         log::debug!("Initial bounds: {}", init_bounds);
         todo!()
@@ -228,88 +227,78 @@ impl Solver {
         // res
     }
 
-    pub fn solve_old(&mut self, fm: &Formula, ctx: &mut Context) -> Result<SolverResult, Error> {
-        log::info!("Starting solver");
-        let mut timer = Instant::now();
+    // pub fn solve_old(&mut self, fm: &Formula, ctx: &mut Context) -> Result<SolverResult, Error> {
+    //     log::info!("Starting solver");
+    //     let mut timer = Instant::now();
 
-        log::debug!("Solving: {}", fm);
+    //     log::debug!("Solving: {}", fm);
 
-        // Preprocess
-        let (fm_preprocessed, applied_subst) = self.preprocess(fm.clone(), ctx)?;
-        log::info!("Preprocessed ({:?})", timer.elapsed());
-        log::debug!("Preprocessed formula: {}", fm_preprocessed);
-        if self.options.print_preprocessed {
-            let smt = ir::smt::to_smtlib(&fm_preprocessed);
-            println!("{}", smt);
-        }
+    //     // Preprocess
+    //     let (fm_preprocessed, applied_subst) = self.preprocess(fm.clone(), ctx)?;
+    //     log::info!("Preprocessed ({:?})", timer.elapsed());
+    //     log::debug!("Preprocessed formula: {}", fm_preprocessed);
+    //     if self.options.print_preprocessed {
+    //         let smt = ir::smt::to_smtlib(&fm_preprocessed);
+    //         println!("{}", smt);
+    //     }
 
-        // Early return if the formula is trivially sat/unsat
-        if fm_preprocessed == Formula::True {
-            return Ok(SolverResult::Sat(Some(applied_subst)));
-        } else if fm_preprocessed == Formula::False {
-            return Ok(SolverResult::Unsat);
-        }
+    //     // Early return if the formula is trivially sat/unsat
+    //     if fm_preprocessed == Formula::True {
+    //         return Ok(SolverResult::Sat(Some(applied_subst)));
+    //     } else if fm_preprocessed == Formula::False {
+    //         return Ok(SolverResult::Unsat);
+    //     }
 
-        timer = Instant::now();
+    //     timer = Instant::now();
 
-        // Build the Boolean abstraction
-        let abstraction = abstract_fm(&fm_preprocessed);
-        log::info!("Built abstraction ({:?})", timer.elapsed());
-        timer = Instant::now();
+    //     // Build the Boolean abstraction
+    //     let abstraction = abstract_fm(&fm_preprocessed);
+    //     log::info!("Built abstraction ({:?})", timer.elapsed());
+    //     timer = Instant::now();
 
-        // Initialize the bounds
-        let init_bounds = match self.init_bounds_old(&fm_preprocessed, ctx) {
-            Some(bs) => bs,
-            None => {
-                log::info!("No valid initial bounds. Unsat.");
-                return Ok(SolverResult::Unsat);
-            }
-        };
-        log::info!("Initialized bounds ({:?})", timer.elapsed());
-        log::debug!("Initial bounds: {}", init_bounds);
+    //     // Initialize the bounds
+    //     let init_bounds = match self.init_bounds(&fm_preprocessed, ctx) {
+    //         Some(bs) => bs,
+    //         None => {
+    //             log::info!("No valid initial bounds. Unsat.");
+    //             return Ok(SolverResult::Unsat);
+    //         }
+    //     };
+    //     log::info!("Initialized bounds ({:?})", timer.elapsed());
+    //     log::debug!("Initial bounds: {}", init_bounds);
 
-        timer = Instant::now();
+    //     timer = Instant::now();
 
-        // Initialize the alphabet
-        let alphabet = alphabet::infer(&fm_preprocessed);
-        log::info!("Inferred alphabet ({:?})", timer.elapsed());
-        log::debug!("Alphabet: {}", alphabet);
-        timer = Instant::now();
+    //     // Initialize the alphabet
+    //     let alphabet = alphabet::infer(&fm_preprocessed);
+    //     log::info!("Inferred alphabet ({:?})", timer.elapsed());
+    //     log::debug!("Alphabet: {}", alphabet);
+    //     timer = Instant::now();
 
-        if self.options.dry {
-            return Ok(SolverResult::Unknown);
-        }
-        // Start CEGAR loop
-        let res = self.run(&fm_preprocessed, abstraction, init_bounds, alphabet, ctx);
+    //     if self.options.dry {
+    //         return Ok(SolverResult::Unknown);
+    //     }
+    //     // Start CEGAR loop
+    //     let res = self.run(&fm_preprocessed, abstraction, init_bounds, alphabet, ctx);
 
-        log::info!("Done solving ({:?})", timer.elapsed());
-        res
-    }
+    //     log::info!("Done solving ({:?})", timer.elapsed());
+    //     res
+    // }
 
-    fn preprocess(
-        &mut self,
-        fm: Formula,
-        ctx: &mut Context,
-    ) -> Result<(Formula, VarSubstitution), PreprocessingError> {
-        let t = Instant::now();
-        let (fm, subst) = if self.options.simplify {
-            let simped = simp::simplify(fm.clone(), ctx, self.options.prep_passes);
-            (simped.formula, simped.subst)
-        } else {
-            (fm.reduce(), VarSubstitution::default())
-        };
-        log::info!("Simplified formula ({:?})", t.elapsed());
-
-        Ok((preprocess::normalize(fm, ctx)?, subst))
-    }
-
-    fn init_bounds(&self, root: &Node, mngr: &mut NodeManager) -> Option<Bounds> {
+    fn init_bounds(&self, fm: &Formula, mngr: &mut NodeManager) -> Option<Bounds> {
         let mut inferer = BoundInferer::default();
-        for entailed in get_entailed(root).into_iter().filter(|e| e.is_literal()) {
-            inferer.add_literal(entailed, mngr)
+        for lit in fm.entailed_lits() {
+            inferer.add_literal(lit.clone(), mngr)
         }
+
         let mut bounds = inferer.infer()?;
-        for var in mngr.vars() {
+        log::debug!("Inferred bounds for entailed literals: {}", bounds);
+        for var in fm
+            .vars()
+            .iter()
+            .filter(|v| v.sort().is_int() || v.sort().is_string())
+        {
+            // TODO: Check options for initial min/max bounds
             let v_bounds = bounds.get(var.as_ref());
             let lower = if let Some(lower) = v_bounds.and_then(|b| b.lower_finite()) {
                 lower
@@ -330,46 +319,10 @@ impl Solver {
         Some(clamped)
     }
 
-    fn init_bounds_old(&self, fm: &Formula, ctx: &mut Context) -> Option<Bounds> {
-        // let mut inferer = BoundInferer::default();
-        // for lit in fm.entailed_literals() {
-        //     inferer
-        //         .add_literal(lit.clone(), ctx)
-        //         .filter(|v| v.sort().is_int() || v.sort().is_string())
-        // }
-
-        // let mut bounds = inferer.infer()?;
-        // log::debug!("Inferred bounds for entailed literals: {}", bounds);
-        // for var in ctx
-        //     .vars()
-        //     .filter(|v| v.sort().is_int() || v.sort().is_string())
-        // {
-        //     // TODO: Check options for initial min/max bounds
-        //     let v_bounds = bounds.get(var.as_ref());
-        //     let lower = if let Some(lower) = v_bounds.and_then(|b| b.lower_finite()) {
-        //         lower
-        //     } else {
-        //         0.into()
-        //     };
-        //     let upper = if let Some(upper) = v_bounds.and_then(|b| b.upper_finite()) {
-        //         upper.min(self.options.init_upper_bound as i32)
-        //     } else {
-        //         self.options.init_upper_bound as i32
-        //     }
-        //     .max(lower)
-        //     .max(1); // need to be at least 1
-        //     bounds.set(var.as_ref().clone(), Interval::new(lower, upper));
-        // }
-        // let clamped = self.clamp_bounds(bounds);
-        // // Clamp the bounds to the maximum bounds, if set
-        // Some(clamped)
-        todo!()
-    }
-
     fn run(
         &mut self,
         fm: &Formula,
-        abs: AbstractionOld,
+        abs: Abstraction,
         init_bounds: Bounds,
         alphabet: Alphabet,
         ctx: &mut Context,
@@ -399,100 +352,90 @@ impl Solver {
         // Initialize the bounds
         let mut bounds = init_bounds;
 
-        let mut _blocked_assignments = 0;
         let mut round = 0;
 
         // Start Solving Loop
-        // loop {
-        //     round += 1;
-        //     log::info!("Round {} with bounds {}", round, bounds);
-        //     // Encode and Solve
-        //     t = Instant::now();
-        //     let encoding = encoder.encode(&defs, &bounds, ctx)?;
-        //     let (cnf, asm) = encoding.into_inner();
-        //     log::info!("Encoded ({} clauses) ({:?})", cnf.len(), t.elapsed());
-        //     t = Instant::now();
-        //     for clause in cnf {
-        //         cadical.add_clause(clause);
-        //     }
-        //     log::info!("Added clauses to cadical ({:?})", t.elapsed());
+        loop {
+            round += 1;
+            log::info!("Round {} with bounds {}", round, bounds);
+            // Encode and Solve
+            t = Instant::now();
+            let encoding = encoder.encode(&defs, &bounds, ctx)?;
+            let (cnf, asm) = encoding.into_inner();
+            log::info!("Encoded ({} clauses) ({:?})", cnf.len(), t.elapsed());
+            t = Instant::now();
+            for clause in cnf {
+                cadical.add_clause(clause);
+            }
+            log::info!("Added clauses to cadical ({:?})", t.elapsed());
 
-        //     t = Instant::now();
-        //     let res = cadical.solve_with(asm.into_iter());
-        //     log::info!("Done SAT solving: {:?} ({:?})", res, t.elapsed());
+            t = Instant::now();
+            let res = cadical.solve_with(asm.into_iter());
+            log::info!("Done SAT solving: {:?} ({:?})", res, t.elapsed());
 
-        //     match res {
-        //         Some(true) => {
-        //             // If SAT, check if model is a solution for the original formula.
-        //             let assign = encoder.get_model(&cadical);
+            match res {
+                Some(true) => {
+                    // If SAT, check if model is a solution for the original formula.
+                    let assign = encoder.get_model(&cadical);
 
-        //             log::info!("Found model: {}", assign);
+                    log::info!("Found model: {}", assign);
 
-        //             if self.options.check_model && !self.check_assignment(fm, &assign, ctx) {
-        //                 // If the assignment is not a solution, we found a bug.
-        //                 panic!("The found model is invalid");
-        //             }
-        //             // encoder.print_debug(&cadical);
-        //             return Ok(SolverResult::Sat(Some(assign)));
-        //         }
+                    if self.options.check_model && !self.check_assignment(fm, &assign, ctx) {
+                        // If the assignment is not a solution, we found a bug.
+                        panic!("The found model is invalid");
+                    }
+                    // encoder.print_debug(&cadical);
+                    return Ok(SolverResult::Sat(Some(assign)));
+                }
 
-        //         Some(false) => {
-        //             log::info!("Unsat");
-        //             let failed = encoder.get_failed_literals(&cadical);
-        //             log::info!("{} Failed literal(s)", failed.len());
-        //             log::debug!("Failed literals: {}", failed.iter().join(", "));
-        //             // Refine bounds. If bounds are at max, return UNSAT. Otherwise, continue with new bounds.
-        //             match refine::refine_bounds(&failed, &bounds, fm, self.options.step, ctx) {
-        //                 refine::BoundRefinement::Refined(b) => {
-        //                     let clamped = self.clamp_bounds(b);
-        //                     // if the clamped bound are equal to the bounds we used in this round, nothing changed
-        //                     // in that case, the limit is reached
-        //                     if clamped == bounds {
-        //                         if self.options.unsat_on_max_bound {
-        //                             return Ok(SolverResult::Unsat);
-        //                         } else {
-        //                             return Ok(SolverResult::Unknown);
-        //                         }
-        //                     } else {
-        //                         bounds = clamped;
-        //                     }
-        //                 }
-        //                 refine::BoundRefinement::SmallModelReached => {
-        //                     // If we blocked an assignment, we can't be sure that the formula is unsat.
-        //                     // Otherwise, we can return UNSAT.
-        //                     if _blocked_assignments > 0 {
-        //                         return Ok(SolverResult::Unknown);
-        //                     } else {
-        //                         return Ok(SolverResult::Unsat);
-        //                     }
-        //                 }
-        //             }
-        //         }
-        //         None => panic!("Cadical failed to solve"),
-        //     }
-        // }
+                Some(false) => {
+                    log::info!("Unsat");
+                    let failed = encoder.get_failed_literals(&cadical);
+                    log::info!("{} Failed literal(s)", failed.len());
+                    log::debug!("Failed literals: {}", failed.iter().join(", "));
+                    // Refine bounds. If bounds are at max, return UNSAT. Otherwise, continue with new bounds.
+                    match refine::refine_bounds(&failed, &bounds, fm, self.options.step, ctx) {
+                        refine::BoundRefinement::Refined(b) => {
+                            let clamped = self.clamp_bounds(b);
+                            // if the clamped bound are equal to the bounds we used in this round, nothing changed
+                            // in that case, the limit is reached
+                            if clamped == bounds {
+                                if self.options.unsat_on_max_bound {
+                                    return Ok(SolverResult::Unsat);
+                                } else {
+                                    return Ok(SolverResult::Unknown);
+                                }
+                            } else {
+                                bounds = clamped;
+                            }
+                        }
+                        refine::BoundRefinement::SmallModelReached => {
+                            // If we blocked an assignment, we can't be sure that the formula is unsat.
+                            // Otherwise, we can return UNSAT.
+                            if _blocked_assignments > 0 {
+                                return Ok(SolverResult::Unknown);
+                            } else {
+                                return Ok(SolverResult::Unsat);
+                            }
+                        }
+                    }
+                }
+                None => panic!("Cadical failed to solve"),
+            }
+        }
         todo!()
     }
 
     /// Check if the assignment is a solution for the formula.
-    fn check_assignment(&self, fm: &Formula, assign: &VarSubstitution, ctx: &mut Context) -> bool {
-        let applied = assign.apply(fm.clone(), ctx);
-        let reduced = applied.reduce();
+    fn check_assignment(&self, fm: &Formula, assign: &NodeSubstitution, ctx: &mut Context) -> bool {
+        // let applied = assign.apply(fm.clone(), ctx);
+        // let reduced = applied.reduce();
 
-        matches!(reduced, Formula::True)
+        // matches!(reduced, Formula::True)
+        todo!()
     }
 
     /// Refines the abstraction by picking new definitions to encode.
-    /// Returns the new definitions to encode.
-    /// If the abstraction is already fully refined, returns an empty vector.
-    fn refine_abstraction(
-        &self,
-        current_defs: &[DefinitionOld],
-        assign: &VarSubstitution,
-        abs: &AbstractionOld,
-    ) -> Vec<DefinitionOld> {
-        todo!("Refine the abstraction")
-    }
 
     /// Clamp the bounds to the maximum bounds.
     fn clamp_bounds(&self, bounds: Bounds) -> Bounds {

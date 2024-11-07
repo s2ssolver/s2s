@@ -1,25 +1,27 @@
+use std::rc::Rc;
+
 use indexmap::IndexMap;
 
 use super::DomainEncoding;
+use crate::canonical::Assignment;
 use crate::context::Sorted;
 use crate::sat::{plit, PVar};
 use crate::{
     bounds::{Bounds, Interval},
     context::{Context, Sort, Variable},
     encode::{card::IncrementalEO, EncodingResult},
-    ir::{LinearArithTerm, VarSubstitution},
     sat::pvar,
 };
 
 #[derive(Clone, Debug, Default)]
 pub struct IntDomain {
-    encodings: IndexMap<(Variable, isize), PVar>,
+    encodings: IndexMap<(Rc<Variable>, isize), PVar>,
 }
 
 impl IntDomain {
     /// Sets the Boolean variable that is true if the variable has the given length.
     /// Panics if the variable was already set.
-    pub fn insert(&mut self, var: Variable, value: isize, pvar: PVar) {
+    pub fn insert(&mut self, var: Rc<Variable>, value: isize, pvar: PVar) {
         assert!(
             var.sort() == Sort::Int,
             "Variable {} is not an integer",
@@ -29,13 +31,13 @@ impl IntDomain {
         assert!(ok.is_none());
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = (&Variable, isize, &PVar)> {
+    pub fn iter(&self) -> impl Iterator<Item = (&Rc<Variable>, isize, &PVar)> {
         self.encodings
             .iter()
             .map(|((var, value), v)| (var, *value, v))
     }
 
-    pub fn get(&self, var: &Variable, value: isize) -> Option<PVar> {
+    pub fn get(&self, var: &Rc<Variable>, value: isize) -> Option<PVar> {
         assert!(
             var.sort() == Sort::Int,
             "Variable {} is not an integer",
@@ -45,14 +47,14 @@ impl IntDomain {
         self.encodings.get(&(var.clone(), value)).cloned()
     }
 
-    pub(crate) fn get_model(&self, solver: &cadical::Solver) -> VarSubstitution {
+    pub(crate) fn get_model(&self, solver: &cadical::Solver) -> Assignment {
         if solver.status() != Some(true) {
             panic!("Solver is not in a SAT state")
         }
-        let mut model = VarSubstitution::empty();
+        let mut model = Assignment::default();
         for (var, l, v) in self.iter() {
             if let Some(true) = solver.value(plit(*v)) {
-                let ok = model.set_int(var.clone(), LinearArithTerm::from_const(l));
+                let ok = model.assign(var.clone(), l);
                 assert!(ok.is_none());
             }
         }
@@ -117,9 +119,7 @@ impl IntegerEncoder {
                     // This lenght is not in the previous domain, so we need to encode it
                     let choice = pvar();
                     len_choices.push(choice);
-                    encoding
-                        .int
-                        .insert(int_var.as_ref().clone(), len as isize, choice);
+                    encoding.int.insert(int_var.clone(), len as isize, choice);
                 }
             }
             // Exactly one length must be true

@@ -5,11 +5,11 @@ use super::word::WordEncoding;
 
 use crate::{
     bounds::Bounds,
+    canonical::{Pattern, Symbol, WordEquation},
     encode::{
         card::IncrementalALO, domain::DomainEncoding, EncodingError, EncodingResult,
         LiteralEncoder, LAMBDA,
     },
-    ir::{Pattern, Symbol, WordEquation},
     sat::{nlit, pvar},
 };
 
@@ -64,7 +64,7 @@ impl WordInEquationEncoder {
 
     fn pattern_upper_bound(&self, pattern: &Pattern, bounds: &Bounds) -> usize {
         pattern
-            .iter()
+            .symbols()
             .map(|s| match s {
                 Symbol::Constant(_) => 1 as usize,
                 Symbol::Variable(v) => {
@@ -160,9 +160,9 @@ mod tests {
     use crate::{
         alphabet::Alphabet,
         bounds::Bounds,
+        canonical::WordEquation,
         context::Context,
         encode::{domain::DomainEncoder, LiteralEncoder},
-        ir::{parse_simple_equation, Substitutable, VarSubstitution, WordEquation},
         sat::plit,
     };
 

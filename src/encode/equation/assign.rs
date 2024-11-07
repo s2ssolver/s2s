@@ -1,7 +1,7 @@
 //! Encoder for `assignment` type equations.
 //! Assignments are of the form `x = w` where `x` is a variable and `w` is a constant word.
 
-use std::cmp::Ordering;
+use std::{cmp::Ordering, rc::Rc};
 
 use crate::{
     bounds::Bounds,
@@ -11,14 +11,14 @@ use crate::{
 };
 
 pub struct AssignmentEncoder {
-    lhs: Variable,
+    lhs: Rc<Variable>,
     rhs: Vec<char>,
     last_bound: Option<usize>,
     sign: bool,
 }
 
 impl AssignmentEncoder {
-    pub fn new(lhs: Variable, rhs: Vec<char>, sign: bool) -> Self {
+    pub fn new(lhs: Rc<Variable>, rhs: Vec<char>, sign: bool) -> Self {
         Self {
             lhs,
             rhs,

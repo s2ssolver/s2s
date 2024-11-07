@@ -7,7 +7,7 @@ use std::{
 use indexmap::IndexSet;
 use regulaer::re::{Regex, RegexProps};
 
-use super::{Sort, Sorted, Variable};
+use crate::context::{Sort, Sorted, Variable};
 
 /// Represents a pattern symbol, which can be either a constant word or a variable.
 #[derive(Clone, Debug, PartialEq, Hash, Eq)]
@@ -556,41 +556,56 @@ pub enum FactorConstraintType {
 
 /// Represents a constraint that enforces that a pattern is a prefix, suffix of another pattern or contains another pattern.
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
-pub struct FactorConstraint {
-    lhs: Pattern,
-    rhs: Pattern,
+pub struct RegularFactorConstraint {
+    lhs: Rc<Variable>,
+    rhs: String,
     typ: FactorConstraintType,
 }
-impl FactorConstraint {
+impl RegularFactorConstraint {
     /// Creates a new prefix of constraint from two patterns.
-    pub fn new(lhs: Pattern, rhs: Pattern, typ: FactorConstraintType) -> Self {
+    fn new(lhs: Rc<Variable>, rhs: String, typ: FactorConstraintType) -> Self {
         Self { lhs, rhs, typ }
     }
 
+    pub fn prefixof(lhs: Rc<Variable>, rhs: String) -> Self {
+        Self::new(lhs, rhs, FactorConstraintType::Prefix)
+    }
+
+    pub fn suffixof(lhs: Rc<Variable>, rhs: String) -> Self {
+        Self::new(lhs, rhs, FactorConstraintType::Suffix)
+    }
+
+    pub fn contains(lhs: Rc<Variable>, rhs: String) -> Self {
+        Self::new(lhs, rhs, FactorConstraintType::Contains)
+    }
+
     /// Returns the prefix of the prefix of constraint.
-    pub fn lhs(&self) -> &Pattern {
+    pub fn lhs(&self) -> &Rc<Variable> {
         &self.lhs
     }
 
     /// Returns the pattern of the prefix of constraint.
-    pub fn rhs(&self) -> &Pattern {
+    pub fn rhs(&self) -> &String {
         &self.rhs
     }
 
+    pub fn typ(&self) -> FactorConstraintType {
+        self.typ
+    }
+
     pub(crate) fn variables(&self) -> IndexSet<Rc<Variable>> {
-        let mut vars = self.lhs.variables();
-        vars.extend(self.rhs.variables());
+        let mut vars = IndexSet::new();
+        vars.insert(self.lhs.clone());
         vars
     }
 
     pub(crate) fn constants(&self) -> IndexSet<char> {
-        let mut consts = self.lhs.constants();
-        consts.extend(self.rhs.constants());
+        let consts = self.rhs().chars().collect();
         consts
     }
 }
 
-impl Display for FactorConstraint {
+impl Display for RegularFactorConstraint {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self.typ {
             FactorConstraintType::Prefix => write!(f, "{} ⊑ {}", self.lhs(), self.rhs()),

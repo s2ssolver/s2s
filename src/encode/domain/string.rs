@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, rc::Rc};
 
 use indexmap::IndexMap;
 use itertools::Itertools;
@@ -6,12 +6,12 @@ use itertools::Itertools;
 use crate::{
     alphabet::Alphabet,
     bounds::Bounds,
+    canonical::Assignment,
     context::{Context, Sort, Sorted, Variable},
     encode::{
         card::{exactly_one, IncrementalEO},
         EncodingResult, LAMBDA,
     },
-    ir::{Pattern, VarSubstitution},
     sat::{nlit, plit, pvar, Cnf, PLit, PVar},
 };
 
@@ -19,7 +19,7 @@ use super::DomainEncoding;
 
 #[derive(Clone, Debug)]
 pub struct StringDomain {
-    substitutions: HashMap<(Variable, usize, char), PVar>,
+    substitutions: HashMap<(Rc<Variable>, usize, char), PVar>,
     lengths: IndexMap<(Variable, usize), PVar>,
 }
 
@@ -31,7 +31,7 @@ impl StringDomain {
         }
     }
 
-    pub fn iter_substitutions(&self) -> impl Iterator<Item = (&Variable, usize, char, &PVar)> {
+    pub fn iter_substitutions(&self) -> impl Iterator<Item = (&Rc<Variable>, usize, char, &PVar)> {
         self.substitutions
             .iter()
             .map(|((var, pos, chr), v)| (var, *pos, *chr, v))
@@ -42,7 +42,7 @@ impl StringDomain {
         self.lengths.iter().map(|((var, len), v)| (var, *len, v))
     }
 
-    pub fn get_sub(&self, var: &Variable, pos: usize, chr: char) -> Option<PVar> {
+    pub fn get_sub(&self, var: &Rc<Variable>, pos: usize, chr: char) -> Option<PVar> {
         assert!(
             var.sort() == Sort::String,
             "Variable {} is not a string",
@@ -63,11 +63,17 @@ impl StringDomain {
     }
 
     #[allow(dead_code)]
-    pub(super) fn get_sub_lit(&self, var: &Variable, pos: usize, chr: char) -> Option<PLit> {
+    pub(super) fn get_sub_lit(&self, var: &Rc<Variable>, pos: usize, chr: char) -> Option<PLit> {
         self.get_sub(var, pos, chr).map(plit)
     }
 
-    pub(super) fn insert_substitution(&mut self, var: &Variable, pos: usize, chr: char, v: PVar) {
+    pub(super) fn insert_substitution(
+        &mut self,
+        var: &Rc<Variable>,
+        pos: usize,
+        chr: char,
+        v: PVar,
+    ) {
         assert!(
             var.sort() == Sort::String,
             "Variable {} is not a string",
@@ -88,8 +94,8 @@ impl StringDomain {
         assert!(ok.is_none(), "Length {} already set for {}", len, var);
     }
 
-    pub(crate) fn get_model(&self, solver: &cadical::Solver, bounds: &Bounds) -> VarSubstitution {
-        let mut subs: HashMap<Variable, Vec<Option<char>>> = HashMap::new();
+    pub(crate) fn get_model(&self, solver: &cadical::Solver, bounds: &Bounds) -> Assignment {
+        let mut subs: HashMap<Rc<Variable>, Vec<Option<char>>> = HashMap::new();
         // initialize substitutions
         let vars = self.iter_substitutions().map(|(var, _, _, _)| var).unique();
         for var in vars {
@@ -113,17 +119,18 @@ impl StringDomain {
                 sub[pos] = Some(chr);
             }
         }
-        let mut model = VarSubstitution::empty();
+        let mut model = Assignment::default();
         for (var, sub) in subs.into_iter() {
-            let mut s = Pattern::empty();
+            let mut s: Vec<char> = vec![];
             for c in sub.iter() {
                 match c {
                     Some(LAMBDA) => {}
-                    Some(c) => s.push((*c).into()),
+                    Some(c) => s.push(*c),
                     None => panic!("No substitution for {} at position {}", var, s.len()),
                 }
             }
-            model.set_str(var, s);
+            let s = s.into_iter().collect::<String>();
+            model.assign(var, s);
         }
         model
     }
@@ -398,7 +405,7 @@ mod tests {
             "No substitution found (length is {})",
             len
         );
-        let sub = subs.get(&var).unwrap().as_string().as_constant().unwrap();
+        let sub: String = subs.get(&var).cloned().unwrap().into();
         assert!(sub.len() == len as usize, "Substitution is too long");
         TestResult::passed()
     }

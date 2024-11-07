@@ -1,12 +1,12 @@
-use std::fmt::Display;
+use std::{fmt::Display, rc::Rc};
 
 use indexmap::IndexMap;
 
 use crate::{
     bounds::Bounds,
+    canonical::{Pattern, Symbol},
     context::Variable,
     encode::{domain::DomainEncoding, EncodingResult, LAMBDA},
-    ir::{Pattern, Symbol},
     sat::{nlit, plit, pvar, PVar},
 };
 
@@ -19,7 +19,7 @@ use super::word::WordEncoding;
 #[derive(Clone, Debug, PartialEq, Eq)]
 enum PatternSegment {
     /// A string variable
-    Variable(Variable),
+    Variable(Rc<Variable>),
     /// A string constant
     Word(Vec<char>),
 }
@@ -139,7 +139,7 @@ pub(super) struct PatternMatchingEncoder {
 
     /// A cache for the matching of variables to the word.
     /// The value for key (v, p, l) is a Boolean variable that is true if and only if the variable v matches the word at position p with length l.
-    match_cache: IndexMap<(Variable, usize, usize), PVar>,
+    match_cache: IndexMap<(Rc<Variable>, usize, usize), PVar>,
 }
 
 impl PatternMatchingEncoder {
@@ -301,7 +301,7 @@ impl PatternMatchingEncoder {
     fn encode_match_variable(
         &mut self,
         i: usize,
-        v: &Variable,
+        v: &Rc<Variable>,
         vbound: usize,
         last_vbound: usize,
         word: &WordEncoding,

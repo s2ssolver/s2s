@@ -6,10 +6,10 @@ use indexmap::IndexSet;
 
 use crate::{
     bounds::{BoundValue, Bounds},
-    context::{Sorted, Variable},
-    node::canonical::{
-        LinearArithTerm, LinearConstraint, LinearOperator, LinearSummand, Symbol, WordEquation,
+    canonical::{
+        LinearArithTerm, LinearConstraint, ArithOperator, LinearSummand, Symbol, WordEquation,
     },
+    context::{Sorted, Variable},
 };
 
 use super::InferringStrategy;
@@ -28,12 +28,12 @@ impl LinearRefiner {
         // canonicalize the linear constraint before adding it
         linear.canonicalize();
         match linear.operator() {
-            LinearOperator::Ineq | LinearOperator::Eq => {
+            ArithOperator::Ineq | ArithOperator::Eq => {
                 let leq =
-                    LinearConstraint::new(linear.lhs().clone(), LinearOperator::Leq, linear.rhs());
+                    LinearConstraint::new(linear.lhs().clone(), ArithOperator::Leq, linear.rhs());
                 let geq =
-                    LinearConstraint::new(linear.lhs().clone(), LinearOperator::Geq, linear.rhs());
-                if linear.operator() == LinearOperator::Ineq {
+                    LinearConstraint::new(linear.lhs().clone(), ArithOperator::Geq, linear.rhs());
+                if linear.operator() == ArithOperator::Ineq {
                     // can only check for conflicts if the operator is an inequality
                     // if both the leq and the geq are present, we have a conflict because then lhs = rhs and lhs != rhs.
                     if self.linears.contains(&Rc::new(leq)) && self.linears.contains(&Rc::new(geq))
@@ -46,10 +46,10 @@ impl LinearRefiner {
                     self.add_linear(geq);
                 }
             }
-            LinearOperator::Leq
-            | LinearOperator::Less
-            | LinearOperator::Geq
-            | LinearOperator::Greater => {
+            ArithOperator::Leq
+            | ArithOperator::Less
+            | ArithOperator::Geq
+            | ArithOperator::Greater => {
                 let flipped = linear.negate();
                 if self.linears.contains(&Rc::new(flipped)) {
                     self.conflict = true;
@@ -110,10 +110,10 @@ impl LinearRefiner {
             let (op, term, divisor) = self.solve_for(linear, &var);
             log::trace!("\t {} {} ({}) / {}", var, op, term, divisor);
             match op {
-                LinearOperator::Less | LinearOperator::Leq => {
+                ArithOperator::Less | ArithOperator::Leq => {
                     if let BoundValue::Num(largest) = self.eval_largest(&term, bounds) {
                         if let Some(dived) = largest.checked_div(divisor as i32) {
-                            let dived = if LinearOperator::Less == op {
+                            let dived = if ArithOperator::Less == op {
                                 BoundValue::Num(dived - 1)
                             } else {
                                 BoundValue::Num(dived)
@@ -126,10 +126,10 @@ impl LinearRefiner {
                         }
                     }
                 }
-                LinearOperator::Greater | LinearOperator::Geq => {
+                ArithOperator::Greater | ArithOperator::Geq => {
                     if let BoundValue::Num(smallest) = self.eval_smallest(&term, bounds) {
                         if let Some(dived) = smallest.checked_div(divisor as i32) {
-                            let dived = if LinearOperator::Greater == op {
+                            let dived = if ArithOperator::Greater == op {
                                 BoundValue::Num(dived + 1)
                             } else {
                                 BoundValue::Num(dived)
@@ -161,7 +161,7 @@ impl LinearRefiner {
         &self,
         lc: &LinearConstraint,
         var: &Rc<Variable>,
-    ) -> (LinearOperator, LinearArithTerm, usize) {
+    ) -> (ArithOperator, LinearArithTerm, usize) {
         let mut divisor = 0;
         let mut dividend = LinearArithTerm::from_const(lc.rhs());
         for t in lc.lhs().iter() {
@@ -175,8 +175,8 @@ impl LinearRefiner {
         if divisor < 0 {
             // If we have an inequality and the divisor is negative, we need to 'flip' the operator.
             let op = match lc.operator() {
-                LinearOperator::Eq => LinearOperator::Eq,
-                LinearOperator::Ineq => LinearOperator::Ineq,
+                ArithOperator::Eq => ArithOperator::Eq,
+                ArithOperator::Ineq => ArithOperator::Ineq,
                 _ => lc.operator().flip(),
             };
             // We also need to negate both the divisor and the dividend to make the division positive.
@@ -337,7 +337,7 @@ pub fn length_abstraction(weq: &WordEquation) -> LinearConstraint {
     for (v, c) in var_occurrences {
         lhs.add_summand(LinearSummand::len_variable(v.clone(), c));
     }
-    let la = LinearConstraint::new(lhs, LinearOperator::Eq, constant_counter);
+    let la = LinearConstraint::new(lhs, ArithOperator::Eq, constant_counter);
 
     la
 }

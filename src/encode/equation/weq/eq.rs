@@ -5,8 +5,8 @@ use super::word::WordEncoding;
 
 use crate::{
     bounds::Bounds,
+    canonical::{Pattern, Symbol, WordEquation},
     encode::{domain::DomainEncoding, EncodingError, EncodingResult, LiteralEncoder},
-    ir::{Pattern, Symbol, WordEquation},
 };
 
 pub struct WordEquationEncoder {
@@ -51,7 +51,7 @@ impl WordEquationEncoder {
 
     fn pattern_upper_bound(&self, pattern: &Pattern, bounds: &Bounds) -> usize {
         pattern
-            .iter()
+            .symbols()
             .map(|s| match s {
                 Symbol::Constant(_) => 1 as usize,
                 Symbol::Variable(v) => {
@@ -107,9 +107,9 @@ mod tests {
     use crate::{
         alphabet::Alphabet,
         bounds::Bounds,
+        canonical::{Assignment, WordEquation},
         context::Context,
         encode::{domain::DomainEncoder, LiteralEncoder},
-        ir::{parse_simple_equation, Substitutable, VarSubstitution, WordEquation},
         sat::plit,
     };
 
@@ -119,7 +119,7 @@ mod tests {
         eq: &WordEquation,
         bounds: &[usize],
         ctx: &mut Context,
-    ) -> Option<VarSubstitution> {
+    ) -> Option<Assignment> {
         let alphabet: Alphabet = Alphabet::from_iter(eq.constants().iter().copied());
         let mut domain = DomainEncoder::new(alphabet);
 

@@ -346,7 +346,7 @@ impl Index<usize> for LinearArithTerm {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum LinearOperator {
+pub enum ArithOperator {
     Eq,
     Ineq,
     Leq,
@@ -354,15 +354,15 @@ pub enum LinearOperator {
     Geq,
     Greater,
 }
-impl LinearOperator {
+impl ArithOperator {
     pub fn eval(&self, lhs: isize, rhs: isize) -> bool {
         match self {
-            LinearOperator::Eq => lhs == rhs,
-            LinearOperator::Ineq => lhs != rhs,
-            LinearOperator::Leq => lhs <= rhs,
-            LinearOperator::Less => lhs < rhs,
-            LinearOperator::Geq => lhs >= rhs,
-            LinearOperator::Greater => lhs > rhs,
+            ArithOperator::Eq => lhs == rhs,
+            ArithOperator::Ineq => lhs != rhs,
+            ArithOperator::Leq => lhs <= rhs,
+            ArithOperator::Less => lhs < rhs,
+            ArithOperator::Geq => lhs >= rhs,
+            ArithOperator::Greater => lhs > rhs,
         }
     }
 
@@ -374,12 +374,12 @@ impl LinearOperator {
     /// - `a = b` stays `a = b` and `a != b` stays `a != b`
     pub fn flip(&self) -> Self {
         match self {
-            LinearOperator::Eq => LinearOperator::Eq,
-            LinearOperator::Ineq => LinearOperator::Ineq,
-            LinearOperator::Leq => LinearOperator::Geq,
-            LinearOperator::Less => LinearOperator::Greater,
-            LinearOperator::Geq => LinearOperator::Leq,
-            LinearOperator::Greater => LinearOperator::Less,
+            ArithOperator::Eq => ArithOperator::Eq,
+            ArithOperator::Ineq => ArithOperator::Ineq,
+            ArithOperator::Leq => ArithOperator::Geq,
+            ArithOperator::Less => ArithOperator::Greater,
+            ArithOperator::Geq => ArithOperator::Leq,
+            ArithOperator::Greater => ArithOperator::Less,
         }
     }
 }
@@ -389,12 +389,12 @@ impl LinearOperator {
 pub struct LinearConstraint {
     lhs: LinearArithTerm,
     rhs: isize,
-    typ: LinearOperator,
+    typ: ArithOperator,
     is_canonical: bool,
 }
 
 impl LinearConstraint {
-    pub fn new(lhs: LinearArithTerm, typ: LinearOperator, rhs: isize) -> Self {
+    pub fn new(lhs: LinearArithTerm, typ: ArithOperator, rhs: isize) -> Self {
         Self {
             lhs,
             rhs,
@@ -409,7 +409,7 @@ impl LinearConstraint {
     pub fn rhs(&self) -> isize {
         self.rhs
     }
-    pub fn operator(&self) -> LinearOperator {
+    pub fn operator(&self) -> ArithOperator {
         self.typ
     }
 
@@ -435,12 +435,12 @@ impl LinearConstraint {
     /// - `a > b` becomes `a <= b`
     pub fn negate(&self) -> Self {
         let new_op = match self.typ {
-            LinearOperator::Eq => LinearOperator::Ineq,
-            LinearOperator::Ineq => LinearOperator::Eq,
-            LinearOperator::Leq => LinearOperator::Greater,
-            LinearOperator::Less => LinearOperator::Geq,
-            LinearOperator::Geq => LinearOperator::Less,
-            LinearOperator::Greater => LinearOperator::Leq,
+            ArithOperator::Eq => ArithOperator::Ineq,
+            ArithOperator::Ineq => ArithOperator::Eq,
+            ArithOperator::Leq => ArithOperator::Greater,
+            ArithOperator::Less => ArithOperator::Geq,
+            ArithOperator::Geq => ArithOperator::Less,
+            ArithOperator::Greater => ArithOperator::Leq,
         };
         let mut negated = LinearConstraint::new(self.lhs.clone(), new_op, self.rhs);
         negated.is_canonical = self.is_canonical;
@@ -486,15 +486,15 @@ impl Display for LinearArithTerm {
     }
 }
 
-impl Display for LinearOperator {
+impl Display for ArithOperator {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            LinearOperator::Eq => write!(f, "="),
-            LinearOperator::Ineq => write!(f, "!="),
-            LinearOperator::Leq => write!(f, "<="),
-            LinearOperator::Less => write!(f, "<"),
-            LinearOperator::Geq => write!(f, ">="),
-            LinearOperator::Greater => write!(f, ">"),
+            ArithOperator::Eq => write!(f, "="),
+            ArithOperator::Ineq => write!(f, "!="),
+            ArithOperator::Leq => write!(f, "<="),
+            ArithOperator::Less => write!(f, "<"),
+            ArithOperator::Geq => write!(f, ">="),
+            ArithOperator::Greater => write!(f, ">"),
         }
     }
 }
@@ -507,15 +507,15 @@ impl Display for LinearConstraint {
 
 // TODO: Needs testing!
 
-impl Arbitrary for LinearOperator {
+impl Arbitrary for ArithOperator {
     fn arbitrary(g: &mut quickcheck::Gen) -> Self {
         match u8::arbitrary(g) % 6 {
-            0 => LinearOperator::Eq,
-            1 => LinearOperator::Ineq,
-            2 => LinearOperator::Leq,
-            3 => LinearOperator::Less,
-            4 => LinearOperator::Geq,
-            5 => LinearOperator::Greater,
+            0 => ArithOperator::Eq,
+            1 => ArithOperator::Ineq,
+            2 => ArithOperator::Leq,
+            3 => ArithOperator::Less,
+            4 => ArithOperator::Geq,
+            5 => ArithOperator::Greater,
             _ => unreachable!(),
         }
     }
@@ -527,7 +527,7 @@ mod tests {
     use quickcheck_macros::quickcheck;
 
     #[quickcheck]
-    fn test_operator_flip_flip(op: LinearOperator) -> bool {
+    fn test_operator_flip_flip(op: ArithOperator) -> bool {
         op.flip().flip() == op
     }
 }
