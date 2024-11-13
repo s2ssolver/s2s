@@ -63,7 +63,7 @@ pub struct ProblemEncoder {
 }
 
 impl ProblemEncoder {
-    pub fn new(alphabet: Alphabet) -> Self {
+    pub fn new(alphabet: Alphabet, variables: IndexSet<Rc<Variable>>) -> Self {
         Self {
             probes: IndexMap::new(),
             encoders: IndexMap::new(),
@@ -80,7 +80,7 @@ impl ProblemEncoder {
         // INPUT: BOUNDS
         // Encode the domain
         let t = Instant::now();
-        let mut res = self.domain_encoder.encode(bounds, ctx);
+        let mut res = self.domain_encoder.encode(bounds);
         log::debug!("Encoded domain ({:?})", t.elapsed());
 
         // TODO: Instead let domain_encoder return the encoding of the domain or an Rc<DomainEncoding>

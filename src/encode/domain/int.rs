@@ -1,6 +1,6 @@
 use std::rc::Rc;
 
-use indexmap::IndexMap;
+use indexmap::{IndexMap, IndexSet};
 
 use super::DomainEncoding;
 use crate::canonical::Assignment;
@@ -8,20 +8,20 @@ use crate::context::Sorted;
 use crate::sat::{plit, PVar};
 use crate::{
     bounds::{Bounds, Interval},
-    context::{Context, Sort, Variable},
+    context::{Sort, Variable},
     encode::{card::IncrementalEO, EncodingResult},
     sat::pvar,
 };
 
 #[derive(Clone, Debug, Default)]
 pub struct IntDomain {
-    encodings: IndexMap<(Rc<Variable>, isize), PVar>,
+    encodings: IndexMap<(Rc<Variable>, i64), PVar>,
 }
 
 impl IntDomain {
     /// Sets the Boolean variable that is true if the variable has the given length.
     /// Panics if the variable was already set.
-    pub fn insert(&mut self, var: Rc<Variable>, value: isize, pvar: PVar) {
+    pub fn insert(&mut self, var: Rc<Variable>, value: i64, pvar: PVar) {
         assert!(
             var.sort() == Sort::Int,
             "Variable {} is not an integer",
@@ -31,13 +31,13 @@ impl IntDomain {
         assert!(ok.is_none());
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = (&Rc<Variable>, isize, &PVar)> {
+    pub fn iter(&self) -> impl Iterator<Item = (&Rc<Variable>, i64, &PVar)> {
         self.encodings
             .iter()
             .map(|((var, value), v)| (var, *value, v))
     }
 
-    pub fn get(&self, var: &Rc<Variable>, value: isize) -> Option<PVar> {
+    pub fn get(&self, var: &Rc<Variable>, value: i64) -> Option<PVar> {
         assert!(
             var.sort() == Sort::Int,
             "Variable {} is not an integer",
@@ -80,9 +80,9 @@ impl IntegerEncoder {
         &mut self,
         bounds: &Bounds,
         encoding: &mut DomainEncoding,
-        ctx: &Context,
+        vars: &IndexSet<Rc<Variable>>,
     ) -> EncodingResult {
-        let res = self.encode_int_vars(bounds, encoding, ctx);
+        let res = self.encode_int_vars(bounds, encoding, vars);
 
         self.last_domains = Some(bounds.clone());
         res
@@ -96,11 +96,11 @@ impl IntegerEncoder {
         &mut self,
         bounds: &Bounds,
         encoding: &mut DomainEncoding,
-        ctx: &Context,
+        vars: &IndexSet<Rc<Variable>>,
     ) -> EncodingResult {
         let mut res = EncodingResult::empty();
 
-        for int_var in ctx.int_vars() {
+        for int_var in vars.iter().filter(|v| v.sort().is_int()) {
             let mut len_choices = vec![];
             let last_upper_bound = self
                 .get_last_dom(int_var)
@@ -119,7 +119,7 @@ impl IntegerEncoder {
                     // This lenght is not in the previous domain, so we need to encode it
                     let choice = pvar();
                     len_choices.push(choice);
-                    encoding.int.insert(int_var.clone(), len as isize, choice);
+                    encoding.int.insert(int_var.clone(), len as i64, choice);
                 }
             }
             // Exactly one length must be true

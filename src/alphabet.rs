@@ -187,7 +187,7 @@ mod tests {
 
     use super::*;
     use crate::{
-        canonical::{canonicalize, LinearArithTerm, LinearSummand},
+        canonical::canonicalize,
         context::Sort,
         node::{Node, NodeManager},
     };

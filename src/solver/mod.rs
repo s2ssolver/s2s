@@ -347,7 +347,7 @@ impl Solver {
         // Initialize the problem encoder
 
         let defs = abs.definitions().cloned().collect_vec();
-        let mut encoder = ProblemEncoder::new(alphabet);
+        let mut encoder = ProblemEncoder::new(alphabet, fm.vars());
 
         // Initialize the bounds
         let mut bounds = init_bounds;

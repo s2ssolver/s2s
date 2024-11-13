@@ -1,13 +1,13 @@
 use std::{collections::HashMap, rc::Rc};
 
-use indexmap::IndexMap;
+use indexmap::{IndexMap, IndexSet};
 use itertools::Itertools;
 
 use crate::{
     alphabet::Alphabet,
     bounds::Bounds,
     canonical::Assignment,
-    context::{Context, Sort, Sorted, Variable},
+    context::{Sort, Sorted, Variable},
     encode::{
         card::{exactly_one, IncrementalEO},
         EncodingResult, LAMBDA,
@@ -160,10 +160,10 @@ impl StringDomainEncoder {
         &mut self,
         bounds: &Bounds,
         encoding: &mut DomainEncoding,
-        ctx: &Context,
+        vars: &IndexSet<Rc<Variable>>,
     ) -> EncodingResult {
-        let mut res = self.encode_substitutions(bounds, encoding, ctx);
-        res.extend(self.encode_str_lengths(bounds, encoding, ctx));
+        let mut res = self.encode_substitutions(bounds, encoding, vars);
+        res.extend(self.encode_str_lengths(bounds, encoding, vars));
         // Update last bound
         self.last_bounds = Some(bounds.clone());
         res
@@ -173,14 +173,14 @@ impl StringDomainEncoder {
         &mut self,
         bounds: &Bounds,
         encoding: &mut DomainEncoding,
-        ctx: &Context,
+        vars: &IndexSet<Rc<Variable>>,
     ) -> EncodingResult {
         let mut cnf = Cnf::new();
         let subs = &mut encoding.string;
         log::debug!("Encoding substitutions");
 
         // Encode the substitutions for each string variable
-        for str_var in ctx.string_vars() {
+        for str_var in vars.iter().filter(|v| v.sort().is_string()) {
             let last_bound = self.pre_bounds(&str_var).unwrap_or(0);
             let new_bound = bounds
                 .get_upper_finite(&str_var)
@@ -223,11 +223,11 @@ impl StringDomainEncoder {
         &mut self,
         bounds: &Bounds,
         encoding: &mut DomainEncoding,
-        ctx: &Context,
+        vars: &IndexSet<Rc<Variable>>,
     ) -> EncodingResult {
         let mut res = EncodingResult::empty();
 
-        for str_var in ctx.string_vars() {
+        for str_var in vars.iter().filter(|v| v.sort().is_string()) {
             let mut len_choices = vec![];
             let last_bound = self.pre_bounds(&str_var).map(|b| b + 1).unwrap_or(0);
 
@@ -313,8 +313,9 @@ mod tests {
             step::{update_bounds, BoundStep},
             Bounds, Interval,
         },
-        context::{Context, Sort},
+        context::{Sort, Sorted},
         encode::{domain::DomainEncoding, LAMBDA},
+        node::NodeManager,
         sat::plit,
     };
 
@@ -322,8 +323,8 @@ mod tests {
 
     #[test]
     fn all_subst_defined() {
-        let mut ctx = Context::default();
-        let var = ctx.new_temp_var(Sort::String);
+        let mut mngr = NodeManager::default();
+        let var = mngr.temp_var(Sort::String);
 
         let alphabet = Alphabet::from_iter(vec!['a', 'b', 'c', LAMBDA]);
 
@@ -333,7 +334,7 @@ mod tests {
         bounds.set(var.as_ref().clone(), Interval::new(0, mb));
 
         let mut encoding = DomainEncoding::new(alphabet.clone(), bounds.clone());
-        encoder.encode_substitutions(&bounds, &mut encoding, &ctx);
+        encoder.encode_substitutions(&bounds, &mut encoding, &mngr.vars().cloned().collect());
 
         for b in 0..mb {
             for c in alphabet.iter() {
@@ -351,8 +352,8 @@ mod tests {
 
     #[test]
     fn all_subst_defined_incremental() {
-        let mut ctx = Context::default();
-        let var = ctx.new_temp_var(Sort::String);
+        let mut mngr = NodeManager::default();
+        let var = mngr.temp_var(Sort::String);
 
         let alphabet = Alphabet::from_iter(vec!['a', 'b', 'c', LAMBDA]);
 
@@ -361,9 +362,9 @@ mod tests {
         bounds.set(var.as_ref().clone(), Interval::new(0, 5));
 
         let mut encoding = DomainEncoding::new(alphabet.clone(), bounds.clone());
-        encoder.encode_substitutions(&bounds, &mut encoding, &ctx);
+        encoder.encode_substitutions(&bounds, &mut encoding, &mngr.vars().cloned().collect());
         bounds.set(var.as_ref().clone(), Interval::new(0, 10));
-        encoder.encode_substitutions(&bounds, &mut encoding, &ctx);
+        encoder.encode_substitutions(&bounds, &mut encoding, &mngr.vars().cloned().collect());
 
         for b in 0..10 {
             for c in alphabet.iter() {
@@ -379,8 +380,8 @@ mod tests {
             return TestResult::discard();
         }
 
-        let mut ctx = Context::default();
-        let var = ctx.new_temp_var(Sort::String);
+        let mut mngr = NodeManager::default();
+        let var = mngr.temp_var(Sort::String);
 
         let alphabet = Alphabet::from_iter(vec!['a', 'b', 'c', 'd']);
 
@@ -390,7 +391,8 @@ mod tests {
         bounds.set(var.as_ref().clone(), Interval::new(0, len as isize));
         let mut encoding = DomainEncoding::new(alphabet, bounds.clone());
         let mut solver: cadical::Solver = cadical::Solver::new();
-        match encoder.encode_substitutions(&bounds, &mut encoding, &ctx) {
+        match encoder.encode_substitutions(&bounds, &mut encoding, &mngr.vars().cloned().collect())
+        {
             crate::encode::EncodingResult::Cnf(cnf, _) => {
                 cnf.into_iter().for_each(|cl| solver.add_clause(cl));
                 solver.solve();
@@ -415,8 +417,8 @@ mod tests {
         if len == 0 {
             return TestResult::discard();
         }
-        let mut ctx = Context::default();
-        let var = ctx.new_temp_var(Sort::String);
+        let mut mngr = NodeManager::default();
+        let var = mngr.temp_var(Sort::String);
 
         let alphabet = Alphabet::from_iter(vec!['a', 'b', 'c', 'd']);
 
@@ -426,7 +428,11 @@ mod tests {
         bounds.set(var.as_ref().clone(), Interval::new(0, len as isize));
         let mut encoding = DomainEncoding::new(alphabet, bounds.clone());
         let mut solver: cadical::Solver = cadical::Solver::new();
-        match encoder.encode_substitutions(&encoding.bounds.clone(), &mut encoding, &ctx) {
+        match encoder.encode_substitutions(
+            &encoding.bounds.clone(),
+            &mut encoding,
+            &mngr.vars().cloned().collect(),
+        ) {
             crate::encode::EncodingResult::Cnf(cnf, _) => {
                 cnf.into_iter().for_each(|cl| solver.add_clause(cl));
                 solver.solve();
@@ -434,7 +440,11 @@ mod tests {
             crate::encode::EncodingResult::Trivial(_) => unreachable!(),
         }
         encoding.bounds = update_bounds(&bounds, BoundStep::Double);
-        match encoder.encode_substitutions(&encoding.bounds.clone(), &mut encoding, &ctx) {
+        match encoder.encode_substitutions(
+            &encoding.bounds.clone(),
+            &mut encoding,
+            &mngr.vars().cloned().collect(),
+        ) {
             crate::encode::EncodingResult::Cnf(cnf, _) => {
                 cnf.into_iter().for_each(|cl| solver.add_clause(cl));
                 solver.solve();
@@ -451,7 +461,7 @@ mod tests {
                 panic!("Solver is not in a SAT state")
             }
             let mut subs = HashMap::new();
-            for str_var in ctx.string_vars() {
+            for str_var in mngr.vars().filter(|v| v.sort().is_string()) {
                 // initialize substitutions
                 subs.insert(
                     str_var.clone(),

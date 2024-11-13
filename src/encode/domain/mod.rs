@@ -4,14 +4,17 @@ mod bool;
 mod int;
 mod string;
 
+use std::rc::Rc;
+
 use bool::{BoolDomain, BoolEncoder};
+use indexmap::IndexSet;
 pub use int::IntDomain;
 use int::IntegerEncoder;
 pub use string::StringDomain;
 use string::StringDomainEncoder;
 
 use crate::{
-    alphabet::Alphabet, bounds::Bounds, canonical::Assignment, context::Context,
+    alphabet::Alphabet, bounds::Bounds, canonical::Assignment, context::Variable,
     encode::EncodingResult,
 };
 
@@ -72,6 +75,9 @@ impl DomainEncoding {
 
 /// Encoder for the domains of all variables.
 pub struct DomainEncoder {
+    /// The set of variables to encode
+    variables: IndexSet<Rc<Variable>>,
+
     /// The encoder for string variables
     strings: StringDomainEncoder,
     /// The encoder for integer variables
@@ -83,27 +89,28 @@ pub struct DomainEncoder {
 }
 
 impl DomainEncoder {
-    pub fn new(alphabet: Alphabet) -> Self {
+    pub fn new(alphabet: Alphabet, variables: IndexSet<Rc<Variable>>) -> Self {
         Self {
             strings: StringDomainEncoder::new(alphabet),
             integers: IntegerEncoder::new(),
             bool: BoolEncoder::default(),
+            variables,
             encoding: None,
         }
     }
 
-    pub fn encode(&mut self, bounds: &Bounds, ctx: &Context) -> EncodingResult {
+    pub fn encode(&mut self, bounds: &Bounds) -> EncodingResult {
         let mut encoding = self.encoding.take().unwrap_or(DomainEncoding::new(
             self.strings.alphabet().clone(),
             bounds.clone(),
         ));
 
         // Bool encoding does not depend on the bounds and does not return a CNF.
-        self.bool.encode(&mut encoding, ctx);
+        self.bool.encode(&mut encoding, &self.variables);
 
-        let mut res = self.strings.encode(bounds, &mut encoding, ctx);
+        let mut res = self.strings.encode(bounds, &mut encoding, &self.variables);
 
-        res.extend(self.integers.encode(bounds, &mut encoding, ctx));
+        res.extend(self.integers.encode(bounds, &mut encoding, &self.variables));
         encoding.bounds = bounds.clone();
         self.encoding = Some(encoding);
         res

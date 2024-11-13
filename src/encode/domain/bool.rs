@@ -1,10 +1,10 @@
 use std::rc::Rc;
 
-use indexmap::IndexMap;
+use indexmap::{IndexMap, IndexSet};
 
 use crate::{
     canonical::Assignment,
-    context::{Context, Sort, Variable},
+    context::{Sorted, Variable},
     sat::{plit, pvar, PVar},
 };
 
@@ -60,8 +60,8 @@ impl BoolDomain {
 #[derive(Clone, Debug, Default)]
 pub struct BoolEncoder {}
 impl BoolEncoder {
-    pub fn encode(&mut self, encoding: &mut DomainEncoding, ctx: &Context) {
-        ctx.vars_with_sort(Sort::Bool).for_each(|var| {
+    pub fn encode(&mut self, encoding: &mut DomainEncoding, vars: &IndexSet<Rc<Variable>>) {
+        vars.iter().filter(|v| v.sort().is_bool()).for_each(|var| {
             if encoding.bool.get(var).is_none() {
                 let pvar = pvar();
                 encoding.bool.insert(var.clone(), pvar);

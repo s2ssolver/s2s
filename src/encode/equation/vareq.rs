@@ -1,6 +1,9 @@
 //! Encoder for word equations of the form `x=y` where `x` and `y` are variables.
 
-use std::cmp::{min, Ordering};
+use std::{
+    cmp::{min, Ordering},
+    rc::Rc,
+};
 
 use crate::{
     bounds::Bounds,
@@ -11,8 +14,8 @@ use crate::{
 
 pub struct VareqEncoder {
     last_bounds: Option<usize>,
-    lhs: Variable,
-    rhs: Variable,
+    lhs: Rc<Variable>,
+    rhs: Rc<Variable>,
     selector: Option<PVar>,
     sign: bool,
 }
@@ -144,7 +147,7 @@ impl VareqEncoder {
         Ok(res)
     }
 
-    pub fn new(lhs: &Variable, rhs: &Variable, sign: bool) -> Self {
+    pub fn new(lhs: &Rc<Variable>, rhs: &Rc<Variable>, sign: bool) -> Self {
         Self {
             last_bounds: None,
             lhs: lhs.clone(),
