@@ -380,12 +380,13 @@ impl Solver {
 
                     log::info!("Found model: {}", assign);
 
-                    if self.options.check_model && !self.check_assignment(fm, &assign, ctx) {
+                    if self.options.check_model && !self.check_assignment(fm, &assign) {
                         // If the assignment is not a solution, we found a bug.
                         panic!("The found model is invalid");
                     }
                     // encoder.print_debug(&cadical);
-                    return Ok(SolverResult::Sat(Some(assign)));
+                    let subs = NodeSubstitution::from_assignment(&assign, mngr);
+                    return Ok(SolverResult::Sat(Some(subs)));
                 }
 
                 Some(false) => {
@@ -427,12 +428,8 @@ impl Solver {
     }
 
     /// Check if the assignment is a solution for the formula.
-    fn check_assignment(&self, fm: &Formula, assign: &NodeSubstitution, ctx: &mut Context) -> bool {
-        // let applied = assign.apply(fm.clone(), ctx);
-        // let reduced = applied.reduce();
-
-        // matches!(reduced, Formula::True)
-        todo!()
+    fn check_assignment(&self, fm: &Formula, assign: &Assignment) -> bool {
+        assign.satisfies(fm)
     }
 
     /// Refines the abstraction by picking new definitions to encode.
