@@ -10,8 +10,8 @@ use crate::{
         Atom, AtomType, Formula, LinearArithTerm, LinearOperator, LinearSummand, Pattern, Symbol,
     },
     smt::{
-        nf::expression_into_nnf, AstNode, CoreExpr, Expression, IntExpr, Script, Sort as SmtSort,
-        StrExpr,
+        nf::expression_into_nnf, AstNode, CoreExpr, Expression, IntExpr, Script, SmtCommand,
+        Sort as SmtSort, StrExpr,
     },
 };
 
@@ -28,17 +28,19 @@ pub fn convert_script(script: &Script, ctx: &mut Context) -> Result<Formula, Pre
         }
     }
 
-    for expr in script.iter_asserts() {
-        let as_nnf = match expression_into_nnf(expr.clone()) {
-            Ok(ok) => ok,
-            Err(e) => {
-                log::error!("Failed to convert to NNF: {}", e);
-                return Err(PreprocessingError::NotInNNF(e.to_string()));
-            }
-        };
+    for assert in script.iter() {
+        if let SmtCommand::Assert(a) = assert {
+            let as_nnf = match expression_into_nnf(a.clone()) {
+                Ok(ok) => ok,
+                Err(e) => {
+                    log::error!("Failed to convert to NNF: {}", e);
+                    return Err(PreprocessingError::NotInNNF(e.to_string()));
+                }
+            };
 
-        let fm = convert_expr(&as_nnf, ctx)?;
-        conjuncts.push(fm);
+            let fm = convert_expr(&as_nnf, ctx)?;
+            conjuncts.push(fm);
+        }
     }
     let res = ctx.ir_builder().and(conjuncts);
     Ok(res)

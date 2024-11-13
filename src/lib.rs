@@ -26,11 +26,10 @@ mod solver;
 
 use std::{io::BufRead, time::Instant};
 
-use context::Context;
 pub use error::PublicError as Error;
-use interpret::Interpreter;
+pub use interpret::Interpreter;
 use node::NodeManager;
-use smt::{parse_old::AstParser, ScriptBuilder};
+use smt::{Script, ScriptBuilder};
 pub use solver::{Solver, SolverOptions, SolverResult};
 
 /// Solves an SMT problem over the theory of strings.
@@ -43,40 +42,14 @@ pub fn solve_smt(smt: impl BufRead, options: Option<SolverOptions>) -> Result<()
 
     let t = Instant::now();
     // Parse the input problem
-    let parser = ScriptBuilder::new(&mut mngr);
-    let script = parser.parse_script(smt)?;
+    let script = parse_script(smt, &mut mngr)?;
     log::info!("Parsed in {:?}", t.elapsed());
 
-    let mut interpreter = Interpreter::new(script, options.unwrap_or_default(), &mut mngr);
-    interpreter.run()
+    let mut interpreter = Interpreter::new(options.unwrap_or_default(), &mut mngr);
+    interpreter.run(&script)
 }
 
-/// Solves an SMT problem over the theory of strings.
-/// The input problem must be in SMT-LIB format.
-/// Returns the result of the satisfiability check.
-/// Optionally, the solver can be configured with additional options.
-/// If no options are given, the solver uses the default options.
-pub fn solve_smt_old(
-    smt: impl BufRead,
-    options: Option<SolverOptions>,
-) -> Result<SolverResult, Error> {
-    let mut ctx = Context::default();
-    let mut t = Instant::now();
-
-    // Parse the input problem
-    let parser = AstParser::default();
-    let script = parser.parse_script(smt)?;
-    log::info!("Parsed in {:?}", t.elapsed());
-    t = Instant::now();
-
-    // Convert the input problem to a formula
-    let formula = preprocess::convert_script(&script, &mut ctx)?;
-    log::info!("Converted in {:?}", t.elapsed());
-
-    // Solve the formula
-    t = Instant::now();
-    let mut solver = Solver::with_options(options.unwrap_or_default());
-    let res = solver.solve_old(&formula, &mut ctx);
-    log::info!("Solved in {:?}", t.elapsed());
-    res
+pub fn parse_script(smt: impl BufRead, mngr: &mut NodeManager) -> Result<Script, Error> {
+    let parser = ScriptBuilder::new(mngr);
+    Ok(parser.parse_script(smt)?)
 }

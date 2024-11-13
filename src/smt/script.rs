@@ -32,9 +32,9 @@ impl Script {
         self.commands.iter()
     }
 
-    pub fn iter_asserts(&self) -> impl Iterator<Item = &Expression> {
+    pub fn iter_asserts(&self) -> impl Iterator<Item = &Node> {
         self.iter().filter_map(|cmd| match cmd {
-            SmtCommand::Assert(expr) => Some(expr),
+            SmtCommand::AssertNew(expr) => Some(expr),
             _ => None,
         })
     }

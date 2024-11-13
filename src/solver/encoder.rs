@@ -1,4 +1,4 @@
-use std::{collections::HashMap, time::Instant};
+use std::{ops::Neg, rc::Rc, time::Instant};
 
 use cadical::Solver;
 use indexmap::{IndexMap, IndexSet};
@@ -7,13 +7,13 @@ use crate::{
     abstraction::LitDefinition,
     alphabet::Alphabet,
     bounds::Bounds,
-    canonical::Literal,
-    context::Context,
+    canonical::{Assignment, Literal},
+    context::Variable,
     encode::{
         domain::{DomainEncoder, DomainEncoding},
         get_encoder, EncodingError, EncodingResult, LiteralEncoder,
     },
-    node::NodeSubstitution,
+    node::{NodeManager, NodeSubstitution},
     sat::{nlit, plit, pvar, PLit, PVar},
 };
 
@@ -67,7 +67,7 @@ impl ProblemEncoder {
         Self {
             probes: IndexMap::new(),
             encoders: IndexMap::new(),
-            domain_encoder: DomainEncoder::new(alphabet),
+            domain_encoder: DomainEncoder::new(alphabet, variables),
         }
     }
 
@@ -75,7 +75,7 @@ impl ProblemEncoder {
         &mut self,
         defs: &[LitDefinition],
         bounds: &Bounds,
-        ctx: &mut Context,
+        mngr: &mut NodeManager,
     ) -> Result<EncodingResult, EncodingError> {
         // INPUT: BOUNDS
         // Encode the domain
@@ -88,7 +88,7 @@ impl ProblemEncoder {
         // Encode all definitions
         for def in defs.iter() {
             let t = Instant::now();
-            let cnf = self.encode_def(def, bounds, &dom, ctx)?;
+            let cnf = self.encode_def(def, bounds, &dom, mngr)?;
             res.extend(cnf);
             log::debug!("Encoded {} ({:?})", def, t.elapsed());
         }
@@ -101,24 +101,15 @@ impl ProblemEncoder {
         def: &LitDefinition,
         bounds: &Bounds,
         dom: &DomainEncoding,
-        ctx: &mut Context,
+        mngr: &mut NodeManager,
     ) -> Result<EncodingResult, EncodingError> {
-        self.encode_literal(def.defined(), def.defining(), bounds, dom, ctx)
-    }
-
-    fn encode_literal(
-        &mut self,
-        lit: &Literal,
-        def: PLit,
-        bounds: &Bounds,
-        dom: &DomainEncoding,
-        ctx: &mut Context,
-    ) -> Result<EncodingResult, EncodingError> {
-        let mut encoding = self.get_encoder(&lit, ctx).encode(bounds, dom)?;
+        let lit = def.defined();
+        let def = def.defining();
+        let mut encoding = self.get_encoder(&lit, mngr).encode(bounds, dom)?;
 
         // Add -def var to every clause
         encoding.iter_clauses_mut().for_each(|cl| {
-            cl.push(def);
+            cl.push(def.neg());
         });
 
         let probe = self.probes.entry(lit.clone()).or_default();
@@ -134,10 +125,14 @@ impl ProblemEncoder {
         Ok(encoding)
     }
 
-    fn get_encoder(&mut self, lit: &Literal, ctx: &mut Context) -> &mut Box<dyn LiteralEncoder> {
+    fn get_encoder(
+        &mut self,
+        lit: &Literal,
+        mngr: &mut NodeManager,
+    ) -> &mut Box<dyn LiteralEncoder> {
         if self.encoders.get(lit).is_none() {
             // Create new encoder
-            let encoder = get_encoder(lit, ctx).unwrap();
+            let encoder = get_encoder(lit, mngr).unwrap();
             self.encoders.insert(lit.clone(), encoder);
         }
         self.encoders.get_mut(lit).unwrap()
@@ -172,7 +167,7 @@ impl ProblemEncoder {
     }
 
     /// Returns the model of the current assignment.
-    pub fn get_model(&self, solver: &Solver) -> NodeSubstitution {
+    pub fn get_model(&self, solver: &Solver) -> Assignment {
         self.domain_encoder.encoding().get_model(solver)
     }
 }

@@ -9,10 +9,9 @@ use crate::{
     abstraction::{build_abstraction, Abstraction},
     alphabet::{self, Alphabet},
     bounds::{infer::BoundInferer, step::BoundStep, Bounds, Interval},
-    canonical::Formula,
-    context::{Context, Sorted},
+    canonical::{Assignment, Formula},
+    context::Sorted,
     node::{Node, NodeKind, NodeManager, NodeSubstitution},
-    preprocess::{self, simp, PreprocessingError},
     sat::to_cnf,
 };
 
@@ -193,7 +192,7 @@ impl Solver {
         }
 
         // Initialize the bounds
-        timer = Instant::now();
+
         let init_bounds = match self.init_bounds(&preprocessed, mngr) {
             Some(bs) => bs,
             None => {
@@ -208,7 +207,7 @@ impl Solver {
 
         log::info!("Initialized bounds ({:?})", timer.elapsed());
         log::debug!("Initial bounds: {}", init_bounds);
-        todo!()
+
         // timer = Instant::now();
 
         // Initialize the alphabet
@@ -218,9 +217,9 @@ impl Solver {
         timer = Instant::now();
 
         if self.options.dry {
-        return Ok(SolverResult::Unknown);
+            return Ok(SolverResult::Unknown);
         }
-// Start CEGAR loop
+        // Start CEGAR loop
         let res = self.run(&preprocessed, abstraction, init_bounds, alphabet, mngr);
 
         log::info!("Done solving ({:?})", timer.elapsed());
@@ -298,7 +297,6 @@ impl Solver {
             .iter()
             .filter(|v| v.sort().is_int() || v.sort().is_string())
         {
-            // TODO: Check options for initial min/max bounds
             let v_bounds = bounds.get(var.as_ref());
             let lower = if let Some(lower) = v_bounds.and_then(|b| b.lower_finite()) {
                 lower
@@ -325,7 +323,7 @@ impl Solver {
         abs: Abstraction,
         init_bounds: Bounds,
         alphabet: Alphabet,
-        ctx: &mut Context,
+        mngr: &mut NodeManager,
     ) -> Result<SolverResult, Error> {
         // INPUT: Instance (Abstraction(Definition, Skeleton), Init-Bounds, Alphabet, OriginalFormula)
 
@@ -360,7 +358,7 @@ impl Solver {
             log::info!("Round {} with bounds {}", round, bounds);
             // Encode and Solve
             t = Instant::now();
-            let encoding = encoder.encode(&defs, &bounds, ctx)?;
+            let encoding = encoder.encode(&defs, &bounds, mngr)?;
             let (cnf, asm) = encoding.into_inner();
             log::info!("Encoded ({} clauses) ({:?})", cnf.len(), t.elapsed());
             t = Instant::now();
@@ -395,7 +393,7 @@ impl Solver {
                     log::info!("{} Failed literal(s)", failed.len());
                     log::debug!("Failed literals: {}", failed.iter().join(", "));
                     // Refine bounds. If bounds are at max, return UNSAT. Otherwise, continue with new bounds.
-                    match refine::refine_bounds(&failed, &bounds, fm, self.options.step, ctx) {
+                    match refine::refine_bounds(&failed, &bounds, fm, self.options.step, mngr) {
                         refine::BoundRefinement::Refined(b) => {
                             let clamped = self.clamp_bounds(b);
                             // if the clamped bound are equal to the bounds we used in this round, nothing changed
@@ -413,18 +411,13 @@ impl Solver {
                         refine::BoundRefinement::SmallModelReached => {
                             // If we blocked an assignment, we can't be sure that the formula is unsat.
                             // Otherwise, we can return UNSAT.
-                            if _blocked_assignments > 0 {
-                                return Ok(SolverResult::Unknown);
-                            } else {
-                                return Ok(SolverResult::Unsat);
-                            }
+                            return Ok(SolverResult::Unsat);
                         }
                     }
                 }
                 None => panic!("Cadical failed to solve"),
             }
         }
-        todo!()
     }
 
     /// Check if the assignment is a solution for the formula.
