@@ -32,7 +32,9 @@ impl SimpRule for ConstantPrefixSuffix {
                             return Some(subst.into());
                         } else if let Some(suf) = regex.suffix().filter(|s| !s.is_empty()) {
                             // X -> Xsuf
-                            let suffix_w = mngr.const_string(suf.to_string());
+                            let as_string = suf.iter().collect::<String>();
+                            debug_assert!(as_string.len() == suf.len());
+                            let suffix_w = mngr.const_string(as_string);
                             let pattern = mngr.concat(vec![lhs.clone(), suffix_w]);
 
                             let mut subst = NodeSubstitution::default();

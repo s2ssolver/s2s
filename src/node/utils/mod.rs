@@ -8,7 +8,11 @@ use super::{Node, NodeKind, NodeManager};
 /// As a special case, if a node is a constant string, the string is reversed.
 pub fn reverse(node: &Node, mngr: &mut NodeManager) -> Node {
     match node.kind() {
-        NodeKind::String(s) => mngr.const_string(s.chars().rev().collect()),
+        NodeKind::String(s) => {
+            let revd: String = s.chars().rev().collect();
+            debug_assert_eq!(revd.len(), s.len());
+            mngr.const_string(revd)
+        }
         _ => {
             let children = node
                 .children()
