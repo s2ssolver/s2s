@@ -36,6 +36,10 @@ impl SimpRule for EntailedBooleanVars {
         }
         None
     }
+
+    fn name(&self) -> &str {
+        "EntailedBooleanVars"
+    }
 }
 
 /// Finds entailed equalities of the form `x = n` where `x` is a variable and `n` is a node.
@@ -63,6 +67,10 @@ impl SimpRule for EntailedAssigments {
             }
         }
         None
+    }
+
+    fn name(&self) -> &str {
+        "EntailedAssigments"
     }
 }
 
@@ -107,5 +115,9 @@ impl SimpRule for RemoveEntailed {
 
     fn init(&mut self, root: &Node) {
         self.update_non_entailed(root, true);
+    }
+
+    fn name(&self) -> &str {
+        "RemoveEntailed"
     }
 }

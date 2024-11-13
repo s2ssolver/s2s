@@ -52,7 +52,7 @@ impl IndependentVariableAssignment {
                             if s == "" {
                                 mngr.const_str("a")
                             } else {
-                                rhs.clone()
+                                mngr.const_str("")
                             }
                         };
                         subs.add(lhs.clone(), rhs, mngr);
@@ -148,5 +148,9 @@ impl SimpRule for IndependentVariableAssignment {
 
     fn init(&mut self, root: &Node) {
         Self::count_variables(root, &mut self.vcount);
+    }
+
+    fn name(&self) -> &str {
+        "IndependentVariableAssignment"
     }
 }

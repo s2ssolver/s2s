@@ -95,4 +95,8 @@ impl SimpRule for ZeroLengthEpsilon {
             None
         }
     }
+
+    fn name(&self) -> &str {
+        "ZeroLengthEpsilon"
+    }
 }

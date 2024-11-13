@@ -104,6 +104,11 @@ impl Simplifier {
         // If so, then return the simplification.
         for rule in &mut self.rules {
             if let Some(simplification) = rule.apply(node, entailed, mngr) {
+                log::info!(
+                    "({}) Simplified: {}",
+                    rule.name(),
+                    simplification.substitution()
+                );
                 return Some(simplification);
             }
         }
@@ -210,6 +215,10 @@ trait SimpRule {
     fn apply(&self, node: &Node, entailed: bool, mngr: &mut NodeManager) -> Option<Simplification>;
 
     fn init(&mut self, _root: &Node) {}
+
+    /// The name of the simplification rule.
+    /// For logging purposes.
+    fn name(&self) -> &str;
 }
 
 impl SimpRule for SimpRules {
@@ -219,5 +228,9 @@ impl SimpRule for SimpRules {
 
     fn init(&mut self, root: &Node) {
         self.as_mut().init(root);
+    }
+
+    fn name(&self) -> &str {
+        self.as_ref().name()
     }
 }

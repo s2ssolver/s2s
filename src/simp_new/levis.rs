@@ -29,6 +29,10 @@ impl SimpRule for LevisWeq {
         }
         None
     }
+
+    fn name(&self) -> &str {
+        "LevisLemma"
+    }
 }
 
 fn levis_step(lhs: &Node, rhs: &Node, mngr: &mut NodeManager) -> Option<NodeSubstitution> {

@@ -47,4 +47,8 @@ impl SimpRule for ConstantPrefixSuffix {
         }
         None
     }
+
+    fn name(&self) -> &str {
+        "RegexConstantPrefixSuffix"
+    }
 }

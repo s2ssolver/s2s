@@ -44,7 +44,6 @@ impl Preprocessor {
                 applied = true;
                 result = new_node;
                 for sub in simplifier.applied() {
-                    log::debug!("Simplified: {}", sub);
                     self.subs = std::mem::take(&mut self.subs).compose(sub.clone(), mngr);
                 }
             }
