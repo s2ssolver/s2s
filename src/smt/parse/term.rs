@@ -17,7 +17,7 @@ impl<'a> TermVisitor<Constant, Identifier, Keyword, SExpr, Symbol, Sort> for Scr
     fn visit_constant(&mut self, constant: Constant) -> Result<Self::T, Self::E> {
         let expr = match constant {
             Constant::String(s) => self.mngr.const_string(s),
-            Constant::Int(i) => self.mngr.int(i as i64),
+            Constant::Int(i) => self.mngr.const_int(i as i64),
             Constant::Real(_) => return Err(AstError::Unsupported("Real constant".to_string())),
         };
         Ok(expr)
@@ -264,7 +264,7 @@ impl<'a> TermVisitor<Constant, Identifier, Keyword, SExpr, Symbol, Sort> for Scr
             "re.comp" if args.len() == 1 => {
                 let arg = args.pop().unwrap();
                 if let NodeKind::Regex(re) = arg.kind() {
-                    let re = self.mngr.re_builder().star(re.clone());
+                    let re = self.mngr.re_builder().comp(re.clone());
                     self.mngr.create_node(NodeKind::Regex(re), vec![])
                 } else {
                     return Err(AstError::Unsupported(format!("(re.comp {})", arg)));
@@ -455,7 +455,8 @@ mod tests {
         let term = parse_term(r#"(re.comp (str.to_re "a"))"#, &mut mngr);
         let str_a = mngr.re_builder().word("a".into());
         let comp = mngr.re_builder().comp(str_a);
-        assert_eq!(term, mngr.create_node(NodeKind::Regex(comp), vec![]));
+        let expected = mngr.create_node(NodeKind::Regex(comp), vec![]);
+        assert_eq!(term, expected, "\nExpected: {}\nGot: {}", expected, term);
     }
 
     #[test]
