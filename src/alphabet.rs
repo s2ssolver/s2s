@@ -6,11 +6,11 @@ use std::{
 use indexmap::IndexSet;
 
 use crate::{
+    canonical::{util::partition_by_vars, AtomKind, Formula, Literal},
     context::Sorted,
-    ir::{util::partition_by_vars, AtomType, Formula, Literal},
 };
 
-use regulaer::alph::Alphabet as InnerAlphabet;
+use regulaer::{alph::Alphabet as InnerAlphabet, re::RegexProps};
 
 /// A wrapper around the regular crate's alphabet
 #[derive(Debug, Clone, Default)]
@@ -92,7 +92,7 @@ const SMT_MAX_CHAR: u32 = 0x2FFFF;
 fn alphabet_of(fm: &Formula) -> InnerAlphabet {
     let mut alph = InnerAlphabet::default();
     for l in fm.literals() {
-        for c in l.constants() {
+        for c in constants_of(&l) {
             if c as u32 <= SMT_MAX_CHAR {
                 alph.insert_char(c);
             }
@@ -102,12 +102,23 @@ fn alphabet_of(fm: &Formula) -> InnerAlphabet {
     alph
 }
 
+fn constants_of(lit: &Literal) -> IndexSet<char> {
+    let atom = lit.atom();
+    match atom.kind() {
+        crate::canonical::AtomKind::Boolvar(_) => IndexSet::new(),
+        crate::canonical::AtomKind::WordEquation(weq) => weq.constants(),
+        crate::canonical::AtomKind::InRe(inre) => inre.re().alphabet().iter_chars().collect(),
+        crate::canonical::AtomKind::FactorConstraint(rfc) => rfc.rhs().chars().collect(),
+        crate::canonical::AtomKind::Linear(_) => IndexSet::new(),
+    }
+}
+
 /// Returns the number of additional characters we need to the alphabet in order to stay equisatisfiable.
 fn additional_chars(fm: &Formula) -> usize {
     // Partition the literals based on variable dependencies
 
     // Cloning is cheap, because all atoms are reference counted pointers
-    let lits = fm.literals().cloned().collect::<Vec<_>>();
+    let lits = Vec::from_iter(fm.literals().into_iter());
     let parts = partition_by_vars(&lits);
 
     // For each partition, compute the number of characters needed to encode the partition and take the maximum
@@ -132,23 +143,24 @@ fn addition_chars_lits(lits: &[Literal]) -> usize {
 
     for lit in lits {
         let pol = lit.polarity();
-        match lit.atom().get_type() {
-            AtomType::BoolVar(_) => (),
-            AtomType::InRe(in_re) => {
-                string_vars.extend(in_re.variables());
+        match lit.atom().kind() {
+            AtomKind::Boolvar(_) => (),
+            AtomKind::InRe(in_re) => {
+                string_vars.insert(in_re.lhs().clone());
                 at_least_one = true;
             }
-            AtomType::WordEquation(weq) => {
+            AtomKind::WordEquation(weq) => {
                 string_vars.extend(weq.variables());
                 contains_eq |= weq.is_proper();
                 if !pol {
                     num_ineqs += 1;
                 }
             }
-            AtomType::PrefixOf(_) | AtomType::SuffixOf(_) | AtomType::Contains(_) => {
-                panic!("Not in normal form")
+            AtomKind::FactorConstraint(fc) => {
+                string_vars.insert(fc.lhs().clone());
+                at_least_one = true;
             }
-            AtomType::LinearConstraint(lc) => {
+            AtomKind::Linear(lc) => {
                 // Can contain string vars, but if they don't occur in the other literals, we need at most one character to account for all possible lengths
                 if lc.variables().iter().any(|v| v.sort().is_string()) {
                     at_least_one = true;
@@ -172,28 +184,40 @@ fn addition_chars_lits(lits: &[Literal]) -> usize {
 
 #[cfg(test)]
 mod tests {
-    use std::rc::Rc;
 
     use super::*;
     use crate::{
-        context::{Context, Sort},
-        ir::{
-            Atom, LinearArithTerm, LinearOperator, LinearSummand, Literal, Pattern, WordEquation,
-        },
+        canonical::{canonicalize, LinearArithTerm, LinearSummand},
+        context::Sort,
+        node::{Node, NodeManager},
     };
 
-    fn make_in_re(var: &str, ctx: &mut Context) -> Rc<Atom> {
-        let x = ctx.make_var(var.to_string(), Sort::String).unwrap();
-        let re = ctx.re_builder().word("foo".into());
-        ctx.ir_builder().in_re(Pattern::variable(x.as_ref()), re)
+    fn to_lit(node: &Node, mngr: &mut NodeManager) -> Literal {
+        match canonicalize(node, mngr).unwrap().kind() {
+            crate::canonical::FormulaKind::Literal(literal) => literal.clone(),
+            _ => unreachable!(),
+        }
     }
 
-    fn make_neq(lvar: &str, rvar: &str, ctx: &mut Context) -> Literal {
-        let x = ctx.make_var(lvar.to_string(), Sort::String).unwrap();
-        let y = ctx.make_var(rvar.to_string(), Sort::String).unwrap();
-        let weq = WordEquation::VarEquality(x.as_ref().clone(), y.as_ref().clone());
-        let atom = ctx.ir_builder().register_atom(AtomType::WordEquation(weq));
-        Literal::Negative(atom)
+    fn make_in_re(var: &str, mngr: &mut NodeManager) -> Literal {
+        let x = mngr
+            .new_var(var.to_string(), Sort::String)
+            .map(|v| mngr.var(v))
+            .unwrap();
+        let re = mngr.re_builder().word("foo".into());
+        let re = mngr.const_regex(re);
+        let inre = mngr.in_re(x, re);
+        to_lit(&inre, mngr)
+    }
+
+    fn make_neq(lvar: &str, rvar: &str, mngr: &mut NodeManager) -> Literal {
+        let x = mngr.new_var(lvar.to_string(), Sort::String).unwrap();
+        let y = mngr.new_var(rvar.to_string(), Sort::String).unwrap();
+        let x = mngr.var(x);
+        let y = mngr.var(y);
+        let eq = mngr.eq(x, y);
+        let neq = mngr.not(eq);
+        to_lit(&neq, mngr)
     }
 
     #[test]
@@ -208,50 +232,47 @@ mod tests {
 
     #[test]
     fn test_addition_chars_single_in_re_only() {
-        let mut ctx = Context::default();
+        let mut mngr = NodeManager::default();
 
-        let inre = make_in_re("x", &mut ctx);
+        let inre = make_in_re("x", &mut mngr);
 
-        let lit = Literal::Positive(inre.clone());
-        let result = addition_chars_lits(&[lit]);
+        let result = addition_chars_lits(&[inre]);
         assert_eq!(result, 1);
     }
 
     #[test]
     fn test_addition_chars_single_in_re_neq() {
-        let mut ctx = Context::default();
+        let mut mngr = NodeManager::default();
 
-        let inre = make_in_re("x", &mut ctx);
-        let neq = make_neq("x", "y", &mut ctx);
-
-        let lit = Literal::Positive(inre.clone());
-        let result = addition_chars_lits(&[lit, neq]);
+        let inre = make_in_re("x", &mut mngr);
+        let neq = make_neq("x", "y", &mut mngr);
+        let result = addition_chars_lits(&[inre, neq]);
         assert_eq!(result, 1);
     }
 
     #[test]
     fn test_addition_chars_single_neqs_more_vars() {
-        let mut ctx = Context::default();
+        let mut mngr = NodeManager::default();
 
-        let neq = make_neq("x", "y", &mut ctx);
-        let neq_2 = make_neq("y", "z", &mut ctx);
-        let neq_3 = make_neq("z", "u", &mut ctx);
+        let neq = make_neq("x", "y", &mut mngr);
+        let neq_2 = make_neq("y", "z", &mut mngr);
+        let neq_3 = make_neq("z", "u", &mut mngr);
         let result = addition_chars_lits(&[neq, neq_2, neq_3]);
         assert_eq!(result, 3); // 4 vars, 3 inequalities => 3 additional characters
     }
 
     #[test]
     fn test_addition_chars_single_in_re_neq_more_ineqs() {
-        let mut ctx = Context::default();
+        let mut mngr = NodeManager::default();
 
-        let neq_xy = make_neq("x", "y", &mut ctx);
-        let neq_xz = make_neq("x", "z", &mut ctx);
-        let neq_xu = make_neq("x", "u", &mut ctx);
+        let neq_xy = make_neq("x", "y", &mut mngr);
+        let neq_xz = make_neq("x", "z", &mut mngr);
+        let neq_xu = make_neq("x", "u", &mut mngr);
 
-        let neq_yz = make_neq("y", "z", &mut ctx);
-        let neq_yu = make_neq("y", "u", &mut ctx);
+        let neq_yz = make_neq("y", "z", &mut mngr);
+        let neq_yu = make_neq("y", "u", &mut mngr);
 
-        let neq_zu = make_neq("z", "u", &mut ctx);
+        let neq_zu = make_neq("z", "u", &mut mngr);
 
         let result = addition_chars_lits(&[neq_xy, neq_xz, neq_xu, neq_yz, neq_yu, neq_zu]);
         assert_eq!(result, 4); // 4 vars, 6 inequalities => 4 additional characters
@@ -259,20 +280,30 @@ mod tests {
 
     #[test]
     fn test_addition_lc_wo_string() {
-        let mut ctx = Context::default();
-        let x = ctx.make_var("x".to_string(), Sort::Int).unwrap();
-        let y = ctx.make_var("y".to_string(), Sort::Int).unwrap();
+        let mut mngr = NodeManager::default();
+        let x = mngr
+            .new_var("x".to_string(), Sort::Int)
+            .map(|v| mngr.var(v))
+            .unwrap();
+        let y = mngr
+            .new_var("y".to_string(), Sort::Int)
+            .map(|v| mngr.var(v))
+            .unwrap();
 
-        let mut lhs = LinearArithTerm::new();
-        lhs.add_summand(LinearSummand::int_variable(x.as_ref().clone(), 5));
-        lhs.add_summand(LinearSummand::int_variable(y.as_ref().clone(), 3));
-        lhs.add_summand(LinearSummand::constant(2));
+        let const_5 = mngr.const_int(5);
+        let const_3 = mngr.const_int(3);
+        let const_2 = mngr.const_int(2);
 
-        let rhs = 10;
-        let lc = ctx
-            .ir_builder()
-            .linear_constraint(lhs, LinearOperator::Eq, rhs);
-        let lit = Literal::Positive(lc);
+        let s1 = mngr.mul(vec![x.clone(), const_5]);
+        let s2 = mngr.mul(vec![y.clone(), const_3]);
+        let s3 = mngr.mul(vec![const_2]);
+
+        let lhs = mngr.add(vec![s1, s2, s3]);
+
+        let rhs = mngr.const_int(10);
+        let lc = mngr.eq(lhs, rhs);
+
+        let lit = to_lit(&lc, &mut mngr);
 
         let result = addition_chars_lits(&[lit]);
         assert_eq!(result, 0);
@@ -280,20 +311,31 @@ mod tests {
 
     #[test]
     fn test_addition_lc_w_string() {
-        let mut ctx = Context::default();
-        let x = ctx.make_var("x".to_string(), Sort::Int).unwrap();
-        let y = ctx.make_var("y".to_string(), Sort::String).unwrap();
+        let mut mngr = NodeManager::default();
+        let x_len = mngr
+            .new_var("x".to_string(), Sort::String)
+            .map(|v| mngr.var(v))
+            .map(|v| mngr.str_len(v))
+            .unwrap();
+        let y = mngr
+            .new_var("y".to_string(), Sort::Int)
+            .map(|v| mngr.var(v))
+            .unwrap();
 
-        let mut lhs = LinearArithTerm::new();
-        lhs.add_summand(LinearSummand::int_variable(x.as_ref().clone(), 5));
-        lhs.add_summand(LinearSummand::len_variable(y.as_ref().clone(), 3));
-        lhs.add_summand(LinearSummand::constant(2));
+        let const_5 = mngr.const_int(5);
+        let const_3 = mngr.const_int(3);
+        let const_2 = mngr.const_int(2);
 
-        let rhs = 10;
-        let lc = ctx
-            .ir_builder()
-            .linear_constraint(lhs, LinearOperator::Eq, rhs);
-        let lit = Literal::Positive(lc);
+        let s1 = mngr.mul(vec![x_len.clone(), const_5]);
+        let s2 = mngr.mul(vec![y.clone(), const_3]);
+        let s3 = mngr.mul(vec![const_2]);
+
+        let lhs = mngr.add(vec![s1, s2, s3]);
+
+        let rhs = mngr.const_int(10);
+        let lc = mngr.eq(lhs, rhs);
+
+        let lit = to_lit(&lc, &mut mngr);
 
         let result = addition_chars_lits(&[lit]);
         assert_eq!(result, 1);
@@ -301,20 +343,32 @@ mod tests {
 
     #[test]
     fn test_addition_lc_two_strings() {
-        let mut ctx = Context::default();
-        let x = ctx.make_var("x".to_string(), Sort::String).unwrap();
-        let y = ctx.make_var("y".to_string(), Sort::String).unwrap();
+        let mut mngr = NodeManager::default();
+        let x_len = mngr
+            .new_var("x".to_string(), Sort::String)
+            .map(|v| mngr.var(v))
+            .map(|v| mngr.str_len(v))
+            .unwrap();
+        let y_len = mngr
+            .new_var("y".to_string(), Sort::String)
+            .map(|v| mngr.var(v))
+            .map(|v| mngr.str_len(v))
+            .unwrap();
 
-        let mut lhs = LinearArithTerm::new();
-        lhs.add_summand(LinearSummand::len_variable(x.as_ref().clone(), 5));
-        lhs.add_summand(LinearSummand::len_variable(y.as_ref().clone(), 3));
-        lhs.add_summand(LinearSummand::constant(2));
+        let const_5 = mngr.const_int(5);
+        let const_3 = mngr.const_int(3);
+        let const_2 = mngr.const_int(2);
 
-        let rhs = 10;
-        let lc = ctx
-            .ir_builder()
-            .linear_constraint(lhs, LinearOperator::Eq, rhs);
-        let lit = Literal::Positive(lc);
+        let s1 = mngr.mul(vec![x_len.clone(), const_5]);
+        let s2 = mngr.mul(vec![y_len.clone(), const_3]);
+        let s3 = mngr.mul(vec![const_2]);
+
+        let lhs = mngr.add(vec![s1, s2, s3]);
+
+        let rhs = mngr.const_int(10);
+        let lc = mngr.eq(lhs, rhs);
+
+        let lit = to_lit(&lc, &mut mngr);
 
         let result = addition_chars_lits(&[lit]);
         assert_eq!(result, 1);
@@ -322,22 +376,34 @@ mod tests {
 
     #[test]
     fn test_addition_lc_two_strings_with_neq() {
-        let mut ctx = Context::default();
-        let x = ctx.make_var("x".to_string(), Sort::String).unwrap();
-        let y = ctx.make_var("y".to_string(), Sort::String).unwrap();
+        let mut mngr = NodeManager::default();
+        let x_len = mngr
+            .new_var("x".to_string(), Sort::String)
+            .map(|v| mngr.var(v))
+            .map(|v| mngr.str_len(v))
+            .unwrap();
+        let y_len = mngr
+            .new_var("y".to_string(), Sort::String)
+            .map(|v| mngr.var(v))
+            .map(|v| mngr.str_len(v))
+            .unwrap();
 
-        let mut lhs = LinearArithTerm::new();
-        lhs.add_summand(LinearSummand::len_variable(x.as_ref().clone(), 5));
-        lhs.add_summand(LinearSummand::len_variable(y.as_ref().clone(), 3));
-        lhs.add_summand(LinearSummand::constant(2));
+        let const_5 = mngr.const_int(5);
+        let const_3 = mngr.const_int(3);
+        let const_2 = mngr.const_int(2);
 
-        let rhs = 10;
-        let lc = ctx
-            .ir_builder()
-            .linear_constraint(lhs, LinearOperator::Eq, rhs);
-        let lit = Literal::Positive(lc);
+        let s1 = mngr.mul(vec![x_len.clone(), const_5]);
+        let s2 = mngr.mul(vec![y_len.clone(), const_3]);
+        let s3 = mngr.mul(vec![const_2]);
 
-        let neq = make_neq("x", "y", &mut ctx);
+        let lhs = mngr.add(vec![s1, s2, s3]);
+
+        let rhs = mngr.const_int(10);
+        let lc = mngr.eq(lhs, rhs);
+
+        let lit = to_lit(&lc, &mut mngr);
+
+        let neq = make_neq("x", "y", &mut mngr);
 
         let result = addition_chars_lits(&[lit, neq]);
         assert_eq!(result, 1);
@@ -345,37 +411,37 @@ mod tests {
 
     #[test]
     fn test_addition_lc_three_strings_with_neq() {
-        let mut ctx = Context::default();
-        let x = ctx.make_var("x".to_string(), Sort::String).unwrap();
-        let y = ctx.make_var("y".to_string(), Sort::String).unwrap();
+        let mut mngr = NodeManager::default();
+        let x_len = mngr
+            .new_var("x".to_string(), Sort::String)
+            .map(|v| mngr.var(v))
+            .map(|v| mngr.str_len(v))
+            .unwrap();
+        let y_len = mngr
+            .new_var("y".to_string(), Sort::String)
+            .map(|v| mngr.var(v))
+            .map(|v| mngr.str_len(v))
+            .unwrap();
 
-        let mut lhs = LinearArithTerm::new();
-        lhs.add_summand(LinearSummand::len_variable(x.as_ref().clone(), 5));
-        lhs.add_summand(LinearSummand::len_variable(y.as_ref().clone(), 3));
-        lhs.add_summand(LinearSummand::constant(2));
+        let const_5 = mngr.const_int(5);
+        let const_3 = mngr.const_int(3);
+        let const_2 = mngr.const_int(2);
 
-        let rhs = 10;
-        let lc = ctx
-            .ir_builder()
-            .linear_constraint(lhs, LinearOperator::Eq, rhs);
-        let lit = Literal::Positive(lc);
+        let s1 = mngr.mul(vec![x_len.clone(), const_5]);
+        let s2 = mngr.mul(vec![y_len.clone(), const_3]);
+        let s3 = mngr.mul(vec![const_2]);
 
-        let neq = make_neq("x", "y", &mut ctx);
-        let neq_2 = make_neq("y", "z", &mut ctx);
+        let lhs = mngr.add(vec![s1, s2, s3]);
+
+        let rhs = mngr.const_int(10);
+        let lc = mngr.eq(lhs, rhs);
+
+        let lit = to_lit(&lc, &mut mngr);
+
+        let neq = make_neq("x", "y", &mut mngr);
+        let neq_2 = make_neq("y", "z", &mut mngr);
 
         let result = addition_chars_lits(&[lit, neq, neq_2]);
         assert_eq!(result, 2);
     }
-
-    #[test]
-    #[ignore = "Implement me"]
-    fn test_addition_chars_lits_weq() {}
-
-    #[test]
-    #[ignore = "Implement me"]
-    fn test_addition_chars_lits_weq_reg() {}
-
-    #[test]
-    #[ignore = "Implement me"]
-    fn test_addition_chars_reg_lin() {}
 }

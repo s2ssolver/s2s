@@ -211,20 +211,20 @@ impl Solver {
         todo!()
         // timer = Instant::now();
 
-        // // Initialize the alphabet
-        // let alphabet = alphabet::infer(&fm_preprocessed);
-        // log::info!("Inferred alphabet ({:?})", timer.elapsed());
-        // log::debug!("Alphabet: {}", alphabet);
-        // timer = Instant::now();
+        // Initialize the alphabet
+        let alphabet = alphabet::infer(&preprocessed);
+        log::info!("Inferred alphabet ({:?})", timer.elapsed());
+        log::debug!("Alphabet: {}", alphabet);
+        timer = Instant::now();
 
-        // if self.options.dry {
-        //     return Ok(SolverResult::Unknown);
-        // }
-        // // Start CEGAR loop
-        // let res = self.run(&fm_preprocessed, abstraction, init_bounds, alphabet, ctx);
+        if self.options.dry {
+        return Ok(SolverResult::Unknown);
+        }
+// Start CEGAR loop
+        let res = self.run(&preprocessed, abstraction, init_bounds, alphabet, mngr);
 
-        // log::info!("Done solving ({:?})", timer.elapsed());
-        // res
+        log::info!("Done solving ({:?})", timer.elapsed());
+        res
     }
 
     // pub fn solve_old(&mut self, fm: &Formula, ctx: &mut Context) -> Result<SolverResult, Error> {
