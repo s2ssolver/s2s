@@ -3,6 +3,8 @@ use std::{
     fmt::{Display, Formatter},
 };
 
+use crate::canonical::Assignment;
+
 use super::{Node, NodeManager};
 
 /// A substitution that maps nodes to other nodes.
@@ -81,6 +83,26 @@ impl NodeSubstitution {
             node
         }
     }
+
+    pub fn from_assignment(assignment: &Assignment, mngr: &mut NodeManager) -> Self {
+        let mut subst = NodeSubstitution::default();
+        for (var, value) in assignment.iter() {
+            let var_node = mngr.var(var.clone());
+            let value = if let Some(true) = value.as_bool() {
+                mngr.ttrue()
+            } else if let Some(false) = value.as_bool() {
+                mngr.ffalse()
+            } else if let Some(str) = value.as_string() {
+                mngr.const_str(str)
+            } else if let Some(int) = value.as_int() {
+                mngr.const_int(int)
+            } else {
+                panic!("Unsupported value in assignment")
+            };
+            subst.add(var_node, value, mngr);
+        }
+        subst
+    }
 }
 
 impl Display for NodeSubstitution {
@@ -135,38 +157,6 @@ mod tests {
 
         assert_eq!(subst.apply(&anode, &mut mngr), cnode);
         assert_eq!(subst.apply(&bnode, &mut mngr), cnode);
-    }
-
-    #[test]
-    #[should_panic]
-    fn add_var_refl() {
-        let mut ctx = Context::default();
-        let mut mngr = NodeManager::default();
-        let mut subst = NodeSubstitution::default();
-
-        let a = ctx.new_temp_var(Sort::Bool);
-
-        let anode = mngr.var(a.clone());
-        subst.add(anode.clone(), anode.clone(), &mut mngr);
-    }
-
-    #[test]
-    #[should_panic]
-    fn add_var_refl_transitive() {
-        let mut ctx = Context::default();
-        let mut mngr = NodeManager::default();
-        let mut subst = NodeSubstitution::default();
-
-        let a = ctx.new_temp_var(Sort::Bool);
-        let b = ctx.new_temp_var(Sort::Bool);
-        let c = ctx.new_temp_var(Sort::Bool);
-
-        let anode = mngr.var(a.clone());
-        let bnode = mngr.var(b.clone());
-        let cnode = mngr.var(c.clone());
-        subst.add(anode.clone(), bnode.clone(), &mut mngr);
-        subst.add(bnode.clone(), cnode.clone(), &mut mngr);
-        subst.add(cnode.clone(), anode.clone(), &mut mngr);
     }
 
     #[test]

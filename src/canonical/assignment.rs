@@ -1,6 +1,6 @@
 //! An assignment is a mapping from variables to constant values.
 
-use std::rc::Rc;
+use std::{fmt::Display, rc::Rc};
 
 use indexmap::IndexMap;
 
@@ -8,15 +8,16 @@ use crate::context::Variable;
 
 use super::{
     ArithOperator, Atom, AtomKind, FactorConstraintType, Formula, FormulaKind, LinearArithTerm,
-    LinearSummand, Literal, Pattern, Symbol, VariableTerm, WordEquation,
+    LinearConstraint, LinearSummand, Literal, Pattern, RegularConstraint, RegularFactorConstraint,
+    Symbol, VariableTerm, WordEquation,
 };
 
 /// The value of a variable in an assignment.
 /// Based on the sort of the variable, the value can be a string, an integer, or a boolean.
 #[derive(Debug, Clone)]
-enum AssignedValue {
+pub enum AssignedValue {
     String(String),
-    Int(isize),
+    Int(i64),
     Bool(bool),
 }
 
@@ -28,7 +29,7 @@ impl AssignedValue {
         }
     }
 
-    pub fn as_int(&self) -> Option<isize> {
+    pub fn as_int(&self) -> Option<i64> {
         match self {
             Self::Int(value) => Some(*value),
             _ => None,
@@ -51,25 +52,19 @@ impl From<String> for AssignedValue {
 
 impl From<i32> for AssignedValue {
     fn from(value: i32) -> Self {
-        Self::Int(value as isize)
-    }
-}
-
-impl From<isize> for AssignedValue {
-    fn from(value: isize) -> Self {
-        Self::Int(value)
+        Self::Int(value as i64)
     }
 }
 
 impl From<i64> for AssignedValue {
     fn from(value: i64) -> Self {
-        Self::Int(value as isize)
+        Self::Int(value as i64)
     }
 }
 
 impl From<u32> for AssignedValue {
     fn from(value: u32) -> Self {
-        Self::Int(value as isize)
+        Self::Int(value as i64)
     }
 }
 
@@ -87,7 +82,7 @@ impl Into<String> for AssignedValue {
 
 impl Into<isize> for AssignedValue {
     fn into(self) -> isize {
-        self.as_int().expect("Value is not an integer")
+        self.as_int().expect("Value is not an integer") as isize
     }
 }
 
@@ -147,7 +142,7 @@ impl Assignment {
     }
 
     /// Returns the value of a variable in the assignment.
-    pub fn get_int(&self, variable: &Variable) -> Option<isize> {
+    pub fn get_int(&self, variable: &Variable) -> Option<i64> {
         self.values.get(variable).and_then(|value| match value {
             AssignedValue::Int(value) => Some(*value),
             _ => None,
@@ -160,6 +155,10 @@ impl Assignment {
             AssignedValue::Bool(value) => Some(*value),
             _ => None,
         })
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = (&Rc<Variable>, &AssignedValue)> {
+        self.values.iter()
     }
 
     /// Extends the assignment with the values from another assignment.
@@ -197,57 +196,65 @@ impl Assignment {
     pub fn satisfies_atom(&self, atom: &Atom) -> bool {
         match atom.kind() {
             AtomKind::Boolvar(v) => self.get_bool(&v).map_or(false, |value| value),
-            AtomKind::WordEquation(WordEquation::ConstantEquality(_, _)) => true,
-            AtomKind::WordEquation(WordEquation::VarEquality(l, r)) => {
-                match (self.get_str(&l), self.get_str(&r)) {
-                    (Some(l), Some(r)) => l == r,
-                    _ => false,
-                }
-            }
-            AtomKind::WordEquation(WordEquation::VarAssignment(l, r)) => match self.get_str(&l) {
+            AtomKind::WordEquation(we) => self.satisfies_word_equation(we),
+            AtomKind::InRe(inre) => self.satisfies_inre(inre),
+            AtomKind::FactorConstraint(fc) => self.satisfies_factor_constraint(fc),
+            AtomKind::Linear(lc) => self.satisfies_arith_constraint(lc),
+        }
+    }
+
+    pub fn satisfies_word_equation(&self, eq: &WordEquation) -> bool {
+        match eq {
+            WordEquation::ConstantEquality(l, r) => l == r,
+            WordEquation::VarEquality(l, r) => match (self.get_str(&l), self.get_str(&r)) {
+                (Some(l), Some(r)) => l == r,
+                _ => false,
+            },
+            WordEquation::VarAssignment(l, r) => match self.get_str(&l) {
                 Some(value) => value == r,
                 None => false,
             },
-            AtomKind::WordEquation(WordEquation::General(l, r)) => {
-                match (self.apply_pattern(&l), self.apply_pattern(&r)) {
-                    (Some(l), Some(r)) => l == r,
-                    _ => false,
-                }
+            WordEquation::General(l, r) => match (self.apply_pattern(&l), self.apply_pattern(&r)) {
+                (Some(l), Some(r)) => l == r,
+                _ => false,
+            },
+        }
+    }
+
+    pub fn satisfies_inre(&self, inre: &RegularConstraint) -> bool {
+        if let Some(value) = self.get_str(&inre.lhs()) {
+            inre.re().accepts(&value.clone().into())
+        } else {
+            false
+        }
+    }
+
+    pub fn satisfies_factor_constraint(&self, fc: &RegularFactorConstraint) -> bool {
+        if let Some(value) = self.get_str(fc.lhs()) {
+            let rhs = fc.rhs();
+            match fc.typ() {
+                FactorConstraintType::Prefix => value.starts_with(rhs),
+                FactorConstraintType::Suffix => value.ends_with(rhs),
+                FactorConstraintType::Contains => value.contains(rhs),
             }
-            AtomKind::InRe(inre) => {
-                if let Some(value) = self.get_str(&inre.lhs()) {
-                    inre.re().accepts(&value.clone().into())
-                } else {
-                    false
-                }
+        } else {
+            false
+        }
+    }
+
+    pub fn satisfies_arith_constraint(&self, lc: &LinearConstraint) -> bool {
+        let lhs_value = self.apply_arith_term(lc.lhs());
+        if let Some(lhs_value) = lhs_value {
+            match lc.operator() {
+                ArithOperator::Eq => lhs_value == lc.rhs(),
+                ArithOperator::Ineq => lhs_value != lc.rhs(),
+                ArithOperator::Leq => lhs_value <= lc.rhs(),
+                ArithOperator::Less => lhs_value < lc.rhs(),
+                ArithOperator::Geq => lhs_value >= lc.rhs(),
+                ArithOperator::Greater => lhs_value > lc.rhs(),
             }
-            AtomKind::FactorConstraint(fc) => {
-                if let Some(value) = self.get_str(fc.lhs()) {
-                    let rhs = fc.rhs();
-                    match fc.typ() {
-                        FactorConstraintType::Prefix => value.starts_with(rhs),
-                        FactorConstraintType::Suffix => value.ends_with(rhs),
-                        FactorConstraintType::Contains => value.contains(rhs),
-                    }
-                } else {
-                    false
-                }
-            }
-            AtomKind::Linear(lc) => {
-                let lhs_value = self.apply_arith_term(lc.lhs());
-                if let Some(lhs_value) = lhs_value {
-                    match lc.operator() {
-                        ArithOperator::Eq => lhs_value == lc.rhs(),
-                        ArithOperator::Ineq => lhs_value != lc.rhs(),
-                        ArithOperator::Leq => lhs_value <= lc.rhs(),
-                        ArithOperator::Less => lhs_value < lc.rhs(),
-                        ArithOperator::Geq => lhs_value >= lc.rhs(),
-                        ArithOperator::Greater => lhs_value > lc.rhs(),
-                    }
-                } else {
-                    false
-                }
-            }
+        } else {
+            false
         }
     }
 
@@ -262,16 +269,14 @@ impl Assignment {
         Some(result)
     }
 
-    fn apply_arith_term(&self, term: &LinearArithTerm) -> Option<isize> {
+    fn apply_arith_term(&self, term: &LinearArithTerm) -> Option<i64> {
         let mut res = 0;
         for summand in term.iter() {
             match summand {
                 LinearSummand::Mult(v, s) => {
                     let value = match v {
                         VariableTerm::Int(vv) => self.get_int(vv),
-                        VariableTerm::Len(vv) => {
-                            self.get_str(vv).map(|s| s.chars().count() as isize)
-                        }
+                        VariableTerm::Len(vv) => self.get_str(vv).map(|s| s.chars().count() as i64),
                     };
                     if let Some(value) = value {
                         res += value * s;
@@ -283,5 +288,24 @@ impl Assignment {
             }
         }
         Some(res)
+    }
+}
+
+impl Display for AssignedValue {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::String(value) => write!(f, "{}", value),
+            Self::Int(value) => write!(f, "{}", value),
+            Self::Bool(value) => write!(f, "{}", value),
+        }
+    }
+}
+
+impl Display for Assignment {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        for (variable, value) in self.values.iter() {
+            writeln!(f, "{} -> {}", variable, value)?;
+        }
+        Ok(())
     }
 }

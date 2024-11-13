@@ -284,7 +284,7 @@ mod tests {
         let mut mngr = NodeManager::default();
 
         // Test with a non-string node
-        let node = mngr.int(42);
+        let node = mngr.const_int(42);
         assert_eq!(const_prefix(&node), None);
     }
 
@@ -356,7 +356,7 @@ mod tests {
         let mut mngr = NodeManager::default();
 
         // Test with a non-string node
-        let node = mngr.int(42);
+        let node = mngr.const_int(42);
         assert_eq!(const_suffix(&node), None);
     }
 
@@ -511,7 +511,7 @@ mod tests {
         }
         let new_node = iter.to_node(&mut mngr).unwrap();
 
-        let expected = "(concat (concat \"\"))";
-        assert_eq!(format!("{new_node}"), expected,);
+        let expected = mngr.const_str("");
+        assert_eq!(new_node, expected,);
     }
 }

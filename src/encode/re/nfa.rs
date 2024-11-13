@@ -16,8 +16,9 @@ use regulaer::{
 use crate::{
     bounds::Bounds,
     canonical::RegularConstraint,
-    context::{Context, Variable},
+    context::Variable,
     encode::{domain::DomainEncoding, EncodingError, EncodingResult, LiteralEncoder, LAMBDA},
+    node::NodeManager,
     sat::{nlit, plit, pvar, PVar},
     smt::smt_max_char,
 };
@@ -26,7 +27,7 @@ use crate::{
 /// Encodes that a variable is a member of a regular language.
 /// The resulting encoding is incremental.
 pub struct NFAEncoder {
-    var: Variable,
+    var: Rc<Variable>,
     nfa: Rc<NFA>,
     /// The inverse of the transition function.
     /// Maps a state to a list of pairs (state, transition) that lead to the given state.
@@ -361,7 +362,7 @@ impl LiteralEncoder for NFAEncoder {
 }
 
 impl NFAEncoder {
-    fn new(var: &Variable, nfa: Rc<NFA>, pol: bool) -> Self {
+    fn new(var: &Rc<Variable>, nfa: Rc<NFA>, pol: bool) -> Self {
         let delta_inv = precompute_delta_inv(&nfa).unwrap();
         Self {
             var: var.clone(),
@@ -384,11 +385,11 @@ impl From<AutomatonError> for EncodingError {
 pub fn build_inre_encoder(
     inre: &RegularConstraint,
     pol: bool,
-    ctx: &mut Context,
+    mngr: &mut NodeManager,
 ) -> Result<Box<dyn LiteralEncoder>, EncodingError> {
     let v = inre.lhs();
     let re = inre.re();
-    let nfa = ctx.get_nfa(re);
+    let nfa = mngr.get_nfa(re);
     let encoder: Box<dyn LiteralEncoder> = Box::new(NFAEncoder::new(v, nfa, pol));
     Ok(encoder)
 }
@@ -438,17 +439,17 @@ mod test {
     };
 
     fn solve_with_bounds(re: Regex, pol: bool, ubounds: &[usize]) -> Option<bool> {
-        let mut ctx = Context::default();
-        let var = ctx.new_temp_var(Sort::String);
+        let mut mngr = NodeManager::default();
+        let var = mngr.temp_var(Sort::String);
 
         let alph = Alphabet::from(re.alphabet());
 
-        let nfa = ctx.get_nfa(&re);
+        let nfa = mngr.get_nfa(&re);
 
         let mut bounds = Bounds::default();
 
         let mut encoder = NFAEncoder::new(&var, nfa, pol);
-        let mut dom_encoder = DomainEncoder::new(alph);
+        let mut dom_encoder = DomainEncoder::new(alph, IndexSet::from_iter(vec![var.clone()]));
         let mut solver: Solver = cadical::Solver::default();
 
         let mut result = None;
@@ -456,7 +457,7 @@ mod test {
             bounds.set(var.as_ref().clone(), Interval::new(0, *bound as isize));
             let mut res = EncodingResult::empty();
 
-            res.extend(dom_encoder.encode(&bounds, &ctx));
+            res.extend(dom_encoder.encode(&bounds));
 
             res.extend(encoder.encode(&bounds, dom_encoder.encoding()).unwrap());
 
@@ -468,8 +469,7 @@ mod test {
                     result = solver.solve_with(assms.into_iter());
                     if let Some(true) = result {
                         let _model = dom_encoder.encoding().get_model(&solver);
-                        let var_model =
-                            _model.get(&var).unwrap().as_string().as_constant().unwrap();
+                        let var_model = _model.get(&var).unwrap().as_string().unwrap();
                         encoder.print_debug(&solver, dom_encoder.encoding());
                         assert!(
                             re.accepts(&var_model.clone().into()),
@@ -489,36 +489,36 @@ mod test {
 
     #[test]
     fn var_in_epsi() {
-        let mut ctx = Context::default();
+        let mut mngr = NodeManager::default();
 
-        let re = ctx.re_builder().epsilon();
+        let re = mngr.re_builder().epsilon();
 
         assert_eq!(solve_with_bounds(re, true, &[1]), Some(true));
     }
 
     #[test]
     fn var_in_none() {
-        let mut ctx = Context::default();
+        let mut mngr = NodeManager::default();
 
-        let re = ctx.re_builder().none();
+        let re = mngr.re_builder().none();
 
         assert_eq!(solve_with_bounds(re, true, &[10]), Some(false));
     }
 
     #[test]
     fn var_in_const_no_concat() {
-        let mut ctx = Context::default();
+        let mut mngr = NodeManager::default();
 
-        let re = ctx.re_builder().word("foo".into());
+        let re = mngr.re_builder().word("foo".into());
 
         assert_eq!(solve_with_bounds(re, true, &[7]), Some(true));
     }
 
     #[test]
     fn var_in_const_concat() {
-        let mut ctx = Context::default();
+        let mut mngr = NodeManager::default();
 
-        let builder = ctx.re_builder();
+        let builder = mngr.re_builder();
 
         let args = vec![builder.word("foo".into()), builder.word("bar".into())];
         let re = builder.concat(args);

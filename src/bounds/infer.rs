@@ -8,7 +8,7 @@ use regular::RegularBoundsInferer;
 
 use crate::{
     canonical::{
-        AtomKind, LinearArithTerm, LinearConstraint, ArithOperator, Literal, RegularConstraint,
+        ArithOperator, AtomKind, LinearArithTerm, LinearConstraint, Literal, RegularConstraint,
         WordEquation,
     },
     context::{Sorted, Variable},
@@ -201,13 +201,13 @@ impl BoundInferer {
                             // This is none if the nfa contains cycles
                             // Add "|v| <= max" to the bounds
                             let lhs = LinearArithTerm::from_var(v.clone());
-                            let lc = LinearConstraint::new(lhs, ArithOperator::Leq, max as isize);
+                            let lc = LinearConstraint::new(lhs, ArithOperator::Leq, max as i64);
                             self.lin.add_linear(lc);
                         }
                         if let Some(min) = nfa.shortest() {
                             // Add "|v| >= max" to the bounds
                             let lhs = LinearArithTerm::from_var(v.clone());
-                            let lc = LinearConstraint::new(lhs, ArithOperator::Geq, min as isize);
+                            let lc = LinearConstraint::new(lhs, ArithOperator::Geq, min as i64);
                             self.lin.add_linear(lc);
                         }
                     }

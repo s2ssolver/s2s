@@ -347,6 +347,10 @@ impl NodeManager {
         self.const_string(s.to_string())
     }
 
+    pub fn const_regex(&mut self, r: Regex) -> Node {
+        self.intern_node(NodeKind::Regex(r), vec![])
+    }
+
     /// String concatenation
     pub fn concat(&mut self, rs: Vec<Node>) -> Node {
         // Flatten the concatenation and remove empty strings
@@ -396,7 +400,7 @@ impl NodeManager {
     /* Int Functions */
 
     /// An integer constant
-    pub fn int(&mut self, i: i64) -> Node {
+    pub fn const_int(&mut self, i: i64) -> Node {
         self.intern_node(NodeKind::Int(i), vec![])
     }
 

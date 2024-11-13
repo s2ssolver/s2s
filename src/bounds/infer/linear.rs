@@ -7,7 +7,7 @@ use indexmap::IndexSet;
 use crate::{
     bounds::{BoundValue, Bounds},
     canonical::{
-        LinearArithTerm, LinearConstraint, ArithOperator, LinearSummand, Symbol, WordEquation,
+        ArithOperator, LinearArithTerm, LinearConstraint, LinearSummand, Symbol, WordEquation,
     },
     context::{Sorted, Variable},
 };
@@ -225,7 +225,7 @@ impl LinearRefiner {
                         let lb = self.lb(v.variable(), bounds);
                         match lb * (*coeff).into() {
                             BoundValue::Num(v) => {
-                                if let Some(v) = smallest.checked_add(v as isize) {
+                                if let Some(v) = smallest.checked_add(v as i64) {
                                     smallest = v;
                                 } else {
                                     return BoundValue::PosInf;
@@ -240,7 +240,7 @@ impl LinearRefiner {
                         let ub = self.ub(v.variable(), bounds);
                         match ub * (*coeff).into() {
                             BoundValue::Num(v) => {
-                                if let Some(v) = smallest.checked_add(v as isize) {
+                                if let Some(v) = smallest.checked_add(v as i64) {
                                     smallest = v;
                                 } else {
                                     return BoundValue::NegInf;
@@ -267,7 +267,7 @@ impl LinearRefiner {
                         let ub = self.ub(v.variable(), bounds);
                         match ub * (*coeff).into() {
                             BoundValue::Num(v) => {
-                                if let Some(v) = largest.checked_add(v as isize) {
+                                if let Some(v) = largest.checked_add(v as i64) {
                                     largest = v;
                                 } else {
                                     return BoundValue::PosInf;
@@ -280,7 +280,7 @@ impl LinearRefiner {
                         let lb = self.lb(v.variable(), bounds);
                         match lb * (*coeff).into() {
                             BoundValue::Num(v) => {
-                                if let Some(v) = largest.checked_add(v as isize) {
+                                if let Some(v) = largest.checked_add(v as i64) {
                                     largest = v;
                                 } else {
                                     return BoundValue::PosInf;

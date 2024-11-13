@@ -25,7 +25,7 @@ impl RewriteRule for FoldConstantInts {
                         }
                     }
                     if folded > 1 {
-                        let sum_node = mngr.int(sum);
+                        let sum_node = mngr.const_int(sum);
                         new_children.push(sum_node);
                         Some(mngr.add(new_children))
                     } else {
@@ -48,7 +48,7 @@ impl RewriteRule for FoldConstantInts {
                         }
                     }
                     if folded > 1 {
-                        let sum_node = mngr.int(sum);
+                        let sum_node = mngr.const_int(sum);
                         new_children.push(sum_node);
                         Some(mngr.sub(new_children))
                     } else {
@@ -72,9 +72,9 @@ impl RewriteRule for FoldConstantInts {
                     }
                     if folded > 1 {
                         if prod == 0 {
-                            Some(mngr.int(0))
+                            Some(mngr.const_int(0))
                         } else {
-                            let prod_node = mngr.int(prod);
+                            let prod_node = mngr.const_int(prod);
                             new_children.push(prod_node);
                             Some(mngr.mul(new_children))
                         }

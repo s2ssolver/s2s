@@ -547,7 +547,7 @@ impl Display for RegularConstraint {
     }
 }
 
-#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+#[derive(Clone, Debug, Copy, Hash, PartialEq, Eq)]
 pub enum FactorConstraintType {
     Prefix,
     Suffix,

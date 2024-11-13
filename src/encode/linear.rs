@@ -4,7 +4,7 @@ use indexmap::IndexMap;
 
 use crate::{
     bounds::Bounds,
-    canonical::{LinearConstraint, ArithOperator, LinearSummand},
+    canonical::{ArithOperator, LinearConstraint, LinearSummand},
     context::Sorted,
     sat::{nlit, plit, pvar, PVar},
 };
@@ -15,7 +15,7 @@ use super::{domain::DomainEncoding, EncodingError, EncodingResult, LiteralEncode
 pub struct MddEncoder {
     linear: LinearConstraint,
 
-    nodes: IndexMap<usize, IndexMap<isize, PVar>>,
+    nodes: IndexMap<usize, IndexMap<i64, PVar>>,
 
     mdd_root: PVar,
     mdd_false: PVar,
@@ -75,19 +75,19 @@ impl LiteralEncoder for MddEncoder {
                 LinearSummand::Mult(var, coeff) => {
                     let v = var.variable();
                     let current_u_bound =
-                        bounds.get_upper_finite(v).expect("Unbounded variable") as isize;
+                        bounds.get_upper_finite(v).expect("Unbounded variable") as i64;
                     let current_l_bound =
-                        bounds.get_lower_finite(v).expect("Unbounded variable") as isize;
+                        bounds.get_lower_finite(v).expect("Unbounded variable") as i64;
 
                     for l in current_l_bound..=current_u_bound {
                         if let Some(last_bounds) = self.last_bounds.as_ref() {
                             if last_bounds
                                 .get_lower_finite(v)
-                                .map(|ll| l >= ll as isize)
+                                .map(|ll| l >= ll as i64)
                                 .unwrap_or(false)
                                 && last_bounds
                                     .get_upper_finite(v)
-                                    .map(|uu| l <= uu as isize)
+                                    .map(|uu| l <= uu as i64)
                                     .unwrap_or(false)
                             {
                                 // Already encoded

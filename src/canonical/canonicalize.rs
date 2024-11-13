@@ -388,7 +388,7 @@ impl Canonicalizer {
                     Err(NodeError::SortMismatch(node.clone(), Sort::Int, v.sort()))
                 }
             }
-            NodeKind::Int(i) => Ok(LinearArithTerm::from_const(*i as isize)),
+            NodeKind::Int(i) => Ok(LinearArithTerm::from_const(*i)),
             NodeKind::Add => {
                 let mut sum = LinearArithTerm::new();
                 for c in node.children() {
@@ -400,7 +400,7 @@ impl Canonicalizer {
             NodeKind::Neg => {
                 debug_assert!(node.children().len() == 1);
                 // rewrite (- t) as (-1 * t)
-                let negone = mngr.int(-1);
+                let negone = mngr.const_int(-1);
                 let as_mult = mngr.mul(vec![negone, node.clone()]);
                 self.canonicalize_linear_arith_term(as_mult, mngr)
             }
@@ -449,9 +449,8 @@ impl Canonicalizer {
         let child = node.children().first().unwrap();
         match child.kind() {
             NodeKind::String(s) => {
-                let len = s.chars().count();
-                assert!(len < i64::MAX as usize, "String '{}' too long", s);
-                Ok(LinearArithTerm::from_const(len as isize))
+                let len = s.chars().count().try_into().unwrap();
+                Ok(LinearArithTerm::from_const(len))
             }
             NodeKind::Variable(v) => {
                 if v.sort().is_string() {
@@ -484,7 +483,7 @@ impl Canonicalizer {
         &self,
         lhs: LinearArithTerm,
         rhs: LinearArithTerm,
-    ) -> (LinearArithTerm, isize) {
+    ) -> (LinearArithTerm, i64) {
         let mut new_lhs = LinearArithTerm::new();
         let mut rhs_const = 0;
         for term in lhs.into_iter() {

@@ -12,6 +12,7 @@ mod assignment;
 mod canonicalize;
 mod int;
 mod string;
+pub mod util;
 pub use assignment::Assignment;
 pub use int::*;
 pub use string::*;
@@ -85,6 +86,19 @@ impl Formula {
                 lits.insert(lit.clone());
                 lits
             }
+        }
+    }
+
+    pub fn literals(&self) -> IndexSet<Literal> {
+        match self.kind() {
+            FormulaKind::And(children) => children.iter().map(|f| f.literals()).flatten().collect(),
+            FormulaKind::Or(children) => children.iter().map(|f| f.literals()).flatten().collect(),
+            FormulaKind::Literal(lit) => {
+                let mut lits = IndexSet::new();
+                lits.insert(lit.clone());
+                lits
+            }
+            FormulaKind::Unsupported(_) => IndexSet::new(),
         }
     }
 }

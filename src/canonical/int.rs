@@ -42,25 +42,25 @@ impl Display for VariableTerm {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum LinearSummand {
     /// Multiply a variable term with a constant
-    Mult(VariableTerm, isize),
+    Mult(VariableTerm, i64),
     /// A constant
-    Const(isize),
+    Const(i64),
 }
 
 impl LinearSummand {
     /// Create a linear summand from a constant value
-    pub fn constant(n: isize) -> Self {
+    pub fn constant(n: i64) -> Self {
         LinearSummand::Const(n)
     }
 
     /// Create a linear summand from a scaled integer variable
-    pub fn int_variable(x: Rc<Variable>, c: isize) -> Self {
+    pub fn int_variable(x: Rc<Variable>, c: i64) -> Self {
         assert!(x.sort().is_int(), "Variable must be of sort int");
         LinearSummand::Mult(VariableTerm::Int(x), c)
     }
 
     /// Create a linear summand from a scaled length variable
-    pub fn len_variable(x: Rc<Variable>, c: isize) -> Self {
+    pub fn len_variable(x: Rc<Variable>, c: i64) -> Self {
         assert!(x.sort().is_string(), "Variable must be of sort string");
         LinearSummand::Mult(VariableTerm::Len(x), c)
     }
@@ -72,7 +72,7 @@ impl LinearSummand {
         }
     }
 
-    pub fn multiply(&self, c: isize) -> Self {
+    pub fn multiply(&self, c: i64) -> Self {
         match self {
             LinearSummand::Mult(x, c2) => LinearSummand::Mult(x.clone(), c * c2),
             LinearSummand::Const(c2) => LinearSummand::Const(c * c2),
@@ -143,7 +143,7 @@ impl LinearArithTerm {
     }
 
     /// Create a linear arithmetic term from a constant
-    pub fn from_const(c: isize) -> Self {
+    pub fn from_const(c: i64) -> Self {
         Self {
             factors: vec![LinearSummand::Const(c)],
             canonical: true,
@@ -157,7 +157,7 @@ impl LinearArithTerm {
     }
 
     /// Multiplies every summand in the term with a constant
-    pub fn multiply_constant(&mut self, c: isize) {
+    pub fn multiply_constant(&mut self, c: i64) {
         for f in self.factors.iter_mut() {
             *f = f.multiply(c);
         }
@@ -312,7 +312,7 @@ impl LinearArithTerm {
     }
 
     /// Returns `Some(c)` if the term is constant `c`, `None` otherwise.
-    pub fn as_constant(&self) -> Option<isize> {
+    pub fn as_constant(&self) -> Option<i64> {
         let mut c = 0;
         for f in self.iter() {
             match f {
@@ -355,7 +355,7 @@ pub enum ArithOperator {
     Greater,
 }
 impl ArithOperator {
-    pub fn eval(&self, lhs: isize, rhs: isize) -> bool {
+    pub fn eval(&self, lhs: i64, rhs: i64) -> bool {
         match self {
             ArithOperator::Eq => lhs == rhs,
             ArithOperator::Ineq => lhs != rhs,
@@ -388,13 +388,13 @@ impl ArithOperator {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct LinearConstraint {
     lhs: LinearArithTerm,
-    rhs: isize,
+    rhs: i64,
     typ: ArithOperator,
     is_canonical: bool,
 }
 
 impl LinearConstraint {
-    pub fn new(lhs: LinearArithTerm, typ: ArithOperator, rhs: isize) -> Self {
+    pub fn new(lhs: LinearArithTerm, typ: ArithOperator, rhs: i64) -> Self {
         Self {
             lhs,
             rhs,
@@ -406,7 +406,7 @@ impl LinearConstraint {
     pub fn lhs(&self) -> &LinearArithTerm {
         &self.lhs
     }
-    pub fn rhs(&self) -> isize {
+    pub fn rhs(&self) -> i64 {
         self.rhs
     }
     pub fn operator(&self) -> ArithOperator {
