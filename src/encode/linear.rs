@@ -29,7 +29,8 @@ pub struct MddEncoder {
 }
 
 impl MddEncoder {
-    pub fn new(mut linear: LinearConstraint) -> Self {
+    pub fn new(linear: LinearConstraint, pol: bool) -> Self {
+        let mut linear = if pol { linear } else { linear.negate() };
         linear.canonicalize();
         let root_pvar = pvar();
         let mut node_map = IndexMap::new();
@@ -64,6 +65,7 @@ impl LiteralEncoder for MddEncoder {
         dom: &DomainEncoding,
     ) -> Result<EncodingResult, EncodingError> {
         self.round += 1;
+
         let mut res = EncodingResult::empty();
 
         let mut queue = VecDeque::new();

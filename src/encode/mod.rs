@@ -198,6 +198,6 @@ pub fn get_encoder(
         AtomKind::InRe(inre) => build_inre_encoder(inre, pol, mngr),
         AtomKind::WordEquation(weq) => Ok(equation::get_encoder(weq, pol)),
         AtomKind::FactorConstraint(_) => todo!(),
-        AtomKind::Linear(lc) => Ok(Box::new(MddEncoder::new(lc.clone()))),
+        AtomKind::Linear(lc) => Ok(Box::new(MddEncoder::new(lc.clone(), pol))),
     }
 }

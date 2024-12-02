@@ -165,7 +165,13 @@ impl BoundInferer {
             AtomKind::FactorConstraint(_fac) => {
                 todo!()
             }
-            AtomKind::Linear(lc) => self.add_linear_constraint(lc),
+            AtomKind::Linear(lc) => {
+                if pol {
+                    self.add_linear_constraint(lc)
+                } else {
+                    self.lin.add_linear(lc.negate());
+                }
+            }
         }
         self.fragment.and(&lit);
     }
