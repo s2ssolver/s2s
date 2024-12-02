@@ -1,4 +1,4 @@
-use regulaer::re::{deriv::Deriver, RegexProps};
+use regulaer::re::{deriv::Deriver, RegOp, RegexProps};
 
 use crate::node::{
     utils::{reverse, Symbol, SymbolIterator},
@@ -122,5 +122,28 @@ impl RewriteRule for ReStripConstantSuffix {
         } else {
             None
         }
+    }
+}
+
+// Rewrite "InRe(X, comp(R))" to "Not InRe(X, R)"
+pub struct PullComplement;
+
+impl RewriteRule for PullComplement {
+    fn apply(&self, node: &Node, mngr: &mut NodeManager) -> Option<Node> {
+        if *node.kind() == NodeKind::InRe {
+            debug_assert!(node.children().len() == 2);
+            let lhs = &node.children()[0];
+            let rhs = &node.children()[1];
+
+            if let NodeKind::Regex(re) = rhs.kind() {
+                if let RegOp::Comp(inner) = re.op() {
+                    let new_rhs = mngr.create_node(NodeKind::Regex(inner.clone()), vec![]);
+                    let new_node = mngr.in_re(lhs.clone(), new_rhs);
+                    let negated = mngr.not(new_node);
+                    return Some(negated);
+                }
+            }
+        }
+        None
     }
 }

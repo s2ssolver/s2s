@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use satstr::{node::NodeManager, parse_script, solve_smt, Interpreter, SolverOptions};
+use satstr::{node::NodeManager, parse_script, Interpreter, SolverOptions};
 use test_generator::test_resources;
 
 #[test_resources("res/tests_sat/*.smt2")]

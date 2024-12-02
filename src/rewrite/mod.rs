@@ -37,6 +37,7 @@ impl Default for Rewriter {
                 Box::new(regex::FoldConstantRegex),
                 Box::new(regex::ReStripConstantPrefix),
                 Box::new(regex::ReStripConstantSuffix),
+                Box::new(regex::PullComplement),
             ],
             rewrite_cache: IndexMap::new(),
             applied_rules: Vec::new(),
