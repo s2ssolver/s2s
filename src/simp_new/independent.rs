@@ -76,7 +76,17 @@ impl IndependentVariableAssignment {
         match lhs.kind() {
             NodeKind::Variable(v) if self.independent(v) => {
                 let mut subs = NodeSubstitution::default();
-                let rhs = regulaer::re::sampling::try_sample(regex, mngr.re_builder(), pol, 200)?;
+                // TODO: CHECK IF a empty in lang and return accordingly
+
+                let regex = if pol {
+                    regex.clone()
+                } else {
+                    mngr.re_builder().comp(regex.clone())
+                };
+                let nfa = mngr.get_nfa(&regex);
+
+                let rhs = nfa.sample()?;
+
                 if pol {
                     debug_assert!(regex.accepts(&rhs));
                 } else {
