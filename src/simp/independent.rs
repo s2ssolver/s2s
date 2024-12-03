@@ -4,7 +4,7 @@ use std::{collections::HashMap, rc::Rc};
 
 use regulaer::re::Regex;
 
-use crate::{context::Variable, node::NodeKind};
+use crate::node::{NodeKind, Variable};
 
 use super::*;
 

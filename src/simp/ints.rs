@@ -1,9 +1,6 @@
 use std::{collections::HashSet, rc::Rc};
 
-use crate::{
-    context::{Sorted, Variable},
-    node::NodeKind,
-};
+use crate::node::{NodeKind, Sorted, Variable};
 
 use super::*;
 

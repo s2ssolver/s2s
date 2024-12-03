@@ -1,9 +1,6 @@
-use crate::{
-    context::Sorted,
-    node::{
-        utils::{Symbol, SymbolIterator},
-        NodeKind,
-    },
+use crate::node::{
+    utils::{Symbol, SymbolIterator},
+    NodeKind, Sorted,
 };
 
 use super::*;

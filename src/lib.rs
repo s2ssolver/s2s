@@ -11,16 +11,14 @@ mod abstraction;
 mod alphabet;
 mod bounds;
 pub mod canonical;
-mod context;
+
 mod encode;
 mod error;
 mod interpret;
-mod ir;
 pub mod node;
-mod preprocess;
 mod rewrite;
 mod sat;
-mod simp_new;
+mod simp;
 mod smt;
 mod solver;
 

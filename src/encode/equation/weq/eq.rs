@@ -71,11 +71,11 @@ impl WordEquationEncoder {
 }
 
 impl LiteralEncoder for WordEquationEncoder {
-    fn is_incremental(&self) -> bool {
+    fn _is_incremental(&self) -> bool {
         true
     }
 
-    fn reset(&mut self) {
+    fn _reset(&mut self) {
         todo!()
     }
 

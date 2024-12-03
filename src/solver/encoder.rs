@@ -8,12 +8,11 @@ use crate::{
     alphabet::Alphabet,
     bounds::Bounds,
     canonical::{Assignment, Literal},
-    context::Variable,
     encode::{
         domain::{DomainEncoder, DomainEncoding},
         get_encoder, EncodingError, EncodingResult, LiteralEncoder,
     },
-    node::{NodeManager, NodeSubstitution},
+    node::{NodeManager, NodeSubstitution, Variable},
     sat::{nlit, plit, pvar, PLit, PVar},
 };
 
@@ -162,7 +161,7 @@ impl ProblemEncoder {
 
     /// Blocks the assignment of the given substitution.
     /// Returns the CNF encoding of the blocked assignment.
-    pub fn block_assignment(&self, _sub: &NodeSubstitution) {
+    pub fn _block_assignment(&self, _sub: &NodeSubstitution) {
         todo!()
     }
 

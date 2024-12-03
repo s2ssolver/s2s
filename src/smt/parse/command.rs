@@ -1,8 +1,7 @@
 use smt2parser::visitors::CommandVisitor;
 
 use crate::{
-    context::Sort,
-    node::Node,
+    node::{Node, Sort},
     smt::{AstError, Constant, Keyword, SExpr, SmtCommand, Symbol},
 };
 

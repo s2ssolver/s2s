@@ -5,9 +5,9 @@ use std::{
 };
 
 use indexmap::IndexSet;
-use regulaer::re::{Regex, RegexProps};
+use regulaer::re::Regex;
 
-use crate::context::{Sort, Sorted, Variable};
+use crate::node::{Sort, Sorted, Variable};
 
 /// Represents a pattern symbol, which can be either a constant word or a variable.
 #[derive(Clone, Debug, PartialEq, Hash, Eq)]
@@ -180,10 +180,6 @@ impl Pattern {
         self.symbols.push(symbol)
     }
 
-    pub(crate) fn push_char(&mut self, c: char) -> &mut Self {
-        self.push(Symbol::Constant(c));
-        self
-    }
     pub fn push_var(&mut self, var: Rc<Variable>) -> &mut Self {
         debug_assert!(
             var.sort() == Sort::String,
@@ -534,11 +530,6 @@ impl RegularConstraint {
     pub fn re(&self) -> &Regex {
         &self.re
     }
-
-    pub(crate) fn constants(&self) -> IndexSet<char> {
-        let alph = IndexSet::from_iter(self.re().alphabet().iter_chars());
-        alph
-    }
 }
 
 impl Display for RegularConstraint {
@@ -591,17 +582,6 @@ impl RegularFactorConstraint {
 
     pub fn typ(&self) -> FactorConstraintType {
         self.typ
-    }
-
-    pub(crate) fn variables(&self) -> IndexSet<Rc<Variable>> {
-        let mut vars = IndexSet::new();
-        vars.insert(self.lhs.clone());
-        vars
-    }
-
-    pub(crate) fn constants(&self) -> IndexSet<char> {
-        let consts = self.rhs().chars().collect();
-        consts
     }
 }
 

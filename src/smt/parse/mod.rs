@@ -7,8 +7,7 @@ mod sort;
 mod symbol;
 mod term;
 
-use crate::context::Sort;
-use crate::node::{Node, NodeManager};
+use crate::node::{Node, NodeManager, Sort};
 
 use super::{AstError, Script, Symbol};
 use super::{Constant, Identifier, Keyword, SExpr, SmtCommand};

@@ -1,8 +1,6 @@
 use thiserror::Error;
 
-use crate::{
-    encode::EncodingError, node::error::NodeError, preprocess::PreprocessingError, smt::AstError,
-};
+use crate::{encode::EncodingError, node::error::NodeError, smt::AstError};
 
 #[derive(Error, Debug)]
 #[error(transparent)]
@@ -14,10 +12,6 @@ pub enum ErrorRepr {
     #[error("failed to construct the AST: {0}")]
     ParseError(AstError),
 
-    /// An error that occured during preprocessing.
-    #[error("failed to preprocess: {0}")]
-    PreprocessingError(PreprocessingError),
-
     /// An error that occured during encoding.
     #[error("failed to encode: {0}")]
     EncodingError(EncodingError),
@@ -27,12 +21,6 @@ pub enum ErrorRepr {
 }
 
 // Resolve transitive conversion
-
-impl From<PreprocessingError> for PublicError {
-    fn from(err: PreprocessingError) -> Self {
-        PublicError(ErrorRepr::PreprocessingError(err))
-    }
-}
 
 impl From<EncodingError> for PublicError {
     fn from(err: EncodingError) -> Self {

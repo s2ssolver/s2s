@@ -8,7 +8,7 @@ use std::{cmp::Ordering, fmt::Display};
 use indexmap::IndexMap;
 use quickcheck::Arbitrary;
 
-use crate::context::{Sort, Sorted, Variable};
+use crate::node::{Sort, Sorted, Variable};
 /// Represents a value that can either be a finite integer, positive infinity,
 /// or negative infinity.
 #[derive(Debug, PartialEq, Eq, Copy, Clone)]
@@ -341,17 +341,20 @@ impl Bounds {
     /// Removes the bound of a variable.
     /// If the variable is not present in the bounds, returns `None`.
     /// Otherwise, returns the bound of the variable that was removed.
+    #[cfg(test)]
     pub fn remove(&mut self, var: &Variable) -> Option<Interval> {
         self.bounds.remove(var)
     }
 
     /// Returns the number of variables in the bounds.
+    #[cfg(test)]
     pub fn len(&self) -> usize {
         self.bounds.len()
     }
 
     /// Returns true if the bounds are empty and false otherwise.
     /// The bounds are considered empty if there are no variables in the bounds.
+    #[cfg(test)]
     pub fn is_empty(&self) -> bool {
         self.bounds.is_empty()
     }
@@ -368,6 +371,7 @@ impl Bounds {
     /// # Returns
     ///
     /// A new `Bounds` containing the intersections of the intervals for common variables.
+    #[cfg(test)]
     pub fn intersect(&self, other: &Self) -> Self {
         let mut intersection_map = IndexMap::new();
 

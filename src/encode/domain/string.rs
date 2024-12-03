@@ -7,11 +7,11 @@ use crate::{
     alphabet::Alphabet,
     bounds::Bounds,
     canonical::Assignment,
-    context::{Sort, Sorted, Variable},
     encode::{
         card::{exactly_one, IncrementalEO},
         EncodingResult, LAMBDA,
     },
+    node::{Sort, Sorted, Variable},
     sat::{nlit, plit, pvar, Cnf, PLit, PVar},
 };
 
@@ -313,9 +313,8 @@ mod tests {
             step::{update_bounds, BoundStep},
             Bounds, Interval,
         },
-        context::{Sort, Sorted},
         encode::{domain::DomainEncoding, LAMBDA},
-        node::NodeManager,
+        node::{NodeManager, Sort, Sorted},
         sat::plit,
     };
 

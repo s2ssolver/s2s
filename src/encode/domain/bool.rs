@@ -4,7 +4,7 @@ use indexmap::{IndexMap, IndexSet};
 
 use crate::{
     canonical::Assignment,
-    context::{Sorted, Variable},
+    node::{Sorted, Variable},
     sat::{plit, pvar, PVar},
 };
 

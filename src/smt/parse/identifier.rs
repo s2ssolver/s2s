@@ -1,5 +1,5 @@
 use crate::{
-    context::Sort,
+    node::Sort,
     smt::{AstError, Identifier, Index, Symbol},
 };
 use num_traits::cast::ToPrimitive;

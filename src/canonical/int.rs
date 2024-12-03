@@ -3,7 +3,7 @@ use std::{collections::HashMap, fmt::Display, ops::Index, rc::Rc};
 use indexmap::IndexSet;
 use quickcheck::Arbitrary;
 
-use crate::context::{Sort, Sorted, Variable};
+use crate::node::{Sort, Sorted, Variable};
 
 /// Represents different types of variable-based terms in a linear expression.
 /// This enum differentiates between a simple variable and the length of a string variable.

@@ -93,7 +93,8 @@ fn fold_not(node: &Node, mngr: &mut NodeManager) -> Option<Node> {
 
 #[cfg(test)]
 mod tests {
-    use crate::context::{Context, Sort};
+
+    use node::Sort;
 
     use super::*;
 
@@ -112,10 +113,10 @@ mod tests {
     #[test]
     fn test_fold_and_contains_false() {
         let mut mngr = NodeManager::default();
-        let mut ctx = Context::default();
 
         // Case where the conjunction contains a `false`
-        let a = mngr.var(ctx.new_temp_var(Sort::Bool));
+        let a = mngr.temp_var(Sort::Bool);
+        let a = mngr.var(a);
         let conjuncts = vec![a.clone(), mngr.ffalse()];
         let result = fold_and(&conjuncts, &mut mngr);
 
@@ -126,11 +127,12 @@ mod tests {
     #[test]
     fn test_fold_and_contains_true() {
         let mut mngr = NodeManager::default();
-        let mut ctx = Context::default();
 
         // Case where the conjunction contains a `true`, which should be removed
-        let a = mngr.var(ctx.new_temp_var(Sort::Bool));
-        let b = mngr.var(ctx.new_temp_var(Sort::Bool));
+        let a = mngr.temp_var(Sort::Bool);
+        let b = mngr.temp_var(Sort::Bool);
+        let a = mngr.var(a);
+        let b = mngr.var(b);
         let conjuncts = vec![a.clone(), mngr.ttrue(), b.clone()];
         let result = fold_and(&conjuncts, &mut mngr);
 
@@ -142,10 +144,10 @@ mod tests {
     #[test]
     fn test_fold_and_single_conjunct_left() {
         let mut mngr = NodeManager::default();
-        let mut ctx = Context::default();
 
         // Case where there is only one non-`true` conjunct left
-        let a = mngr.var(ctx.new_temp_var(Sort::Bool));
+        let a = mngr.temp_var(Sort::Bool);
+        let a = mngr.var(a);
         let conjuncts = vec![mngr.ttrue(), a.clone()];
         let result = fold_and(&conjuncts, &mut mngr);
 
@@ -156,11 +158,12 @@ mod tests {
     #[test]
     fn test_fold_and_no_changes() {
         let mut mngr = NodeManager::default();
-        let mut ctx = Context::default();
 
         // Case where no folding occurs (no `true` or `false`)
-        let a = mngr.var(ctx.new_temp_var(Sort::Bool));
-        let b = mngr.var(ctx.new_temp_var(Sort::Bool));
+        let a = mngr.temp_var(Sort::Bool);
+        let b = mngr.temp_var(Sort::Bool);
+        let a = mngr.var(a);
+        let b = mngr.var(b);
         let conjuncts = vec![a.clone(), b.clone()];
         let result = fold_and(&conjuncts, &mut mngr);
 
@@ -195,10 +198,10 @@ mod tests {
     #[test]
     fn test_fold_or_contains_true() {
         let mut mngr = NodeManager::default();
-        let mut ctx = Context::default();
 
         // Case where the disjunction contains a `true`
-        let a = mngr.var(ctx.new_temp_var(Sort::Bool));
+        let a = mngr.temp_var(Sort::Bool);
+        let a = mngr.var(a);
         let disjuncts = vec![a.clone(), mngr.ttrue()];
         let result = fold_or(&disjuncts, &mut mngr);
 
@@ -209,11 +212,12 @@ mod tests {
     #[test]
     fn test_fold_or_contains_false() {
         let mut mngr = NodeManager::default();
-        let mut ctx = Context::default();
 
         // Case where the disjunction contains a `false`, which should be removed
-        let a = mngr.var(ctx.new_temp_var(Sort::Bool));
-        let b = mngr.var(ctx.new_temp_var(Sort::Bool));
+        let a = mngr.temp_var(Sort::Bool);
+        let b = mngr.temp_var(Sort::Bool);
+        let a = mngr.var(a);
+        let b = mngr.var(b);
         let disjuncts = vec![a.clone(), mngr.ffalse(), b.clone()];
         let result = fold_or(&disjuncts, &mut mngr);
 
@@ -225,10 +229,10 @@ mod tests {
     #[test]
     fn test_fold_or_single_disjunct_left() {
         let mut mngr = NodeManager::default();
-        let mut ctx = Context::default();
 
         // Case where there is only one non-`false` disjunct left
-        let a = mngr.var(ctx.new_temp_var(Sort::Bool));
+        let a = mngr.temp_var(Sort::Bool);
+        let a = mngr.var(a);
         let disjuncts = vec![mngr.ffalse(), a.clone()];
         let result = fold_or(&disjuncts, &mut mngr);
 
@@ -239,11 +243,12 @@ mod tests {
     #[test]
     fn test_fold_or_no_changes() {
         let mut mngr = NodeManager::default();
-        let mut ctx = Context::default();
 
         // Case where no folding occurs (no `true` or `false`)
-        let a = mngr.var(ctx.new_temp_var(Sort::Bool));
-        let b = mngr.var(ctx.new_temp_var(Sort::Bool));
+        let a = mngr.temp_var(Sort::Bool);
+        let b = mngr.temp_var(Sort::Bool);
+        let a = mngr.var(a);
+        let b = mngr.var(b);
         let disjuncts = vec![a.clone(), b.clone()];
         let result = fold_or(&disjuncts, &mut mngr);
 
@@ -289,11 +294,11 @@ mod tests {
 
     #[test]
     fn test_fold_not_double_negation() {
-        let mut ctx = Context::default();
         let mut mngr = NodeManager::default();
 
         // Negation of a negation ¬(¬a) should return `a`
-        let a = mngr.var(ctx.new_temp_var(Sort::Bool));
+        let a = mngr.temp_var(Sort::Bool);
+        let a = mngr.var(a);
         let not_a = mngr.not(a.clone());
         let result = fold_not(&not_a, &mut mngr);
 
@@ -303,11 +308,11 @@ mod tests {
 
     #[test]
     fn test_fold_not_no_folding() {
-        let mut ctx = Context::default();
         let mut mngr = NodeManager::default();
 
         // Case where no folding occurs (e.g., `a`)
-        let a = mngr.var(ctx.new_temp_var(Sort::Bool));
+        let a = mngr.temp_var(Sort::Bool);
+        let a = mngr.var(a);
         let result = fold_not(&a, &mut mngr);
 
         // Expect no folding, so `None` should be returned

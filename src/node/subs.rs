@@ -117,18 +117,17 @@ impl Display for NodeSubstitution {
 #[cfg(test)]
 mod tests {
 
-    use crate::context::{Context, Sort};
+    use crate::node::Sort;
 
     use super::*;
 
     #[test]
     fn add_var_to_var() {
-        let mut ctx = Context::default();
         let mut mngr = NodeManager::default();
         let mut subst = NodeSubstitution::default();
 
-        let a = ctx.new_temp_var(Sort::Bool);
-        let b = ctx.new_temp_var(Sort::Bool);
+        let a = mngr.temp_var(Sort::Bool);
+        let b = mngr.temp_var(Sort::Bool);
 
         let anode = mngr.var(a.clone());
         let bnode = mngr.var(b.clone());
@@ -140,13 +139,12 @@ mod tests {
 
     #[test]
     fn add_var_to_var_transitive() {
-        let mut ctx = Context::default();
         let mut mngr = NodeManager::default();
         let mut subst = NodeSubstitution::default();
 
-        let a = ctx.new_temp_var(Sort::Bool);
-        let b = ctx.new_temp_var(Sort::Bool);
-        let c = ctx.new_temp_var(Sort::Bool);
+        let a = mngr.temp_var(Sort::Bool);
+        let b = mngr.temp_var(Sort::Bool);
+        let c = mngr.temp_var(Sort::Bool);
 
         let anode = mngr.var(a.clone());
         let bnode = mngr.var(b.clone());
@@ -162,13 +160,13 @@ mod tests {
     #[test]
     fn add_and_to_var() {
         // a&b -> c
-        let mut ctx = Context::default();
+
         let mut mngr = NodeManager::default();
         let mut subst = NodeSubstitution::default();
 
-        let a = ctx.new_temp_var(Sort::Bool);
-        let b = ctx.new_temp_var(Sort::Bool);
-        let c = ctx.new_temp_var(Sort::Bool);
+        let a = mngr.temp_var(Sort::Bool);
+        let b = mngr.temp_var(Sort::Bool);
+        let c = mngr.temp_var(Sort::Bool);
 
         let anode = mngr.var(a.clone());
         let bnode = mngr.var(b.clone());
@@ -182,13 +180,13 @@ mod tests {
     fn add_and_to_var_semicyclic() {
         // a && b -> c, c -> a => a && b -> a
         // This is not invalid because there is no substitution for a
-        let mut ctx = Context::default();
+
         let mut mngr = NodeManager::default();
         let mut subst = NodeSubstitution::default();
 
-        let a = ctx.new_temp_var(Sort::Bool);
-        let b = ctx.new_temp_var(Sort::Bool);
-        let c = ctx.new_temp_var(Sort::Bool);
+        let a = mngr.temp_var(Sort::Bool);
+        let b = mngr.temp_var(Sort::Bool);
+        let c = mngr.temp_var(Sort::Bool);
 
         let anode = mngr.var(a.clone());
         let bnode = mngr.var(b.clone());
@@ -203,13 +201,13 @@ mod tests {
     #[test]
     fn add_and_to_var_transitive_key() {
         // a && b -> c, a -> b => b && b -> c
-        let mut ctx = Context::default();
+
         let mut mngr = NodeManager::default();
         let mut subst = NodeSubstitution::default();
 
-        let a = ctx.new_temp_var(Sort::Bool);
-        let b = ctx.new_temp_var(Sort::Bool);
-        let c = ctx.new_temp_var(Sort::Bool);
+        let a = mngr.temp_var(Sort::Bool);
+        let b = mngr.temp_var(Sort::Bool);
+        let c = mngr.temp_var(Sort::Bool);
 
         let anode = mngr.var(a.clone());
         let bnode = mngr.var(b.clone());

@@ -4,7 +4,7 @@ use std::{fmt::Display, rc::Rc};
 
 use indexmap::IndexMap;
 
-use crate::context::Variable;
+use crate::node::Variable;
 
 use super::{
     ArithOperator, Atom, AtomKind, FactorConstraintType, Formula, FormulaKind, LinearArithTerm,
@@ -195,7 +195,7 @@ impl Assignment {
 
     pub fn satisfies_atom(&self, atom: &Atom) -> bool {
         match atom.kind() {
-            AtomKind::Boolvar(v) => self.get_bool(&v).map_or(false, |value| value),
+            AtomKind::Boolvar(v) => self.get_bool(v.as_ref()).map_or(false, |value| value),
             AtomKind::WordEquation(we) => self.satisfies_word_equation(we),
             AtomKind::InRe(inre) => self.satisfies_inre(inre),
             AtomKind::FactorConstraint(fc) => self.satisfies_factor_constraint(fc),
@@ -206,11 +206,13 @@ impl Assignment {
     pub fn satisfies_word_equation(&self, eq: &WordEquation) -> bool {
         match eq {
             WordEquation::ConstantEquality(l, r) => l == r,
-            WordEquation::VarEquality(l, r) => match (self.get_str(&l), self.get_str(&r)) {
-                (Some(l), Some(r)) => l == r,
-                _ => false,
-            },
-            WordEquation::VarAssignment(l, r) => match self.get_str(&l) {
+            WordEquation::VarEquality(l, r) => {
+                match (self.get_str(l.as_ref()), self.get_str(r.as_ref())) {
+                    (Some(l), Some(r)) => l == r,
+                    _ => false,
+                }
+            }
+            WordEquation::VarAssignment(l, r) => match self.get_str(l.as_ref()) {
                 Some(value) => value == r,
                 None => false,
             },
@@ -222,7 +224,7 @@ impl Assignment {
     }
 
     pub fn satisfies_inre(&self, inre: &RegularConstraint) -> bool {
-        if let Some(value) = self.get_str(&inre.lhs()) {
+        if let Some(value) = self.get_str(inre.lhs().as_ref()) {
             inre.re().accepts(&value.clone().into())
         } else {
             false
@@ -230,7 +232,7 @@ impl Assignment {
     }
 
     pub fn satisfies_factor_constraint(&self, fc: &RegularFactorConstraint) -> bool {
-        if let Some(value) = self.get_str(fc.lhs()) {
+        if let Some(value) = self.get_str(fc.lhs().as_ref()) {
             let rhs = fc.rhs();
             match fc.typ() {
                 FactorConstraintType::Prefix => value.starts_with(rhs),
@@ -263,7 +265,7 @@ impl Assignment {
         for sym in pattern.symbols() {
             match sym {
                 Symbol::Constant(c) => result.push(*c),
-                Symbol::Variable(rc) => result.push_str(self.get_str(rc)?),
+                Symbol::Variable(rc) => result.push_str(self.get_str(rc.as_ref())?),
             }
         }
         Some(result)
@@ -275,8 +277,10 @@ impl Assignment {
             match summand {
                 LinearSummand::Mult(v, s) => {
                     let value = match v {
-                        VariableTerm::Int(vv) => self.get_int(vv),
-                        VariableTerm::Len(vv) => self.get_str(vv).map(|s| s.chars().count() as i64),
+                        VariableTerm::Int(vv) => self.get_int(vv.as_ref()),
+                        VariableTerm::Len(vv) => {
+                            self.get_str(vv.as_ref()).map(|s| s.chars().count() as i64)
+                        }
                     };
                     if let Some(value) = value {
                         res += value * s;

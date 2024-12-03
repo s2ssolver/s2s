@@ -5,7 +5,7 @@ use indexmap::IndexMap;
 use crate::{
     bounds::Bounds,
     canonical::{ArithOperator, LinearConstraint, LinearSummand},
-    context::Sorted,
+    node::Sorted,
     sat::{nlit, plit, pvar, PVar},
 };
 
@@ -51,11 +51,11 @@ impl MddEncoder {
 }
 
 impl LiteralEncoder for MddEncoder {
-    fn is_incremental(&self) -> bool {
+    fn _is_incremental(&self) -> bool {
         true
     }
 
-    fn reset(&mut self) {
+    fn _reset(&mut self) {
         todo!()
     }
 

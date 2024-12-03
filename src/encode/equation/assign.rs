@@ -5,8 +5,8 @@ use std::{cmp::Ordering, rc::Rc};
 
 use crate::{
     bounds::Bounds,
-    context::Variable,
     encode::{domain::DomainEncoding, EncodingError, EncodingResult, LiteralEncoder, LAMBDA},
+    node::Variable,
     sat::{nlit, plit, pvar},
 };
 
@@ -131,11 +131,11 @@ impl AssignmentEncoder {
 }
 
 impl LiteralEncoder for AssignmentEncoder {
-    fn is_incremental(&self) -> bool {
+    fn _is_incremental(&self) -> bool {
         true
     }
 
-    fn reset(&mut self) {
+    fn _reset(&mut self) {
         todo!()
     }
 

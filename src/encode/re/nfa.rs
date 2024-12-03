@@ -16,9 +16,9 @@ use regulaer::{
 use crate::{
     bounds::Bounds,
     canonical::RegularConstraint,
-    context::Variable,
     encode::{domain::DomainEncoding, EncodingError, EncodingResult, LiteralEncoder, LAMBDA},
     node::NodeManager,
+    node::Variable,
     sat::{nlit, plit, pvar, PVar},
     smt::smt_max_char,
 };
@@ -238,11 +238,11 @@ impl NFAEncoder {
 }
 
 impl LiteralEncoder for NFAEncoder {
-    fn is_incremental(&self) -> bool {
+    fn _is_incremental(&self) -> bool {
         true
     }
 
-    fn reset(&mut self) {
+    fn _reset(&mut self) {
         self.last_bound = None;
         self.reach_vars.clear();
         self.bound_selector = None;
@@ -434,9 +434,7 @@ mod test {
 
     use super::*;
 
-    use crate::{
-        alphabet::Alphabet, bounds::Interval, context::Sort, encode::domain::DomainEncoder,
-    };
+    use crate::{alphabet::Alphabet, bounds::Interval, encode::domain::DomainEncoder, node::Sort};
 
     fn solve_with_bounds(re: Regex, pol: bool, ubounds: &[usize]) -> Option<bool> {
         let mut mngr = NodeManager::default();

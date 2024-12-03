@@ -1,9 +1,6 @@
 use std::rc::Rc;
 
-use crate::{
-    context::{Sorted, Variable},
-    node::{Node, NodeKind, NodeManager},
-};
+use crate::node::{Node, NodeKind, NodeManager, Sorted, Variable};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Symbol {
@@ -221,7 +218,7 @@ pub fn const_suffix(node: &Node) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    use crate::{context::Sort, node::NodeManager};
+    use crate::node::{NodeManager, Sort};
 
     use super::*;
 

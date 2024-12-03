@@ -108,16 +108,16 @@ pub fn to_nnf(node: &Node, mngr: &mut NodeManager) -> Node {
 #[cfg(test)]
 mod tests {
 
-    use crate::context::{Context, Sort};
+    use crate::node::Sort;
 
     use super::*;
 
     #[test]
     fn test_to_bnf_simple_or() {
         let mut mngr = NodeManager::default();
-        let mut ctx = Context::default();
-        let va = ctx.new_temp_var(Sort::Bool);
-        let vb = ctx.new_temp_var(Sort::Bool);
+
+        let va = mngr.temp_var(Sort::Bool);
+        let vb = mngr.temp_var(Sort::Bool);
 
         // a ∨ b should remain unchanged in BNF
         let a = mngr.var(va);
@@ -131,9 +131,9 @@ mod tests {
     #[test]
     fn test_to_bnf_simple_and() {
         let mut mngr = NodeManager::default();
-        let mut ctx = Context::default();
-        let va = ctx.new_temp_var(Sort::Bool);
-        let vb = ctx.new_temp_var(Sort::Bool);
+
+        let va = mngr.temp_var(Sort::Bool);
+        let vb = mngr.temp_var(Sort::Bool);
 
         // a ∧ b should remain unchanged in BNF
         let a = mngr.var(va);
@@ -147,9 +147,9 @@ mod tests {
     #[test]
     fn test_to_bnf_implication() {
         let mut mngr = NodeManager::default();
-        let mut ctx = Context::default();
-        let va = ctx.new_temp_var(Sort::Bool);
-        let vb = ctx.new_temp_var(Sort::Bool);
+
+        let va = mngr.temp_var(Sort::Bool);
+        let vb = mngr.temp_var(Sort::Bool);
 
         // a -> b should be converted to ¬a ∨ b
         let a = mngr.var(va);
@@ -167,9 +167,9 @@ mod tests {
     #[test]
     fn test_to_bnf_equiv() {
         let mut mngr = NodeManager::default();
-        let mut ctx = Context::default();
-        let va = ctx.new_temp_var(Sort::Bool);
-        let vb = ctx.new_temp_var(Sort::Bool);
+
+        let va = mngr.temp_var(Sort::Bool);
+        let vb = mngr.temp_var(Sort::Bool);
 
         // a <-> b should be converted to (a -> b) ∧ (b -> a)
         // and then converted to (¬a ∨ b) ∧ (¬b ∨ a)
@@ -193,9 +193,9 @@ mod tests {
     #[test]
     fn test_to_bnf_nested() {
         let mut mngr = NodeManager::default();
-        let mut ctx = Context::default();
-        let va = ctx.new_temp_var(Sort::Bool);
-        let vb = ctx.new_temp_var(Sort::Bool);
+
+        let va = mngr.temp_var(Sort::Bool);
+        let vb = mngr.temp_var(Sort::Bool);
 
         // ¬(a -> b) should convert to ¬(¬a ∨ b), then simplify
         let a = mngr.var(va);
@@ -214,12 +214,11 @@ mod tests {
 
     #[test]
     fn test_to_nnf_simple_or() {
-        let mut ctx = Context::default();
         let mut mngr = NodeManager::default();
 
         // a ∨ b should remain unchanged in NNF
-        let a = ctx.new_temp_var(Sort::Bool);
-        let b = ctx.new_temp_var(Sort::Bool);
+        let a = mngr.temp_var(Sort::Bool);
+        let b = mngr.temp_var(Sort::Bool);
         let var_a = mngr.var(a);
         let var_b = mngr.var(b);
         let or_node = mngr.or(vec![var_a, var_b]);
@@ -230,12 +229,11 @@ mod tests {
 
     #[test]
     fn test_to_nnf_simple_and() {
-        let mut ctx = Context::default();
         let mut mngr = NodeManager::default();
 
         // a ∧ b should remain unchanged in NNF
-        let a = ctx.new_temp_var(Sort::Bool);
-        let b = ctx.new_temp_var(Sort::Bool);
+        let a = mngr.temp_var(Sort::Bool);
+        let b = mngr.temp_var(Sort::Bool);
         let var_a = mngr.var(a);
         let var_b = mngr.var(b);
         let and_node = mngr.and(vec![var_a, var_b]);
@@ -246,11 +244,10 @@ mod tests {
 
     #[test]
     fn test_to_nnf_double_negation() {
-        let mut ctx = Context::default();
         let mut mngr = NodeManager::default();
 
         // ¬¬a should simplify to a
-        let a = ctx.new_temp_var(Sort::Bool);
+        let a = mngr.temp_var(Sort::Bool);
         let var_a = mngr.var(a);
         let negated_a = mngr.not(var_a.clone());
         let double_not_node = mngr.not(negated_a);
@@ -262,12 +259,11 @@ mod tests {
 
     #[test]
     fn test_to_nnf_de_morgans_law_or() {
-        let mut ctx = Context::default();
         let mut mngr = NodeManager::default();
 
         // ¬(a ∨ b) should transform to ¬a ∧ ¬b (De Morgan's law)
-        let a = ctx.new_temp_var(Sort::Bool);
-        let b = ctx.new_temp_var(Sort::Bool);
+        let a = mngr.temp_var(Sort::Bool);
+        let b = mngr.temp_var(Sort::Bool);
         let var_a = mngr.var(a);
         let var_b = mngr.var(b);
         let or_node = mngr.or(vec![var_a.clone(), var_b.clone()]);
@@ -283,12 +279,11 @@ mod tests {
 
     #[test]
     fn test_to_nnf_de_morgans_law_and() {
-        let mut ctx = Context::default();
         let mut mngr = NodeManager::default();
 
         // ¬(a ∧ b) should transform to ¬a ∨ ¬b (De Morgan's law)
-        let a = ctx.new_temp_var(Sort::Bool);
-        let b = ctx.new_temp_var(Sort::Bool);
+        let a = mngr.temp_var(Sort::Bool);
+        let b = mngr.temp_var(Sort::Bool);
         let var_a = mngr.var(a);
         let var_b = mngr.var(b);
         let and_node = mngr.and(vec![var_a.clone(), var_b.clone()]);
@@ -304,12 +299,11 @@ mod tests {
 
     #[test]
     fn test_to_nnf_implication() {
-        let mut ctx = Context::default();
         let mut mngr = NodeManager::default();
 
         // a -> b should convert to ¬a ∨ b in NNF
-        let a = ctx.new_temp_var(Sort::Bool);
-        let b = ctx.new_temp_var(Sort::Bool);
+        let a = mngr.temp_var(Sort::Bool);
+        let b = mngr.temp_var(Sort::Bool);
         let var_a = mngr.var(a);
         let var_b = mngr.var(b);
         let imp_node = mngr.imp(var_a.clone(), var_b.clone());
@@ -323,12 +317,11 @@ mod tests {
 
     #[test]
     fn test_to_nnf_equivalence() {
-        let mut ctx = Context::default();
         let mut mngr = NodeManager::default();
 
         // a <-> b should convert to (¬a ∨ b) ∧ (¬b ∨ a) in NNF
-        let a = ctx.new_temp_var(Sort::Bool);
-        let b = ctx.new_temp_var(Sort::Bool);
+        let a = mngr.temp_var(Sort::Bool);
+        let b = mngr.temp_var(Sort::Bool);
         let var_a = mngr.var(a);
         let var_b = mngr.var(b);
         let equiv_node = mngr.equiv(var_a.clone(), var_b.clone());

@@ -4,12 +4,12 @@ use indexmap::{IndexMap, IndexSet};
 
 use super::DomainEncoding;
 use crate::canonical::Assignment;
-use crate::context::Sorted;
+
 use crate::sat::{plit, PVar};
 use crate::{
     bounds::{Bounds, Interval},
-    context::{Sort, Variable},
     encode::{card::IncrementalEO, EncodingResult},
+    node::{Sort, Sorted, Variable},
     sat::pvar,
 };
 

@@ -7,10 +7,7 @@ use regulaer::{
     re::Regex,
 };
 
-use crate::{
-    context::{Sort, Sorted, Variable},
-    ir::{Pattern, Symbol},
-};
+use super::{Sort, Sorted, Variable};
 
 use super::{error::NodeError, Node, NodeKind, OwnedNode};
 
@@ -30,9 +27,6 @@ pub struct NodeManager {
 
     /// Registry of variables, indexed by name
     variables: IndexMap<String, Rc<Variable>>,
-
-    /// Registry of patterns, indexed by node
-    patterns: IndexMap<Node, Rc<Pattern>>,
 
     nfas: IndexMap<Regex, Rc<NFA>>,
 }
@@ -147,12 +141,12 @@ impl NodeManager {
             }
         }
         log::trace!("GC: Removing {} nodes", to_remove.len());
-        for key in to_remove {
-            // Remove the node from the pattern registry
-            self.patterns.remove(&self.node_registry[&key]);
-            // Remove the node from the node registry
-            self.node_registry.remove(&key);
-        }
+        // for key in to_remove {
+        //     // Remove the node from the pattern registry
+        //     self.patterns.remove(&self.node_registry[&key]);
+        //     // Remove the node from the node registry
+        //     self.node_registry.remove(&key);
+        // }
     }
 
     /* Regex */
@@ -187,63 +181,63 @@ impl NodeManager {
 
     /// Convert a node to a pattern.
     /// Returns None if the node is not a concatenation of variables and strings.
-    pub fn patternize(&mut self, node: &Node) -> Option<Rc<Pattern>> {
-        if let Some(pattern) = self.patterns.get(node) {
-            return Some(pattern.clone());
-        }
-        let res = match node.kind() {
-            NodeKind::String(s) => Pattern::constant(s),
-            NodeKind::Variable(rc) => {
-                debug_assert!(rc.sort().is_string());
-                Pattern::variable(rc)
-            }
-            NodeKind::Concat => {
-                let mut pattern = Pattern::empty();
-                for child in node.children() {
-                    pattern.concat(self.patternize(child)?.as_ref().clone());
-                }
-                pattern
-            }
-            _ => return None,
-        };
-        let res = Rc::new(res);
-        self.patterns.insert(node.clone(), res.clone());
-        Some(res)
-    }
+    // pub fn patternize(&mut self, node: &Node) -> Option<Rc<Pattern>> {
+    //     if let Some(pattern) = self.patterns.get(node) {
+    //         return Some(pattern.clone());
+    //     }
+    //     let res = match node.kind() {
+    //         NodeKind::String(s) => Pattern::constant(s),
+    //         NodeKind::Variable(rc) => {
+    //             debug_assert!(rc.sort().is_string());
+    //             Pattern::variable(rc)
+    //         }
+    //         NodeKind::Concat => {
+    //             let mut pattern = Pattern::empty();
+    //             for child in node.children() {
+    //                 pattern.concat(self.patternize(child)?.as_ref().clone());
+    //             }
+    //             pattern
+    //         }
+    //         _ => return None,
+    //     };
+    //     let res = Rc::new(res);
+    //     self.patterns.insert(node.clone(), res.clone());
+    //     Some(res)
+    // }
 
-    /// Convert a pattern to a node
-    pub fn depatternize(&mut self, pattern: &Pattern) -> Node {
-        let mut nodes = Vec::new();
-        let mut word = String::new();
-        for s in pattern.iter() {
-            match s {
-                Symbol::Constant(c) => {
-                    word.push(*c);
-                }
-                Symbol::Variable(variable) => {
-                    if !word.is_empty() {
-                        nodes.push(self.intern_node(NodeKind::String(word.clone()), vec![]));
-                        word.clear();
-                    }
-                    let v = self.get_var(variable.name()).unwrap();
-                    nodes.push(self.var(v));
-                    word.clear();
-                }
-            }
-        }
-        if !word.is_empty() {
-            nodes.push(self.intern_node(NodeKind::String(word.clone()), vec![]));
-            word.clear();
-        }
-        if nodes.is_empty() {
-            // Empty pattern = empty string
-            self.const_str("")
-        } else if nodes.len() == 1 {
-            nodes[0].clone()
-        } else {
-            self.concat(nodes)
-        }
-    }
+    // /// Convert a pattern to a node
+    // pub fn depatternize(&mut self, pattern: &Pattern) -> Node {
+    //     let mut nodes = Vec::new();
+    //     let mut word = String::new();
+    //     for s in pattern.iter() {
+    //         match s {
+    //             Symbol::Constant(c) => {
+    //                 word.push(*c);
+    //             }
+    //             Symbol::Variable(variable) => {
+    //                 if !word.is_empty() {
+    //                     nodes.push(self.intern_node(NodeKind::String(word.clone()), vec![]));
+    //                     word.clear();
+    //                 }
+    //                 let v = self.get_var(variable.name()).unwrap();
+    //                 nodes.push(self.var(v));
+    //                 word.clear();
+    //             }
+    //         }
+    //     }
+    //     if !word.is_empty() {
+    //         nodes.push(self.intern_node(NodeKind::String(word.clone()), vec![]));
+    //         word.clear();
+    //     }
+    //     if nodes.is_empty() {
+    //         // Empty pattern = empty string
+    //         self.const_str("")
+    //     } else if nodes.len() == 1 {
+    //         nodes[0].clone()
+    //     } else {
+    //         self.concat(nodes)
+    //     }
+    // }
 
     /* Variables */
 

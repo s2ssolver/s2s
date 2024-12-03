@@ -2,8 +2,7 @@ use itertools::Itertools;
 use smt2parser::visitors::TermVisitor;
 
 use crate::{
-    context::{Sort, Sorted},
-    node::{Node, NodeKind},
+    node::{Node, NodeKind, Sort, Sorted},
     smt::{AstError, Constant, Identifier, Index, Keyword, SExpr, Symbol},
 };
 

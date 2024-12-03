@@ -1,9 +1,6 @@
-use crate::{
-    context::Sorted,
-    node::{
-        utils::{reverse, SymbolIterator},
-        Node, NodeKind, NodeManager,
-    },
+use crate::node::{
+    utils::{reverse, SymbolIterator},
+    Node, NodeKind, NodeManager, Sorted,
 };
 
 use super::RewriteRule;

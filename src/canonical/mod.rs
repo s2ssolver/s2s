@@ -6,7 +6,7 @@ use std::{
 
 use indexmap::IndexSet;
 
-use crate::{context::Variable, node::Node};
+use crate::node::{Node, Variable};
 
 mod assignment;
 mod canonicalize;
@@ -44,13 +44,6 @@ impl Formula {
     fn unsupported(node: Node) -> Self {
         Self {
             kind: FormulaKind::Unsupported(node.clone()),
-            node,
-        }
-    }
-
-    fn literal(literal: Literal, node: Node) -> Self {
-        Self {
-            kind: FormulaKind::Literal(literal),
             node,
         }
     }

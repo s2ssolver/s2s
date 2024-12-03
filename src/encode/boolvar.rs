@@ -2,7 +2,7 @@ use std::rc::Rc;
 
 use crate::{
     bounds::Bounds,
-    context::{Sorted, Variable},
+    node::{Sorted, Variable},
     sat::{nlit, plit},
 };
 
@@ -27,11 +27,11 @@ impl BoolVarEncoder {
 }
 
 impl LiteralEncoder for BoolVarEncoder {
-    fn is_incremental(&self) -> bool {
+    fn _is_incremental(&self) -> bool {
         true
     }
 
-    fn reset(&mut self) {
+    fn _reset(&mut self) {
         self.encoded = false;
     }
 

@@ -5,8 +5,7 @@ use regulaer::{automaton::NFA, re::Regex};
 
 use crate::{
     bounds::{Bounds, Interval},
-    context::Variable,
-    node::NodeManager,
+    node::{NodeManager, Variable},
 };
 
 use super::InferringStrategy;
@@ -240,7 +239,7 @@ impl InferringStrategy for RegularBoundsInferer {
 
 #[cfg(test)]
 mod tests {
-    use crate::context::Sort;
+    use crate::node::Sort;
 
     use super::*;
 

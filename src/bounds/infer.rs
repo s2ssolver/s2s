@@ -11,8 +11,7 @@ use crate::{
         ArithOperator, AtomKind, LinearArithTerm, LinearConstraint, Literal, RegularConstraint,
         WordEquation,
     },
-    context::{Sorted, Variable},
-    node::NodeManager,
+    node::{NodeManager, Sorted, Variable},
 };
 
 use super::{Bounds, Interval};
@@ -241,7 +240,7 @@ impl BoundInferer {
             .flat_map(|l| l.variables())
             .filter(|v| v.sort().is_string() || v.sort().is_int())
         {
-            if bounds.get(&v).is_none() {
+            if bounds.get(v.as_ref()).is_none() {
                 if v.sort().is_string() {
                     bounds.set(v.as_ref().clone(), Interval::bounded_below(0));
                 } else {

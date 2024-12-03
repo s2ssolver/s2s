@@ -2,10 +2,7 @@
 
 use indexmap::IndexSet;
 
-use crate::{
-    context::Sorted,
-    node::{Node, NodeKind, NodeManager, NodeSubstitution},
-};
+use crate::node::{Node, NodeKind, NodeManager, NodeSubstitution, Sorted};
 
 use super::{SimpRule, Simplification};
 

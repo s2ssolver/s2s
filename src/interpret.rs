@@ -6,7 +6,7 @@ use crate::{
 
 pub struct Interpreter<'a> {
     mngr: &'a mut NodeManager,
-    options: SolverOptions,
+    _options: SolverOptions,
     solver: Solver,
     last_res: Option<SolverResult>,
 
@@ -19,7 +19,7 @@ impl<'a> Interpreter<'a> {
         Self {
             mngr,
             solver,
-            options,
+            _options: options,
             last_res: None,
             assertions: Vec::new(),
         }

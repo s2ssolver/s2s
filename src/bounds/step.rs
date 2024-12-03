@@ -1,6 +1,6 @@
 //! Functions for increasing bounds on variables.
 
-use crate::context::Sorted;
+use crate::node::Sorted;
 
 use super::{BoundValue, Bounds, Interval};
 

@@ -9,12 +9,6 @@ mod ast;
 /// Errors that can occur while working with SMT-LIB formulas.
 mod error;
 
-/// Conversion of SMT-LIB formulas to normal form.
-pub(crate) mod nf;
-
-/// Parsing of SMT-LIB formulas.
-pub mod parse_old;
-
 mod parse;
 pub use parse::ScriptBuilder;
 

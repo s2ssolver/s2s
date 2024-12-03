@@ -4,14 +4,11 @@ pub use int::*;
 
 pub use string::*;
 
-use crate::{
-    context::{Sort, Sorted},
-    node::{self, NodeManager},
-};
+use crate::node::{self, NodeManager, Sort, Sorted};
 
 use super::*;
 use indexmap::IndexMap;
-use node::{error::NodeError, utils::SymbolIterator, Node, NodeKind};
+use node::{error::NodeError, Node, NodeKind};
 
 use std::{collections::HashMap, rc::Rc};
 
@@ -263,23 +260,6 @@ impl Canonicalizer {
             let eq = mngr.eq(r.clone(), rhs);
             self.canonicalize_weq(&eq, mngr)
         }
-    }
-
-    fn canonicalize_pattern(&mut self, node: &Node) -> Pattern {
-        if let Some(p) = self.patterns.get(node) {
-            return p.clone();
-        }
-        let mut result = Pattern::empty();
-        let mut iter = SymbolIterator::new(node);
-        while let Some(s) = iter.next() {
-            match s {
-                crate::node::utils::Symbol::Const(c) => result.push_char(c),
-                crate::node::utils::Symbol::Variable(rc) => result.push_var(rc.clone()),
-            };
-        }
-
-        self.patterns.insert(node.clone(), result.clone());
-        result
     }
 
     fn canonicalize_weq(&mut self, node: &Node, mngr: &mut NodeManager) -> Result<Atom, NodeError> {

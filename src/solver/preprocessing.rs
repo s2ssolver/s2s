@@ -2,7 +2,7 @@ use crate::{
     canonical::{canonicalize, Formula},
     node::{error::NodeError, normal::to_nnf, Node, NodeManager, NodeSubstitution},
     rewrite::Rewriter,
-    simp_new::Simplifier,
+    simp::Simplifier,
 };
 
 #[derive(Default)]

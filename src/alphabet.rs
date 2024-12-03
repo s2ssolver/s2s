@@ -7,7 +7,7 @@ use indexmap::IndexSet;
 
 use crate::{
     canonical::{util::partition_by_vars, AtomKind, Formula, Literal},
-    context::Sorted,
+    node::Sorted,
 };
 
 use regulaer::{alph::Alphabet as InnerAlphabet, re::RegexProps};
@@ -188,8 +188,7 @@ mod tests {
     use super::*;
     use crate::{
         canonical::canonicalize,
-        context::Sort,
-        node::{Node, NodeManager},
+        node::{Node, NodeManager, Sort},
     };
 
     fn to_lit(node: &Node, mngr: &mut NodeManager) -> Literal {

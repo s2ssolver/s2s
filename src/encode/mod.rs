@@ -173,11 +173,15 @@ impl Display for EncodingError {
 /// Note that if an incremental encoder can be used in a non-incremental way by simply resetting its state when updating the bounds.
 pub trait LiteralEncoder {
     /// Returns true if the encoder performs incremental encoding.
-    fn is_incremental(&self) -> bool;
+    fn _is_incremental(&self) -> bool {
+        unimplemented!()
+    }
     /// Resets the encoder to the initial state.
     /// After calling this functions, the next call to the `encode` function will completely re-encode the problem with the provided bounds.
     /// This has no effect on non-incremental encoders.
-    fn reset(&mut self);
+    fn _reset(&mut self) {
+        unimplemented!()
+    }
 
     fn encode(
         &mut self,

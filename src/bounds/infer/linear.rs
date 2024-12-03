@@ -9,7 +9,7 @@ use crate::{
     canonical::{
         ArithOperator, LinearArithTerm, LinearConstraint, LinearSummand, Symbol, WordEquation,
     },
-    context::{Sorted, Variable},
+    node::{Sorted, Variable},
 };
 
 use super::InferringStrategy;
@@ -119,9 +119,9 @@ impl LinearRefiner {
                                 BoundValue::Num(dived)
                             };
                             log::trace!("\t\t {op} {dived}");
-                            if dived < self.ub(&var, bounds) {
+                            if dived < self.ub(var.as_ref(), bounds) {
                                 changed = true;
-                                new_bounds.set_upper(&var, dived);
+                                new_bounds.set_upper(var.as_ref(), dived);
                             }
                         }
                     }
@@ -136,9 +136,9 @@ impl LinearRefiner {
                             };
                             log::trace!("\t\t {op} {dived}");
 
-                            if dived > self.lb(&var, bounds) {
+                            if dived > self.lb(var.as_ref(), bounds) {
                                 changed = true;
-                                new_bounds.set_lower(&var, dived);
+                                new_bounds.set_lower(var.as_ref(), dived);
                             }
                         }
                     }
@@ -222,7 +222,7 @@ impl LinearRefiner {
                 LinearSummand::Mult(v, coeff) => {
                     if *coeff >= 0 {
                         // Add the smallest possible value of the variable
-                        let lb = self.lb(v.variable(), bounds);
+                        let lb = self.lb(v.variable().as_ref(), bounds);
                         match lb * (*coeff).into() {
                             BoundValue::Num(v) => {
                                 if let Some(v) = smallest.checked_add(v as i64) {
@@ -237,7 +237,7 @@ impl LinearRefiner {
                         }
                     } else {
                         // Subtract the largest possible value of the variable
-                        let ub = self.ub(v.variable(), bounds);
+                        let ub = self.ub(v.variable().as_ref(), bounds);
                         match ub * (*coeff).into() {
                             BoundValue::Num(v) => {
                                 if let Some(v) = smallest.checked_add(v as i64) {
@@ -264,7 +264,7 @@ impl LinearRefiner {
                 LinearSummand::Mult(v, coeff) => {
                     if *coeff >= 0 {
                         // add the greatest possible value of the variable
-                        let ub = self.ub(v.variable(), bounds);
+                        let ub = self.ub(v.variable().as_ref(), bounds);
                         match ub * (*coeff).into() {
                             BoundValue::Num(v) => {
                                 if let Some(v) = largest.checked_add(v as i64) {
@@ -277,7 +277,7 @@ impl LinearRefiner {
                         }
                     } else {
                         // subtract the least possible value of the variable
-                        let lb = self.lb(v.variable(), bounds);
+                        let lb = self.lb(v.variable().as_ref(), bounds);
                         match lb * (*coeff).into() {
                             BoundValue::Num(v) => {
                                 if let Some(v) = largest.checked_add(v as i64) {

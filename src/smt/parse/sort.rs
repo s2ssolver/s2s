@@ -2,7 +2,7 @@ use itertools::Itertools;
 use smt2parser::visitors;
 
 use crate::{
-    context::Sort,
+    node::Sort,
     smt::{AstError, Symbol},
 };
 

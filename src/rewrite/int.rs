@@ -1,4 +1,4 @@
-use crate::{context::Sorted, node::NodeKind};
+use crate::node::{NodeKind, Sorted};
 
 use super::*;
 
