@@ -26,7 +26,7 @@ impl BoolDomain {
     }
 
     pub fn iter(&self) -> impl Iterator<Item = (&Rc<Variable>, &PVar)> {
-        self.var_map.iter().map(|(var, pvar)| (var, pvar))
+        self.var_map.iter()
     }
 
     pub fn get(&self, var: &Rc<Variable>) -> Option<PVar> {

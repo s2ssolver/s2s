@@ -58,7 +58,7 @@ impl From<i32> for AssignedValue {
 
 impl From<i64> for AssignedValue {
     fn from(value: i64) -> Self {
-        Self::Int(value as i64)
+        Self::Int(value)
     }
 }
 
@@ -74,33 +74,33 @@ impl From<bool> for AssignedValue {
     }
 }
 
-impl Into<String> for AssignedValue {
-    fn into(self) -> String {
-        self.as_string().expect("Value is not a string").clone()
+impl From<AssignedValue> for String {
+    fn from(val: AssignedValue) -> Self {
+        val.as_string().expect("Value is not a string").clone()
     }
 }
 
-impl Into<isize> for AssignedValue {
-    fn into(self) -> isize {
-        self.as_int().expect("Value is not an integer") as isize
+impl From<AssignedValue> for isize {
+    fn from(val: AssignedValue) -> Self {
+        val.as_int().expect("Value is not an integer") as isize
     }
 }
 
-impl Into<i32> for AssignedValue {
-    fn into(self) -> i32 {
-        self.as_int().expect("Value is not an integer") as i32
+impl From<AssignedValue> for i32 {
+    fn from(val: AssignedValue) -> Self {
+        val.as_int().expect("Value is not an integer") as i32
     }
 }
 
-impl Into<i64> for AssignedValue {
-    fn into(self) -> i64 {
-        self.as_int().expect("Value is not an integer") as i64
+impl From<AssignedValue> for i64 {
+    fn from(val: AssignedValue) -> Self {
+        val.as_int().expect("Value is not an integer")
     }
 }
 
-impl Into<bool> for AssignedValue {
-    fn into(self) -> bool {
-        self.as_bool().expect("Value is not a boolean")
+impl From<AssignedValue> for bool {
+    fn from(val: AssignedValue) -> Self {
+        val.as_bool().expect("Value is not a boolean")
     }
 }
 
@@ -216,7 +216,7 @@ impl Assignment {
                 Some(value) => value == r,
                 None => false,
             },
-            WordEquation::General(l, r) => match (self.apply_pattern(&l), self.apply_pattern(&r)) {
+            WordEquation::General(l, r) => match (self.apply_pattern(l), self.apply_pattern(r)) {
                 (Some(l), Some(r)) => l == r,
                 _ => false,
             },

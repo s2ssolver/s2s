@@ -42,7 +42,7 @@ impl Canonicalizer {
                 NodeKind::And | NodeKind::Or => {
                     let rec = node
                         .children()
-                        .into_iter()
+                        .iter()
                         .map(|c| self.canonicalize(c, mngr))
                         .collect::<Result<Vec<Formula>, _>>();
                     let kind = match node.kind() {
@@ -156,7 +156,7 @@ impl Canonicalizer {
             let atom = AtomKind::InRe(RegularConstraint::new(v, re.clone()));
             Ok(Atom::new(atom, node.clone()))
         } else {
-            return Err(NodeError::NotWellFormed(node.clone()));
+            Err(NodeError::NotWellFormed(node.clone()))
         }
     }
 
@@ -466,13 +466,13 @@ impl Canonicalizer {
     ) -> (LinearArithTerm, i64) {
         let mut new_lhs = LinearArithTerm::new();
         let mut rhs_const = 0;
-        for term in lhs.into_iter() {
+        for term in lhs.into_summands() {
             match &term {
                 LinearSummand::Const(c) => rhs_const -= c,
                 LinearSummand::Mult(_, _) => new_lhs.add_summand(term),
             }
         }
-        for term in rhs.into_iter() {
+        for term in rhs.into_summands() {
             match &term {
                 LinearSummand::Const(c) => rhs_const += c,
                 LinearSummand::Mult(_, _) => new_lhs.add_summand(term.flip_sign()),

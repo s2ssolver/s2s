@@ -93,6 +93,6 @@ impl WordEncoding {
             }
             panic!("No symbol at position {}", len);
         }
-        println!("");
+        println!();
     }
 }

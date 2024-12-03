@@ -1,11 +1,5 @@
 //! SMT-LIB representation of quantifier free first-order formulas for the theory of strings.
 
-/// The abstract syntax tree for SMT-LIB formulas.
-mod ast;
-
-/// A builder to create SMT-LIB formulas.
-// mod builder;
-
 /// Errors that can occur while working with SMT-LIB formulas.
 mod error;
 
@@ -17,7 +11,7 @@ mod script;
 
 use std::fmt::Display;
 
-pub use ast::*;
+//pub use ast::*;
 // pub use builder::AstBuilder;
 pub use error::*;
 use itertools::Itertools;
@@ -144,13 +138,13 @@ pub fn smt_max_char() -> char {
     char::from_u32(SMT_MAX_CHAR).unwrap()
 }
 
-fn convert_smtlib_char(c: char) -> String {
-    if c as u32 > SMT_MAX_CHAR as u32 {
+fn _convert_smtlib_char(c: char) -> String {
+    if c as u32 > SMT_MAX_CHAR {
         panic!("Invalid character in SMT-LIB string: {:?}", c);
     }
     let code_point = c as u32;
     // Check if the character is within the printable ASCII range
-    if 0x00020 <= code_point && code_point <= 0x0007E {
+    if (0x00020..=0x0007E).contains(&code_point) {
         // Printable ASCII characters or space can be printed directly
         c.to_string()
     } else {

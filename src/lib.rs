@@ -7,6 +7,8 @@
 //! The solver terminates when a model is found or when the bounds are relaxed to the point where the problem is unsatisfiable.
 //! Note however, that the solver does not guarantee that unsatisfiability is detected and thus might not terminate.
 
+#![allow(clippy::comparison_chain)]
+
 mod abstraction;
 mod alphabet;
 mod bounds;

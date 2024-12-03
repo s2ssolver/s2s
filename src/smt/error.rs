@@ -1,6 +1,6 @@
 use num_bigint::BigUint;
 
-use super::{Expression, Symbol};
+use super::Symbol;
 
 #[derive(Debug, thiserror::Error)]
 pub enum AstError {
@@ -25,22 +25,4 @@ pub enum AstError {
         position: smt2parser::Position,
         message: String,
     },
-}
-
-impl AstError {
-    pub fn neg_existence(e: &Expression) -> Self {
-        AstError::Unsupported(format!(
-            "Negation of {} introduces universal quantification",
-            e
-        ))
-    }
-
-    pub fn unsupported_expression(e: &Expression) -> Self {
-        AstError::Unsupported(e.to_string())
-    }
-
-    pub fn unsupported_exprtype(e: impl Into<Expression>) -> Self {
-        let e: Expression = e.into();
-        AstError::Unsupported(e.to_string())
-    }
 }

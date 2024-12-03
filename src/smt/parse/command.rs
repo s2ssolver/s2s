@@ -13,7 +13,7 @@ impl<'a> CommandVisitor<Node, Symbol, Sort, Keyword, Constant, SExpr> for Script
     type E = AstError;
 
     fn visit_assert(&mut self, term: Node) -> Result<Self::T, Self::E> {
-        Ok(SmtCommand::AssertNew(term))
+        Ok(SmtCommand::Assert(term))
     }
 
     fn visit_check_sat(&mut self) -> Result<Self::T, Self::E> {
@@ -30,7 +30,7 @@ impl<'a> CommandVisitor<Node, Symbol, Sort, Keyword, Constant, SExpr> for Script
     fn visit_declare_const(&mut self, symbol: Symbol, sort: Sort) -> Result<Self::T, Self::E> {
         match self.mngr.new_var(symbol.clone(), sort) {
             Ok(_) => Ok(SmtCommand::NoOp),
-            Err(_) => return Err(AstError::AlreadyDeclared(symbol)),
+            Err(_) => Err(AstError::AlreadyDeclared(symbol)),
         }
     }
 

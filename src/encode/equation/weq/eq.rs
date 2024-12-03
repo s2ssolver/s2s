@@ -40,11 +40,11 @@ impl WordEquationEncoder {
         let mut res =
             self.match_encoder
                 .0
-                .encode(&self.word_encoding.as_ref().unwrap(), bounds, dom);
+                .encode(self.word_encoding.as_ref().unwrap(), bounds, dom);
         res.extend(
             self.match_encoder
                 .1
-                .encode(&self.word_encoding.as_ref().unwrap(), bounds, dom),
+                .encode(self.word_encoding.as_ref().unwrap(), bounds, dom),
         );
         res
     }
@@ -53,7 +53,7 @@ impl WordEquationEncoder {
         pattern
             .symbols()
             .map(|s| match s {
-                Symbol::Constant(_) => 1 as usize,
+                Symbol::Constant(_) => 1,
                 Symbol::Variable(v) => {
                     bounds.get_upper_finite(v).expect("Upper bound not finite") as usize
                 }
@@ -189,11 +189,8 @@ mod tests {
     }
 
     fn assert_unsat(eq: &WordEquation, bounds: &[usize]) {
-        match solve_with_bounds(eq, bounds) {
-            Some(sol) => {
-                panic!("Expected UNSAT, got solution: {}", sol);
-            }
-            None => {}
+        if let Some(sol) = solve_with_bounds(eq, bounds) {
+            panic!("Expected UNSAT, got solution: {}", sol);
         }
     }
 

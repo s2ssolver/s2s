@@ -19,14 +19,10 @@ impl RewriteRule for FoldTrivialEquations {
 
             if lhs == rhs {
                 return Some(mngr.ttrue());
-            } else {
-                match (lhs.kind(), rhs.kind()) {
-                    (NodeKind::String(lhs), NodeKind::String(rhs)) => {
-                        if lhs != rhs {
-                            return Some(mngr.ffalse());
-                        }
-                    }
-                    _ => {}
+            } else if let (NodeKind::String(lhs), NodeKind::String(rhs)) = (lhs.kind(), rhs.kind())
+            {
+                if lhs != rhs {
+                    return Some(mngr.ffalse());
                 }
             }
         }
@@ -82,8 +78,8 @@ pub struct WeqStripSuffix;
 impl RewriteRule for WeqStripSuffix {
     fn apply(&self, node: &Node, mngr: &mut NodeManager) -> Option<Node> {
         if *node.kind() == NodeKind::Eq && node.children()[0].sort().is_string() {
-            let mut reversed = reverse(node, mngr);
-            let stripped_rev = WeqStripPrefix.apply(&mut reversed, mngr)?;
+            let reversed = reverse(node, mngr);
+            let stripped_rev = WeqStripPrefix.apply(&reversed, mngr)?;
             Some(reverse(&stripped_rev, mngr))
         } else {
             None

@@ -59,7 +59,7 @@ impl Formula {
     pub fn vars(&self) -> IndexSet<Rc<Variable>> {
         match self.kind() {
             FormulaKind::And(children) | FormulaKind::Or(children) => {
-                children.iter().map(|f| f.vars()).flatten().collect()
+                children.iter().flat_map(|f| f.vars()).collect()
             }
             FormulaKind::Literal(lit) => lit.variables(),
             FormulaKind::Unsupported(_) => IndexSet::new(),
@@ -68,11 +68,7 @@ impl Formula {
 
     pub fn entailed_lits(&self) -> IndexSet<Literal> {
         match self.kind() {
-            FormulaKind::And(children) => children
-                .iter()
-                .map(|f| f.entailed_lits())
-                .flatten()
-                .collect(),
+            FormulaKind::And(children) => children.iter().flat_map(|f| f.entailed_lits()).collect(),
             FormulaKind::Or(_) | FormulaKind::Unsupported(_) => IndexSet::new(),
             FormulaKind::Literal(lit) => {
                 let mut lits = IndexSet::new();
@@ -84,8 +80,8 @@ impl Formula {
 
     pub fn literals(&self) -> IndexSet<Literal> {
         match self.kind() {
-            FormulaKind::And(children) => children.iter().map(|f| f.literals()).flatten().collect(),
-            FormulaKind::Or(children) => children.iter().map(|f| f.literals()).flatten().collect(),
+            FormulaKind::And(children) => children.iter().flat_map(|f| f.literals()).collect(),
+            FormulaKind::Or(children) => children.iter().flat_map(|f| f.literals()).collect(),
             FormulaKind::Literal(lit) => {
                 let mut lits = IndexSet::new();
                 lits.insert(lit.clone());

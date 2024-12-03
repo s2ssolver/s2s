@@ -113,7 +113,7 @@ fn small_model_bounds(
                         smp_bounds.set(v.clone(), Interval::new(lower, upper));
                     }
                     None => {
-                        smp_bounds.set(v.clone(), b.clone());
+                        smp_bounds.set(v.clone(), *b);
                     }
                 }
             }

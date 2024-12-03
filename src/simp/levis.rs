@@ -12,15 +12,13 @@ pub struct LevisWeq;
 
 impl SimpRule for LevisWeq {
     fn apply(&self, node: &Node, entailed: bool, mngr: &mut NodeManager) -> Option<Simplification> {
-        if entailed {
-            if *node.kind() == NodeKind::Eq {
-                debug_assert!(node.children().len() == 2);
-                let lhs = node.children().first().unwrap();
-                let rhs = node.children().last().unwrap();
-                if lhs.sort().is_string() && rhs.sort().is_string() {
-                    if let Some(subs) = levis_step(lhs, rhs, mngr) {
-                        return Some(Simplification::new(subs, None));
-                    }
+        if entailed && *node.kind() == NodeKind::Eq {
+            debug_assert!(node.children().len() == 2);
+            let lhs = node.children().first().unwrap();
+            let rhs = node.children().last().unwrap();
+            if lhs.sort().is_string() && rhs.sort().is_string() {
+                if let Some(subs) = levis_step(lhs, rhs, mngr) {
+                    return Some(Simplification::new(subs, None));
                 }
             }
         }
@@ -63,7 +61,7 @@ fn levis_step(lhs: &Node, rhs: &Node, mngr: &mut NodeManager) -> Option<NodeSubs
             Some(substitution)
         }
         // All other cases are either not reducible or already reduced by stripping common prefixes
-        _ => return None,
+        _ => None,
     }
 }
 

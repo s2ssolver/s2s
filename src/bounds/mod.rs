@@ -20,20 +20,20 @@ pub enum BoundValue {
 
 impl PartialOrd for BoundValue {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        match (self, other) {
-            (BoundValue::PosInf, BoundValue::PosInf) => Some(Ordering::Equal),
-            (BoundValue::NegInf, BoundValue::NegInf) => Some(Ordering::Equal),
-            (BoundValue::PosInf, _) => Some(Ordering::Greater),
-            (BoundValue::NegInf, _) => Some(Ordering::Less),
-            (_, BoundValue::PosInf) => Some(Ordering::Less),
-            (_, BoundValue::NegInf) => Some(Ordering::Greater),
-            (BoundValue::Num(n1), BoundValue::Num(n2)) => n1.partial_cmp(n2),
-        }
+        Some(self.cmp(other))
     }
 }
 impl Ord for BoundValue {
     fn cmp(&self, other: &Self) -> Ordering {
-        self.partial_cmp(other).unwrap()
+        match (self, other) {
+            (BoundValue::PosInf, BoundValue::PosInf) => Ordering::Equal,
+            (BoundValue::NegInf, BoundValue::NegInf) => Ordering::Equal,
+            (BoundValue::PosInf, _) => Ordering::Greater,
+            (BoundValue::NegInf, _) => Ordering::Less,
+            (_, BoundValue::PosInf) => Ordering::Less,
+            (_, BoundValue::NegInf) => Ordering::Greater,
+            (BoundValue::Num(n1), BoundValue::Num(n2)) => n1.cmp(n2),
+        }
     }
 }
 
@@ -104,7 +104,7 @@ impl BoundValue {
 
 impl From<i32> for BoundValue {
     fn from(value: i32) -> Self {
-        BoundValue::Num(value as i32)
+        BoundValue::Num(value)
     }
 }
 

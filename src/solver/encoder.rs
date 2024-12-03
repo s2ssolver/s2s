@@ -104,7 +104,7 @@ impl ProblemEncoder {
     ) -> Result<EncodingResult, EncodingError> {
         let lit = def.defined();
         let def = def.defining();
-        let mut encoding = self.get_encoder(&lit, mngr).encode(bounds, dom)?;
+        let mut encoding = self.get_encoder(lit, mngr).encode(bounds, dom)?;
 
         // Add -def var to every clause
         encoding.iter_clauses_mut().for_each(|cl| {

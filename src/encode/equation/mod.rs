@@ -19,7 +19,7 @@ pub fn get_encoder(equation: &WordEquation, pol: bool) -> Box<dyn LiteralEncoder
     // Both constants => panic
     match equation {
         WordEquation::ConstantEquality(_, _) => panic!("Constant equations cannot be encoded"),
-        WordEquation::VarEquality(lhs, rhs) => return Box::new(VareqEncoder::new(lhs, rhs, pol)),
+        WordEquation::VarEquality(lhs, rhs) => Box::new(VareqEncoder::new(lhs, rhs, pol)),
         WordEquation::VarAssignment(lhs, rhs) => Box::new(AssignmentEncoder::new(
             lhs.clone(),
             rhs.chars().collect(),

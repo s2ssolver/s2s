@@ -295,7 +295,7 @@ impl Pattern {
     }
 
     pub fn extend(&mut self, other: Self) {
-        self.symbols.extend(other.symbols.into_iter())
+        self.symbols.extend(other.symbols)
     }
 
     pub fn starts_with(&self, other: &Self) -> bool {

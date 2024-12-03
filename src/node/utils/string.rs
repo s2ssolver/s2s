@@ -128,7 +128,7 @@ impl<'a> Iterator for SymbolIterator<'a> {
                 if self.index < s.len() {
                     let ch = s.chars().nth(self.index)?;
                     self.index += 1;
-                    return Some(Symbol::Const(ch));
+                    Some(Symbol::Const(ch))
                 } else {
                     None
                 }

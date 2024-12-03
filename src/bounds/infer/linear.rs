@@ -181,7 +181,7 @@ impl LinearRefiner {
             };
             // We also need to negate both the divisor and the dividend to make the division positive.
             dividend.multiply_constant(-1);
-            (op, dividend, divisor.abs() as usize)
+            (op, dividend, divisor.unsigned_abs() as usize)
         } else if divisor > 0 {
             (lc.operator(), dividend, divisor as usize)
         } else {
@@ -337,9 +337,7 @@ pub fn length_abstraction(weq: &WordEquation) -> LinearConstraint {
     for (v, c) in var_occurrences {
         lhs.add_summand(LinearSummand::len_variable(v.clone(), c));
     }
-    let la = LinearConstraint::new(lhs, ArithOperator::Eq, constant_counter);
-
-    la
+    LinearConstraint::new(lhs, ArithOperator::Eq, constant_counter)
 }
 
 impl InferringStrategy for LinearRefiner {

@@ -28,8 +28,7 @@ impl<'a> Interpreter<'a> {
     pub fn run(&mut self, script: &Script) -> Result<(), Error> {
         for cmd in script.iter() {
             match cmd {
-                SmtCommand::Assert(_) => unreachable!(),
-                SmtCommand::AssertNew(node) => {
+                SmtCommand::Assert(node) => {
                     self.assert(node);
                 }
                 SmtCommand::CheckSat => {
@@ -43,12 +42,8 @@ impl<'a> Interpreter<'a> {
                 }
                 SmtCommand::Exit => return Ok(()),
                 SmtCommand::GetModel => {
-                    if let Some(res) = &self.last_res {
-                        if let SolverResult::Sat(Some(m)) = res {
-                            println!("{}", m);
-                        } else {
-                            eprintln!("error: no model to get");
-                        }
+                    if let Some(SolverResult::Sat(Some(m))) = &self.last_res {
+                        println!("{}", m);
                     } else {
                         eprintln!("error: no model to get");
                     }

@@ -129,7 +129,7 @@ pub fn update_bounds(bounds: &Bounds, step: BoundStep) -> Bounds {
             // Only update the upper bound for string variables
             new_bounds.set(
                 var.clone(),
-                Interval::new(interval.lower().clone(), step.apply_upper(*interval)),
+                Interval::new(interval.lower(), step.apply_upper(*interval)),
             );
         } else {
             unreachable!(
@@ -305,8 +305,8 @@ mod tests {
         let interval = Interval::new(0, 10);
         let step = BoundStep::Double;
         let enlarged_interval = step.apply(interval);
-        let expected_lower = 0 - ((10 - 0 + 1) / 2); // 0 - 5 = -5
-        let expected_upper = 10 + ((10 - 0 + 1) / 2); // 10 + 5 = 15
+        let expected_lower = 0 - ((10 + 1) / 2); // 0 - 5 = -5
+        let expected_upper = 10 + ((10 + 1) / 2); // 10 + 5 = 15
         assert_eq!(enlarged_interval.lower(), BoundValue::Num(expected_lower));
         assert_eq!(enlarged_interval.upper(), BoundValue::Num(expected_upper));
     }

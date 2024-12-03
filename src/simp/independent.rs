@@ -48,12 +48,10 @@ impl IndependentVariableAssignment {
                         let mut subs = NodeSubstitution::default();
                         let rhs = if pol {
                             rhs.clone()
+                        } else if s.is_empty() {
+                            mngr.const_str("a")
                         } else {
-                            if s == "" {
-                                mngr.const_str("a")
-                            } else {
-                                mngr.const_str("")
-                            }
+                            mngr.const_str("")
                         };
                         subs.add(lhs.clone(), rhs, mngr);
                         Some(subs)

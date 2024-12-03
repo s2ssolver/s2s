@@ -94,7 +94,7 @@ impl NFAEncoder {
                     let reach_next = self.reach_vars[&(transition.get_dest(), l + 1)];
 
                     match transition.get_type() {
-                        TransitionType::Range(range) if range_any(&range) => {
+                        TransitionType::Range(range) if range_any(range) => {
                             // Follow transition if we do not read lambda
                             let lambda_sub_var =
                                 dom.string().get_sub(&self.var, l, LAMBDA).unwrap();
@@ -323,9 +323,9 @@ impl LiteralEncoder for NFAEncoder {
     fn print_debug(&self, solver: &cadical::Solver, _dom: &DomainEncoding) {
         for l in 0..self.last_bound.unwrap() {
             for c in _dom.alphabet().iter() {
-                let sub_var = _dom.string().get_sub(&self.var, l, c).expect(
-                    format!("Substitution h({})[{}] = {} not found", self.var, l, c).as_str(),
-                );
+                let sub_var = _dom.string().get_sub(&self.var, l, c).unwrap_or_else(|| {
+                    panic!("Substitution h({})[{}] = {} not found", self.var, l, c)
+                });
                 let is_sub = solver.value(plit(sub_var)).unwrap();
                 if is_sub {
                     print!("{c}({sub_var})\t");
@@ -340,10 +340,10 @@ impl LiteralEncoder for NFAEncoder {
             } else {
                 print!("-_({sub_var})\t");
             }
-            println!("");
+            println!();
         }
 
-        println!("");
+        println!();
 
         for l in 0..=self.last_bound.unwrap() {
             print!("{l}:\t");

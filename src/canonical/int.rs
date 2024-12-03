@@ -196,7 +196,7 @@ impl LinearArithTerm {
 
     /// Add another linear term to this term
     pub fn add(&mut self, other: Self) {
-        for smd in other.into_iter() {
+        for smd in other.into_summands() {
             self.add_summand(smd);
         }
         self.canonical = false;
@@ -204,7 +204,7 @@ impl LinearArithTerm {
 
     /// Subtract another linear term from this term
     pub fn sub(&mut self, other: Self) {
-        for smd in other.into_iter() {
+        for smd in other.into_summands() {
             match smd {
                 LinearSummand::Mult(x, c) => {
                     self.add_summand(LinearSummand::Mult(x, -c));
@@ -226,7 +226,7 @@ impl LinearArithTerm {
         self.factors.iter()
     }
 
-    pub fn into_iter(self) -> impl Iterator<Item = LinearSummand> {
+    pub fn into_summands(self) -> impl Iterator<Item = LinearSummand> {
         self.factors.into_iter()
     }
 

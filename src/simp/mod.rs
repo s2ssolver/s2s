@@ -37,9 +37,9 @@ impl From<NodeSubstitution> for Simplification {
     }
 }
 
-impl Into<(NodeSubstitution, Option<Node>)> for Simplification {
-    fn into(self) -> (NodeSubstitution, Option<Node>) {
-        (self.subs, self.entails)
+impl From<Simplification> for (NodeSubstitution, Option<Node>) {
+    fn from(val: Simplification) -> Self {
+        (val.subs, val.entails)
     }
 }
 
@@ -71,7 +71,7 @@ impl Simplifier {
         self.substitutions.clear();
         let mut result = None;
         for _ in 0..passes {
-            let current = result.as_ref().unwrap_or_else(|| node);
+            let current = result.as_ref().unwrap_or(node);
 
             for r in self.rules.iter_mut() {
                 // initialize the rules with the current node
@@ -150,11 +150,11 @@ enum SimpRules {
 
 impl SimpRules {
     pub fn entailed_boolean_vars() -> Self {
-        SimpRules::EntailedBooleanVars(entailed::EntailedBooleanVars::default())
+        SimpRules::EntailedBooleanVars(entailed::EntailedBooleanVars)
     }
 
     pub fn entailed_assignments() -> Self {
-        SimpRules::EntailedAssigments(entailed::EntailedAssigments::default())
+        SimpRules::EntailedAssigments(entailed::EntailedAssigments)
     }
 
     pub fn remove_entailed() -> Self {
@@ -168,15 +168,15 @@ impl SimpRules {
     }
 
     pub fn zero_length_epsilon() -> Self {
-        SimpRules::ZeroLengthEpsilon(ints::ZeroLengthEpsilon::default())
+        SimpRules::ZeroLengthEpsilon(ints::ZeroLengthEpsilon)
     }
 
     pub fn levis_weq() -> Self {
-        SimpRules::LevisWeq(levis::LevisWeq::default())
+        SimpRules::LevisWeq(levis::LevisWeq)
     }
 
     pub fn constant_prefix_suffix() -> Self {
-        SimpRules::ConstantPrefixSuffix(reprefix::ConstantPrefixSuffix::default())
+        SimpRules::ConstantPrefixSuffix(reprefix::ConstantPrefixSuffix)
     }
 
     fn as_mut(&mut self) -> &mut dyn SimpRule {

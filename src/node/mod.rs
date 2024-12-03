@@ -501,7 +501,7 @@ impl Display for NodeKind {
 impl Display for OwnedNode {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         if self.children().is_empty() {
-            return write!(f, "{}", self.kind);
+            write!(f, "{}", self.kind)
         } else {
             write!(f, "({}", self.kind)?;
             for child in &self.children {

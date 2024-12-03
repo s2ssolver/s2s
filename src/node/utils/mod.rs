@@ -34,9 +34,9 @@ mod test {
         let mut mngr = NodeManager::default();
         let pattern_str = "abXcdYaX";
         let pattern_str_rev = "XaYdcXba";
-        let pattern = parse_pattern(&pattern_str, &mut mngr);
+        let pattern = parse_pattern(pattern_str, &mut mngr);
         let reversed = super::reverse(&pattern, &mut mngr);
-        let expected = parse_pattern(&pattern_str_rev, &mut mngr);
+        let expected = parse_pattern(pattern_str_rev, &mut mngr);
         assert_eq!(
             reversed, expected,
             "\nExpected: {}\nGot: {}",

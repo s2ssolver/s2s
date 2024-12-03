@@ -31,7 +31,7 @@ impl<'a> ScriptBuilder<'a> {
                                     chars.next();
                                 }
                                 chars.next(); // consume '}'
-                                if hex.len() < 1 || hex.len() > 5 {
+                                if hex.is_empty() || hex.len() > 5 {
                                     return Err(AstError::InvalidEscapeSequence(hex));
                                 }
                                 match u32::from_str_radix(&hex, 16) {
@@ -109,7 +109,7 @@ impl<'a> visitors::ConstantVisitor for ScriptBuilder<'a> {
     fn visit_numeral_constant(&mut self, value: smt2parser::Numeral) -> Result<Self::T, Self::E> {
         value
             .to_isize()
-            .map(|n| Constant::Int(n))
+            .map(Constant::Int)
             .ok_or(AstError::NumeralOutOfBounds(value))
     }
 
@@ -120,7 +120,7 @@ impl<'a> visitors::ConstantVisitor for ScriptBuilder<'a> {
     fn visit_decimal_constant(&mut self, value: smt2parser::Decimal) -> Result<Self::T, Self::E> {
         value
             .to_f64()
-            .map(|n| Constant::Real(n))
+            .map(Constant::Real)
             .ok_or(AstError::Unsupported(format!(
                 "Decimal constant: {}",
                 value

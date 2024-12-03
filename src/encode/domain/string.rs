@@ -108,7 +108,7 @@ impl StringDomain {
             if let Some(true) = solver.value(plit(*v)) {
                 let sub = subs
                     .get_mut(var)
-                    .expect(format!("No substitution for {}", var).as_str());
+                    .unwrap_or_else(|| panic!("No substitution for {}", var));
                 // This could be more efficient by going over the positions only once, however, this way we can check for invalid substitutions
                 assert!(
                     sub[pos].is_none(),
@@ -181,9 +181,9 @@ impl StringDomainEncoder {
 
         // Encode the substitutions for each string variable
         for str_var in vars.iter().filter(|v| v.sort().is_string()) {
-            let last_bound = self.pre_bounds(&str_var).unwrap_or(0);
+            let last_bound = self.pre_bounds(str_var).unwrap_or(0);
             let new_bound = bounds
-                .get_upper_finite(&str_var)
+                .get_upper_finite(str_var)
                 .expect("Unbounded string variable") as usize;
 
             let alph = &self.alphabet;
@@ -229,10 +229,10 @@ impl StringDomainEncoder {
 
         for str_var in vars.iter().filter(|v| v.sort().is_string()) {
             let mut len_choices = vec![];
-            let last_bound = self.pre_bounds(&str_var).map(|b| b + 1).unwrap_or(0);
+            let last_bound = self.pre_bounds(str_var).map(|b| b + 1).unwrap_or(0);
 
             let lower = bounds
-                .get_lower(&str_var)
+                .get_lower(str_var)
                 .and_then(|f| f.as_num())
                 .unwrap_or(0);
             debug_assert!(lower >= 0);
@@ -243,13 +243,13 @@ impl StringDomainEncoder {
                 let choice = encoding.string().get_len(str_var, len).unwrap();
                 // if the variable has this length, then only lambdas follow
                 // we can only add this here because the following positions after last_bound - 1 were not yet defined in previous rounds
-                if len < bounds.get_upper_finite(&str_var).unwrap() as usize {
+                if len < bounds.get_upper_finite(str_var).unwrap() as usize {
                     let lambda_suffix = encoding.string().get_sub(str_var, len, LAMBDA).unwrap();
                     res.add_clause(vec![nlit(choice), plit(lambda_suffix)]);
                 }
             }
 
-            for len in last_bound..=bounds.get_upper_finite(&str_var).unwrap() as usize {
+            for len in last_bound..=bounds.get_upper_finite(str_var).unwrap() as usize {
                 let choice = pvar();
                 len_choices.push(choice);
                 // Deactive this lenght if it is less than the lower bound
@@ -259,18 +259,13 @@ impl StringDomainEncoder {
                 encoding.string.insert_lenght(str_var.as_ref(), len, choice);
 
                 // If the variable has this length, then only lambdas follow, and no lambdas precede
-                if len < bounds.get_upper_finite(&str_var).unwrap() as usize {
-                    let lambda_suffix = encoding
-                        .string()
-                        .get_sub(str_var, len as usize, LAMBDA)
-                        .unwrap();
+                if len < bounds.get_upper_finite(str_var).unwrap() as usize {
+                    let lambda_suffix = encoding.string().get_sub(str_var, len, LAMBDA).unwrap();
                     res.add_clause(vec![nlit(choice), plit(lambda_suffix)]);
                 }
                 if len > 0 {
-                    let lambda_prefix = encoding
-                        .string()
-                        .get_sub(str_var, len as usize - 1, LAMBDA)
-                        .unwrap();
+                    let lambda_prefix =
+                        encoding.string().get_sub(str_var, len - 1, LAMBDA).unwrap();
 
                     res.add_clause(vec![nlit(choice), nlit(lambda_prefix)]);
                 }
@@ -502,7 +497,7 @@ mod tests {
             subs_str
         };
         assert!(
-            subs.get(&var).is_some(),
+            subs.contains_key(&var),
             "No substitution found (length is {}) {:?}",
             len,
             subs

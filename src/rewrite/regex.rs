@@ -44,9 +44,9 @@ impl RewriteRule for FoldConstantInRe {
             if let NodeKind::String(s) = pattern.kind() {
                 if let NodeKind::Regex(re) = node.children()[1].kind() {
                     if re.accepts(&s.clone().into()) {
-                        return Some(mngr.ttrue());
+                        Some(mngr.ttrue())
                     } else {
-                        return Some(mngr.ffalse());
+                        Some(mngr.ffalse())
                     }
                 } else {
                     None

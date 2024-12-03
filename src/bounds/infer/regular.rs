@@ -199,7 +199,7 @@ impl InferringStrategy for RegularBoundsInferer {
             let mut prod: Option<isize> = Some(1);
             // todo: let lower equalt to minimum(?) of all lower bounds.
             for var in &component {
-                if let Some(bounds_v) = bounds.get(&var) {
+                if let Some(bounds_v) = bounds.get(var) {
                     if let Some(upper) = bounds_v.upper_finite() {
                         prod = prod
                             .and_then(|p| p.checked_mul(upper as isize))
@@ -225,7 +225,7 @@ impl InferringStrategy for RegularBoundsInferer {
         // Undo the substitutions.
         for (x, y) in self.eqs.iter() {
             if let Some(bound) = bounds.get(x) {
-                bounds.set(y.as_ref().clone(), bound.clone());
+                bounds.set(y.as_ref().clone(), bound);
             }
         }
 

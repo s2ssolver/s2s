@@ -29,7 +29,7 @@ impl<'a> TermVisitor<Constant, Identifier, Keyword, SExpr, Symbol, Sort> for Scr
             match self.mngr.get_var(name) {
                 Some(var) => match var.sort() {
                     Sort::Bool | Sort::Int | Sort::String => {
-                        if let Some(v) = self.mngr.get_var(&name) {
+                        if let Some(v) = self.mngr.get_var(name) {
                             Ok(self.mngr.var(v))
                         } else {
                             Err(AstError::Undeclared(name.clone()))
@@ -409,7 +409,7 @@ mod tests {
         let parser = ScriptBuilder::new(mngr);
         let script = parser.parse_script(script.as_bytes()).unwrap();
         match &script.commands()[0] {
-            crate::smt::SmtCommand::AssertNew(node) => node.clone(),
+            crate::smt::SmtCommand::Assert(node) => node.clone(),
             _ => unreachable!(),
         }
     }

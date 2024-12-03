@@ -155,12 +155,12 @@ impl Solver {
             let lower = if let Some(lower) = v_bounds.and_then(|b| b.lower_finite()) {
                 lower
             } else {
-                0.into()
+                0
             };
             let upper = if let Some(upper) = v_bounds.and_then(|b| b.upper_finite()) {
-                upper.min(self.options.init_upper_bound as i32)
+                upper.min(self.options.init_upper_bound)
             } else {
-                self.options.init_upper_bound as i32
+                self.options.init_upper_bound
             }
             .max(lower)
             .max(1); // need to be at least 1

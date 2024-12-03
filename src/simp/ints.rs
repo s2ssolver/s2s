@@ -86,7 +86,7 @@ impl SimpRule for ZeroLengthEpsilon {
                         _ => None,
                     }
                 }
-                _ => return None,
+                _ => None,
             }
         } else {
             None

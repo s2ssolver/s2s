@@ -298,6 +298,7 @@ impl PatternMatchingEncoder {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn encode_match_variable(
         &mut self,
         i: usize,
@@ -352,15 +353,17 @@ impl PatternMatchingEncoder {
                     } else if len > 1 {
                         let m_var = pvar();
                         // The Boolean variable equivalent to the matching of the variable to the word at the given position and length-1.
-                        let pred_m_var = *self.match_cache.get(&(v.clone(), pos, len - 1)).expect(
-                            format!(
-                                "No match variable for {} at {} with length {}",
-                                v,
-                                pos,
-                                len - 1
-                            )
-                            .as_str(),
-                        );
+                        let pred_m_var = *self
+                            .match_cache
+                            .get(&(v.clone(), pos, len - 1))
+                            .unwrap_or_else(|| {
+                                panic!(
+                                    "No match variable for {} at {} with length {}",
+                                    v,
+                                    pos,
+                                    len - 1
+                                )
+                            });
                         res.add_clause(vec![nlit(m_var), plit(pred_m_var)]);
                         self.match_cache.insert((v.clone(), pos, len), m_var);
 

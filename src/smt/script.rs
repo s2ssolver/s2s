@@ -2,7 +2,7 @@ use std::fmt::{self, Display, Formatter};
 
 use crate::node::Node;
 
-use super::{ast::Expression, Sort, Symbol};
+use super::{Sort, Symbol};
 
 #[derive(Debug, Default, Clone)]
 pub struct Script {
@@ -34,7 +34,7 @@ impl Script {
 
     pub fn iter_asserts(&self) -> impl Iterator<Item = &Node> {
         self.iter().filter_map(|cmd| match cmd {
-            SmtCommand::AssertNew(expr) => Some(expr),
+            SmtCommand::Assert(expr) => Some(expr),
             _ => None,
         })
     }
@@ -52,8 +52,7 @@ impl Display for Script {
 /// The currently supported SMT2 commands.
 #[derive(Debug, Clone)]
 pub enum SmtCommand {
-    Assert(Expression),
-    AssertNew(Node),
+    Assert(Node),
     CheckSat,
     DeclareConst(Symbol, Sort),
     Echo(String),
@@ -66,8 +65,7 @@ pub enum SmtCommand {
 impl Display for SmtCommand {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         match self {
-            SmtCommand::Assert(expr) => write!(f, "(assert {})", expr),
-            SmtCommand::AssertNew(node) => write!(f, "(assert {})", node),
+            SmtCommand::Assert(node) => write!(f, "(assert {})", node),
             SmtCommand::CheckSat => write!(f, "(check-sat)"),
             SmtCommand::DeclareConst(symbol, sort) => {
                 write!(f, "(declare-const {} {})", symbol, sort)

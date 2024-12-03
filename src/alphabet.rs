@@ -118,7 +118,7 @@ fn additional_chars(fm: &Formula) -> usize {
     // Partition the literals based on variable dependencies
 
     // Cloning is cheap, because all atoms are reference counted pointers
-    let lits = Vec::from_iter(fm.literals().into_iter());
+    let lits = Vec::from_iter(fm.literals());
     let parts = partition_by_vars(&lits);
 
     // For each partition, compute the number of characters needed to encode the partition and take the maximum
