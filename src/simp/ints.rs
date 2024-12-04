@@ -66,14 +66,18 @@ impl SimpRule for ZeroLengthEpsilon {
     fn apply(&self, node: &Node, entailed: bool, mngr: &mut NodeManager) -> Option<Simplification> {
         if entailed {
             match node.kind() {
-                NodeKind::Eq if node.sort().is_int() => {
+                NodeKind::Eq => {
                     debug_assert!(node.children().len() == 2);
                     let lhs = node.children().first().unwrap();
                     let rhs = node.children().last().unwrap();
-                    match (lhs.kind(), rhs.kind()) {
-                        (_, NodeKind::Int(0)) => ZeroLengthEpsilon::apply(lhs, mngr),
-                        (NodeKind::Int(0), _) => ZeroLengthEpsilon::apply(rhs, mngr),
-                        _ => None,
+                    if lhs.sort().is_int() && rhs.sort().is_int() {
+                        match (lhs.kind(), rhs.kind()) {
+                            (_, NodeKind::Int(0)) => ZeroLengthEpsilon::apply(lhs, mngr),
+                            (NodeKind::Int(0), _) => ZeroLengthEpsilon::apply(rhs, mngr),
+                            _ => None,
+                        }
+                    } else {
+                        None
                     }
                 }
                 NodeKind::Le => {
