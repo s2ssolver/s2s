@@ -61,6 +61,12 @@ impl NodeManager {
                 let l = children.pop().unwrap();
                 self.eq(l, r)
             }
+            NodeKind::Ite if children.len() == 3 => {
+                let else_branch = children.pop().unwrap();
+                let then_branch = children.pop().unwrap();
+                let ifc = children.pop().unwrap();
+                self.ite(ifc, then_branch, else_branch)
+            }
             NodeKind::Concat => self.concat(children),
             NodeKind::Length if children.len() == 1 => {
                 let c = children.pop().unwrap();
@@ -109,6 +115,7 @@ impl NodeManager {
                 let l = children.pop().unwrap();
                 self.ge(l, r)
             }
+
             _ => panic!("Invalid arity ({}) for kind {kind}", children.len()),
         }
     }
@@ -318,7 +325,7 @@ impl NodeManager {
     }
 
     pub fn ite(&mut self, ifc: Node, then_branch: Node, else_branch: Node) -> Node {
-        self.create_node(NodeKind::Ite, vec![ifc, then_branch, else_branch])
+        self.intern_node(NodeKind::Ite, vec![ifc, then_branch, else_branch])
     }
 
     /* Equality */

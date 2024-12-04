@@ -1,6 +1,7 @@
 /// Rewrite rules for transforming Boolean nodes.
 mod boolean;
 mod int;
+mod ite;
 mod regex;
 mod weq;
 
@@ -28,6 +29,7 @@ impl Default for Rewriter {
     fn default() -> Self {
         Rewriter {
             rules: vec![
+                Box::new(ite::IteRewrite),
                 Box::new(boolean::BoolConstFolding),
                 Box::new(weq::FoldTrivialEquations),
                 Box::new(weq::WeqStripPrefix),
