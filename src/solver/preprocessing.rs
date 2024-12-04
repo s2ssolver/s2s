@@ -40,7 +40,7 @@ impl Preprocessor {
                     log::debug!("Rewrite: {} -> {}", old, new);
                 }
             }
-            if let Some(new_node) = simplifier.simplify(&result, 1, mngr) {
+            if let Some(new_node) = simplifier.simplify(&result, 10, mngr) {
                 applied = true;
                 result = new_node;
                 for sub in simplifier.applied() {

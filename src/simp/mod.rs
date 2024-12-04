@@ -70,6 +70,13 @@ impl Simplifier {
     pub fn simplify(&mut self, node: &Node, passes: usize, mngr: &mut NodeManager) -> Option<Node> {
         self.substitutions.clear();
         let mut result = None;
+        if passes < self.rules.len() {
+            log::warn!(
+                "Number of passes ({}) is less than the number of rules ({}). This might result in non-termination.",
+                passes,
+                self.rules.len()
+            );
+        }
         for _ in 0..passes {
             let current = result.as_ref().unwrap_or(node);
 
