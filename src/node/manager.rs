@@ -401,19 +401,37 @@ impl NodeManager {
     /// Addition
     pub fn add(&mut self, rs: Vec<Node>) -> Node {
         debug_assert!(rs.iter().all(|n| n.sort().is_int()));
-        self.intern_node(NodeKind::Add, rs)
+        if rs.is_empty() {
+            return self.const_int(0);
+        } else if rs.len() == 1 {
+            return rs[0].clone();
+        } else {
+            self.intern_node(NodeKind::Add, rs)
+        }
     }
 
     /// Multiplication
     pub fn mul(&mut self, rs: Vec<Node>) -> Node {
         debug_assert!(rs.iter().all(|n| n.sort().is_int()));
-        self.intern_node(NodeKind::Mul, rs)
+        if rs.is_empty() {
+            return self.const_int(1);
+        } else if rs.len() == 1 {
+            return rs[0].clone();
+        } else {
+            self.intern_node(NodeKind::Mul, rs)
+        }
     }
 
     /// Subtraction
     pub fn sub(&mut self, rs: Vec<Node>) -> Node {
         debug_assert!(rs.iter().all(|n| n.sort().is_int()));
-        self.intern_node(NodeKind::Sub, rs)
+        if rs.is_empty() {
+            return self.const_int(0);
+        } else if rs.len() == 1 {
+            return self.neg(rs[0].clone());
+        } else {
+            self.intern_node(NodeKind::Sub, rs)
+        }
     }
 
     /// Negation

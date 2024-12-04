@@ -139,3 +139,36 @@ impl RewriteRule for FoldConstantInts {
         }
     }
 }
+
+pub struct LengthOfConcatToAddition;
+
+impl RewriteRule for LengthOfConcatToAddition {
+    fn apply(&self, node: &Node, mngr: &mut NodeManager) -> Option<Node> {
+        match node.kind() {
+            NodeKind::Length => {
+                debug_assert!(node.children().len() == 1);
+                let child = node.children().first().unwrap();
+                debug_assert!(child.sort().is_string());
+
+                match child.kind() {
+                    NodeKind::Concat => {
+                        let mut terms = Vec::new();
+                        for c in child.children() {
+                            match c.kind() {
+                                NodeKind::String(s) => {
+                                    terms.push(mngr.const_int(s.len() as i64));
+                                }
+                                _ => terms.push(mngr.str_len(c.clone())),
+                            }
+                        }
+                        Some(mngr.add(terms))
+                    }
+                    NodeKind::String(s) => Some(mngr.const_int(s.len() as i64)),
+                    NodeKind::Variable(_) => None, // nothing changes
+                    _ => None,
+                }
+            }
+            _ => None,
+        }
+    }
+}
