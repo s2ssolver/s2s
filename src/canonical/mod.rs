@@ -92,6 +92,29 @@ impl Formula {
     }
 }
 
+impl Display for Formula {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self.kind() {
+            FormulaKind::And(children) => {
+                write!(f, "({}", children[0])?;
+                for child in &children[1..] {
+                    write!(f, " & {}", child)?;
+                }
+                write!(f, ")")
+            }
+            FormulaKind::Or(children) => {
+                write!(f, "({}", children[0])?;
+                for child in &children[1..] {
+                    write!(f, " | {}", child)?;
+                }
+                write!(f, ")")
+            }
+            FormulaKind::Literal(lit) => write!(f, "{}", lit),
+            FormulaKind::Unsupported(node) => write!(f, "{}", node),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Literal {
     pol: bool,

@@ -14,7 +14,8 @@ use std::{collections::HashMap, rc::Rc};
 
 pub fn canonicalize(node: &Node, mngr: &mut NodeManager) -> Result<Formula, NodeError> {
     let mut canonicalizer = Canonicalizer::default();
-    canonicalizer.canonicalize(node, mngr)
+    let c = canonicalizer.canonicalize(node, mngr);
+    c
 }
 
 #[derive(Default)]
@@ -27,8 +28,34 @@ struct Canonicalizer {
 }
 
 impl Canonicalizer {
-    /// Brings all literals into canonical form.
     fn canonicalize(&mut self, node: &Node, mngr: &mut NodeManager) -> Result<Formula, NodeError> {
+        let canonical = self.canonicalize_rec(node, mngr)?;
+        let mut eqs = Vec::with_capacity(self.def_identities.len());
+        for (n, var) in std::mem::take(&mut self.def_identities).into_iter() {
+            let var_node = mngr.var(var.clone());
+            let eq_node = mngr.eq(n.clone(), var_node);
+            let rhs = self.canonicalize_concat(n.clone(), mngr);
+            let lhs = Pattern::variable(var.clone());
+            let weq = WordEquation::new(lhs, rhs);
+            let atom = Atom::new(AtomKind::WordEquation(weq), eq_node.clone());
+            let lit = Literal::new(true, atom);
+            let fm = Formula::new(FormulaKind::Literal(lit), eq_node.clone());
+            eqs.push(fm);
+        }
+        debug_assert!(self.def_identities.is_empty());
+        let mut complete = vec![canonical];
+        complete.extend(eqs);
+
+        let formula = Formula::new(FormulaKind::And(complete), node.clone());
+        Ok(formula)
+    }
+
+    /// Brings all literals into canonical form.
+    fn canonicalize_rec(
+        &mut self,
+        node: &Node,
+        mngr: &mut NodeManager,
+    ) -> Result<Formula, NodeError> {
         if let Some(f) = self.cache.get(node) {
             return Ok(f.clone());
         }

@@ -91,7 +91,7 @@ impl Solver {
         log::info!("Preprocessed ({:?})", timer.elapsed());
         if self.options.print_preprocessed {
             //let smt = ir::smt::to_smtlib(&preprocessed);
-            println!("{}", preprocessed.node());
+            println!("{}", preprocessed);
         }
 
         // Early return if the formula is trivially sat/unsat
