@@ -94,6 +94,7 @@ impl NodeManager {
             }
             NodeKind::Add => self.add(children),
             NodeKind::Sub => self.sub(children),
+            NodeKind::Neg if children.len() == 1 => self.neg(children.pop().unwrap()),
             NodeKind::Mul => self.mul(children),
             NodeKind::Lt if children.len() == 2 => {
                 let r = children.pop().unwrap();
@@ -116,7 +117,11 @@ impl NodeManager {
                 self.ge(l, r)
             }
 
-            _ => panic!("Invalid arity ({}) for kind {kind}", children.len()),
+            _ => panic!(
+                "Invalid arity ({}) for kind {kind} ({:?})",
+                children.len(),
+                kind
+            ),
         }
     }
 
@@ -444,7 +449,14 @@ impl NodeManager {
     /// Negation
     pub fn neg(&mut self, r: Node) -> Node {
         debug_assert!(r.sort().is_int());
-        self.intern_node(NodeKind::Neg, vec![r])
+        if let Some(i) = r.as_int_const() {
+            self.const_int(-i)
+        } else if *r.kind() == NodeKind::Neg {
+            // double negation
+            r.children().first().unwrap().clone()
+        } else {
+            self.intern_node(NodeKind::Neg, vec![r])
+        }
     }
 
     /// Less than
