@@ -102,7 +102,8 @@ impl RewriteRule for WeqConstMismatch {
                 (Some(lhs_char), Some(rhs_char)) if lhs_char != rhs_char => {
                     return Some(mngr.ffalse());
                 }
-                (Some(_), None) | (None, Some(_)) => return Some(mngr.ffalse()),
+                (Some(_), None) if is_empty_string(rhs) => return Some(mngr.ffalse()),
+                (None, Some(_)) if is_empty_string(lhs) => return Some(mngr.ffalse()),
 
                 _ => {}
             }
@@ -118,6 +119,19 @@ impl RewriteRule for WeqConstMismatch {
     }
 }
 
+/// Returns `true` if the node is a string node with an empty string.
+fn is_empty_string(node: &Node) -> bool {
+    match node.kind() {
+        NodeKind::String(s) => s.is_empty(),
+        NodeKind::Concat => {
+            node.children().is_empty() || node.children().iter().all(is_empty_string)
+        }
+        _ => false,
+    }
+}
+
+/// If the node is a pattern starting with a constant character, return that character.
+/// Otherwise, return `None`.
 fn first_char(node: &Node) -> Option<char> {
     match node.kind() {
         NodeKind::String(s) => s.chars().next(),
@@ -129,6 +143,8 @@ fn first_char(node: &Node) -> Option<char> {
     }
 }
 
+/// If the node is a pattern ending with a constant character, return that character.
+/// Otherwise, return `None`.
 fn last_char(node: &Node) -> Option<char> {
     match node.kind() {
         NodeKind::String(s) => s.chars().last(),
