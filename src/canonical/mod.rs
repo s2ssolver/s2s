@@ -107,7 +107,7 @@ impl Literal {
         Self { pol: false, atom }
     }
 
-    fn new(pol: bool, atom: Atom) -> Self {
+    pub fn new(pol: bool, atom: Atom) -> Self {
         Self { pol, atom }
     }
 
@@ -171,7 +171,11 @@ impl AtomKind {
                 vars
             }
 
-            AtomKind::FactorConstraint(_fc) => todo!(),
+            AtomKind::FactorConstraint(rfc) => {
+                let mut vars = IndexSet::new();
+                vars.insert(rfc.lhs().clone());
+                vars
+            }
             AtomKind::Linear(lc) => lc.variables(),
         }
     }

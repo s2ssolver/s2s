@@ -161,8 +161,9 @@ impl BoundInferer {
             AtomKind::Boolvar(_) => (),
             AtomKind::InRe(reg) => self.add_reg(reg, pol, mngr),
             AtomKind::WordEquation(weq) => self.add_weq(weq, pol, mngr),
-            AtomKind::FactorConstraint(_fac) => {
-                todo!()
+            AtomKind::FactorConstraint(rfac) => {
+                let re = rfac.as_regex(mngr);
+                self.reg.add_reg(rfac.lhs().clone(), re, pol, mngr);
             }
             AtomKind::Linear(lc) => {
                 if pol {

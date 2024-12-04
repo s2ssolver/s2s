@@ -2,7 +2,7 @@ use std::fmt::Display;
 
 use crate::{
     bounds::Bounds,
-    canonical::{AtomKind, Literal},
+    canonical::{AtomKind, Literal, RegularConstraint},
     node::NodeManager,
     sat::{Clause, Cnf, PLit},
 };
@@ -201,7 +201,13 @@ pub fn get_encoder(
         AtomKind::Boolvar(v) => Ok(Box::new(BoolVarEncoder::new(v, pol))),
         AtomKind::InRe(inre) => build_inre_encoder(inre, pol, mngr),
         AtomKind::WordEquation(weq) => Ok(equation::get_encoder(weq, pol)),
-        AtomKind::FactorConstraint(_) => todo!(),
+        AtomKind::FactorConstraint(rfc) => {
+            // Right now, we cast it into a regular constraint
+            log::warn!("Specialized encodings for regular factor constraints are not implemented yet. Casting to regular constraint.");
+            let re = rfc.as_regex(mngr);
+            let inre = RegularConstraint::new(rfc.lhs().clone(), re);
+            build_inre_encoder(&inre, pol, mngr)
+        }
         AtomKind::Linear(lc) => Ok(Box::new(MddEncoder::new(lc.clone(), pol))),
     }
 }

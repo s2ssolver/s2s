@@ -409,9 +409,9 @@ impl NodeManager {
     pub fn add(&mut self, rs: Vec<Node>) -> Node {
         debug_assert!(rs.iter().all(|n| n.sort().is_int()));
         if rs.is_empty() {
-            return self.const_int(0);
+            self.const_int(0)
         } else if rs.len() == 1 {
-            return rs[0].clone();
+            rs[0].clone()
         } else {
             self.intern_node(NodeKind::Add, rs)
         }
@@ -421,7 +421,7 @@ impl NodeManager {
     pub fn mul(&mut self, rs: Vec<Node>) -> Node {
         debug_assert!(rs.iter().all(|n| n.sort().is_int()));
         if rs.is_empty() {
-            return self.const_int(1);
+            self.const_int(1)
         } else if rs.len() == 1 {
             return rs[0].clone();
         } else {
@@ -433,9 +433,9 @@ impl NodeManager {
     pub fn sub(&mut self, rs: Vec<Node>) -> Node {
         debug_assert!(rs.iter().all(|n| n.sort().is_int()));
         if rs.is_empty() {
-            return self.const_int(0);
+            self.const_int(0)
         } else if rs.len() == 1 {
-            return self.neg(rs[0].clone());
+            self.neg(rs[0].clone())
         } else {
             self.intern_node(NodeKind::Sub, rs)
         }

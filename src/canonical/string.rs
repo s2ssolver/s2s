@@ -7,7 +7,7 @@ use std::{
 use indexmap::IndexSet;
 use regulaer::re::Regex;
 
-use crate::node::{Sort, Sorted, Variable};
+use crate::node::{NodeManager, Sort, Sorted, Variable};
 
 /// Represents a pattern symbol, which can be either a constant word or a variable.
 #[derive(Clone, Debug, PartialEq, Hash, Eq)]
@@ -582,6 +582,16 @@ impl RegularFactorConstraint {
 
     pub fn typ(&self) -> FactorConstraintType {
         self.typ
+    }
+
+    pub fn as_regex(&self, mngr: &mut NodeManager) -> Regex {
+        let all = mngr.re_builder().all();
+        let w = mngr.re_builder().word(self.rhs.clone().into());
+        match self.typ {
+            FactorConstraintType::Prefix => mngr.re_builder().concat(vec![w, all]),
+            FactorConstraintType::Suffix => mngr.re_builder().concat(vec![all, w]),
+            FactorConstraintType::Contains => mngr.re_builder().concat(vec![all.clone(), w, all]),
+        }
     }
 }
 
