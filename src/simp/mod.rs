@@ -85,7 +85,7 @@ impl Simplifier {
                 r.init(current);
             }
 
-            if let Some(simp) = self.apply(node, true, mngr) {
+            if let Some(simp) = self.apply(current, true, mngr) {
                 let (subs, entailed) = simp.into();
                 let mut applied = subs.apply(current, mngr);
                 self.substitutions.push(subs);
