@@ -98,10 +98,13 @@ impl RewriteRule for WeqConstMismatch {
             let rhs = &node.children()[1];
 
             // Check for first character mismatch
-            if let (Some(lhs_char), Some(rhs_char)) = (first_char(lhs), first_char(rhs)) {
-                if lhs_char != rhs_char {
+            match (first_char(lhs), first_char(rhs)) {
+                (Some(lhs_char), Some(rhs_char)) if lhs_char != rhs_char => {
                     return Some(mngr.ffalse());
                 }
+                (Some(_), None) | (None, Some(_)) => return Some(mngr.ffalse()),
+
+                _ => {}
             }
 
             // Check for last character mismatch
