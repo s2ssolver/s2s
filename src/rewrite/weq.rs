@@ -106,7 +106,6 @@ impl RewriteRule for WeqConstMismatch {
 
             // Check for last character mismatch
             if let (Some(lhs_char), Some(rhs_char)) = (last_char(lhs), last_char(rhs)) {
-                println!("lhs_char: {}, rhs_char: {}", lhs_char, rhs_char);
                 if lhs_char != rhs_char {
                     return Some(mngr.ffalse());
                 }
