@@ -144,11 +144,19 @@ impl IndependentVariableAssignment {
                 };
                 if let Some(asstr) = contained.as_str_const() {
                     if let Some(v) = container.as_variable() {
-                        if self.independent(v) && polarity {
-                            let mut subs = NodeSubstitution::default();
-                            let rhs = mngr.const_str(asstr);
-                            subs.add(container.clone(), rhs, mngr);
-                            return Some(Simplification::new(subs, None));
+                        if self.independent(v) {
+                            if polarity {
+                                let mut subs = NodeSubstitution::default();
+                                let rhs = mngr.const_str(asstr);
+                                subs.add(container.clone(), rhs, mngr);
+                                return Some(Simplification::new(subs, None));
+                            } else {
+                                // abort here to not decent into the children
+                                return Some(Simplification::new(
+                                    NodeSubstitution::default(),
+                                    None,
+                                ));
+                            }
                         }
                     }
                 }
