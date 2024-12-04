@@ -170,15 +170,15 @@ impl Canonicalizer {
         debug_assert!(node.children().len() == 2);
         // Contains(r, s) <--> r contains s
 
-        let r = node.children().first().unwrap();
-        let s = node.children().last().unwrap();
+        let prefix = node.children().first().unwrap();
+        let of = node.children().last().unwrap();
         // If `s`  is constant, then this is a regular expression constraint r \in .*s.*
-        if let Some(s) = node[1].as_str_const() {
-            let v = if let Some(v) = r.as_variable() {
+        if let Some(s) = prefix.as_str_const() {
+            let v = if let Some(v) = of.as_variable() {
                 debug_assert!(v.sort().is_string());
                 v.clone()
             } else {
-                self.define_with_var(r, mngr)
+                self.define_with_var(prefix, mngr)
             };
             Ok(Atom::new(
                 AtomKind::FactorConstraint(RegularFactorConstraint::prefixof(v, s.to_string())),
@@ -188,8 +188,8 @@ impl Canonicalizer {
             // Otherwise, rewrite as a word equation: There exists some t, u such that  r = t ++ s ++ u
             let t = mngr.temp_var(Sort::String);
             let t = mngr.var(t);
-            let rhs = mngr.concat(vec![s.clone(), t.clone()]);
-            let eq = mngr.eq(r.clone(), rhs);
+            let rhs = mngr.concat(vec![of.clone(), t.clone()]);
+            let eq = mngr.eq(prefix.clone(), rhs);
             self.canonicalize_weq(&eq, mngr)
         }
     }
@@ -202,16 +202,16 @@ impl Canonicalizer {
         debug_assert!(*node.kind() == NodeKind::SuffixOf);
         debug_assert!(node.children().len() == 2);
         // Contains(r, s) <--> r contains s
-
-        let r = node.children().first().unwrap();
-        let s = node.children().last().unwrap();
+        println!("SuffixOf: {}", node);
+        let suffix = node.children().first().unwrap();
+        let of = node.children().last().unwrap();
         // If `s`  is constant, then this is a regular expression constraint r \in .*s.*
-        if let Some(s) = node[1].as_str_const() {
-            let v = if let Some(v) = r.as_variable() {
+        if let Some(s) = suffix.as_str_const() {
+            let v = if let Some(v) = of.as_variable() {
                 debug_assert!(v.sort().is_string());
                 v.clone()
             } else {
-                self.define_with_var(r, mngr)
+                self.define_with_var(suffix, mngr)
             };
             Ok(Atom::new(
                 AtomKind::FactorConstraint(RegularFactorConstraint::suffixof(v, s.to_string())),
@@ -221,8 +221,8 @@ impl Canonicalizer {
             // Otherwise, rewrite as a word equation: There exists some t, u such that  r = t ++ s ++ u
             let t = mngr.temp_var(Sort::String);
             let t = mngr.var(t);
-            let rhs = mngr.concat(vec![t.clone(), s.clone()]);
-            let eq = mngr.eq(r.clone(), rhs);
+            let rhs = mngr.concat(vec![t.clone(), of.clone()]);
+            let eq = mngr.eq(suffix.clone(), rhs);
             self.canonicalize_weq(&eq, mngr)
         }
     }
@@ -236,15 +236,15 @@ impl Canonicalizer {
         debug_assert!(node.children().len() == 2);
         // Contains(r, s) <--> r contains s
 
-        let r = node.children().first().unwrap();
-        let s = node.children().last().unwrap();
+        let container = node.children().first().unwrap();
+        let contained = node.children().last().unwrap();
         // If `s`  is constant, then this is a regular expression constraint r \in .*s.*
-        if let Some(s) = node[1].as_str_const() {
-            let v = if let Some(v) = r.as_variable() {
+        if let Some(s) = contained.as_str_const() {
+            let v = if let Some(v) = container.as_variable() {
                 debug_assert!(v.sort().is_string());
                 v.clone()
             } else {
-                self.define_with_var(r, mngr)
+                self.define_with_var(container, mngr)
             };
             Ok(Atom::new(
                 AtomKind::FactorConstraint(RegularFactorConstraint::contains(v, s.to_string())),
@@ -256,8 +256,8 @@ impl Canonicalizer {
             let t = mngr.var(t);
             let u = mngr.temp_var(Sort::String);
             let u = mngr.var(u);
-            let rhs = mngr.concat(vec![t.clone(), s.clone(), u.clone()]);
-            let eq = mngr.eq(r.clone(), rhs);
+            let rhs = mngr.concat(vec![t.clone(), contained.clone(), u.clone()]);
+            let eq = mngr.eq(container.clone(), rhs);
             self.canonicalize_weq(&eq, mngr)
         }
     }
