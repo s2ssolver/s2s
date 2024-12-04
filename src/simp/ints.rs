@@ -82,6 +82,14 @@ impl SimpRule for ZeroLengthEpsilon {
                     let rhs = node.children().last().unwrap();
                     match (lhs.kind(), rhs.kind()) {
                         (_, NodeKind::Int(0)) => ZeroLengthEpsilon::apply(lhs, mngr),
+                        _ => None,
+                    }
+                }
+                NodeKind::Ge => {
+                    debug_assert!(node.children().len() == 2);
+                    let lhs = node.children().first().unwrap();
+                    let rhs = node.children().last().unwrap();
+                    match (lhs.kind(), rhs.kind()) {
                         (NodeKind::Int(0), _) => ZeroLengthEpsilon::apply(rhs, mngr),
                         _ => None,
                     }
