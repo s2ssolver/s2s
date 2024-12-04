@@ -131,7 +131,27 @@ impl IndependentVariableAssignment {
                 }
             }
             NodeKind::PrefixOf | NodeKind::SuffixOf | NodeKind::Contains => {
-                log::warn!("TODO: Implement independent variable reductions for PrefixOf, SuffixOf, Contains")
+                // Cano only reduce the atom if the contained string is a constant and the container is a variable
+                let contained = if NodeKind::Contains == *atom.kind() {
+                    atom.children().last().unwrap()
+                } else {
+                    atom.children().first().unwrap()
+                };
+                let container = if NodeKind::Contains == *atom.kind() {
+                    atom.children().first().unwrap()
+                } else {
+                    atom.children().last().unwrap()
+                };
+                if let Some(asstr) = contained.as_str_const() {
+                    if let Some(v) = container.as_variable() {
+                        if self.independent(v) && polarity {
+                            let mut subs = NodeSubstitution::default();
+                            let rhs = mngr.const_str(asstr);
+                            subs.add(container.clone(), rhs, mngr);
+                            return Some(Simplification::new(subs, None));
+                        }
+                    }
+                }
             }
             _ => (),
         }
