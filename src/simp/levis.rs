@@ -1,5 +1,5 @@
 use crate::node::{
-    utils::{Symbol, SymbolIterator},
+    utils::{reverse, Symbol, SymbolIterator},
     NodeKind, Sorted,
 };
 
@@ -19,6 +19,16 @@ impl SimpRule for LevisWeq {
             if lhs.sort().is_string() && rhs.sort().is_string() {
                 if let Some(subs) = levis_step(lhs, rhs, mngr) {
                     return Some(Simplification::new(subs, None));
+                } else {
+                    let lhs_rev = reverse(lhs, mngr);
+                    let rhs_rev = reverse(rhs, mngr);
+                    if let Some(mut subs) = levis_step(&lhs_rev, &rhs_rev, mngr) {
+                        // reverse subs
+                        for (_, s) in subs.iter_mut() {
+                            *s = reverse(s, mngr);
+                        }
+                        return Some(Simplification::new(subs, None));
+                    }
                 }
             }
         }

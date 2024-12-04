@@ -103,6 +103,10 @@ impl NodeSubstitution {
         }
         subst
     }
+
+    pub fn iter_mut(&mut self) -> impl Iterator<Item = (&Node, &mut Node)> {
+        self.map.iter_mut()
+    }
 }
 
 impl Display for NodeSubstitution {
