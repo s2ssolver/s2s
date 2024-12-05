@@ -56,7 +56,18 @@ impl IndependentVariableAssignment {
                         subs.add(lhs.clone(), rhs, mngr);
                         Some(subs)
                     }
-                    NodeKind::Int(_) => todo!(),
+                    NodeKind::Int(i) => {
+                        let mut subs = NodeSubstitution::default();
+                        let rhs = if pol {
+                            rhs.clone()
+                        } else if *i != 0 {
+                            mngr.const_int(0)
+                        } else {
+                            mngr.const_int(1)
+                        };
+                        subs.add(lhs.clone(), rhs, mngr);
+                        Some(subs)
+                    }
                     _ => None,
                 }
             }
