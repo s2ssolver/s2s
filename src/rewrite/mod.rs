@@ -58,16 +58,16 @@ impl Rewriter {
         self.applied_rules.clear();
         let mut current = None;
         for _ in 0..passes {
-            current = self.rewrite_pass(current.as_ref().unwrap_or(node), mngr);
-
-            if current.is_none() {
-                break;
+            match self.rewrite_pass(current.as_ref().unwrap_or(node), mngr) {
+                Some(rew) => current = Some(rew),
+                None => break,
             }
         }
+
         current
     }
 
-    /// Does a post-order traversal of the AST, applying the matching rule.
+    /// Does a post-order traversal of the AST, applying the matching rules.
     /// If a rule matches, then the node is replaced with the result of the rule.
     /// If no rule matches, then the node is unchanged.
     /// This method returns None if no rule was applied.
