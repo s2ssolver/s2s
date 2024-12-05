@@ -1,7 +1,7 @@
 use crate::bounds::{step::BoundStep, Interval};
 
 const DEFAULT_SIMPLIFY: bool = true;
-const DEFAULT_SIMP_MAX_STEPS: usize = 500;
+const DEFAULT_SIMP_MAX_STEPS: usize = 50;
 const DEFAULT_CHECK_MODEL: bool = false;
 const DEFAULT_UNSAT_ON_MAX_BOUND: bool = false;
 #[derive(Debug, Clone)]
@@ -87,5 +87,13 @@ impl SolverOptions {
     pub fn print_preprocessed(&mut self) -> &mut Self {
         self.print_preprocessed = true;
         self
+    }
+
+    pub(crate) fn get_preprocess_passes(&self) -> usize {
+        if self.simplify {
+            self.prep_passes
+        } else {
+            0
+        }
     }
 }
