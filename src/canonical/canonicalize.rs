@@ -70,7 +70,7 @@ impl Canonicalizer {
                     let rec = node
                         .children()
                         .iter()
-                        .map(|c| self.canonicalize(c, mngr))
+                        .map(|c| self.canonicalize_rec(c, mngr))
                         .collect::<Result<Vec<Formula>, _>>();
                     let kind = match node.kind() {
                         NodeKind::And => FormulaKind::And(rec?),
