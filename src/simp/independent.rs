@@ -183,6 +183,7 @@ impl SimpRule for IndependentVariableAssignment {
     }
 
     fn init(&mut self, root: &Node) {
+        self.vcount.clear();
         Self::count_variables(root, &mut self.vcount);
     }
 
