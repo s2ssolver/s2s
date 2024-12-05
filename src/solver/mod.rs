@@ -87,7 +87,7 @@ impl Solver {
 
         // Preprocess
         let mut preprocessor = preprocessing::Preprocessor::default();
-        let preprocessed = preprocessor.apply(root, self.options.prep_passes, mngr)?;
+        let preprocessed = preprocessor.apply(root, self.options.get_preprocess_passes(), mngr)?;
         log::info!("Preprocessed ({:?})", timer.elapsed());
         if self.options.print_preprocessed {
             //let smt = ir::smt::to_smtlib(&preprocessed);
