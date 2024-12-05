@@ -371,14 +371,30 @@ impl NodeManager {
             })
             .filter(|n| !matches!(n.kind(), NodeKind::String(s) if s.is_empty()));
 
-        // if there is only one node, return it
-        let mut flattened = flattened.collect::<Vec<_>>();
-        if flattened.is_empty() {
+        // Perform concatenation on constants
+        let mut folded = Vec::new();
+        let mut const_str = String::new();
+        for node in flattened {
+            if let Some(s) = node.as_str_const() {
+                const_str.push_str(&s);
+            } else {
+                if !const_str.is_empty() {
+                    folded.push(self.const_str(&const_str));
+                    const_str.clear();
+                }
+                folded.push(node.clone());
+            }
+        }
+        if !const_str.is_empty() {
+            folded.push(self.const_str(&const_str));
+        }
+
+        if folded.is_empty() {
             self.const_str("")
-        } else if flattened.len() == 1 {
-            flattened.pop().unwrap()
+        } else if folded.len() == 1 {
+            folded.pop().unwrap()
         } else {
-            self.intern_node(NodeKind::Concat, flattened)
+            self.intern_node(NodeKind::Concat, folded)
         }
     }
 
