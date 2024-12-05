@@ -94,7 +94,13 @@ impl IndependentVariableAssignment {
                 };
                 let nfa = mngr.get_nfa(&regex);
 
-                let rhs = nfa.sample()?;
+                let rhs = match nfa.sample() {
+                    Some(w) => w,
+                    None => {
+                        log::warn!("Could not sample from\n{}", nfa.dot().unwrap());
+                        return Some(subs); // short circuit here
+                    }
+                };
 
                 if pol {
                     debug_assert!(regex.accepts(&rhs));

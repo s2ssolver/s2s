@@ -181,10 +181,12 @@ impl NodeManager {
         } else {
             let builder = self.re_builder();
 
-            let nfa = Thompson::default()
+            let mut nfa = Thompson::default()
                 .compile(regex, builder)
                 .map(|nfa| nfa.remove_epsilons().expect("Failed to compile regex"))
                 .expect("Failed to compile regex");
+
+            nfa.trim();
 
             let nfa = Rc::new(nfa);
             self.nfas.insert(regex.clone(), nfa.clone());
