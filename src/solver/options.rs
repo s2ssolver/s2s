@@ -1,14 +1,17 @@
 use crate::bounds::{step::BoundStep, Interval};
 
 const DEFAULT_SIMPLIFY: bool = true;
-const DEFAULT_SIMP_MAX_STEPS: usize = 50;
+const DEFAULT_PREPROCESS_PASSES: usize = 20;
 const DEFAULT_CHECK_MODEL: bool = false;
 const DEFAULT_UNSAT_ON_MAX_BOUND: bool = false;
 #[derive(Debug, Clone)]
 pub struct SolverOptions {
     pub dry: bool,
     pub simplify: bool,
-    pub prep_passes: usize,
+    /// The number of extra preprocessing passes allowed.
+    /// An extra preprocessing pass is performed if the size of the formula did not decrease in previous pass.
+    /// If set to 0, will only apply preprocessing while the size of the formula is decreasing.
+    pub preprocess_extra_passes: usize,
     pub cegar: bool,
     pub max_bounds: Option<Interval>,
     pub step: BoundStep,
@@ -22,7 +25,7 @@ impl Default for SolverOptions {
         Self {
             dry: false,
             simplify: DEFAULT_SIMPLIFY,
-            prep_passes: DEFAULT_SIMP_MAX_STEPS,
+            preprocess_extra_passes: DEFAULT_PREPROCESS_PASSES,
             cegar: true,
             max_bounds: None,
             step: BoundStep::default(),
@@ -87,13 +90,5 @@ impl SolverOptions {
     pub fn print_preprocessed(&mut self) -> &mut Self {
         self.print_preprocessed = true;
         self
-    }
-
-    pub(crate) fn get_preprocess_passes(&self) -> usize {
-        if self.simplify {
-            self.prep_passes
-        } else {
-            0
-        }
     }
 }

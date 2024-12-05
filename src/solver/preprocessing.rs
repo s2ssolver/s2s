@@ -7,10 +7,18 @@ use crate::{
 
 #[derive(Default)]
 pub struct Preprocessor {
+    canonicalize_only: bool,
     subs: NodeSubstitution,
 }
 
 impl Preprocessor {
+    pub fn no_simp() -> Self {
+        Self {
+            canonicalize_only: true,
+            ..Default::default()
+        }
+    }
+
     pub fn apply(
         &mut self,
         root: &Node,
@@ -20,7 +28,11 @@ impl Preprocessor {
         // convert to nnf
         let nnf = to_nnf(root, mngr);
         // simplify
-        let simplified = self.simplify(&nnf, passes, mngr);
+        let simplified = if self.canonicalize_only {
+            nnf
+        } else {
+            self.simplify(&nnf, passes, mngr)
+        };
         // canonicalize
         canonicalize(&simplified, mngr)
     }
@@ -31,11 +43,19 @@ impl Preprocessor {
 
         let mut result = root.clone();
 
-        for _ in 0..passes {
+        let mut last_size = root.size();
+        let mut pass = 0;
+
+        while pass < passes || result.size() < last_size {
+            if result.size() >= last_size {
+                // we only count passes if we did not simplify
+                pass += 1;
+            }
+            last_size = result.size();
             let mut applied = false;
             if let Some(new_node) = rewriter.rewrite(&result, 10, mngr) {
                 applied = true;
-                result = new_node;
+                result = to_nnf(&new_node, mngr);
                 for (old, new) in rewriter.applied() {
                     log::debug!("Rewrite: {} -> {}", old, new);
                 }

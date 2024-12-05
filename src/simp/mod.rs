@@ -111,7 +111,7 @@ impl Simplifier {
         // If so, then return the simplification.
         for rule in &mut self.rules {
             if let Some(simplification) = rule.apply(node, entailed, mngr) {
-                log::info!(
+                log::debug!(
                     "({}) Simplified: {}",
                     rule.name(),
                     simplification.substitution()

@@ -359,6 +359,12 @@ impl OwnedNode {
             None
         }
     }
+
+    /// Returns the size of the node.
+    /// The size of a node is the number of nodes in the tree rooted at this node.
+    pub fn size(&self) -> usize {
+        1 + self.children.iter().map(|c| c.size()).sum::<usize>()
+    }
 }
 
 impl Hash for OwnedNode {

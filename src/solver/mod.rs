@@ -86,8 +86,13 @@ impl Solver {
         log::debug!("Solving: {}", root);
 
         // Preprocess
-        let mut preprocessor = preprocessing::Preprocessor::default();
-        let preprocessed = preprocessor.apply(root, self.options.get_preprocess_passes(), mngr)?;
+        let mut preprocessor = if self.options.simplify {
+            preprocessing::Preprocessor::default()
+        } else {
+            preprocessing::Preprocessor::no_simp()
+        };
+
+        let preprocessed = preprocessor.apply(root, self.options.preprocess_extra_passes, mngr)?;
         log::info!("Preprocessed ({:?})", timer.elapsed());
         if self.options.print_preprocessed {
             //let smt = ir::smt::to_smtlib(&preprocessed);
