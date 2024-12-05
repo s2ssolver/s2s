@@ -199,16 +199,19 @@ impl Canonicalizer {
 
         let prefix = node.children().first().unwrap();
         let of = node.children().last().unwrap();
-        // If `s`  is constant, then this is a regular expression constraint r \in .*s.*
-        if let Some(s) = prefix.as_str_const() {
+        // If `prefix`  is constant, then this is a regular expression constraint "of \in prefix.*"
+        if let Some(constprefix) = prefix.as_str_const() {
             let v = if let Some(v) = of.as_variable() {
                 debug_assert!(v.sort().is_string());
                 v.clone()
             } else {
-                self.define_with_var(prefix, mngr)
+                self.define_with_var(of, mngr)
             };
             Ok(Atom::new(
-                AtomKind::FactorConstraint(RegularFactorConstraint::prefixof(v, s.to_string())),
+                AtomKind::FactorConstraint(RegularFactorConstraint::prefix(
+                    v,
+                    constprefix.to_string(),
+                )),
                 node.clone(),
             ))
         } else {
@@ -229,7 +232,6 @@ impl Canonicalizer {
         debug_assert!(*node.kind() == NodeKind::SuffixOf);
         debug_assert!(node.children().len() == 2);
         // Contains(r, s) <--> r contains s
-        println!("SuffixOf: {}", node);
         let suffix = node.children().first().unwrap();
         let of = node.children().last().unwrap();
         // If `s`  is constant, then this is a regular expression constraint r \in .*s.*
@@ -238,10 +240,10 @@ impl Canonicalizer {
                 debug_assert!(v.sort().is_string());
                 v.clone()
             } else {
-                self.define_with_var(suffix, mngr)
+                self.define_with_var(of, mngr)
             };
             Ok(Atom::new(
-                AtomKind::FactorConstraint(RegularFactorConstraint::suffixof(v, s.to_string())),
+                AtomKind::FactorConstraint(RegularFactorConstraint::suffix(v, s.to_string())),
                 node.clone(),
             ))
         } else {

@@ -558,11 +558,11 @@ impl RegularFactorConstraint {
         Self { lhs, rhs, typ }
     }
 
-    pub fn prefixof(lhs: Rc<Variable>, rhs: String) -> Self {
+    pub fn prefix(lhs: Rc<Variable>, rhs: String) -> Self {
         Self::new(lhs, rhs, FactorConstraintType::Prefix)
     }
 
-    pub fn suffixof(lhs: Rc<Variable>, rhs: String) -> Self {
+    pub fn suffix(lhs: Rc<Variable>, rhs: String) -> Self {
         Self::new(lhs, rhs, FactorConstraintType::Suffix)
     }
 
