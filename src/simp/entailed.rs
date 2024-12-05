@@ -101,6 +101,10 @@ impl RemoveEntailed {
 
 impl SimpRule for RemoveEntailed {
     fn apply(&self, node: &Node, entailed: bool, mngr: &mut NodeManager) -> Option<Simplification> {
+        if *node == mngr.ttrue() {
+            // will result in an endless loop if we don't check this
+            return None;
+        }
         if entailed && node.sort().is_bool() && self.occurs_non_entailed(node) {
             let mut subs = NodeSubstitution::default();
             subs.add(node.clone(), mngr.ttrue(), mngr);
@@ -111,6 +115,7 @@ impl SimpRule for RemoveEntailed {
     }
 
     fn init(&mut self, root: &Node) {
+        self.non_entailed.clear();
         self.update_non_entailed(root, true);
     }
 
