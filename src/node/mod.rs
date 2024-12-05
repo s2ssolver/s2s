@@ -203,6 +203,20 @@ impl NodeKind {
         }
     }
 
+    /// Returns true if the node is a commutative operator.
+    /// That is, whether the order of the arguments does not matter.
+    pub fn is_commutative(&self) -> bool {
+        match self {
+            NodeKind::Or
+            | NodeKind::And
+            | NodeKind::Add
+            | NodeKind::Mul
+            | NodeKind::Eq
+            | NodeKind::Equiv => true,
+            _ => false,
+        }
+    }
+
     /// If this node is a variable, returns a reference to the variable.
     /// Otherwise, returns None.
     pub fn as_variable(&self) -> Option<&Rc<Variable>> {

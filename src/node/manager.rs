@@ -126,6 +126,11 @@ impl NodeManager {
     }
 
     pub(crate) fn intern_node(&mut self, kind: NodeKind, children: Vec<Node>) -> Node {
+        let children = if kind.is_commutative() {
+            sort_commutative_args(children)
+        } else {
+            children
+        };
         let key = (kind.clone(), children.clone());
         let res = if let Some(rc_node) = self.node_registry.get(&key) {
             return rc_node.clone();
@@ -188,69 +193,6 @@ impl NodeManager {
         log::debug!("Compiled NFA ({:?})", t.elapsed());
         nfa
     }
-
-    /* Node to Pattern conversions */
-
-    /// Convert a node to a pattern.
-    /// Returns None if the node is not a concatenation of variables and strings.
-    // pub fn patternize(&mut self, node: &Node) -> Option<Rc<Pattern>> {
-    //     if let Some(pattern) = self.patterns.get(node) {
-    //         return Some(pattern.clone());
-    //     }
-    //     let res = match node.kind() {
-    //         NodeKind::String(s) => Pattern::constant(s),
-    //         NodeKind::Variable(rc) => {
-    //             debug_assert!(rc.sort().is_string());
-    //             Pattern::variable(rc)
-    //         }
-    //         NodeKind::Concat => {
-    //             let mut pattern = Pattern::empty();
-    //             for child in node.children() {
-    //                 pattern.concat(self.patternize(child)?.as_ref().clone());
-    //             }
-    //             pattern
-    //         }
-    //         _ => return None,
-    //     };
-    //     let res = Rc::new(res);
-    //     self.patterns.insert(node.clone(), res.clone());
-    //     Some(res)
-    // }
-
-    // /// Convert a pattern to a node
-    // pub fn depatternize(&mut self, pattern: &Pattern) -> Node {
-    //     let mut nodes = Vec::new();
-    //     let mut word = String::new();
-    //     for s in pattern.iter() {
-    //         match s {
-    //             Symbol::Constant(c) => {
-    //                 word.push(*c);
-    //             }
-    //             Symbol::Variable(variable) => {
-    //                 if !word.is_empty() {
-    //                     nodes.push(self.intern_node(NodeKind::String(word.clone()), vec![]));
-    //                     word.clear();
-    //                 }
-    //                 let v = self.get_var(variable.name()).unwrap();
-    //                 nodes.push(self.var(v));
-    //                 word.clear();
-    //             }
-    //         }
-    //     }
-    //     if !word.is_empty() {
-    //         nodes.push(self.intern_node(NodeKind::String(word.clone()), vec![]));
-    //         word.clear();
-    //     }
-    //     if nodes.is_empty() {
-    //         // Empty pattern = empty string
-    //         self.const_str("")
-    //     } else if nodes.len() == 1 {
-    //         nodes[0].clone()
-    //     } else {
-    //         self.concat(nodes)
-    //     }
-    // }
-
     /* Variables */
 
     /// Creates a new variable with a given name and sort.
@@ -509,4 +451,13 @@ impl NodeManager {
         debug_assert!(r.sort().is_int());
         self.intern_node(NodeKind::Ge, vec![l, r])
     }
+}
+
+/// Some functions are commutative, so we can sort the arguments to make them easier to compare.
+/// We sort to the arguments by the value of the node's id.
+/// This way, we do not have "f(a, b)" and "f(b, a)" for commutative function f as separate nodes, but only one.
+fn sort_commutative_args(nodes: Vec<Node>) -> Vec<Node> {
+    let mut nodes = nodes;
+    nodes.sort_by_key(|n| n.id);
+    nodes
 }
