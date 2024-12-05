@@ -53,13 +53,17 @@ impl SimpRule for EntailedAssigments {
                 let lhs = node.children().first().unwrap();
                 let rhs = node.children().last().unwrap();
                 if let NodeKind::Variable(_) = lhs.kind() {
-                    let mut subs = NodeSubstitution::default();
-                    subs.add(lhs.clone(), rhs.clone(), mngr);
-                    return Some(Simplification::new(subs, None));
+                    if rhs.size() < 10 {
+                        let mut subs = NodeSubstitution::default();
+                        subs.add(lhs.clone(), rhs.clone(), mngr);
+                        return Some(Simplification::new(subs, None));
+                    }
                 } else if let NodeKind::Variable(_) = rhs.kind() {
-                    let mut subs = NodeSubstitution::default();
-                    subs.add(rhs.clone(), lhs.clone(), mngr);
-                    return Some(Simplification::new(subs, None));
+                    if lhs.size() < 10 {
+                        let mut subs = NodeSubstitution::default();
+                        subs.add(rhs.clone(), lhs.clone(), mngr);
+                        return Some(Simplification::new(subs, None));
+                    }
                 }
             }
         }
