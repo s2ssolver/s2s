@@ -316,7 +316,14 @@ impl NodeManager {
 
     /// Boolean negation
     pub fn not(&mut self, r: Node) -> Node {
-        self.intern_node(NodeKind::Not, vec![r])
+        if let Some(b) = r.as_bool_const() {
+            self.intern_node(NodeKind::Bool(!b), vec![])
+        } else if *r.kind() == NodeKind::Not {
+            // double negation
+            r.children().first().unwrap().clone()
+        } else {
+            self.intern_node(NodeKind::Not, vec![r])
+        }
     }
 
     /// Boolean implication

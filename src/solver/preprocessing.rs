@@ -31,7 +31,9 @@ impl Preprocessor {
         let simplified = if self.canonicalize_only {
             nnf
         } else {
-            self.simplify(&nnf, passes, mngr)
+            let simped = self.simplify(&nnf, passes, mngr);
+            log::debug!("Simplified:\n{}", simped);
+            simped
         };
         // canonicalize
         canonicalize(&simplified, mngr)

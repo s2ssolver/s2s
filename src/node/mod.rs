@@ -344,6 +344,14 @@ impl OwnedNode {
         }
     }
 
+    pub fn as_bool_const(&self) -> Option<bool> {
+        if let NodeKind::Bool(b) = self.kind() {
+            Some(*b)
+        } else {
+            None
+        }
+    }
+
     pub fn as_int_const(&self) -> Option<i64> {
         if let NodeKind::Int(i) = self.kind() {
             Some(*i)

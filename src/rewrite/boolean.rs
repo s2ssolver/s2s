@@ -1,3 +1,5 @@
+use indexmap::IndexSet;
+
 use crate::node::{self, Node, NodeKind, NodeManager};
 
 use super::RewriteRule;
@@ -19,20 +21,25 @@ impl RewriteRule for BoolConstFolding {
 }
 
 /// Fold a conjunction of nodes:
-/// - If the conjunction contains a `false`, return `false`
-/// - If the conjunction contains a `true`, remove it
-/// - If there are no conjuncts left, return `true`
-/// - If there is a single conjunct left, return that conjunct
+/// - Removes duplicates and neutral elements (`true`)
+/// - Returns false if:
+///     - contains a literal and its negation, return `false`
+///     - contains a `false`
+/// Afterwards, if there is a only single conjunct left, returns that conjuncts.
+/// If there are no conjuncts left, return `true`
 fn fold_and(conjuncts: &[Node], mngr: &mut NodeManager) -> Option<Node> {
-    let mut folded_conjuncts = Vec::with_capacity(conjuncts.len());
-
+    let mut folded_conjuncts = IndexSet::new();
     for c in conjuncts {
         if c.is_false() {
             return Some(mngr.ffalse()); // Return `false` immediately
         } else if c.is_true() {
             continue; // Skip `true` values
         } else {
-            folded_conjuncts.push(c.clone());
+            // Check if the negation is contained in the set
+            if folded_conjuncts.contains(&mngr.not(c.clone())) {
+                return Some(mngr.ffalse()); // Return `false` if a literal and its negation are present
+            }
+            folded_conjuncts.insert(c.clone());
         }
     }
 
@@ -40,17 +47,19 @@ fn fold_and(conjuncts: &[Node], mngr: &mut NodeManager) -> Option<Node> {
         0 => Some(mngr.ttrue()),                    // All conjuncts were `true`
         1 => Some(folded_conjuncts.pop().unwrap()), // Single conjunct left
         _ if folded_conjuncts.len() == conjuncts.len() => None, // No changes
-        _ => Some(mngr.and(folded_conjuncts)),      // Return the folded `and`
+        _ => Some(mngr.and(folded_conjuncts.into_iter().collect())), // Return the folded `and`
     }
 }
 
-/// Fold a disjunction of nodes:
-/// - If the disjunction contains a `true`, return `true`
-/// - If the disjunction contains a `false`, remove it
-/// - If there are no disjuncts left, return `false`
-/// - If there is a single disjunct left, return that disjunct
+/// Fold a conjunction of nodes:
+/// - Removes duplicates and neutral elements (`false`)
+/// - Returns true if:
+///     - contains a literal and its negation
+///     - contains a `true`
+/// Afterwards, if there is a only single conjunct left, returns that node.
+/// If there are no nodes left, return `false`
 fn fold_or(disjuncts: &[Node], mngr: &mut NodeManager) -> Option<Node> {
-    let mut folded_disjuncts = Vec::with_capacity(disjuncts.len());
+    let mut folded_disjuncts = IndexSet::new();
 
     for d in disjuncts {
         if d.is_true() {
@@ -58,7 +67,11 @@ fn fold_or(disjuncts: &[Node], mngr: &mut NodeManager) -> Option<Node> {
         } else if d.is_false() {
             continue;
         } else {
-            folded_disjuncts.push(d.clone());
+            // Check if the negation is contained in the set
+            if folded_disjuncts.contains(&mngr.not(d.clone())) {
+                return Some(mngr.ttrue()); // Return `true` if a literal and its negation are present
+            }
+            folded_disjuncts.insert(d.clone());
         }
     }
 
@@ -66,7 +79,7 @@ fn fold_or(disjuncts: &[Node], mngr: &mut NodeManager) -> Option<Node> {
         0 => Some(mngr.ffalse()),                   // All disjuncts were `false`
         1 => Some(folded_disjuncts.pop().unwrap()), // Single disjunct left
         _ if folded_disjuncts.len() == disjuncts.len() => None, // No changes made
-        _ => Some(mngr.or(folded_disjuncts)),       // Return the folded `or`
+        _ => Some(mngr.or(folded_disjuncts.into_iter().collect())), // Return the folded `or`
     }
 }
 
