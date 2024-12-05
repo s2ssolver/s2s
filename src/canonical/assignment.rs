@@ -232,7 +232,7 @@ impl Assignment {
     }
 
     pub fn satisfies_factor_constraint(&self, fc: &RegularFactorConstraint) -> bool {
-        if let Some(value) = self.get_str(fc.lhs().as_ref()) {
+        if let Some(value) = self.get_str(fc.of().as_ref()) {
             let rhs = fc.rhs();
             match fc.typ() {
                 FactorConstraintType::Prefix => value.starts_with(rhs),

@@ -59,7 +59,7 @@ impl FragmentFinder {
                 }
             }
             AtomKind::FactorConstraint(refc) => {
-                self.in_re_vars.insert(refc.lhs().clone());
+                self.in_re_vars.insert(refc.of().clone());
             }
             AtomKind::Linear(lc) => {
                 self.lin_vars.extend(lc.variables());
@@ -163,7 +163,7 @@ impl BoundInferer {
             AtomKind::WordEquation(weq) => self.add_weq(weq, pol, mngr),
             AtomKind::FactorConstraint(rfac) => {
                 let re = rfac.as_regex(mngr);
-                self.reg.add_reg(rfac.lhs().clone(), re, pol, mngr);
+                self.reg.add_reg(rfac.of().clone(), re, pol, mngr);
             }
             AtomKind::Linear(lc) => {
                 if pol {

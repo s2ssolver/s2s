@@ -157,7 +157,7 @@ fn addition_chars_lits(lits: &[Literal]) -> usize {
                 }
             }
             AtomKind::FactorConstraint(fc) => {
-                string_vars.insert(fc.lhs().clone());
+                string_vars.insert(fc.of().clone());
                 at_least_one = true;
             }
             AtomKind::Linear(lc) => {

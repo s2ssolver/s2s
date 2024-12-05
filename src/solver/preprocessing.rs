@@ -1,5 +1,4 @@
 use crate::{
-    canonical::{canonicalize, Formula},
     node::{error::NodeError, normal::to_nnf, Node, NodeManager, NodeSubstitution},
     rewrite::Rewriter,
     simp::Simplifier,
@@ -7,36 +6,22 @@ use crate::{
 
 #[derive(Default)]
 pub struct Preprocessor {
-    canonicalize_only: bool,
     subs: NodeSubstitution,
 }
 
 impl Preprocessor {
-    pub fn no_simp() -> Self {
-        Self {
-            canonicalize_only: true,
-            ..Default::default()
-        }
-    }
-
     pub fn apply(
         &mut self,
         root: &Node,
         passes: usize,
         mngr: &mut NodeManager,
-    ) -> Result<Formula, NodeError> {
+    ) -> Result<Node, NodeError> {
         // convert to nnf
         let nnf = to_nnf(root, mngr);
         // simplify
-        let simplified = if self.canonicalize_only {
-            nnf
-        } else {
-            let simped = self.simplify(&nnf, passes, mngr);
-            log::debug!("Simplified:\n{}", simped);
-            simped
-        };
-        // canonicalize
-        canonicalize(&simplified, mngr)
+        let simped = self.simplify(&nnf, passes, mngr);
+        log::debug!("Simplified:\n{}", simped);
+        Ok(simped)
     }
 
     fn simplify(&mut self, root: &Node, passes: usize, mngr: &mut NodeManager) -> Node {

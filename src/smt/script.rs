@@ -1,6 +1,6 @@
 use std::fmt::{self, Display, Formatter};
 
-use crate::node::Node;
+use crate::node::{Node, NodeKind};
 
 use super::{Sort, Symbol};
 
@@ -65,10 +65,15 @@ pub enum SmtCommand {
 impl Display for SmtCommand {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         match self {
-            SmtCommand::Assert(node) => write!(f, "(assert {})", node),
+            SmtCommand::Assert(node) => write!(f, "(assert {})", node.to_smt()),
             SmtCommand::CheckSat => write!(f, "(check-sat)"),
             SmtCommand::DeclareConst(symbol, sort) => {
-                write!(f, "(declare-const {} {})", symbol, sort)
+                write!(
+                    f,
+                    "(declare-const {} {})",
+                    escapce_smt_identifier_name(symbol),
+                    sort
+                )
             }
             SmtCommand::Echo(message) => write!(f, "(echo \"{}\")", message),
             SmtCommand::Exit => write!(f, "(exit)"),
@@ -76,5 +81,79 @@ impl Display for SmtCommand {
             SmtCommand::SetLogic(logic) => write!(f, "(set-logic {})", logic),
             SmtCommand::NoOp => Ok(()),
         }
+    }
+}
+
+trait ToSmt {
+    fn to_smt(&self) -> String;
+}
+
+impl ToSmt for Node {
+    fn to_smt(&self) -> String {
+        if self.children().is_empty() {
+            return self.kind().to_smt();
+        } else {
+            let ch = self
+                .children()
+                .iter()
+                .map(|c| c.to_smt())
+                .collect::<Vec<_>>()
+                .join(" ");
+            format!("({} {})", self.kind().to_smt(), ch)
+        }
+    }
+}
+
+impl ToSmt for NodeKind {
+    fn to_smt(&self) -> String {
+        match self {
+            NodeKind::Bool(true) => "true".to_string(),
+            NodeKind::Bool(false) => "false".to_string(),
+            NodeKind::String(s) => format!("\"{}\"", escape_smt_string(s)),
+            NodeKind::Int(i) => i.to_string(),
+            NodeKind::Regex(regex) => regulaer::parse::to_smt(regex),
+            NodeKind::Variable(rc) => escapce_smt_identifier_name(rc.name()),
+            NodeKind::Or => "or".to_string(),
+            NodeKind::And => "and".to_string(),
+            NodeKind::Imp => "=>".to_string(),
+            NodeKind::Equiv => "=".to_string(),
+            NodeKind::Not => "not".to_string(),
+            NodeKind::Ite => "ite".to_string(),
+            NodeKind::Eq => "=".to_string(),
+            NodeKind::Concat => "str.++".to_string(),
+            NodeKind::Length => "str.len".to_string(),
+            NodeKind::InRe => "str.in_re".to_string(),
+            NodeKind::PrefixOf => "str.prefixof".to_string(),
+            NodeKind::SuffixOf => "str.suffixof".to_string(),
+            NodeKind::Contains => "str.contains".to_string(),
+            NodeKind::Add => "+".to_string(),
+            NodeKind::Neg | NodeKind::Sub => "-".to_string(),
+            NodeKind::Mul => "*".to_string(),
+            NodeKind::Lt => "<".to_string(),
+            NodeKind::Le => "<=".to_string(),
+            NodeKind::Gt => ">".to_string(),
+            NodeKind::Ge => ">=".to_string(),
+        }
+    }
+}
+
+const SMT_MAX_CHAR: u32 = 0x2FFFF;
+fn escape_smt_string(s: &str) -> String {
+    s.chars()
+        .map(|c| {
+            if c as u32 > SMT_MAX_CHAR {
+                c.escape_unicode().to_string()
+            } else {
+                c.to_string()
+            }
+        })
+        .collect()
+}
+
+fn escapce_smt_identifier_name(name: &str) -> String {
+    if name.chars().all(|c| c.is_alphanumeric() || c == '_') {
+        name.to_string()
+    } else {
+        format!("|{}|", name)
     }
 }

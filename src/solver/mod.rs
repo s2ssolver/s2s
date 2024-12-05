@@ -11,8 +11,8 @@ use crate::{
     abstraction::{build_abstraction, Abstraction},
     alphabet::{self, Alphabet},
     bounds::{infer::BoundInferer, Bounds, Interval},
-    canonical::{Assignment, Formula},
-    node::{Node, NodeKind, NodeManager, NodeSubstitution, Sorted},
+    canonical::{canonicalize, Assignment, Formula},
+    node::{smt::to_script, Node, NodeKind, NodeManager, NodeSubstitution, Sorted},
     sat::to_cnf,
 };
 
@@ -86,21 +86,21 @@ impl Solver {
         log::debug!("Solving: {}", root);
 
         // Preprocess
-        let mut preprocessor = if self.options.simplify {
-            preprocessing::Preprocessor::default()
-        } else {
-            preprocessing::Preprocessor::no_simp()
-        };
+        let mut preprocessor = preprocessing::Preprocessor::default();
 
-        let preprocessed = preprocessor.apply(root, self.options.preprocess_extra_passes, mngr)?;
+        let preprocessed = if self.options.simplify {
+            preprocessor.apply(root, self.options.preprocess_extra_passes, mngr)?
+        } else {
+            root.clone()
+        };
         log::info!("Preprocessed ({:?})", timer.elapsed());
         if self.options.print_preprocessed {
             //let smt = ir::smt::to_smtlib(&preprocessed);
-            println!("{}", preprocessed);
+            println!("{}", to_script(&preprocessed));
         }
 
         // Early return if the formula is trivially sat/unsat
-        if let NodeKind::Bool(v) = *preprocessed.node().kind() {
+        if let NodeKind::Bool(v) = *preprocessed.kind() {
             return Ok(if v {
                 SolverResult::Sat(Some(preprocessor.applied_subsitutions().clone()))
             } else {
@@ -108,9 +108,14 @@ impl Solver {
             });
         }
 
+        // Canonicalize
+        let formula = canonicalize(&preprocessed, mngr)?;
+        log::info!("Canonicalized ({:?})", timer.elapsed());
+        log::debug!("Canonicalized\n{}", formula);
+
         // Initialize the bounds
 
-        let init_bounds = match self.init_bounds(&preprocessed, mngr) {
+        let init_bounds = match self.init_bounds(&formula, mngr) {
             Some(bs) => bs,
             None => {
                 log::info!("No valid initial bounds. Unsat.");
@@ -119,7 +124,7 @@ impl Solver {
         };
 
         timer = Instant::now();
-        let abstraction = build_abstraction(&preprocessed)?;
+        let abstraction = build_abstraction(&formula)?;
         log::info!("Built abstraction ({:?})", timer.elapsed());
 
         log::info!("Initialized bounds ({:?})", timer.elapsed());
@@ -128,7 +133,7 @@ impl Solver {
         // timer = Instant::now();
 
         // Initialize the alphabet
-        let alphabet = alphabet::infer(&preprocessed);
+        let alphabet = alphabet::infer(&formula);
         log::info!("Inferred alphabet ({:?})", timer.elapsed());
         log::debug!("Alphabet: {}", alphabet);
         timer = Instant::now();
@@ -137,7 +142,7 @@ impl Solver {
             return Ok(SolverResult::Unknown);
         }
         // Start CEGAR loop
-        let res = self.run(&preprocessed, abstraction, init_bounds, alphabet, mngr);
+        let res = self.run(&formula, abstraction, init_bounds, alphabet, mngr);
 
         log::info!("Done solving ({:?})", timer.elapsed());
         res

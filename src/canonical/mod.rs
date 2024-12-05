@@ -96,18 +96,26 @@ impl Display for Formula {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self.kind() {
             FormulaKind::And(children) => {
-                write!(f, "({}", children[0])?;
-                for child in &children[1..] {
-                    write!(f, " & {}", child)?;
-                }
-                write!(f, ")")
+                write!(
+                    f,
+                    "{}",
+                    children
+                        .iter()
+                        .map(|c| c.to_string())
+                        .collect::<Vec<_>>()
+                        .join(" ∧ ")
+                )
             }
             FormulaKind::Or(children) => {
-                write!(f, "({}", children[0])?;
-                for child in &children[1..] {
-                    write!(f, " | {}", child)?;
-                }
-                write!(f, ")")
+                write!(
+                    f,
+                    "({})",
+                    children
+                        .iter()
+                        .map(|c| c.to_string())
+                        .collect::<Vec<_>>()
+                        .join(" ∨ ")
+                )
             }
             FormulaKind::Literal(lit) => write!(f, "{}", lit),
             FormulaKind::Unsupported(node) => write!(f, "{}", node),
@@ -166,7 +174,7 @@ impl Display for Literal {
         if self.pol {
             write!(f, "{}", self.atom)
         } else {
-            write!(f, "!({})", self.atom)
+            write!(f, "¬{}", self.atom)
         }
     }
 }
@@ -196,7 +204,7 @@ impl AtomKind {
 
             AtomKind::FactorConstraint(rfc) => {
                 let mut vars = IndexSet::new();
-                vars.insert(rfc.lhs().clone());
+                vars.insert(rfc.of().clone());
                 vars
             }
             AtomKind::Linear(lc) => lc.variables(),

@@ -8,6 +8,7 @@ use std::{
 pub mod error;
 mod manager;
 pub mod normal;
+pub mod smt;
 mod subs;
 pub mod utils;
 

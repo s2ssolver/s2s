@@ -205,7 +205,7 @@ pub fn get_encoder(
             // Right now, we cast it into a regular constraint
             log::warn!("Specialized encodings for regular factor constraints are not implemented yet. Casting to regular constraint.");
             let re = rfc.as_regex(mngr);
-            let inre = RegularConstraint::new(rfc.lhs().clone(), re);
+            let inre = RegularConstraint::new(rfc.of().clone(), re);
             build_inre_encoder(&inre, pol, mngr)
         }
         AtomKind::Linear(lc) => Ok(Box::new(MddEncoder::new(lc.clone(), pol))),

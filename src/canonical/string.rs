@@ -548,14 +548,14 @@ pub enum FactorConstraintType {
 /// Represents a constraint that enforces that a pattern is a prefix, suffix of another pattern or contains another pattern.
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub struct RegularFactorConstraint {
-    lhs: Rc<Variable>,
+    of: Rc<Variable>,
     rhs: String,
     typ: FactorConstraintType,
 }
 impl RegularFactorConstraint {
     /// Creates a new prefix of constraint from two patterns.
     fn new(lhs: Rc<Variable>, rhs: String, typ: FactorConstraintType) -> Self {
-        Self { lhs, rhs, typ }
+        Self { of: lhs, rhs, typ }
     }
 
     pub fn prefix(lhs: Rc<Variable>, rhs: String) -> Self {
@@ -571,8 +571,8 @@ impl RegularFactorConstraint {
     }
 
     /// Returns the prefix of the prefix of constraint.
-    pub fn lhs(&self) -> &Rc<Variable> {
-        &self.lhs
+    pub fn of(&self) -> &Rc<Variable> {
+        &self.of
     }
 
     /// Returns the pattern of the prefix of constraint.
@@ -598,9 +598,9 @@ impl RegularFactorConstraint {
 impl Display for RegularFactorConstraint {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self.typ {
-            FactorConstraintType::Prefix => write!(f, "{} ⊑ {}", self.lhs(), self.rhs()),
-            FactorConstraintType::Suffix => write!(f, "{} ⊒ {}", self.lhs(), self.rhs()),
-            FactorConstraintType::Contains => write!(f, "{} contains {}", self.lhs(), self.rhs()),
+            FactorConstraintType::Prefix => write!(f, "{} ⊑ {}", self.rhs(), self.of()),
+            FactorConstraintType::Suffix => write!(f, "{} ⊒ {}", self.rhs(), self.of(),),
+            FactorConstraintType::Contains => write!(f, "{} contains {}", self.of(), self.rhs()),
         }
     }
 }
