@@ -158,6 +158,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "blastr"
+version = "0.1.0"
+dependencies = [
+ "cadical",
+ "clap 4.2.1",
+ "env_logger 0.10.0",
+ "indexmap",
+ "itertools 0.10.5",
+ "log",
+ "num-bigint 0.3.3",
+ "num-traits",
+ "quickcheck",
+ "quickcheck_macros",
+ "regulaer",
+ "serial_test",
+ "smallvec",
+ "smt2parser",
+ "test-generator",
+ "thiserror",
+]
+
+[[package]]
 name = "block-buffer"
 version = "0.10.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1145,28 +1167,6 @@ dependencies = [
  "libc",
  "linux-raw-sys",
  "windows-sys 0.48.0",
-]
-
-[[package]]
-name = "satstr"
-version = "0.1.0"
-dependencies = [
- "cadical",
- "clap 4.2.1",
- "env_logger 0.10.0",
- "indexmap",
- "itertools 0.10.5",
- "log",
- "num-bigint 0.3.3",
- "num-traits",
- "quickcheck",
- "quickcheck_macros",
- "regulaer",
- "serial_test",
- "smallvec",
- "smt2parser",
- "test-generator",
- "thiserror",
 ]
 
 [[package]]
