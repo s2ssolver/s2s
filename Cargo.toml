@@ -1,5 +1,5 @@
 [package]
-name = "satstr"
+name = "blastr"
 version = "0.1.0"
 edition = "2021"
 description = "Eager SMT solver for strings"

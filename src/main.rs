@@ -2,7 +2,11 @@ use std::{path::Path, process::exit, time::Instant};
 
 use clap::Parser as ClapParser;
 
+<<<<<<< HEAD
 use satstr::{solve_smt, SolverOptions};
+=======
+use blastr::{solve_smt, SolverOptions, SolverResult};
+>>>>>>> main
 
 /// The command line interface for the solver
 #[derive(ClapParser, Debug)]

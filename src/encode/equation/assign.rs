@@ -70,7 +70,7 @@ impl AssignmentEncoder {
 
                 result.add_clause(vec![plit(lambda_sub)]);
             }
-            Ordering::Greater => (),
+            Ordering::Greater => (), // Already encoded that remainder of lhs is empty
         }
 
         self.last_bound = Some(bound);
