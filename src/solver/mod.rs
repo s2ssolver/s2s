@@ -11,8 +11,12 @@ use crate::{
     abstraction::{build_abstraction, Abstraction},
     alphabet::{self, Alphabet},
     bounds::{infer::BoundInferer, Bounds, Interval},
-    canonical::{canonicalize, Assignment, Formula},
-    node::{smt::to_script, Node, NodeKind, NodeManager, NodeSubstitution, Sorted},
+    node::{
+        canonical::{canonicalize, Assignment},
+        get_entailed_literals,
+        smt::to_script,
+        Node, NodeKind, NodeManager, NodeSubstitution, Sorted,
+    },
     sat::to_cnf,
 };
 
@@ -148,16 +152,16 @@ impl Solver {
         res
     }
 
-    fn init_bounds(&self, fm: &Formula, mngr: &mut NodeManager) -> Option<Bounds> {
+    fn init_bounds(&self, fm: &Node, mngr: &mut NodeManager) -> Option<Bounds> {
         let mut inferer = BoundInferer::default();
-        for lit in fm.entailed_lits() {
-            inferer.add_literal(lit.clone(), mngr)
+        for lit in get_entailed_literals(fm) {
+            inferer.add_literal(lit, mngr)
         }
 
         let mut bounds = inferer.infer()?;
         log::debug!("Inferred bounds for entailed literals: {}", bounds);
         for var in fm
-            .vars()
+            .variables()
             .iter()
             .filter(|v| v.sort().is_int() || v.sort().is_string())
         {
@@ -183,7 +187,7 @@ impl Solver {
 
     fn run(
         &mut self,
-        fm: &Formula,
+        fm: &Node,
         abs: Abstraction,
         init_bounds: Bounds,
         alphabet: Alphabet,
@@ -209,7 +213,8 @@ impl Solver {
         // Initialize the problem encoder
 
         let defs = abs.definitions().cloned().collect_vec();
-        let mut encoder = ProblemEncoder::new(alphabet, fm.vars());
+
+        let mut encoder = ProblemEncoder::new(alphabet, fm.variables());
 
         // Initialize the bounds
         let mut bounds = init_bounds;
@@ -285,7 +290,7 @@ impl Solver {
     }
 
     /// Check if the assignment is a solution for the formula.
-    fn check_assignment(&self, fm: &Formula, assign: &Assignment) -> bool {
+    fn check_assignment(&self, fm: &Node, assign: &Assignment) -> bool {
         assign.satisfies(fm)
     }
 

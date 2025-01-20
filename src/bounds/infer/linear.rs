@@ -6,10 +6,12 @@ use indexmap::IndexSet;
 
 use crate::{
     bounds::{BoundValue, Bounds},
-    canonical::{
-        ArithOperator, LinearArithTerm, LinearConstraint, LinearSummand, Symbol, WordEquation,
+    node::{
+        canonical::{
+            ArithOperator, LinearArithTerm, LinearConstraint, LinearSummand, Symbol, WordEquation,
+        },
+        Sorted, Variable,
     },
-    node::{Sorted, Variable},
 };
 
 use super::InferringStrategy;

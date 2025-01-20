@@ -3,13 +3,12 @@ use std::rc::Rc;
 use indexmap::{IndexMap, IndexSet};
 
 use super::DomainEncoding;
-use crate::canonical::Assignment;
 
 use crate::sat::{plit, PVar};
 use crate::{
     bounds::{Bounds, Interval},
     encode::{card::IncrementalEO, EncodingResult},
-    node::{Sort, Sorted, Variable},
+    node::{canonical::Assignment, Sort, Sorted, Variable},
     sat::pvar,
 };
 

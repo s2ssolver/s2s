@@ -4,8 +4,8 @@ use indexmap::IndexMap;
 
 use crate::{
     bounds::Bounds,
-    canonical::{Pattern, Symbol},
     encode::{domain::DomainEncoding, EncodingResult, LAMBDA},
+    node::canonical::{Pattern, Symbol},
     node::Variable,
     sat::{nlit, plit, pvar, PVar},
 };

@@ -14,8 +14,10 @@ pub use string::StringDomain;
 use string::StringDomainEncoder;
 
 use crate::{
-    alphabet::Alphabet, bounds::Bounds, canonical::Assignment, encode::EncodingResult,
-    node::Variable,
+    alphabet::Alphabet,
+    bounds::Bounds,
+    encode::EncodingResult,
+    node::{canonical::Assignment, Variable},
 };
 
 #[derive(Clone, Debug)]

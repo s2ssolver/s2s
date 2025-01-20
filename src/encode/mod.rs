@@ -2,8 +2,10 @@ use std::fmt::Display;
 
 use crate::{
     bounds::Bounds,
-    canonical::{AtomKind, Literal, RegularConstraint},
-    node::NodeManager,
+    node::{
+        canonical::{AtomKind, Literal, RegularConstraint},
+        NodeManager,
+    },
     sat::{Clause, Cnf, PLit},
 };
 

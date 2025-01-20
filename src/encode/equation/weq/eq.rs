@@ -5,8 +5,8 @@ use super::word::WordEncoding;
 
 use crate::{
     bounds::Bounds,
-    canonical::{Pattern, Symbol, WordEquation},
     encode::{domain::DomainEncoding, EncodingError, EncodingResult, LiteralEncoder},
+    node::canonical::{Pattern, Symbol, WordEquation},
 };
 
 pub struct WordEquationEncoder {
@@ -107,10 +107,10 @@ mod tests {
     use crate::{
         alphabet::Alphabet,
         bounds::Bounds,
-        canonical::{Assignment, WordEquation},
         encode::{
             domain::DomainEncoder, equation::weq::testutils::parse_simple_equation, LiteralEncoder,
         },
+        node::canonical::{Assignment, WordEquation},
         node::NodeManager,
         sat::plit,
     };

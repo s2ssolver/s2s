@@ -12,7 +12,6 @@
 mod abstraction;
 mod alphabet;
 mod bounds;
-pub mod canonical;
 
 mod encode;
 mod error;

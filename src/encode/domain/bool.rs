@@ -3,8 +3,7 @@ use std::rc::Rc;
 use indexmap::{IndexMap, IndexSet};
 
 use crate::{
-    canonical::Assignment,
-    node::{Sorted, Variable},
+    node::{canonical::Assignment, Sorted, Variable},
     sat::{plit, pvar, PVar},
 };
 

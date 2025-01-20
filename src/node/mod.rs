@@ -5,6 +5,7 @@ use std::{
     rc::Rc,
 };
 
+pub mod canonical;
 pub mod error;
 mod manager;
 pub mod normal;
@@ -12,6 +13,7 @@ pub mod smt;
 mod subs;
 pub mod utils;
 
+use canonical::Literal;
 use indexmap::IndexSet;
 pub use manager::NodeManager;
 use regulaer::re::Regex;
@@ -177,6 +179,9 @@ pub enum NodeKind {
     Gt,
     /// Greater than or equal
     Ge,
+
+    /// A literal in canonical form.
+    Literal(Literal),
 }
 
 impl NodeKind {
@@ -201,6 +206,7 @@ impl NodeKind {
             NodeKind::InRe | NodeKind::PrefixOf | NodeKind::SuffixOf | NodeKind::Contains => true,
             NodeKind::Add | NodeKind::Neg | NodeKind::Sub | NodeKind::Mul => false,
             NodeKind::Lt | NodeKind::Le | NodeKind::Gt | NodeKind::Ge => true,
+            NodeKind::Literal(l) => l.polarity(),
         }
     }
 
@@ -294,7 +300,9 @@ impl OwnedNode {
     /// Returns true if the node is a literal in the theory.
     /// A node is a literal if it is either a an atomic formula or a negation of an atomic formula.
     pub fn is_literal(&self) -> bool {
-        if self.kind().is_atom() {
+        if let NodeKind::Literal(_) = self.kind {
+            true
+        } else if self.kind().is_atom() {
             true
         } else if self.kind() == &NodeKind::Not {
             if let Some(child) = self.children().first() {
@@ -329,6 +337,8 @@ impl OwnedNode {
         }
         if let NodeKind::Variable(v) = self.kind() {
             vars.insert(v.clone());
+        } else if let NodeKind::Literal(l) = self.kind() {
+            vars.extend(l.variables().clone());
         }
         vars
     }
@@ -421,6 +431,8 @@ impl Index<usize> for OwnedNode {
     }
 }
 
+/// Returns all nodes that are entailed by this node.
+/// This is computed approximately by traversing the tree rooted at this node and collecting all nodes that are children of an And node.
 pub fn get_entailed(node: &Node) -> IndexSet<Node> {
     let mut entailed = IndexSet::new();
     entailed.insert(node.clone());
@@ -430,6 +442,35 @@ pub fn get_entailed(node: &Node) -> IndexSet<Node> {
         }
     }
     entailed
+}
+
+/// Returns all literals that are entailed by this node.
+/// This is computed approximately by traversing the tree rooted at this node and collecting all nodes that are children of an And node.
+/// Note that this works only for nodes that are in canonical form.
+pub fn get_entailed_literals(node: &Node) -> IndexSet<Literal> {
+    let mut lits = IndexSet::new();
+    if let NodeKind::Literal(lit) = node.kind() {
+        lits.insert(lit.clone());
+    } else if node.kind() == &NodeKind::And {
+        for child in node.children() {
+            lits.extend(get_entailed_literals(child));
+        }
+    }
+    lits
+}
+
+/// Returns all literals that are entailed by this node.
+/// Note that this works only for nodes that are in canonical form.
+pub fn get_literals(node: &Node) -> IndexSet<Literal> {
+    let mut lits = IndexSet::new();
+    if let NodeKind::Literal(lit) = node.kind() {
+        lits.insert(lit.clone());
+    } else {
+        for child in node.children() {
+            lits.extend(get_literals(child));
+        }
+    }
+    lits
 }
 
 /* Sorting */
@@ -490,6 +531,8 @@ impl Sorted for OwnedNode {
             | NodeKind::Sub
             | NodeKind::Mul => Sort::Int,
             NodeKind::Lt | NodeKind::Le | NodeKind::Gt | NodeKind::Ge => Sort::Bool,
+
+            NodeKind::Literal(_) => Sort::Bool,
         }
     }
 }
@@ -523,6 +566,7 @@ impl Display for NodeKind {
             NodeKind::Le => write!(f, "<="),
             NodeKind::Gt => write!(f, ">"),
             NodeKind::Ge => write!(f, ">="),
+            NodeKind::Literal(lit) => write!(f, "{}", lit),
         }
     }
 }

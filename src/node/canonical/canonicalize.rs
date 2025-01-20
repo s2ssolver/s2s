@@ -12,7 +12,7 @@ use node::{error::NodeError, Node, NodeKind};
 
 use std::{collections::HashMap, rc::Rc};
 
-pub fn canonicalize(node: &Node, mngr: &mut NodeManager) -> Result<Formula, NodeError> {
+pub fn canonicalize(node: &Node, mngr: &mut NodeManager) -> Result<Node, NodeError> {
     let mut canonicalizer = Canonicalizer::default();
     let c = canonicalizer.canonicalize(node, mngr);
     c
@@ -24,45 +24,44 @@ struct Canonicalizer {
     /// Theses dentities are introduced during the canonicalization process if a term is not in canonical form.
     def_identities: HashMap<Node, Rc<Variable>>,
     patterns: IndexMap<Node, Pattern>,
-    cache: IndexMap<Node, Formula>,
+    cache: IndexMap<Node, Node>,
 }
 
 impl Canonicalizer {
-    fn canonicalize(&mut self, node: &Node, mngr: &mut NodeManager) -> Result<Formula, NodeError> {
+    fn canonicalize(&mut self, node: &Node, mngr: &mut NodeManager) -> Result<Node, NodeError> {
         let canonical = self.canonicalize_rec(node, mngr)?;
         let mut eqs = Vec::with_capacity(self.def_identities.len());
         for (n, var) in std::mem::take(&mut self.def_identities).into_iter() {
-            let var_node = mngr.var(var.clone());
-            let eq_node = mngr.eq(n.clone(), var_node);
             let rhs = self.canonicalize_concat(n.clone(), mngr);
             let lhs = Pattern::variable(var.clone());
             let weq = WordEquation::new(lhs, rhs);
-            let atom = Atom::new(AtomKind::WordEquation(weq), eq_node.clone());
+            let atom = mngr.atom(AtomKind::WordEquation(weq));
             let lit = Literal::new(true, atom);
-            let fm = Formula::new(FormulaKind::Literal(lit), eq_node.clone());
-            eqs.push(fm);
+            //let fm = Formula::new(FormulaKind::Literal(lit), eq_node.clone());
+            //eqs.push(fm);
+            let node = mngr.literal(lit);
+            eqs.push(node);
         }
         debug_assert!(self.def_identities.is_empty());
         let mut complete = vec![canonical];
         complete.extend(eqs);
 
-        let formula = Formula::new(FormulaKind::And(complete), node.clone());
-        Ok(formula)
+        //        let formula = Formula::new(FormulaKind::And(complete), node.clone());
+        //        Ok(formula)
+
+        let croot = mngr.and(complete);
+        Ok(croot)
     }
 
     /// Brings all literals into canonical form.
-    fn canonicalize_rec(
-        &mut self,
-        node: &Node,
-        mngr: &mut NodeManager,
-    ) -> Result<Formula, NodeError> {
+    fn canonicalize_rec(&mut self, node: &Node, mngr: &mut NodeManager) -> Result<Node, NodeError> {
         if let Some(f) = self.cache.get(node) {
             return Ok(f.clone());
         }
         let canon = if node.is_literal() {
             match self.canonicalize_lit(node, mngr)? {
-                Some(lit) => Ok(Formula::new(FormulaKind::Literal(lit), node.clone())),
-                None => Ok(Formula::unsupported(node.clone())),
+                Some(lit) => Ok(mngr.literal(lit)),
+                None => Ok(node.clone()),
             }
         } else if node.is_bool_fun() {
             match node.kind() {
@@ -71,13 +70,14 @@ impl Canonicalizer {
                         .children()
                         .iter()
                         .map(|c| self.canonicalize_rec(c, mngr))
-                        .collect::<Result<Vec<Formula>, _>>();
-                    let kind = match node.kind() {
-                        NodeKind::And => FormulaKind::And(rec?),
-                        NodeKind::Or => FormulaKind::Or(rec?),
+                        .collect::<Result<Vec<Node>, _>>();
+                    let cnode = match node.kind() {
+                        NodeKind::And => mngr.and(rec?), // FormulaKind::And(rec?),
+                        NodeKind::Or => mngr.or(rec?),   //FormulaKind::Or(rec?),
                         _ => unreachable!(),
                     };
-                    Ok(Formula::new(kind, node.clone()))
+                    Ok(cnode)
+                    //Ok(Formula::new(kind, node.clone()))
                 }
                 NodeKind::Not | NodeKind::Imp | NodeKind::Equiv => {
                     return Err(NodeError::NotInNegationNormalForm(node.clone()))
@@ -96,13 +96,13 @@ impl Canonicalizer {
         &mut self,
         node: &Node,
         mngr: &mut NodeManager,
-    ) -> Result<Option<Atom>, NodeError> {
+    ) -> Result<Option<Rc<Atom>>, NodeError> {
         debug_assert!(node.is_literal());
         debug_assert!(node.is_atomic());
         let atom = match node.kind() {
             NodeKind::Variable(v) => {
                 debug_assert!(v.sort().is_bool());
-                Some(Atom::new(AtomKind::Boolvar(v.clone()), node.clone()))
+                Some(mngr.atom(AtomKind::Boolvar(v.clone())))
             }
             NodeKind::Bool(_) => None,
             NodeKind::InRe => Some(self.canonicalize_in_re(node, mngr)?),
@@ -168,7 +168,7 @@ impl Canonicalizer {
         &mut self,
         node: &Node,
         mngr: &mut NodeManager,
-    ) -> Result<Atom, NodeError> {
+    ) -> Result<Rc<Atom>, NodeError> {
         debug_assert!(*node.kind() == NodeKind::InRe);
         debug_assert!(node.children().len() == 2);
 
@@ -181,7 +181,7 @@ impl Canonicalizer {
         };
         if let NodeKind::Regex(re) = node[1].kind() {
             let atom = AtomKind::InRe(RegularConstraint::new(v, re.clone()));
-            Ok(Atom::new(atom, node.clone()))
+            Ok(mngr.atom(atom))
         } else {
             Err(NodeError::NotWellFormed(node.clone()))
         }
@@ -191,7 +191,7 @@ impl Canonicalizer {
         &mut self,
         node: &Node,
         mngr: &mut NodeManager,
-    ) -> Result<Atom, NodeError> {
+    ) -> Result<Rc<Atom>, NodeError> {
         debug_assert!(*node.kind() == NodeKind::PrefixOf);
         // PrefixOf(r, s) <--> EX t. r = s ++ t
         debug_assert!(node.children().len() == 2);
@@ -207,13 +207,12 @@ impl Canonicalizer {
             } else {
                 self.define_with_var(of, mngr)
             };
-            Ok(Atom::new(
-                AtomKind::FactorConstraint(RegularFactorConstraint::prefix(
+            Ok(
+                mngr.atom(AtomKind::FactorConstraint(RegularFactorConstraint::prefix(
                     v,
                     constprefix.to_string(),
-                )),
-                node.clone(),
-            ))
+                ))),
+            )
         } else {
             // Otherwise, rewrite as a word equation: There exists some t, u such that  r = t ++ s ++ u
             let t = mngr.temp_var(Sort::String);
@@ -228,7 +227,7 @@ impl Canonicalizer {
         &mut self,
         node: &Node,
         mngr: &mut NodeManager,
-    ) -> Result<Atom, NodeError> {
+    ) -> Result<Rc<Atom>, NodeError> {
         debug_assert!(*node.kind() == NodeKind::SuffixOf);
         debug_assert!(node.children().len() == 2);
         // Contains(r, s) <--> r contains s
@@ -242,10 +241,12 @@ impl Canonicalizer {
             } else {
                 self.define_with_var(of, mngr)
             };
-            Ok(Atom::new(
-                AtomKind::FactorConstraint(RegularFactorConstraint::suffix(v, s.to_string())),
-                node.clone(),
-            ))
+            Ok(
+                mngr.atom(AtomKind::FactorConstraint(RegularFactorConstraint::suffix(
+                    v,
+                    s.to_string(),
+                ))),
+            )
         } else {
             // Otherwise, rewrite as a word equation: There exists some t, u such that  r = t ++ s ++ u
             let t = mngr.temp_var(Sort::String);
@@ -260,7 +261,7 @@ impl Canonicalizer {
         &mut self,
         node: &Node,
         mngr: &mut NodeManager,
-    ) -> Result<Atom, NodeError> {
+    ) -> Result<Rc<Atom>, NodeError> {
         debug_assert!(*node.kind() == NodeKind::Contains);
         debug_assert!(node.children().len() == 2);
         // Contains(r, s) <--> r contains s
@@ -275,10 +276,9 @@ impl Canonicalizer {
             } else {
                 self.define_with_var(container, mngr)
             };
-            Ok(Atom::new(
-                AtomKind::FactorConstraint(RegularFactorConstraint::contains(v, s.to_string())),
-                node.clone(),
-            ))
+            Ok(mngr.atom(AtomKind::FactorConstraint(
+                RegularFactorConstraint::contains(v, s.to_string()),
+            )))
         } else {
             // Otherwise, rewrite as a word equation: There exists some t, u such that  r = t ++ s ++ u
             let t = mngr.temp_var(Sort::String);
@@ -291,7 +291,11 @@ impl Canonicalizer {
         }
     }
 
-    fn canonicalize_weq(&mut self, node: &Node, mngr: &mut NodeManager) -> Result<Atom, NodeError> {
+    fn canonicalize_weq(
+        &mut self,
+        node: &Node,
+        mngr: &mut NodeManager,
+    ) -> Result<Rc<Atom>, NodeError> {
         debug_assert!(*node.kind() == NodeKind::Eq);
         debug_assert!(node.children().len() == 2);
         let lhs = node.children().first().unwrap();
@@ -301,7 +305,7 @@ impl Canonicalizer {
         let lhs = self.canonicalize_concat(lhs.clone(), mngr);
         let rhs = self.canonicalize_concat(rhs.clone(), mngr);
         let weq = WordEquation::new(lhs, rhs);
-        Ok(Atom::new(AtomKind::WordEquation(weq), node.clone()))
+        Ok(mngr.atom(AtomKind::WordEquation(weq)))
     }
 
     /// Canocalizes nodes of the form (concat t1 ... tn). The result is a new node (concat r1 ... rm)
@@ -353,7 +357,7 @@ impl Canonicalizer {
         &mut self,
         node: &Node,
         mngr: &mut NodeManager,
-    ) -> Result<Atom, NodeError> {
+    ) -> Result<Rc<Atom>, NodeError> {
         debug_assert!(node.children().len() == 2);
         let lhs = node.children().first().unwrap();
         let rhs = node.children().last().unwrap();
@@ -374,7 +378,7 @@ impl Canonicalizer {
             _ => unreachable!("Not a linear constraint"),
         };
         let lc = LinearConstraint::new(clhs, op, crhs);
-        Ok(Atom::new(AtomKind::Linear(lc), node.clone()))
+        Ok(mngr.atom(AtomKind::Linear(lc)))
     }
 
     /// Takes a node representing a linear arithmetic term and brings it into canonical form.

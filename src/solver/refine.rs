@@ -2,8 +2,7 @@ use indexmap::IndexSet;
 
 use crate::{
     bounds::{infer::BoundInferer, step::BoundStep, Bounds, Interval},
-    canonical::{Formula, Literal},
-    node::NodeManager,
+    node::{canonical::Literal, get_entailed_literals, Node, NodeManager},
 };
 
 pub enum BoundRefinement {
@@ -17,7 +16,7 @@ pub enum BoundRefinement {
 pub(super) fn refine_bounds(
     literals: &[Literal],
     bounds: &Bounds,
-    fm: &Formula,
+    fm: &Node,
     step: BoundStep,
     mngr: &mut NodeManager,
 ) -> BoundRefinement {
@@ -60,13 +59,9 @@ pub(super) fn refine_bounds(
 }
 
 /// Computes the small-model bounds for any combinations given literals that can be satisfied by the formula.
-fn small_model_bounds(
-    literals: &[Literal],
-    fm: &Formula,
-    mngr: &mut NodeManager,
-) -> Option<Bounds> {
+fn small_model_bounds(literals: &[Literal], fm: &Node, mngr: &mut NodeManager) -> Option<Bounds> {
     // Split literals into entailed and not entailed
-    let entailed = fm.entailed_lits();
+    let entailed = get_entailed_literals(fm);
     let (entailed, not_entailed): (Vec<_>, Vec<_>) =
         literals.iter().partition(|l| entailed.contains(*l));
 

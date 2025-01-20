@@ -4,12 +4,12 @@ use std::{fmt::Display, rc::Rc};
 
 use indexmap::IndexMap;
 
-use crate::node::Variable;
+use crate::node::{Node, NodeKind, Variable};
 
 use super::{
-    ArithOperator, Atom, AtomKind, FactorConstraintType, Formula, FormulaKind, LinearArithTerm,
-    LinearConstraint, LinearSummand, Literal, Pattern, RegularConstraint, RegularFactorConstraint,
-    Symbol, VariableTerm, WordEquation,
+    ArithOperator, Atom, AtomKind, FactorConstraintType, LinearArithTerm, LinearConstraint,
+    LinearSummand, Literal, Pattern, RegularConstraint, RegularFactorConstraint, Symbol,
+    VariableTerm, WordEquation,
 };
 
 /// The value of a variable in an assignment.
@@ -178,13 +178,14 @@ impl Assignment {
     /// Checks if the assignment satisfies a formula.
     /// Returns true if the assignment satisfies the formula, false otherwise.
     /// Specifically, returns false if the truth value of the formula can not be evaluated in case the assignment is partial.
-    /// Formulas of type `Unsupported` are always considered to be false.
-    pub fn satisfies(&self, formula: &Formula) -> bool {
+    /// The formula is expected to be in canonical form.
+    /// If it is not or if the formula contains unsupported constructs, the result is always false.
+    pub fn satisfies(&self, formula: &Node) -> bool {
         match formula.kind() {
-            FormulaKind::And(fs) => fs.iter().all(|f| self.satisfies(f)),
-            FormulaKind::Or(fs) => fs.iter().any(|f| self.satisfies(f)),
-            FormulaKind::Literal(lit) => self.satisfies_lit(lit),
-            FormulaKind::Unsupported(_) => false,
+            NodeKind::And => formula.children().iter().all(|f| self.satisfies(f)),
+            NodeKind::Or => formula.children().iter().any(|f| self.satisfies(f)),
+            NodeKind::Literal(lit) => self.satisfies_lit(lit),
+            _ => false,
         }
     }
 

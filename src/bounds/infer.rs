@@ -6,12 +6,12 @@ use indexmap::IndexSet;
 use linear::LinearRefiner;
 use regular::RegularBoundsInferer;
 
-use crate::{
+use crate::node::{
     canonical::{
         ArithOperator, AtomKind, LinearArithTerm, LinearConstraint, Literal, RegularConstraint,
         WordEquation,
     },
-    node::{NodeManager, Sorted, Variable},
+    NodeManager, Sorted, Variable,
 };
 
 use super::{Bounds, Interval};

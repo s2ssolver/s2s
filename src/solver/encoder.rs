@@ -7,12 +7,14 @@ use crate::{
     abstraction::LitDefinition,
     alphabet::Alphabet,
     bounds::Bounds,
-    canonical::{Assignment, Literal},
     encode::{
         domain::{DomainEncoder, DomainEncoding},
         get_encoder, EncodingError, EncodingResult, LiteralEncoder,
     },
-    node::{NodeManager, NodeSubstitution, Variable},
+    node::{
+        canonical::{Assignment, Literal},
+        NodeManager, NodeSubstitution, Variable,
+    },
     sat::{nlit, plit, pvar, PLit, PVar},
 };
 

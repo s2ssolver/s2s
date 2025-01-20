@@ -15,10 +15,8 @@ use regulaer::{
 
 use crate::{
     bounds::Bounds,
-    canonical::RegularConstraint,
     encode::{domain::DomainEncoding, EncodingError, EncodingResult, LiteralEncoder, LAMBDA},
-    node::NodeManager,
-    node::Variable,
+    node::{canonical::RegularConstraint, NodeManager, Variable},
     sat::{nlit, plit, pvar, PVar},
     smt::smt_max_char,
 };
@@ -110,7 +108,15 @@ impl NFAEncoder {
 
                             // Follow transition if we read a character in the given range
                             for c in s..=e {
-                                let sub_var = dom.string().get_sub(&self.var, l, c).unwrap();
+                                let sub_var = dom.string().get_sub(&self.var, l, c).expect(
+                                    format!(
+                                        "Substitution h({})[{}] = '{}' not found",
+                                        self.var,
+                                        l,
+                                        c.escape_debug()
+                                    )
+                                    .as_str(),
+                                );
                                 // reach_var /\ sub_var => reach_next
                                 let clause = vec![nlit(reach_var), nlit(sub_var), plit(reach_next)];
                                 res.add_clause(clause);

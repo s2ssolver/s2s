@@ -3,9 +3,7 @@ use std::{
     fmt::{Display, Formatter},
 };
 
-use crate::canonical::Assignment;
-
-use super::{Node, NodeManager};
+use super::{canonical::Assignment, Node, NodeManager};
 
 /// A substitution that maps nodes to other nodes.
 ///

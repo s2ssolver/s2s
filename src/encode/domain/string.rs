@@ -6,12 +6,11 @@ use itertools::Itertools;
 use crate::{
     alphabet::Alphabet,
     bounds::Bounds,
-    canonical::Assignment,
     encode::{
         card::{exactly_one, IncrementalEO},
         EncodingResult, LAMBDA,
     },
-    node::{Sort, Sorted, Variable},
+    node::{canonical::Assignment, Sort, Sorted, Variable},
     sat::{nlit, plit, pvar, Cnf, PLit, PVar},
 };
 
@@ -187,13 +186,14 @@ impl StringDomainEncoder {
                 .expect("Unbounded string variable") as usize;
 
             let alph = &self.alphabet;
+
             for b in last_bound..new_bound {
                 let mut pos_subs = vec![];
                 for c in alph.iter() {
                     // subvar <--> `var` at position `b` is substituted with `c`
                     let subvar = pvar();
                     subs.insert_substitution(str_var, b, c, subvar);
-                    pos_subs.push(subvar)
+                    pos_subs.push(subvar);
                 }
 
                 // Lambda (unused position = empty string)

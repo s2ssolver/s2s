@@ -4,8 +4,10 @@ use indexmap::IndexMap;
 
 use crate::{
     bounds::Bounds,
-    canonical::{ArithOperator, LinearConstraint, LinearSummand},
-    node::Sorted,
+    node::{
+        canonical::{ArithOperator, LinearConstraint, LinearSummand},
+        Sorted,
+    },
     sat::{nlit, plit, pvar, PVar},
 };
 
