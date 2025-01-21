@@ -14,7 +14,7 @@ use crate::node::{
     NodeManager, Sorted, Variable,
 };
 
-use super::{Bounds, Interval};
+use super::{Domain, Interval};
 
 #[allow(dead_code)]
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -182,14 +182,14 @@ impl BoundInferer {
     }
 
     /// Infers the bounds of the variables in the literals.
-    pub fn infer(&mut self) -> Option<Bounds> {
+    pub fn infer(&mut self) -> Option<Domain> {
         if self.conflicting() {
             return None;
         }
         let frag = self.fragment.get_fragment();
 
         let bounds = match frag {
-            Fragment::Empty => Some(Bounds::default()),
+            Fragment::Empty => Some(Domain::default()),
             Fragment::Reg => self.reg.infer(),
             Fragment::Weq(_) => {
                 // TODO: check straight-line fragment if no inequalities are present
@@ -234,7 +234,7 @@ impl BoundInferer {
 
     /// Ensures that all string and int variables occurring in any of the literals are present in the bounds.
     /// If a variable is not present in the bounds, it is set to unbounded.
-    fn sanitize_bounds(&mut self, bounds: &mut Bounds) {
+    fn sanitize_bounds(&mut self, bounds: &mut Domain) {
         for v in self
             .literals
             .iter()
@@ -243,9 +243,9 @@ impl BoundInferer {
         {
             if bounds.get(v.as_ref()).is_none() {
                 if v.sort().is_string() {
-                    bounds.set(v.as_ref().clone(), Interval::bounded_below(0));
+                    bounds.set(v.clone(), Interval::bounded_below(0));
                 } else {
-                    bounds.set(v.as_ref().clone(), Interval::unbounded());
+                    bounds.set(v.clone(), Interval::unbounded());
                 }
             }
         }
@@ -253,6 +253,6 @@ impl BoundInferer {
 }
 
 trait InferringStrategy: Default + Clone {
-    fn infer(&mut self) -> Option<Bounds>;
+    fn infer(&mut self) -> Option<Domain>;
     fn conflict(&self) -> bool;
 }

@@ -2,7 +2,7 @@
 
 use crate::node::Sorted;
 
-use super::{BoundValue, Bounds, Interval};
+use super::{BoundValue, Domain, Interval};
 
 /// A step function that increases a the size of a given [`Interval`].
 /// For an interval `[a, b]`, the step function creates a new interval `f([a, b]) = [fl(a), fu(b)]` where `fl` and `fu` are functions such that
@@ -120,8 +120,8 @@ impl BoundStep {
 }
 
 #[allow(dead_code)]
-pub fn update_bounds(bounds: &Bounds, step: BoundStep) -> Bounds {
-    let mut new_bounds = Bounds::default();
+pub fn update_bounds(bounds: &Domain, step: BoundStep) -> Domain {
+    let mut new_bounds = Domain::default();
     for (var, interval) in bounds.iter() {
         if var.sort().is_int() {
             new_bounds.set(var.clone(), step.apply(*interval));

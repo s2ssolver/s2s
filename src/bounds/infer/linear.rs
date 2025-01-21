@@ -5,7 +5,7 @@ use std::{collections::HashMap, rc::Rc};
 use indexmap::IndexSet;
 
 use crate::{
-    bounds::{BoundValue, Bounds},
+    bounds::{BoundValue, Domain},
     node::{
         canonical::{
             ArithOperator, LinearArithTerm, LinearConstraint, LinearSummand, Symbol, WordEquation,
@@ -69,7 +69,7 @@ impl LinearRefiner {
     /// Refines the bounds of the given variables.
     /// If a variable is not present in the bounds, it is considered unbounded (i.e., the bounds are (-inf, inf)).
     /// If a conflict is detected, i.e., if the linear constraints are unsatisfiable, `None` is returned.
-    pub fn refine(&mut self, bounds: &Bounds) -> Option<Bounds> {
+    pub fn refine(&mut self, bounds: &Domain) -> Option<Domain> {
         if self.conflict {
             return None;
         }
@@ -95,7 +95,7 @@ impl LinearRefiner {
 
     /// Checks if any of the bounds is empty.
     /// If this is the case, the linear constraints are unsatisfiable.
-    fn any_empty(&self, bounds: &Bounds) -> bool {
+    fn any_empty(&self, bounds: &Domain) -> bool {
         for (_, b) in bounds.iter() {
             if b.is_empty() {
                 return true;
@@ -104,7 +104,7 @@ impl LinearRefiner {
         false
     }
 
-    fn refinement_step(&self, bounds: &Bounds, linear: &LinearConstraint) -> Option<Bounds> {
+    fn refinement_step(&self, bounds: &Domain, linear: &LinearConstraint) -> Option<Domain> {
         let mut new_bounds = bounds.clone();
         let mut changed = false;
         log::trace!("Refining bounds {} w.r.t. {}", bounds, linear);
@@ -123,7 +123,7 @@ impl LinearRefiner {
                             log::trace!("\t\t {op} {dived}");
                             if dived < self.ub(var.as_ref(), bounds) {
                                 changed = true;
-                                new_bounds.set_upper(var.as_ref(), dived);
+                                new_bounds.set_upper(&var, dived);
                             }
                         }
                     }
@@ -140,7 +140,7 @@ impl LinearRefiner {
 
                             if dived > self.lb(var.as_ref(), bounds) {
                                 changed = true;
-                                new_bounds.set_lower(var.as_ref(), dived);
+                                new_bounds.set_lower(&var, dived);
                             }
                         }
                     }
@@ -194,7 +194,7 @@ impl LinearRefiner {
     }
 
     /// Returns the lower bound of the given variable.
-    fn lb(&self, var: &Variable, bounds: &Bounds) -> BoundValue {
+    fn lb(&self, var: &Variable, bounds: &Domain) -> BoundValue {
         match bounds.get_lower(var) {
             Some(b) => b,
             None => {
@@ -208,7 +208,7 @@ impl LinearRefiner {
     }
 
     /// Returns the upper bound of the given variable.
-    fn ub(&self, var: &Variable, bounds: &Bounds) -> BoundValue {
+    fn ub(&self, var: &Variable, bounds: &Domain) -> BoundValue {
         match bounds.get_upper(var) {
             Some(b) => b,
             None => BoundValue::PosInf,
@@ -216,7 +216,7 @@ impl LinearRefiner {
     }
 
     /// Evaluates the smallest possible value of the given term under the given bounds.
-    fn eval_smallest(&self, term: &LinearArithTerm, bounds: &Bounds) -> BoundValue {
+    fn eval_smallest(&self, term: &LinearArithTerm, bounds: &Domain) -> BoundValue {
         let mut smallest = 0;
         for t in term.iter() {
             match t {
@@ -258,7 +258,7 @@ impl LinearRefiner {
     }
 
     /// Evaluates the largest possible value of the given term under the given bounds.
-    fn eval_largest(&self, term: &LinearArithTerm, bounds: &Bounds) -> BoundValue {
+    fn eval_largest(&self, term: &LinearArithTerm, bounds: &Domain) -> BoundValue {
         let mut largest = 0;
         for t in term.iter() {
             match t {
@@ -343,8 +343,8 @@ pub fn length_abstraction(weq: &WordEquation) -> LinearConstraint {
 }
 
 impl InferringStrategy for LinearRefiner {
-    fn infer(&mut self) -> Option<Bounds> {
-        self.refine(&Bounds::default())
+    fn infer(&mut self) -> Option<Domain> {
+        self.refine(&Domain::default())
     }
 
     fn conflict(&self) -> bool {

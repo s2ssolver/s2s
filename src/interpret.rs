@@ -1,6 +1,7 @@
 use crate::{
     node::{Node, NodeManager},
     smt::{Script, SmtCommand},
+    solver::Engine,
     Error, Solver, SolverOptions, SolverResult,
 };
 
@@ -8,6 +9,7 @@ pub struct Interpreter<'a> {
     mngr: &'a mut NodeManager,
     _options: SolverOptions,
     solver: Solver,
+    engine: Engine,
     last_res: Option<SolverResult>,
 
     assertions: Vec<Node>,
@@ -16,10 +18,12 @@ pub struct Interpreter<'a> {
 impl<'a> Interpreter<'a> {
     pub fn new(options: SolverOptions, mngr: &'a mut NodeManager) -> Self {
         let solver = Solver::with_options(options.clone());
+        let engine = Engine::with_options(options.clone());
         Self {
             mngr,
             solver,
             _options: options,
+            engine,
             last_res: None,
             assertions: Vec::new(),
         }
@@ -60,6 +64,7 @@ impl<'a> Interpreter<'a> {
 
     pub fn check_sat(&mut self) -> Result<SolverResult, Error> {
         let root = self.mngr.and(std::mem::take(&mut self.assertions));
-        self.solver.solve(&root, self.mngr)
+        //self.solver.solve(&root, self.mngr)
+        self.engine.solve(&root, self.mngr)
     }
 }

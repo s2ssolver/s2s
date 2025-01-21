@@ -14,7 +14,7 @@ use regulaer::{
 };
 
 use crate::{
-    bounds::Bounds,
+    bounds::Domain,
     encode::{domain::DomainEncoding, EncodingError, EncodingResult, LiteralEncoder, LAMBDA},
     node::{canonical::RegularConstraint, NodeManager, Variable},
     sat::{nlit, plit, pvar, PVar},
@@ -256,7 +256,7 @@ impl LiteralEncoder for NFAEncoder {
 
     fn encode(
         &mut self,
-        bounds: &Bounds,
+        bounds: &Domain,
         dom: &DomainEncoding,
     ) -> Result<EncodingResult, EncodingError> {
         let bound = bounds.get_upper_finite(&self.var).unwrap_or(0) as usize;
@@ -450,15 +450,15 @@ mod test {
 
         let nfa = mngr.get_nfa(&re);
 
-        let mut bounds = Bounds::default();
+        let mut bounds = Domain::default();
 
         let mut encoder = NFAEncoder::new(&var, nfa, pol);
-        let mut dom_encoder = DomainEncoder::new(alph, IndexSet::from_iter(vec![var.clone()]));
+        let mut dom_encoder = DomainEncoder::new(alph);
         let mut solver: Solver = cadical::Solver::default();
 
         let mut result = None;
         for bound in ubounds {
-            bounds.set(var.as_ref().clone(), Interval::new(0, *bound as isize));
+            bounds.set(var.clone(), Interval::new(0, *bound as isize));
             let mut res = EncodingResult::empty();
 
             res.extend(dom_encoder.encode(&bounds));

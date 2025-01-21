@@ -4,7 +4,7 @@
 use std::{cmp::Ordering, rc::Rc};
 
 use crate::{
-    bounds::Bounds,
+    bounds::Domain,
     encode::{domain::DomainEncoding, EncodingError, EncodingResult, LiteralEncoder, LAMBDA},
     node::Variable,
     sat::{nlit, plit, pvar},
@@ -29,7 +29,7 @@ impl AssignmentEncoder {
 
     fn encode_eq(
         &mut self,
-        bounds: &Bounds,
+        bounds: &Domain,
         dom: &DomainEncoding,
     ) -> Result<EncodingResult, EncodingError> {
         let len_rhs = self.rhs.len();
@@ -80,7 +80,7 @@ impl AssignmentEncoder {
 
     fn encode_ineq(
         &mut self,
-        bounds: &Bounds,
+        bounds: &Domain,
         dom: &DomainEncoding,
     ) -> Result<EncodingResult, EncodingError> {
         let len_rhs = self.rhs.len();
@@ -141,7 +141,7 @@ impl LiteralEncoder for AssignmentEncoder {
 
     fn encode(
         &mut self,
-        bounds: &Bounds,
+        bounds: &Domain,
         substitution: &DomainEncoding,
     ) -> Result<EncodingResult, EncodingError> {
         if self.sign {

@@ -4,7 +4,7 @@ use super::matching::PatternMatchingEncoder;
 use super::word::WordEncoding;
 
 use crate::{
-    bounds::Bounds,
+    bounds::Domain,
     encode::{
         card::IncrementalALO, domain::DomainEncoding, EncodingError, EncodingResult,
         LiteralEncoder, LAMBDA,
@@ -51,7 +51,7 @@ impl WordInEquationEncoder {
         res
     }
 
-    fn encode_matching(&mut self, bounds: &Bounds, dom: &DomainEncoding) -> EncodingResult {
+    fn encode_matching(&mut self, bounds: &Domain, dom: &DomainEncoding) -> EncodingResult {
         let mut res = self
             .match_lhs
             .encode(self.word_encoding_lhs.as_ref().unwrap(), bounds, dom);
@@ -62,7 +62,7 @@ impl WordInEquationEncoder {
         res
     }
 
-    fn pattern_upper_bound(&self, pattern: &Pattern, bounds: &Bounds) -> usize {
+    fn pattern_upper_bound(&self, pattern: &Pattern, bounds: &Domain) -> usize {
         pattern
             .symbols()
             .map(|s| match s {
@@ -74,11 +74,11 @@ impl WordInEquationEncoder {
             .sum()
     }
 
-    fn lhs_upper_bound(&self, bounds: &Bounds) -> usize {
+    fn lhs_upper_bound(&self, bounds: &Domain) -> usize {
         self.pattern_upper_bound(&self.lhs, bounds)
     }
 
-    fn rhs_upper_bound(&self, bounds: &Bounds) -> usize {
+    fn rhs_upper_bound(&self, bounds: &Domain) -> usize {
         self.pattern_upper_bound(&self.rhs, bounds)
     }
 
@@ -134,7 +134,7 @@ impl LiteralEncoder for WordInEquationEncoder {
 
     fn encode(
         &mut self,
-        bounds: &Bounds,
+        bounds: &Domain,
         dom: &DomainEncoding,
     ) -> Result<EncodingResult, EncodingError> {
         if self.word_encoding_lhs.is_none() {
@@ -159,7 +159,7 @@ impl LiteralEncoder for WordInEquationEncoder {
 mod tests {
     use crate::{
         alphabet::Alphabet,
-        bounds::Bounds,
+        bounds::Domain,
         encode::{
             domain::DomainEncoder, equation::weq::testutils::parse_simple_equation, LiteralEncoder,
         },
@@ -173,14 +173,14 @@ mod tests {
     fn solve_with_bounds(eq: &WordEquation, bounds: &[usize]) -> Option<Assignment> {
         let alphabet: Alphabet =
             Alphabet::from_iter(eq.constants().iter().copied().chain('a'..='z'));
-        let mut domain = DomainEncoder::new(alphabet, eq.variables());
+        let mut domain = DomainEncoder::new(alphabet);
 
         let mut cadical: cadical::Solver = cadical::Solver::default();
 
         let mut encoder = WordInEquationEncoder::new(eq.clone());
 
         for b in bounds {
-            let mut bounds = Bounds::empty();
+            let mut bounds = Domain::empty();
             for v in eq.variables() {
                 bounds.set_upper(&v, (*b).into());
             }

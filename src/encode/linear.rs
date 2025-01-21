@@ -3,7 +3,7 @@ use std::collections::VecDeque;
 use indexmap::IndexMap;
 
 use crate::{
-    bounds::Bounds,
+    bounds::Domain,
     node::{
         canonical::{ArithOperator, LinearConstraint, LinearSummand},
         Sorted,
@@ -27,7 +27,7 @@ pub struct MddEncoder {
     /// Is 0 when the encoder is reset.
     round: usize,
 
-    last_bounds: Option<Bounds>,
+    last_bounds: Option<Domain>,
 }
 
 impl MddEncoder {
@@ -63,7 +63,7 @@ impl LiteralEncoder for MddEncoder {
 
     fn encode(
         &mut self,
-        bounds: &Bounds,
+        bounds: &Domain,
         dom: &DomainEncoding,
     ) -> Result<EncodingResult, EncodingError> {
         self.round += 1;

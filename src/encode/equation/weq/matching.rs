@@ -3,7 +3,7 @@ use std::{fmt::Display, rc::Rc};
 use indexmap::IndexMap;
 
 use crate::{
-    bounds::Bounds,
+    bounds::Domain,
     encode::{domain::DomainEncoding, EncodingResult, LAMBDA},
     node::canonical::{Pattern, Symbol},
     node::Variable,
@@ -130,7 +130,7 @@ pub(super) struct PatternMatchingEncoder {
     /// The length of the word to be matched.
     len: Option<usize>,
     /// The bounds of the variables in the pattern used to encode the matching.
-    bounds: Bounds,
+    bounds: Domain,
 
     /// A Boolean variable that is added as an assumption to the SAT solver.
     /// The negation of this variable is added as an assumption.
@@ -149,7 +149,7 @@ impl PatternMatchingEncoder {
             pattern,
             start_pos: IndexMap::new(),
             len: None,
-            bounds: Bounds::empty(),
+            bounds: Domain::empty(),
             selector: None,
             match_cache: IndexMap::new(),
         }
@@ -159,7 +159,7 @@ impl PatternMatchingEncoder {
     pub fn encode(
         &mut self,
         word: &WordEncoding,
-        bounds: &Bounds,
+        bounds: &Domain,
         dom: &DomainEncoding,
     ) -> EncodingResult {
         assert!(
@@ -237,7 +237,7 @@ impl PatternMatchingEncoder {
     fn encode_match(
         &mut self,
         word: &WordEncoding,
-        bounds: &Bounds,
+        bounds: &Domain,
         dom: &DomainEncoding,
         res: &mut EncodingResult,
     ) {

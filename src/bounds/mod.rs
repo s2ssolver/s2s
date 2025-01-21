@@ -3,7 +3,7 @@
 pub mod infer;
 pub mod step;
 
-use std::{cmp::Ordering, fmt::Display};
+use std::{cmp::Ordering, fmt::Display, rc::Rc};
 
 use indexmap::IndexMap;
 use quickcheck::Arbitrary;
@@ -280,16 +280,31 @@ impl Display for Interval {
     }
 }
 
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub enum VarDomain {
+    /// Range of the integer variable
+    Int(Interval),
+    /// Length of the string
+    String(Interval),
+    Bool,
+}
+
+impl From<Interval> for VarDomain {
+    fn from(interval: Interval) -> Self {
+        VarDomain::Int(interval)
+    }
+}
+
 /// The bounds of the variables in the formula.
 /// Each variable is associated with an interval that represents the possible values the variable can take.
 /// For integer variables, this interval represents the domain of the variable.
 /// For string variables, this interval represents the length of the string.
 #[derive(Debug, PartialEq, Eq, Clone, Default)]
-pub struct Bounds {
-    bounds: IndexMap<Variable, Interval>,
+pub struct Domain {
+    domains: IndexMap<Rc<Variable>, VarDomain>,
 }
 
-impl Bounds {
+impl Domain {
     pub fn empty() -> Self {
         Self::default()
     }
@@ -305,58 +320,58 @@ impl Bounds {
     /// # Returns
     /// The previous bound of the variable, if it was present in the bounds.
     /// Otherwise, returns `None`.
-    pub fn set(&mut self, var: Variable, interval: Interval) -> Option<Interval> {
-        self.bounds.insert(var, interval)
+    pub fn set(&mut self, var: Rc<Variable>, dom: impl Into<VarDomain>) -> Option<VarDomain> {
+        self.domains.insert(var, dom.into())
     }
 
     /// Returns the bound of a variable.
     /// If the variable is not present in the bounds, returns `None`.
-    pub fn get(&self, var: &Variable) -> Option<Interval> {
-        self.bounds.get(var).copied()
+    pub fn get(&self, var: &Variable) -> Option<VarDomain> {
+        self.domains.get(var).copied()
     }
 
-    /// Returns the upper bound of a variable.
-    /// If the variable is not present in the bounds, returns `None`.
-    pub fn get_upper(&self, var: &Variable) -> Option<BoundValue> {
-        self.get(var).map(|i| i.upper())
-    }
+    // /// Returns the upper bound of a variable.
+    // /// If the variable is not present in the bounds, returns `None`.
+    // pub fn get_upper(&self, var: &Variable) -> Option<BoundValue> {
+    //     self.get(var).map(|i| i.upper())
+    // }
 
-    /// Returns the upper bound of the variable as a finite integer.
-    /// If the variable is not present in the bounds or the upper bound is not finite, returns `None`.
-    pub fn get_upper_finite(&self, var: &Variable) -> Option<i32> {
-        self.get_upper(var).and_then(|b| b.as_num())
-    }
+    // /// Returns the upper bound of the variable as a finite integer.
+    // /// If the variable is not present in the bounds or the upper bound is not finite, returns `None`.
+    // pub fn get_upper_finite(&self, var: &Variable) -> Option<i32> {
+    //     self.get_upper(var).and_then(|b| b.as_num())
+    // }
 
-    /// Returns the lower bound of a variable.
-    pub fn get_lower(&self, var: &Variable) -> Option<BoundValue> {
-        self.get(var).map(|i| i.lower())
-    }
+    // /// Returns the lower bound of a variable.
+    // pub fn get_lower(&self, var: &Variable) -> Option<BoundValue> {
+    //     self.get(var).map(|i| i.lower())
+    // }
 
-    /// Returns the lower bound of the variable as a finite integer.
-    /// If the variable is not present in the bounds or the lower bound is not finite, returns `None`.
-    pub fn get_lower_finite(&self, var: &Variable) -> Option<i32> {
-        self.get_lower(var).and_then(|b| b.as_num())
-    }
+    // /// Returns the lower bound of the variable as a finite integer.
+    // /// If the variable is not present in the bounds or the lower bound is not finite, returns `None`.
+    // pub fn get_lower_finite(&self, var: &Variable) -> Option<i32> {
+    //     self.get_lower(var).and_then(|b| b.as_num())
+    // }
 
     /// Removes the bound of a variable.
     /// If the variable is not present in the bounds, returns `None`.
     /// Otherwise, returns the bound of the variable that was removed.
     #[cfg(test)]
-    pub fn remove(&mut self, var: &Variable) -> Option<Interval> {
-        self.bounds.remove(var)
+    pub fn remove(&mut self, var: &Variable) -> Option<VarDomain> {
+        self.domains.remove(var)
     }
 
     /// Returns the number of variables in the bounds.
     #[cfg(test)]
     pub fn len(&self) -> usize {
-        self.bounds.len()
+        self.domains.len()
     }
 
     /// Returns true if the bounds are empty and false otherwise.
     /// The bounds are considered empty if there are no variables in the bounds.
     #[cfg(test)]
     pub fn is_empty(&self) -> bool {
-        self.bounds.is_empty()
+        self.domains.is_empty()
     }
 
     /// Intersects two `Bounds` instances and returns a new `Bounds` with the intersection.
@@ -375,21 +390,40 @@ impl Bounds {
     pub fn intersect(&self, other: &Self) -> Self {
         let mut intersection_map = IndexMap::new();
 
-        for (var, interval) in &self.bounds {
-            if let Some(other_interval) = other.get(var) {
-                let intersected_interval = interval.intersect(other_interval);
-                intersection_map.insert(var.clone(), intersected_interval);
+        for (var, dom) in &self.domains {
+            if let Some(other) = other.get(var) {
+                match (dom, other) {
+                    (VarDomain::Int(dom), VarDomain::Int(other)) => {
+                        let intersected_interval = dom.intersect(other);
+                        intersection_map.insert(var.clone(), intersected_interval.into());
+                    }
+                    _ => {}
+                }
             }
         }
 
         Self {
-            bounds: intersection_map,
+            domains: intersection_map,
         }
     }
 
     /// Returns an iterator over the variables and their bounds.
-    pub fn iter(&self) -> impl Iterator<Item = (&Variable, &Interval)> {
-        self.bounds.iter()
+    pub fn iter(&self) -> impl Iterator<Item = (&Rc<Variable>, &VarDomain)> {
+        self.domains.iter()
+    }
+
+    pub fn iter_string(&self) -> impl Iterator<Item = (&Rc<Variable>, &Interval)> {
+        self.domains.iter().filter_map(|(var, dom)| match dom {
+            VarDomain::String(interval) => Some((var, interval)),
+            _ => None,
+        })
+    }
+
+    pub fn iter_int(&self) -> impl Iterator<Item = (&Rc<Variable>, &Interval)> {
+        self.domains.iter().filter_map(|(var, dom)| match dom {
+            VarDomain::Int(interval) => Some((var, interval)),
+            _ => None,
+        })
     }
 
     /// Sets the upper bound of a variable to the given value `u`.
@@ -400,7 +434,7 @@ impl Bounds {
     /// and returns `None`.
     ///
     /// If the variable is present in the bounds, sets the upper bound to `u` and returns the previous upper bound.
-    pub fn set_upper(&mut self, var: &Variable, u: BoundValue) -> Option<BoundValue> {
+    pub fn set_upper(&mut self, var: &Rc<Variable>, u: BoundValue) -> Option<BoundValue> {
         if let Some(interval) = self.get(var) {
             let prev_upper = interval.upper();
             self.set(var.clone(), Interval::new(interval.lower(), u));
@@ -419,7 +453,7 @@ impl Bounds {
     /// Sets the lower bound of a variable to the given value `l`.
     /// If the variable is not present in the bounds, sets the bounds [l, ∞] and returns `None`.
     /// If the variable is present in the bounds, sets the lower bound to `l` and returns the previous lower bound.
-    pub fn set_lower(&mut self, var: &Variable, l: BoundValue) -> Option<BoundValue> {
+    pub fn set_lower(&mut self, var: &Rc<Variable>, l: BoundValue) -> Option<BoundValue> {
         if let Some(interval) = self.get(var) {
             let prev_lower = interval.lower();
             self.set(var.clone(), Interval::new(l, interval.upper()));
@@ -431,11 +465,11 @@ impl Bounds {
     }
 }
 
-impl Display for Bounds {
+impl Display for Domain {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{{")?;
 
-        for (var, domain) in &self.bounds {
+        for (var, domain) in &self.domains {
             write!(f, "{}: {}, ", var, domain)?;
         }
         write!(f, "}}")
@@ -532,9 +566,10 @@ mod tests {
 
     #[test]
     fn test_insert_and_get() {
-        let mut interval_map = Bounds::default();
+        let mut interval_map = Domain::default();
 
         let var = Variable::new(0, "x".to_string(), Sort::Int);
+        let var = Rc::new(var);
         let interval = Interval::new(1, 5);
 
         interval_map.set(var.clone(), interval);
@@ -544,9 +579,10 @@ mod tests {
 
     #[test]
     fn test_remove() {
-        let mut interval_map = Bounds::default();
+        let mut interval_map = Domain::default();
 
         let var = Variable::new(0, "x".to_string(), Sort::Int);
+        let var = Rc::new(var);
         let interval = Interval::new(1, 5);
 
         interval_map.set(var.clone(), interval);
@@ -558,12 +594,13 @@ mod tests {
 
     #[test]
     fn test_len_and_is_empty() {
-        let mut interval_map = Bounds::default();
+        let mut interval_map = Domain::default();
 
         assert_eq!(interval_map.len(), 0);
         assert!(interval_map.is_empty());
 
         let var = Variable::new(0, "x".to_string(), Sort::Int);
+        let var = Rc::new(var);
         let interval = Interval::new(1, 5);
 
         interval_map.set(var, interval);
@@ -574,11 +611,13 @@ mod tests {
 
     #[test]
     fn test_bounds_intersection() {
-        let mut bounds1 = Bounds::default();
-        let mut bounds2 = Bounds::default();
+        let mut bounds1 = Domain::default();
+        let mut bounds2 = Domain::default();
 
         let var_x = Variable::new(0, "x".to_string(), Sort::Int);
         let var_y = Variable::new(1, "y".to_string(), Sort::Int);
+        let var_x = Rc::new(var_x);
+        let var_y = Rc::new(var_y);
 
         bounds1.set(var_x.clone(), Interval::new(1, 10));
         bounds1.set(var_y.clone(), Interval::new(20, 30));
@@ -595,10 +634,11 @@ mod tests {
 
     #[test]
     fn test_bounds_intersection_empty() {
-        let mut bounds1 = Bounds::default();
-        let mut bounds2 = Bounds::default();
+        let mut bounds1 = Domain::default();
+        let mut bounds2 = Domain::default();
 
         let var_x = Variable::new(0, "x".to_string(), Sort::Int);
+        let var_x = Rc::new(var_x);
 
         bounds1.set(var_x.clone(), Interval::new(1, 10));
         bounds2.set(var_x.clone(), Interval::new(15, 20));
@@ -614,11 +654,13 @@ mod tests {
 
     #[test]
     fn test_bounds_intersection_disjoint_vars() {
-        let mut bounds1 = Bounds::default();
-        let mut bounds2 = Bounds::default();
+        let mut bounds1 = Domain::default();
+        let mut bounds2 = Domain::default();
 
         let var_x = Variable::new(0, "x".to_string(), Sort::Int);
         let var_y = Variable::new(1, "y".to_string(), Sort::Int);
+        let var_x = Rc::new(var_x);
+        let var_y = Rc::new(var_y);
 
         bounds1.set(var_x.clone(), Interval::new(1, 10));
         bounds2.set(var_y.clone(), Interval::new(5, 15));

@@ -61,7 +61,7 @@ impl Preprocessor {
         result
     }
 
-    pub fn applied_subsitutions(&self) -> &NodeSubstitution {
+    pub fn applied_substitutions(&self) -> &NodeSubstitution {
         &self.subs
     }
 }

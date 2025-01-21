@@ -6,7 +6,7 @@ use super::DomainEncoding;
 
 use crate::sat::{plit, PVar};
 use crate::{
-    bounds::{Bounds, Interval},
+    bounds::{Domain, Interval},
     encode::{card::IncrementalEO, EncodingResult},
     node::{canonical::Assignment, Sort, Sorted, Variable},
     sat::pvar,
@@ -62,7 +62,7 @@ impl IntDomain {
 }
 
 pub struct IntegerEncoder {
-    last_domains: Option<Bounds>,
+    last_domains: Option<Domain>,
     /// Maps each variable to an Incremental exact-one encoder that is used to encode the variable's domain.
     var_len_eo_encoders: IndexMap<Variable, IncrementalEO>,
 }
@@ -75,13 +75,8 @@ impl IntegerEncoder {
         }
     }
 
-    pub fn encode(
-        &mut self,
-        bounds: &Bounds,
-        encoding: &mut DomainEncoding,
-        vars: &IndexSet<Rc<Variable>>,
-    ) -> EncodingResult {
-        let res = self.encode_int_vars(bounds, encoding, vars);
+    pub fn encode(&mut self, bounds: &Domain, encoding: &mut DomainEncoding) -> EncodingResult {
+        let res = self.encode_int_vars(bounds, encoding);
 
         self.last_domains = Some(bounds.clone());
         res
@@ -93,13 +88,12 @@ impl IntegerEncoder {
 
     fn encode_int_vars(
         &mut self,
-        bounds: &Bounds,
+        bounds: &Domain,
         encoding: &mut DomainEncoding,
-        vars: &IndexSet<Rc<Variable>>,
     ) -> EncodingResult {
         let mut res = EncodingResult::empty();
 
-        for int_var in vars.iter().filter(|v| v.sort().is_int()) {
+        for (int_var, bound) in bounds.iter().filter(|(v, b)| v.sort().is_int()) {
             let mut len_choices = vec![];
             let last_upper_bound = self
                 .get_last_dom(int_var)
@@ -109,8 +103,8 @@ impl IntegerEncoder {
                 .get_last_dom(int_var)
                 .map(|b| b.lower_finite().unwrap());
 
-            let lower = bounds.get_lower_finite(int_var).unwrap_or(0);
-            let upper = bounds.get_upper_finite(int_var).unwrap();
+            let lower = bound.lower_finite().unwrap_or(0);
+            let upper = bound.upper_finite().unwrap();
             for len in lower..=upper {
                 if last_lower_bound.map(|ll| len < ll).unwrap_or(true)
                     || last_upper_bound.map(|lu| len > lu).unwrap_or(true)

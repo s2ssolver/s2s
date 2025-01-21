@@ -1,13 +1,13 @@
 use indexmap::IndexSet;
 
 use crate::{
-    bounds::{infer::BoundInferer, step::BoundStep, Bounds, Interval},
+    bounds::{infer::BoundInferer, step::BoundStep, Domain, Interval},
     node::{canonical::Literal, get_entailed_literals, Node, NodeManager},
 };
 
 pub enum BoundRefinement {
     /// The bounds have been refined.
-    Refined(Bounds),
+    Refined(Domain),
     /// The bounds are already equal to or larger than the bounds of the smallest model of the combination of literals.
     /// If there is no satisfying assignment within the current bounds, then the formula is unsatisfiable.
     SmallModelReached,
@@ -15,7 +15,7 @@ pub enum BoundRefinement {
 
 pub(super) fn refine_bounds(
     literals: &[Literal],
-    bounds: &Bounds,
+    bounds: &Domain,
     fm: &Node,
     step: BoundStep,
     mngr: &mut NodeManager,
@@ -47,7 +47,7 @@ pub(super) fn refine_bounds(
                 small_model_reached = false;
             }
             // TODO: Check if the limit is reached
-            bounds.set(v.as_ref().clone(), new_bounds);
+            bounds.set(v.clone(), new_bounds);
         }
     }
 
@@ -59,7 +59,7 @@ pub(super) fn refine_bounds(
 }
 
 /// Computes the small-model bounds for any combinations given literals that can be satisfied by the formula.
-fn small_model_bounds(literals: &[Literal], fm: &Node, mngr: &mut NodeManager) -> Option<Bounds> {
+fn small_model_bounds(literals: &[Literal], fm: &Node, mngr: &mut NodeManager) -> Option<Domain> {
     // Split literals into entailed and not entailed
     let entailed = get_entailed_literals(fm);
     let (entailed, not_entailed): (Vec<_>, Vec<_>) =
@@ -98,7 +98,7 @@ fn small_model_bounds(literals: &[Literal], fm: &Node, mngr: &mut NodeManager) -
         None
     } else {
         // For each variable, take the minimum of the lower bounds and the maximum of the upper bounds.
-        let mut smp_bounds = Bounds::default();
+        let mut smp_bounds = Domain::default();
         for (_, bounds) in combinations {
             for (v, b) in bounds.iter() {
                 match smp_bounds.get(v) {

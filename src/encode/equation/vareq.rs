@@ -6,7 +6,7 @@ use std::{
 };
 
 use crate::{
-    bounds::Bounds,
+    bounds::Domain,
     encode::{domain::DomainEncoding, EncodingError, EncodingResult, LiteralEncoder, LAMBDA},
     node::Variable,
     sat::{nlit, plit, pvar, PVar},
@@ -23,7 +23,7 @@ pub struct VareqEncoder {
 impl VareqEncoder {
     fn encode_eq(
         &mut self,
-        bounds: &Bounds,
+        bounds: &Domain,
         dom: &DomainEncoding,
     ) -> Result<EncodingResult, EncodingError> {
         let lhs_bound = bounds.get_upper_finite(&self.lhs).unwrap() as usize;
@@ -67,7 +67,7 @@ impl VareqEncoder {
 
     fn encode_ineq(
         &mut self,
-        bounds: &Bounds,
+        bounds: &Domain,
         dom: &DomainEncoding,
     ) -> Result<EncodingResult, EncodingError> {
         let lhs_bound = bounds.get_upper_finite(&self.lhs).unwrap() as usize;
@@ -169,7 +169,7 @@ impl LiteralEncoder for VareqEncoder {
 
     fn encode(
         &mut self,
-        bounds: &Bounds,
+        bounds: &Domain,
         dom: &DomainEncoding,
     ) -> Result<EncodingResult, EncodingError> {
         if self.sign {
