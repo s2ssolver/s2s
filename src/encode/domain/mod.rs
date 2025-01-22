@@ -4,20 +4,15 @@ mod bool;
 mod int;
 mod string;
 
-use std::rc::Rc;
-
 use bool::{BoolDomain, BoolEncoder};
-use indexmap::IndexSet;
+
 pub use int::IntDomain;
 use int::IntegerEncoder;
 pub use string::StringDomain;
 use string::StringDomainEncoder;
 
 use crate::{
-    alphabet::Alphabet,
-    bounds::Domain,
-    encode::EncodingResult,
-    node::{canonical::Assignment, Variable},
+    alphabet::Alphabet, domain::Domain, encode::EncodingResult, node::canonical::Assignment,
 };
 
 #[derive(Clone, Debug)]
@@ -33,7 +28,7 @@ pub struct DomainEncoding {
     alphabet: Alphabet,
 
     /// The bounds of the integer variables
-    pub(super) bounds: Domain,
+    pub(super) dom: Domain,
 }
 
 /// Propositional encoding of the domains of all variables.
@@ -45,7 +40,7 @@ impl DomainEncoding {
             int: IntDomain::default(),
             bool: BoolDomain::default(),
             alphabet,
-            bounds,
+            dom: bounds,
         }
     }
 
@@ -66,7 +61,7 @@ impl DomainEncoding {
     }
 
     pub fn get_model(&self, solver: &cadical::Solver) -> Assignment {
-        let mut model = self.string.get_model(solver, &self.bounds);
+        let mut model = self.string.get_model(solver, &self.dom);
         let overwrite = model.extend(&self.int.get_model(solver));
         assert!(overwrite == 0);
         let overwrite = model.extend(&self.bool.get_model(solver));
@@ -98,19 +93,19 @@ impl DomainEncoder {
     }
 
     /// Encodes the domain of all variables for which bounds are given.
-    pub fn encode(&mut self, bounds: &Domain) -> EncodingResult {
+    pub fn encode(&mut self, dom: &Domain) -> EncodingResult {
         let mut encoding = self.encoding.take().unwrap_or(DomainEncoding::new(
             self.strings.alphabet().clone(),
-            bounds.clone(),
+            dom.clone(),
         ));
 
         // Bool encoding does not depend on the bounds and does not return a CNF.
-        self.bool.encode(&mut encoding);
+        self.bool.encode(&mut encoding, dom);
 
-        let mut res = self.strings.encode(bounds, &mut encoding);
+        let mut res = self.strings.encode(dom, &mut encoding);
 
-        res.extend(self.integers.encode(bounds, &mut encoding));
-        encoding.bounds = bounds.clone();
+        res.extend(self.integers.encode(dom, &mut encoding));
+        encoding.dom = dom.clone();
         self.encoding = Some(encoding);
         res
     }

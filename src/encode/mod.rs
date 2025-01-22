@@ -1,7 +1,7 @@
 use std::fmt::Display;
 
 use crate::{
-    bounds::Domain,
+    domain::Domain,
     node::{
         canonical::{AtomKind, Literal, RegularConstraint},
         NodeManager,

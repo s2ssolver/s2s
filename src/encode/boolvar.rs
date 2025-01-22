@@ -1,7 +1,7 @@
 use std::rc::Rc;
 
 use crate::{
-    bounds::Domain,
+    domain::Domain,
     node::{Sorted, Variable},
     sat::{nlit, plit},
 };

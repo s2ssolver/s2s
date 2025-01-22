@@ -3,10 +3,12 @@ use std::{fmt::Display, rc::Rc};
 use indexmap::IndexMap;
 
 use crate::{
-    bounds::Domain,
+    domain::Domain,
     encode::{domain::DomainEncoding, EncodingResult, LAMBDA},
-    node::canonical::{Pattern, Symbol},
-    node::Variable,
+    node::{
+        canonical::{Pattern, Symbol},
+        Variable,
+    },
     sat::{nlit, plit, pvar, PVar},
 };
 
@@ -237,8 +239,8 @@ impl PatternMatchingEncoder {
     fn encode_match(
         &mut self,
         word: &WordEncoding,
-        bounds: &Domain,
-        dom: &DomainEncoding,
+        dom: &Domain,
+        dom_enc: &DomainEncoding,
         res: &mut EncodingResult,
     ) {
         let segs = self.pattern.length(); // the number of segments in the pattern
@@ -246,12 +248,16 @@ impl PatternMatchingEncoder {
         for seg in 0..segs {
             match self.pattern.get(seg).clone() {
                 PatternSegment::Variable(v) => {
-                    let vbound = bounds
-                        .get_upper_finite(&v)
-                        .expect("No upper bound for variable")
-                        as usize;
-                    let last_vbound = self.bounds.get_upper_finite(&v).unwrap_or(0) as usize;
-                    self.encode_match_variable(seg, &v, vbound, last_vbound, word, dom, res)
+                    let vbound =
+                        dom.get_string(&v)
+                            .and_then(|i| i.upper_finite())
+                            .expect("No upper bound for variable") as usize;
+                    let last_vbound = self
+                        .bounds
+                        .get_string(&v)
+                        .and_then(|i| i.upper_finite())
+                        .unwrap_or(0) as usize;
+                    self.encode_match_variable(seg, &v, vbound, last_vbound, word, dom_enc, res)
                 }
                 PatternSegment::Word(w) => self.encode_match_const(seg, &w, word, res),
             }

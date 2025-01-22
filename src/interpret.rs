@@ -2,13 +2,13 @@ use crate::{
     node::{Node, NodeManager},
     smt::{Script, SmtCommand},
     solver::Engine,
-    Error, Solver, SolverOptions, SolverResult,
+    Error, SolverOptions, SolverResult,
 };
 
 pub struct Interpreter<'a> {
     mngr: &'a mut NodeManager,
     _options: SolverOptions,
-    solver: Solver,
+
     engine: Engine,
     last_res: Option<SolverResult>,
 
@@ -17,11 +17,9 @@ pub struct Interpreter<'a> {
 
 impl<'a> Interpreter<'a> {
     pub fn new(options: SolverOptions, mngr: &'a mut NodeManager) -> Self {
-        let solver = Solver::with_options(options.clone());
         let engine = Engine::with_options(options.clone());
         Self {
             mngr,
-            solver,
             _options: options,
             engine,
             last_res: None,

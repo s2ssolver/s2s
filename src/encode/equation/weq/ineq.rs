@@ -4,7 +4,7 @@ use super::matching::PatternMatchingEncoder;
 use super::word::WordEncoding;
 
 use crate::{
-    bounds::Domain,
+    domain::Domain,
     encode::{
         card::IncrementalALO, domain::DomainEncoding, EncodingError, EncodingResult,
         LiteralEncoder, LAMBDA,
@@ -51,35 +51,37 @@ impl WordInEquationEncoder {
         res
     }
 
-    fn encode_matching(&mut self, bounds: &Domain, dom: &DomainEncoding) -> EncodingResult {
+    fn encode_matching(&mut self, dom: &Domain, dom_enc: &DomainEncoding) -> EncodingResult {
         let mut res = self
             .match_lhs
-            .encode(self.word_encoding_lhs.as_ref().unwrap(), bounds, dom);
+            .encode(self.word_encoding_lhs.as_ref().unwrap(), dom, dom_enc);
         res.extend(
             self.match_rhs
-                .encode(self.word_encoding_rhs.as_ref().unwrap(), bounds, dom),
+                .encode(self.word_encoding_rhs.as_ref().unwrap(), dom, dom_enc),
         );
         res
     }
 
-    fn pattern_upper_bound(&self, pattern: &Pattern, bounds: &Domain) -> usize {
+    fn pattern_upper_bound(&self, pattern: &Pattern, dom: &Domain) -> usize {
         pattern
             .symbols()
             .map(|s| match s {
                 Symbol::Constant(_) => 1,
                 Symbol::Variable(v) => {
-                    bounds.get_upper_finite(v).expect("Upper bound not finite") as usize
+                    dom.get_string(v)
+                        .and_then(|i| i.upper_finite())
+                        .expect("Unbounded string variable") as usize
                 }
             })
             .sum()
     }
 
-    fn lhs_upper_bound(&self, bounds: &Domain) -> usize {
-        self.pattern_upper_bound(&self.lhs, bounds)
+    fn lhs_upper_bound(&self, dom: &Domain) -> usize {
+        self.pattern_upper_bound(&self.lhs, dom)
     }
 
-    fn rhs_upper_bound(&self, bounds: &Domain) -> usize {
-        self.pattern_upper_bound(&self.rhs, bounds)
+    fn rhs_upper_bound(&self, dom: &Domain) -> usize {
+        self.pattern_upper_bound(&self.rhs, dom)
     }
 
     /// Encodes that the word the lhs is mapped differs from the word the rhs is mapped to.
@@ -159,12 +161,15 @@ impl LiteralEncoder for WordInEquationEncoder {
 mod tests {
     use crate::{
         alphabet::Alphabet,
-        bounds::Domain,
+        domain::Domain,
         encode::{
             domain::DomainEncoder, equation::weq::testutils::parse_simple_equation, LiteralEncoder,
         },
-        node::canonical::{Assignment, WordEquation},
-        node::NodeManager,
+        interval::Interval,
+        node::{
+            canonical::{Assignment, WordEquation},
+            NodeManager,
+        },
         sat::plit,
     };
 
@@ -182,7 +187,7 @@ mod tests {
         for b in bounds {
             let mut bounds = Domain::empty();
             for v in eq.variables() {
-                bounds.set_upper(&v, (*b).into());
+                bounds.set_string(v, Interval::bounded_above(*b));
             }
 
             let mut res = domain.encode(&bounds);

@@ -6,7 +6,6 @@ use indexmap::{IndexMap, IndexSet};
 use crate::{
     abstraction::LitDefinition,
     alphabet::Alphabet,
-    bounds::Domain,
     encode::{
         domain::{DomainEncoder, DomainEncoding},
         get_encoder, EncodingError, EncodingResult, LiteralEncoder,
@@ -17,6 +16,8 @@ use crate::{
     },
     sat::{nlit, plit, pvar, PLit, PVar},
 };
+
+use crate::domain::Domain;
 
 /// A probe is a set of assumptions that determine whether the encoding of the literal is part of the unsat core.
 /// It consists of a probe variable and the assumptions that were used to encode the literal.

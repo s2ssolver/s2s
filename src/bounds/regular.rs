@@ -4,11 +4,11 @@ use indexmap::{IndexMap, IndexSet};
 use regulaer::{automaton::NFA, re::Regex};
 
 use crate::{
-    bounds::{Domain, Interval},
+    interval::Interval,
     node::{NodeManager, Variable},
 };
 
-use super::InferringStrategy;
+use super::{Bounds, InferringStrategy};
 
 type InRe = (Rc<Variable>, Regex, bool);
 type VarEq = (Rc<Variable>, Rc<Variable>);
@@ -174,12 +174,12 @@ impl RegularBoundsInferer {
 }
 
 impl InferringStrategy for RegularBoundsInferer {
-    fn infer(&mut self) -> Option<Domain> {
+    fn infer(&mut self) -> Option<Bounds> {
         if self.conflict {
             return None;
         }
         // For each variable, use the number of states in the intersection automaton as the upper bound.
-        let mut bounds = Domain::default();
+        let mut bounds = Bounds::default();
         for (v, nfa) in self.intersections.iter() {
             if nfa.is_empty() {
                 self.conflict = true;

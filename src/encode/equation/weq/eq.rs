@@ -4,7 +4,7 @@ use super::matching::PatternMatchingEncoder;
 use super::word::WordEncoding;
 
 use crate::{
-    bounds::Domain,
+    domain::Domain,
     encode::{domain::DomainEncoding, EncodingError, EncodingResult, LiteralEncoder},
     node::canonical::{Pattern, Symbol, WordEquation},
 };
@@ -49,13 +49,15 @@ impl WordEquationEncoder {
         res
     }
 
-    fn pattern_upper_bound(&self, pattern: &Pattern, bounds: &Domain) -> usize {
+    fn pattern_upper_bound(&self, pattern: &Pattern, dom: &Domain) -> usize {
         pattern
             .symbols()
             .map(|s| match s {
                 Symbol::Constant(_) => 1,
                 Symbol::Variable(v) => {
-                    bounds.get_upper_finite(v).expect("Upper bound not finite") as usize
+                    dom.get_string(v)
+                        .and_then(|i| i.upper_finite())
+                        .expect("Upper bound not finite") as usize
                 }
             })
             .sum()
@@ -106,12 +108,15 @@ impl LiteralEncoder for WordEquationEncoder {
 mod tests {
     use crate::{
         alphabet::Alphabet,
-        bounds::Domain,
+        domain::Domain,
         encode::{
             domain::DomainEncoder, equation::weq::testutils::parse_simple_equation, LiteralEncoder,
         },
-        node::canonical::{Assignment, WordEquation},
-        node::NodeManager,
+        interval::Interval,
+        node::{
+            canonical::{Assignment, WordEquation},
+            NodeManager,
+        },
         sat::plit,
     };
 
@@ -128,7 +133,7 @@ mod tests {
         for b in bounds {
             let mut bounds = Domain::empty();
             for v in eq.variables() {
-                bounds.set_upper(&v, (*b).into());
+                bounds.set_string(v, Interval::bounded_above(*b));
             }
 
             let mut res = domain.encode(&bounds);

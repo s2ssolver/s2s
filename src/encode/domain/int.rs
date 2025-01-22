@@ -1,12 +1,13 @@
 use std::rc::Rc;
 
-use indexmap::{IndexMap, IndexSet};
+use indexmap::IndexMap;
 
 use super::DomainEncoding;
 
+use crate::domain::Domain;
+use crate::interval::Interval;
 use crate::sat::{plit, PVar};
 use crate::{
-    bounds::{Domain, Interval},
     encode::{card::IncrementalEO, EncodingResult},
     node::{canonical::Assignment, Sort, Sorted, Variable},
     sat::pvar,
@@ -82,8 +83,10 @@ impl IntegerEncoder {
         res
     }
 
-    fn get_last_dom(&self, var: &Variable) -> Option<Interval> {
-        self.last_domains.as_ref().and_then(|doms| doms.get(var))
+    fn get_last_bound(&self, var: &Variable) -> Option<Interval> {
+        self.last_domains
+            .as_ref()
+            .and_then(|doms| doms.get_int(var))
     }
 
     fn encode_int_vars(
@@ -93,14 +96,14 @@ impl IntegerEncoder {
     ) -> EncodingResult {
         let mut res = EncodingResult::empty();
 
-        for (int_var, bound) in bounds.iter().filter(|(v, b)| v.sort().is_int()) {
+        for (int_var, bound) in bounds.iter_int().filter(|(v, b)| v.sort().is_int()) {
             let mut len_choices = vec![];
             let last_upper_bound = self
-                .get_last_dom(int_var)
+                .get_last_bound(int_var)
                 .map(|b| (b.upper_finite().unwrap()));
             // from last_upper_bound to upper bound
             let last_lower_bound = self
-                .get_last_dom(int_var)
+                .get_last_bound(int_var)
                 .map(|b| b.lower_finite().unwrap());
 
             let lower = bound.lower_finite().unwrap_or(0);

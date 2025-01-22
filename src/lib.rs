@@ -12,6 +12,8 @@
 mod abstraction;
 mod alphabet;
 mod bounds;
+mod domain;
+mod interval;
 
 mod encode;
 mod error;
@@ -29,7 +31,7 @@ pub use error::PublicError as Error;
 pub use interpret::Interpreter;
 use node::NodeManager;
 use smt::{Script, ScriptBuilder};
-pub use solver::{Solver, SolverOptions, SolverResult};
+pub use solver::{SolverOptions, SolverResult};
 
 /// Solves an SMT problem over the theory of strings.
 /// The input problem must be in SMT-LIB format.

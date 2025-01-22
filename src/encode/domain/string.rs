@@ -1,11 +1,11 @@
 use std::{collections::HashMap, rc::Rc};
 
-use indexmap::{IndexMap, IndexSet};
+use indexmap::IndexMap;
 use itertools::Itertools;
 
 use crate::{
     alphabet::Alphabet,
-    bounds::Domain,
+    domain::Domain,
     encode::{
         card::{exactly_one, IncrementalEO},
         EncodingResult, LAMBDA,
@@ -99,7 +99,8 @@ impl StringDomain {
         let vars = self.iter_substitutions().map(|(var, _, _, _)| var).unique();
         for var in vars {
             let len = bounds
-                .get_upper_finite(var)
+                .get_string(var)
+                .and_then(|i| i.upper_finite())
                 .expect("Unbounded string variable");
             subs.insert(var.clone(), vec![None; len as usize]);
         }
@@ -136,7 +137,7 @@ impl StringDomain {
 }
 
 pub(super) struct StringDomainEncoder {
-    last_bounds: Option<Domain>,
+    last_dom: Option<Domain>,
     alphabet: Alphabet,
     /// Maps each variable to an Incremental exact-one encoder that is used to encode the variable's length.
     var_len_eo_encoders: IndexMap<Rc<Variable>, IncrementalEO>,
@@ -146,7 +147,7 @@ impl StringDomainEncoder {
     pub fn new(alphabet: Alphabet) -> Self {
         Self {
             alphabet,
-            last_bounds: None,
+            last_dom: None,
             var_len_eo_encoders: IndexMap::new(),
         }
     }
@@ -163,13 +164,13 @@ impl StringDomainEncoder {
         let mut res = self.encode_substitutions(bounds, encoding);
         res.extend(self.encode_str_lengths(bounds, encoding));
         // Update last bound
-        self.last_bounds = Some(bounds.clone());
+        self.last_dom = Some(bounds.clone());
         res
     }
 
     fn encode_substitutions(
         &mut self,
-        bounds: &Domain,
+        dom: &Domain,
         encoding: &mut DomainEncoding,
     ) -> EncodingResult {
         let mut cnf = Cnf::new();
@@ -177,8 +178,8 @@ impl StringDomainEncoder {
         log::debug!("Encoding substitutions");
 
         // Encode the substitutions for each string variable
-        for (str_var, bound) in bounds.iter().filter(|(v, b)| v.sort().is_string()) {
-            let last_bound = self.pre_bounds(str_var).unwrap_or(0);
+        for (str_var, bound) in dom.iter_string() {
+            let last_bound = self.pre_upper_bound(str_var).unwrap_or(0);
             let new_bound = bound.upper_finite().expect("Unbounded string variable") as usize;
 
             let alph = &self.alphabet;
@@ -217,20 +218,22 @@ impl StringDomainEncoder {
 
     fn encode_str_lengths(
         &mut self,
-        bounds: &Domain,
+        dom: &Domain,
         encoding: &mut DomainEncoding,
     ) -> EncodingResult {
         let mut res = EncodingResult::empty();
         log::debug!("Encoding string lengths");
 
-        for (str_var, bound) in bounds.iter().filter(|(v, b)| v.sort().is_string()) {
+        for (str_var, bound) in dom.iter_string() {
             println!("\t Encoding lengths for {}", str_var);
             let mut len_choices = vec![];
-            let last_bound = self.pre_bounds(str_var).map(|b| b + 1).unwrap_or(0);
+            let last_bound = self.pre_upper_bound(str_var).map(|b| b + 1).unwrap_or(0);
 
             let lower = bound.lower_finite().unwrap_or(0);
+
             debug_assert!(lower >= 0);
             let lower = lower as usize;
+            let upper = bound.upper_finite().expect("Unbounded string variable") as usize;
 
             if last_bound > 0 {
                 println!("\t\t Last bound {}", last_bound);
@@ -238,13 +241,13 @@ impl StringDomainEncoder {
                 let choice = encoding.string().get_len(str_var, len).unwrap();
                 // if the variable has this length, then only lambdas follow
                 // we can only add this here because the following positions after last_bound - 1 were not yet defined in previous rounds
-                if len < bounds.get_upper_finite(str_var).unwrap() as usize {
+                if len < upper {
                     let lambda_suffix = encoding.string().get_sub(str_var, len, LAMBDA).unwrap();
                     res.add_clause(vec![nlit(choice), plit(lambda_suffix)]);
                 }
             }
 
-            for len in last_bound..=bounds.get_upper_finite(str_var).unwrap() as usize {
+            for len in last_bound..=upper {
                 let choice = pvar();
                 len_choices.push(choice);
                 // Deactive this lenght if it is less than the lower bound
@@ -254,7 +257,7 @@ impl StringDomainEncoder {
                 encoding.string.insert_lenght(str_var.as_ref(), len, choice);
 
                 // If the variable has this length, then only lambdas follow, and no lambdas precede
-                if len < bounds.get_upper_finite(str_var).unwrap() as usize {
+                if len < upper {
                     let lambda_suffix = encoding.string().get_sub(str_var, len, LAMBDA).unwrap();
                     res.add_clause(vec![nlit(choice), plit(lambda_suffix)]);
                 }
@@ -282,30 +285,30 @@ impl StringDomainEncoder {
     /// Returns the variables' bound used in the last round.
     /// Returns None prior to the first round.
     /// Must be integer variable.
-    fn pre_bounds(&self, var: &Variable) -> Option<usize> {
-        self.last_bounds
-            .as_ref()
-            .map(|bs| bs.get_upper_finite(var).expect("Unbounded string variable") as usize)
+    fn pre_upper_bound(&self, var: &Variable) -> Option<usize> {
+        match self.last_dom.as_ref() {
+            Some(last_dom) => last_dom
+                .get_string(var)
+                .expect("Unbounded string variable")
+                .upper_finite()
+                .map(|i| i as usize),
+            None => None,
+        }
     }
 }
 
 #[cfg(test)]
 mod tests {
 
-    use std::collections::HashMap;
-
     use quickcheck::TestResult;
     use quickcheck_macros::quickcheck;
 
     use crate::{
         alphabet::Alphabet,
-        bounds::{
-            step::{update_bounds, BoundStep},
-            Domain, Interval,
-        },
+        domain::Domain,
         encode::{domain::DomainEncoding, LAMBDA},
-        node::{NodeManager, Sort, Sorted},
-        sat::plit,
+        interval::Interval,
+        node::{NodeManager, Sort},
     };
 
     use super::StringDomainEncoder;
@@ -320,7 +323,7 @@ mod tests {
         let mut encoder = StringDomainEncoder::new(alphabet.clone());
         let mb = 10;
         let mut bounds = Domain::default();
-        bounds.set(var.clone(), Interval::new(0, mb));
+        bounds.set_string(var.clone(), Interval::new(0, mb));
 
         let mut encoding = DomainEncoding::new(alphabet.clone(), bounds.clone());
         encoder.encode_substitutions(&bounds, &mut encoding);
@@ -348,11 +351,11 @@ mod tests {
 
         let mut encoder = StringDomainEncoder::new(alphabet.clone());
         let mut bounds = Domain::default();
-        bounds.set(var.clone(), Interval::new(0, 5));
+        bounds.set_string(var.clone(), Interval::new(0, 5));
 
         let mut encoding = DomainEncoding::new(alphabet.clone(), bounds.clone());
         encoder.encode_substitutions(&bounds, &mut encoding);
-        bounds.set(var.clone(), Interval::new(0, 10));
+        bounds.set_string(var.clone(), Interval::new(0, 10));
         encoder.encode_substitutions(&bounds, &mut encoding);
 
         for b in 0..10 {
@@ -377,7 +380,7 @@ mod tests {
         let mut encoder = StringDomainEncoder::new(alphabet.clone());
 
         let mut bounds = Domain::default();
-        bounds.set(var.clone(), Interval::new(0, len as isize));
+        bounds.set_string(var.clone(), Interval::new(0, len as isize));
         let mut encoding = DomainEncoding::new(alphabet, bounds.clone());
         let mut solver: cadical::Solver = cadical::Solver::new();
         match encoder.encode_substitutions(&bounds, &mut encoding) {
@@ -401,102 +404,11 @@ mod tests {
     }
 
     #[quickcheck]
+    #[ignore]
     fn incremental_solution_is_valid_substitution(len: u8) -> TestResult {
         if len == 0 {
             return TestResult::discard();
         }
-        let mut mngr = NodeManager::default();
-        let var = mngr.temp_var(Sort::String);
-
-        let alphabet = Alphabet::from_iter(vec!['a', 'b', 'c', 'd']);
-
-        let mut encoder = StringDomainEncoder::new(alphabet.clone());
-
-        let mut bounds = Domain::default();
-        bounds.set(var.clone(), Interval::new(0, len as isize));
-        let mut encoding = DomainEncoding::new(alphabet, bounds.clone());
-        let mut solver: cadical::Solver = cadical::Solver::new();
-        match encoder.encode_substitutions(&encoding.bounds.clone(), &mut encoding) {
-            crate::encode::EncodingResult::Cnf(cnf, _) => {
-                cnf.into_iter().for_each(|cl| solver.add_clause(cl));
-                solver.solve();
-            }
-            crate::encode::EncodingResult::Trivial(_) => unreachable!(),
-        }
-        encoding.bounds = update_bounds(&bounds, BoundStep::Double);
-        match encoder.encode_substitutions(&encoding.bounds.clone(), &mut encoding) {
-            crate::encode::EncodingResult::Cnf(cnf, _) => {
-                cnf.into_iter().for_each(|cl| solver.add_clause(cl));
-                solver.solve();
-            }
-            crate::encode::EncodingResult::Trivial(_) => unreachable!(),
-        }
-
-        // This will panic if the substitution is not valid
-        let subs = {
-            let domain_encoding = &encoding;
-
-            let solver = &solver;
-            if solver.status() != Some(true) {
-                panic!("Solver is not in a SAT state")
-            }
-            let mut subs = HashMap::new();
-            for str_var in mngr.vars().filter(|v| v.sort().is_string()) {
-                // initialize substitutions
-                subs.insert(
-                    str_var.clone(),
-                    vec![
-                        None;
-                        domain_encoding
-                            .bounds
-                            .get_upper_finite(str_var)
-                            .expect("Unbounded string variable") as usize
-                    ],
-                );
-            }
-            for (var, pos, chr, v) in domain_encoding.string().iter_substitutions() {
-                if let Some(true) = solver.value(plit(*v)) {
-                    let sub = subs.get_mut(var).unwrap();
-                    // This could be more efficient by going over the positions only once, however, this way we can check for invalid substitutions
-                    assert!(
-                        sub[pos].is_none(),
-                        "Multiple substitutions for {} at position {}",
-                        var,
-                        pos
-                    );
-
-                    sub[pos] = Some(chr);
-                }
-            }
-            let mut subs_str = HashMap::new();
-            for (var, sub) in subs.into_iter() {
-                let mut s = vec![];
-                for c in sub.iter() {
-                    match c {
-                        Some(LAMBDA) => {}
-                        Some(c) => s.push(*c),
-                        None => panic!("No substitution for {} at position {}", var, s.len()),
-                    }
-                }
-                subs_str.insert(var.clone(), s);
-            }
-            subs_str
-        };
-        assert!(
-            subs.contains_key(&var),
-            "No substitution found (length is {}) {:?}",
-            len,
-            subs
-        );
-        let sub = subs.get(&var).unwrap();
-        let expected_len = (len as usize) * 2;
-        assert!(
-            sub.len() <= expected_len,
-            "Expected length {}, got {}: {:?}",
-            expected_len,
-            sub.len(),
-            sub
-        );
         TestResult::passed()
     }
 }

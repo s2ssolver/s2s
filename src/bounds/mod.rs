@@ -1,680 +1,323 @@
-//! Bounds on integer variables and the length of string variables.
+//! Computation of small model bounds for formulas.
+//!
+mod linear;
+mod regular;
+use std::{fmt::Display, rc::Rc};
 
-pub mod infer;
-pub mod step;
+use indexmap::{IndexMap, IndexSet};
+use linear::LinearRefiner;
+use regular::RegularBoundsInferer;
 
-use std::{cmp::Ordering, fmt::Display, rc::Rc};
+use crate::{
+    interval::BoundValue,
+    node::{
+        canonical::{
+            ArithOperator, AtomKind, LinearArithTerm, LinearConstraint, Literal, RegularConstraint,
+            WordEquation,
+        },
+        NodeManager, Sorted, Variable,
+    },
+};
 
-use indexmap::IndexMap;
-use quickcheck::Arbitrary;
+use crate::interval::Interval;
 
-use crate::node::{Sort, Sorted, Variable};
-/// Represents a value that can either be a finite integer, positive infinity,
-/// or negative infinity.
-#[derive(Debug, PartialEq, Eq, Copy, Clone)]
-pub enum BoundValue {
-    PosInf,
-    NegInf,
-    Num(i32),
+/// Bounds for integer variables and string lengths.
+/// This is used to infer the small model bounds of a (sub) formula.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Bounds {
+    bounds: IndexMap<Rc<Variable>, Interval>,
 }
 
-impl PartialOrd for BoundValue {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(other))
-    }
-}
-impl Ord for BoundValue {
-    fn cmp(&self, other: &Self) -> Ordering {
-        match (self, other) {
-            (BoundValue::PosInf, BoundValue::PosInf) => Ordering::Equal,
-            (BoundValue::NegInf, BoundValue::NegInf) => Ordering::Equal,
-            (BoundValue::PosInf, _) => Ordering::Greater,
-            (BoundValue::NegInf, _) => Ordering::Less,
-            (_, BoundValue::PosInf) => Ordering::Less,
-            (_, BoundValue::NegInf) => Ordering::Greater,
-            (BoundValue::Num(n1), BoundValue::Num(n2)) => n1.cmp(n2),
-        }
-    }
-}
-
-impl std::ops::Mul for BoundValue {
-    type Output = BoundValue;
-
-    /// Multiplies two `BoundValue`s.
-    /// The following rules are used:
-    /// - `Num(n1) * Num(n2) = Num(n1 * n2)`
-    /// - `X * Num(0) = Num(0)` and `Num(0) * X = Num(0)` for any `X`
-    /// - `PosInf * Num(n) = PosInf` if `n > 0`
-    /// - `PosInf * Num(n) = NegInf` if `n < 0`
-    /// - `NegInf * Num(n) = PosInf` if `n < 0`
-    /// - `NegInf * Num(n) = NegInf` if `n > 0`
-    /// - `PosInf * PosInf = PosInf`
-    /// - `NegInf * NegInf = PosInf`
-    /// - `PosInf * NegInf = NegInf` and  `NegInf * PosInf = NegInf`
-    fn mul(self, other: BoundValue) -> BoundValue {
-        match (self, other) {
-            (BoundValue::Num(n1), BoundValue::Num(n2)) => match n1.checked_mul(n2) {
-                Some(v) => BoundValue::Num(v),
-                None => {
-                    if n1.signum() == n2.signum() {
-                        BoundValue::PosInf
-                    } else {
-                        BoundValue::NegInf
-                    }
-                }
-            },
-            (_, BoundValue::Num(0)) | (BoundValue::Num(0), _) => BoundValue::Num(0),
-            (BoundValue::PosInf, BoundValue::Num(n)) | (BoundValue::Num(n), BoundValue::PosInf) => {
-                if n > 0 {
-                    BoundValue::PosInf
-                } else if n < 0 {
-                    BoundValue::NegInf
-                } else {
-                    BoundValue::Num(0)
-                }
-            }
-            (BoundValue::NegInf, BoundValue::Num(n)) | (BoundValue::Num(n), BoundValue::NegInf) => {
-                if n < 0 {
-                    BoundValue::PosInf
-                } else if n > 0 {
-                    BoundValue::NegInf
-                } else {
-                    BoundValue::Num(0)
-                }
-            }
-            (BoundValue::PosInf, BoundValue::PosInf) | (BoundValue::NegInf, BoundValue::NegInf) => {
-                BoundValue::PosInf
-            }
-            (BoundValue::PosInf, BoundValue::NegInf) | (BoundValue::NegInf, BoundValue::PosInf) => {
-                BoundValue::NegInf
-            }
-        }
-    }
-}
-
-impl BoundValue {
-    /// Returns `Some(n=` if the value is a finite integer `n` and `None` otherwise.
-    pub fn as_num(&self) -> Option<i32> {
-        match self {
-            BoundValue::Num(n) => Some(*n),
-            _ => None,
-        }
-    }
-}
-
-impl From<i32> for BoundValue {
-    fn from(value: i32) -> Self {
-        BoundValue::Num(value)
-    }
-}
-
-impl From<u32> for BoundValue {
-    fn from(value: u32) -> Self {
-        BoundValue::Num(value as i32)
-    }
-}
-
-// Similarly, implement for other types if needed
-impl From<i64> for BoundValue {
-    fn from(value: i64) -> Self {
-        BoundValue::Num(value as i32)
-    }
-}
-
-impl From<u64> for BoundValue {
-    fn from(value: u64) -> Self {
-        BoundValue::Num(value as i32)
-    }
-}
-
-// Implement for usize, u8, i8, etc.
-impl From<isize> for BoundValue {
-    fn from(value: isize) -> Self {
-        BoundValue::Num(value as i32)
-    }
-}
-
-impl From<usize> for BoundValue {
-    fn from(value: usize) -> Self {
-        BoundValue::Num(value as i32)
-    }
-}
-
-impl Display for BoundValue {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            BoundValue::PosInf => write!(f, "∞"),
-            BoundValue::NegInf => write!(f, "-∞"),
-            BoundValue::Num(n) => write!(f, "{}", n),
-        }
-    }
-}
-
-/// Represents an interval [l, u] where the bounds `l` and `u`
-/// can be either finite integers, positive infinity, or negative infinity.
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
-pub struct Interval {
-    /// The lower bound of the interval.
-    lower: BoundValue,
-    /// The upper bound of the interval.
-    upper: BoundValue,
-}
-
-impl Interval {
-    /// Creates a new interval with the specified lower and upper bounds.
-    ///
-    /// # Arguments
-    ///
-    /// * `lower` - The lower bound of the interval.
-    /// * `upper` - The upper bound of the interval.
-    ///
-    /// # Returns
-    ///
-    /// A new `Interval` with the specified bounds.
-    pub fn new(lower: impl Into<BoundValue>, upper: impl Into<BoundValue>) -> Self {
-        Self {
-            lower: lower.into(),
-            upper: upper.into(),
-        }
-    }
-
-    /// Creates an interval that is bounded above and unbounded below.
-    ///
-    /// # Arguments
-    ///
-    /// * `upper` - The upper bound of the interval.
-    ///
-    /// # Returns
-    ///
-    /// A new `Interval` with the specified upper bound and negative infinity as the lower bound.
-    pub fn bounded_above(upper: impl Into<BoundValue>) -> Self {
-        Self::new(BoundValue::NegInf, upper)
-    }
-
-    /// Creates an interval that is bounded below and unbounded above.
-    ///
-    /// # Arguments
-    ///
-    /// * `lower` - The lower bound of the interval.
-    ///
-    /// # Returns
-    ///
-    /// A new `Interval` with the specified lower bound and positive infinity as the upper bound.
-    pub fn bounded_below(lower: impl Into<BoundValue>) -> Self {
-        Self::new(lower, BoundValue::PosInf)
-    }
-
-    /// Creates an unbounded interval.
-    ///
-    /// # Returns
-    ///
-    /// A new `Interval` that spans from negative infinity to positive infinity.
-    pub fn unbounded() -> Self {
-        Self::new(BoundValue::NegInf, BoundValue::PosInf)
-    }
-
-    /// Checks if the interval is empty.
-    ///
-    /// An interval is considered empty if its lower bound is greater than its upper bound.
-    pub fn is_empty(&self) -> bool {
-        self.lower > self.upper
-    }
-
-    /// Returns the upper bound of the interval.
-    pub fn upper(&self) -> BoundValue {
-        self.upper
-    }
-
-    /// Returns the upper bound of the interval as a finite integer if it is finite and `None` otherwise.
-    pub fn upper_finite(&self) -> Option<i32> {
-        self.upper.as_num()
-    }
-
-    /// Returns the lower bound of the interval as a finite integer if it is finite and `None` otherwise.
-    pub fn lower_finite(&self) -> Option<i32> {
-        self.lower.as_num()
-    }
-
-    /// Returns the lower bound of the interval.
-    pub fn lower(&self) -> BoundValue {
-        self.lower
-    }
-
-    /// Intersects two intervals and returns the resulting interval.
-    /// The intersection of two intervals is the interval that contains all values that are in both intervals.
-    ///
-    /// # Returns
-    /// A new `Interval` representing the intersection of the two intervals.
-    /// If the intersection is empty, the resulting interval will have `lower > upper`.
-    pub fn intersect(&self, other: Self) -> Self {
-        let lower = self.lower.max(other.lower);
-        let upper = self.upper.min(other.upper);
-
-        Self::new(lower, upper)
-    }
-
-    /// Returns the length of the interval.
-    /// The length of the interval is the cardinality of the set of values in the interval.
-    /// If the interval is empty, the length is 0.
-    /// If the interval is unbounded, the length is infinite, in which case `None` is returned.
-    fn len(&self) -> Option<usize> {
-        match (self.lower, self.upper) {
-            (BoundValue::Num(l), BoundValue::Num(u)) => {
-                if l > u {
-                    Some(0)
-                } else {
-                    Some((u as isize - l as isize + 1) as usize)
-                }
-            }
-            (BoundValue::NegInf, BoundValue::Num(_)) => None,
-            (BoundValue::Num(_), BoundValue::PosInf) => None,
-            (BoundValue::NegInf, BoundValue::PosInf) => None,
-            _ => Some(0),
-        }
-    }
-}
-
-impl Display for Interval {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "[{}, {}]", self.lower, self.upper)
-    }
-}
-
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
-pub enum VarDomain {
-    /// Range of the integer variable
-    Int(Interval),
-    /// Length of the string
-    String(Interval),
-    Bool,
-}
-
-impl From<Interval> for VarDomain {
-    fn from(interval: Interval) -> Self {
-        VarDomain::Int(interval)
-    }
-}
-
-/// The bounds of the variables in the formula.
-/// Each variable is associated with an interval that represents the possible values the variable can take.
-/// For integer variables, this interval represents the domain of the variable.
-/// For string variables, this interval represents the length of the string.
-#[derive(Debug, PartialEq, Eq, Clone, Default)]
-pub struct Domain {
-    domains: IndexMap<Rc<Variable>, VarDomain>,
-}
-
-impl Domain {
-    pub fn empty() -> Self {
+impl Bounds {
+    pub fn new() -> Self {
         Self::default()
     }
 
-    /// Sets the bound of a variable.
-    /// If the variable is not present in the bounds, it is added.
-    /// If the variable is already present, the bound is updated.
-    ///
-    /// # Arguments
-    /// - `var` - The variable whose bound is to be set.
-    /// - `interval` - The interval that represents the bound of the variable.
-    ///
-    /// # Returns
-    /// The previous bound of the variable, if it was present in the bounds.
-    /// Otherwise, returns `None`.
-    pub fn set(&mut self, var: Rc<Variable>, dom: impl Into<VarDomain>) -> Option<VarDomain> {
-        self.domains.insert(var, dom.into())
+    pub fn set(&mut self, var: Rc<Variable>, bound: Interval) {
+        self.bounds.insert(var, bound);
     }
 
-    /// Returns the bound of a variable.
-    /// If the variable is not present in the bounds, returns `None`.
-    pub fn get(&self, var: &Variable) -> Option<VarDomain> {
-        self.domains.get(var).copied()
+    pub fn get(&self, var: &Variable) -> Option<Interval> {
+        self.bounds.get(var).copied()
     }
 
-    // /// Returns the upper bound of a variable.
-    // /// If the variable is not present in the bounds, returns `None`.
-    // pub fn get_upper(&self, var: &Variable) -> Option<BoundValue> {
-    //     self.get(var).map(|i| i.upper())
-    // }
-
-    // /// Returns the upper bound of the variable as a finite integer.
-    // /// If the variable is not present in the bounds or the upper bound is not finite, returns `None`.
-    // pub fn get_upper_finite(&self, var: &Variable) -> Option<i32> {
-    //     self.get_upper(var).and_then(|b| b.as_num())
-    // }
-
-    // /// Returns the lower bound of a variable.
-    // pub fn get_lower(&self, var: &Variable) -> Option<BoundValue> {
-    //     self.get(var).map(|i| i.lower())
-    // }
-
-    // /// Returns the lower bound of the variable as a finite integer.
-    // /// If the variable is not present in the bounds or the lower bound is not finite, returns `None`.
-    // pub fn get_lower_finite(&self, var: &Variable) -> Option<i32> {
-    //     self.get_lower(var).and_then(|b| b.as_num())
-    // }
-
-    /// Removes the bound of a variable.
-    /// If the variable is not present in the bounds, returns `None`.
-    /// Otherwise, returns the bound of the variable that was removed.
-    #[cfg(test)]
-    pub fn remove(&mut self, var: &Variable) -> Option<VarDomain> {
-        self.domains.remove(var)
+    pub fn get_upper(&self, var: &Variable) -> Option<BoundValue> {
+        self.bounds.get(var).map(|i| i.upper())
     }
 
-    /// Returns the number of variables in the bounds.
-    #[cfg(test)]
-    pub fn len(&self) -> usize {
-        self.domains.len()
+    pub fn get_lower(&self, var: &Variable) -> Option<BoundValue> {
+        self.bounds.get(var).map(|i| i.lower())
     }
 
-    /// Returns true if the bounds are empty and false otherwise.
-    /// The bounds are considered empty if there are no variables in the bounds.
-    #[cfg(test)]
-    pub fn is_empty(&self) -> bool {
-        self.domains.is_empty()
+    pub fn set_upper(&mut self, var: Rc<Variable>, upper: BoundValue) {
+        let current = self
+            .bounds
+            .entry(var.clone())
+            .or_insert(Interval::unbounded());
+        let new = current.with_upper(upper);
+        self.bounds.insert(var, new);
     }
 
-    /// Intersects two `Bounds` instances and returns a new `Bounds` with the intersection.
-    ///
-    /// The intersection only includes variables that exist in both `Bounds`.
-    /// For each variable, the intersection of the corresponding intervals is computed.
-    ///
-    /// # Arguments
-    ///
-    /// * `other` - The other `Bounds` to intersect with.
-    ///
-    /// # Returns
-    ///
-    /// A new `Bounds` containing the intersections of the intervals for common variables.
-    #[cfg(test)]
-    pub fn intersect(&self, other: &Self) -> Self {
-        let mut intersection_map = IndexMap::new();
+    pub fn set_lower(&mut self, var: Rc<Variable>, lower: BoundValue) {
+        let current = self
+            .bounds
+            .entry(var.clone())
+            .or_insert(Interval::unbounded());
+        let new = current.with_lower(lower);
+        self.bounds.insert(var, new);
+    }
 
-        for (var, dom) in &self.domains {
-            if let Some(other) = other.get(var) {
-                match (dom, other) {
-                    (VarDomain::Int(dom), VarDomain::Int(other)) => {
-                        let intersected_interval = dom.intersect(other);
-                        intersection_map.insert(var.clone(), intersected_interval.into());
+    pub fn iter(&self) -> impl Iterator<Item = (&Rc<Variable>, &Interval)> {
+        self.bounds.iter()
+    }
+}
+
+impl Display for Bounds {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        for (v, i) in self.bounds.iter() {
+            writeln!(f, "{}: {}", v, i)?;
+        }
+        Ok(())
+    }
+}
+
+#[allow(dead_code)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum Fragment {
+    Empty,
+    Reg,
+    Weq(bool),
+    Lin,
+    RegWeq(bool),
+    RegLin,
+    WeqLin(bool),
+    RegWeqLin(bool),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+struct FragmentFinder {
+    // The set of variables that appear in an inequality
+    ineq_vars: IndexSet<Rc<Variable>>,
+    // The set of variables that appear in a proper word equation.
+    weq_vars: IndexSet<Rc<Variable>>,
+    /// The set of variables that appear in a regular constraint
+    in_re_vars: IndexSet<Rc<Variable>>,
+    /// The set of variables that appear in a linear constraint
+    lin_vars: IndexSet<Rc<Variable>>,
+}
+
+impl FragmentFinder {
+    pub fn and(&mut self, lit: &Literal) {
+        let pol = lit.polarity();
+        match lit.atom().kind() {
+            AtomKind::InRe(inre) => {
+                self.in_re_vars.insert(inre.lhs().clone());
+            }
+            AtomKind::WordEquation(weq) => {
+                if !pol {
+                    for v in weq.variables() {
+                        self.ineq_vars.insert(v);
                     }
-                    _ => {}
+                }
+                if let WordEquation::General(_, _) = weq {
+                    self.weq_vars.extend(weq.variables());
+                }
+            }
+            AtomKind::FactorConstraint(refc) => {
+                self.in_re_vars.insert(refc.of().clone());
+            }
+            AtomKind::Linear(lc) => {
+                self.lin_vars.extend(lc.variables());
+            }
+            _ => (),
+        }
+    }
+
+    /// Contains a regular constraint in any polarity
+    pub fn has_regular(&self) -> bool {
+        !self.in_re_vars.is_empty()
+    }
+
+    /// Contains linear constraints
+    pub fn has_linear(&self) -> bool {
+        !self.lin_vars.is_empty()
+    }
+
+    /// Contains proper word equations in any polarity
+    pub fn has_weq(&self) -> bool {
+        !self.weq_vars.is_empty()
+    }
+
+    /// Contains proper word equations with negated polarity
+    /// This is the case if theres at least one variable that appears in both a (proper) word equation and an inequality
+    /// For example, if we have `abX = Y` and `Y != cd`, then `Y` appears in both a word equation and an inequality and thus this method returns true.
+    /// If we only have `X = Y` and `Y != cd`, then this method returns false.
+    /// Specifically, if there is no word equation in the fragment, then this method returns always false.
+    pub fn has_negated_weq(&self) -> bool {
+        self.ineq_vars.iter().any(|v| self.weq_vars.contains(v))
+    }
+
+    pub fn get_fragment(&self) -> Fragment {
+        match (self.has_regular(), self.has_weq(), self.has_linear()) {
+            (false, false, false) => Fragment::Empty,
+            (true, false, false) => Fragment::Reg,
+            (false, true, false) => Fragment::Weq(self.has_negated_weq()),
+            (false, false, true) => Fragment::Lin,
+            (true, true, false) => Fragment::RegWeq(self.has_negated_weq()),
+            (true, false, true) => Fragment::RegLin,
+            (false, true, true) => Fragment::WeqLin(self.has_negated_weq()),
+            (true, true, true) => Fragment::RegWeqLin(self.has_negated_weq()),
+        }
+    }
+}
+
+#[derive(Debug, Default, Clone)]
+pub struct BoundInferer {
+    /// The set of literals for which we infer bounds
+    literals: IndexSet<Literal>,
+    /// Set to true if literals contain a conflict, i.e., a literal and its negation
+    conflict: bool,
+
+    /// The fragment of the literals
+    fragment: FragmentFinder,
+
+    /// The bounds inferer for regular constraints contained in the literals
+    reg: RegularBoundsInferer,
+
+    /// The fragment of the literals
+    lin: LinearRefiner,
+}
+
+impl BoundInferer {
+    fn add_reg(&mut self, reg: &RegularConstraint, pol: bool, mngr: &mut NodeManager) {
+        let v = reg.lhs().clone();
+        let re = reg.re().clone();
+        self.reg.add_reg(v, re, pol, mngr);
+    }
+
+    fn add_weq(&mut self, weq: &WordEquation, pol: bool, mngr: &mut NodeManager) {
+        match weq {
+            WordEquation::ConstantEquality(_, _) => (),
+            WordEquation::VarEquality(l, r) => {
+                self.reg.add_var_eq(l.clone(), r.clone(), pol);
+            }
+            WordEquation::VarAssignment(l, r) => {
+                self.reg.add_const_eq(l.clone(), r.clone(), pol, mngr);
+            }
+            WordEquation::General(_, _) => {}
+        }
+        if pol {
+            self.lin.add_weq(weq)
+        }
+    }
+
+    fn add_linear_constraint(&mut self, lc: &LinearConstraint) {
+        self.lin.add_linear(lc.clone());
+    }
+
+    pub fn add_literal(&mut self, lit: Literal, mngr: &mut NodeManager) {
+        self.literals.insert(lit.clone());
+
+        self.conflict |= self.literals.contains(&lit.inverted());
+
+        // skip this if there is a conflict
+        let pol = lit.polarity();
+        match lit.atom().kind() {
+            AtomKind::Boolvar(_) => (),
+            AtomKind::InRe(reg) => self.add_reg(reg, pol, mngr),
+            AtomKind::WordEquation(weq) => self.add_weq(weq, pol, mngr),
+            AtomKind::FactorConstraint(rfac) => {
+                let re = rfac.as_regex(mngr);
+                self.reg.add_reg(rfac.of().clone(), re, pol, mngr);
+            }
+            AtomKind::Linear(lc) => {
+                if pol {
+                    self.add_linear_constraint(lc)
+                } else {
+                    self.lin.add_linear(lc.negate());
                 }
             }
         }
+        self.fragment.and(&lit);
+    }
 
-        Self {
-            domains: intersection_map,
+    /// Returns true if the literals contain a conflict, i.e., a literal and its negation.
+    pub fn conflicting(&self) -> bool {
+        self.conflict || self.reg.conflict() || self.lin.conflict()
+    }
+
+    /// Infers the bounds of the variables in the literals.
+    pub fn infer(&mut self) -> Option<Bounds> {
+        if self.conflicting() {
+            return None;
         }
-    }
+        let frag = self.fragment.get_fragment();
 
-    /// Returns an iterator over the variables and their bounds.
-    pub fn iter(&self) -> impl Iterator<Item = (&Rc<Variable>, &VarDomain)> {
-        self.domains.iter()
-    }
+        let bounds = match frag {
+            Fragment::Empty => Some(Bounds::default()),
+            Fragment::Reg => self.reg.infer(),
+            Fragment::Weq(_) => {
+                // TODO: check straight-line fragment if no inequalities are present
+                self.lin.infer()
+            }
+            Fragment::WeqLin(_) => self.lin.infer(),
+            Fragment::Lin => self.lin.infer(),
+            Fragment::RegWeq(false) | Fragment::RegLin | Fragment::RegWeqLin(false) => {
+                for (v, nfa) in self.reg.iter_intersections() {
+                    if nfa.is_empty() {
+                        self.conflict = true;
+                        return None;
+                    } else {
+                        if let Some(max) = nfa.longest() {
+                            // This is none if the nfa contains cycles
+                            // Add "|v| <= max" to the bounds
+                            let lhs = LinearArithTerm::from_var(v.clone());
+                            let lc = LinearConstraint::new(lhs, ArithOperator::Leq, max as i64);
+                            self.lin.add_linear(lc);
+                        }
+                        if let Some(min) = nfa.shortest() {
+                            // Add "|v| >= max" to the bounds
+                            let lhs = LinearArithTerm::from_var(v.clone());
+                            let lc = LinearConstraint::new(lhs, ArithOperator::Geq, min as i64);
+                            self.lin.add_linear(lc);
+                        }
+                    }
+                }
 
-    pub fn iter_string(&self) -> impl Iterator<Item = (&Rc<Variable>, &Interval)> {
-        self.domains.iter().filter_map(|(var, dom)| match dom {
-            VarDomain::String(interval) => Some((var, interval)),
-            _ => None,
-        })
-    }
-
-    pub fn iter_int(&self) -> impl Iterator<Item = (&Rc<Variable>, &Interval)> {
-        self.domains.iter().filter_map(|(var, dom)| match dom {
-            VarDomain::Int(interval) => Some((var, interval)),
-            _ => None,
-        })
-    }
-
-    /// Sets the upper bound of a variable to the given value `u`.
-    ///
-    /// If the variable is not present in the bounds, sets the bounds to
-    /// - [-∞, u] if `u` is var is of sort `Sort::Int`
-    /// - [0, u] if `u` is of sort `Sort::String`
-    /// and returns `None`.
-    ///
-    /// If the variable is present in the bounds, sets the upper bound to `u` and returns the previous upper bound.
-    pub fn set_upper(&mut self, var: &Rc<Variable>, u: BoundValue) -> Option<BoundValue> {
-        if let Some(interval) = self.get(var) {
-            let prev_upper = interval.upper();
-            self.set(var.clone(), Interval::new(interval.lower(), u));
-            Some(prev_upper)
+                self.lin.infer()
+            }
+            Fragment::RegWeqLin(true) | Fragment::RegWeq(true) => self.lin.infer(),
+        };
+        if let Some(mut b) = bounds {
+            self.sanitize_bounds(&mut b);
+            Some(b)
         } else {
-            let lower = match var.sort() {
-                Sort::Int => BoundValue::NegInf,
-                Sort::String => BoundValue::Num(0),
-                _ => unreachable!("Variable {} of sort {} has no bounds", var, var.sort()),
-            };
-            self.set(var.clone(), Interval::new(lower, u));
+            self.conflict = true;
             None
         }
     }
 
-    /// Sets the lower bound of a variable to the given value `l`.
-    /// If the variable is not present in the bounds, sets the bounds [l, ∞] and returns `None`.
-    /// If the variable is present in the bounds, sets the lower bound to `l` and returns the previous lower bound.
-    pub fn set_lower(&mut self, var: &Rc<Variable>, l: BoundValue) -> Option<BoundValue> {
-        if let Some(interval) = self.get(var) {
-            let prev_lower = interval.lower();
-            self.set(var.clone(), Interval::new(l, interval.upper()));
-            Some(prev_lower)
-        } else {
-            self.set(var.clone(), Interval::new(l, BoundValue::PosInf));
-            None
+    /// Ensures that all string and int variables occurring in any of the literals are present in the bounds.
+    /// If a variable is not present in the bounds, it is set to unbounded.
+    fn sanitize_bounds(&mut self, bounds: &mut Bounds) {
+        for v in self
+            .literals
+            .iter()
+            .flat_map(|l| l.variables())
+            .filter(|v| v.sort().is_string() || v.sort().is_int())
+        {
+            if bounds.get(v.as_ref()).is_none() {
+                if v.sort().is_string() {
+                    bounds.set(v.clone(), Interval::bounded_below(0));
+                } else {
+                    bounds.set(v.clone(), Interval::unbounded());
+                }
+            }
         }
     }
 }
 
-impl Display for Domain {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{{")?;
-
-        for (var, domain) in &self.domains {
-            write!(f, "{}: {}, ", var, domain)?;
-        }
-        write!(f, "}}")
-    }
-}
-
-#[cfg(test)]
-mod tests {
-
-    use super::*;
-
-    #[test]
-    fn test_interval_new() {
-        let interval = Interval::new(3, 10);
-        assert_eq!(interval.lower(), BoundValue::Num(3));
-        assert_eq!(interval.upper(), BoundValue::Num(10));
-    }
-
-    #[test]
-    fn test_bounded_above() {
-        let interval = Interval::bounded_above(10);
-        assert_eq!(interval.lower(), BoundValue::NegInf);
-        assert_eq!(interval.upper(), BoundValue::Num(10));
-    }
-
-    #[test]
-    fn test_bounded_below() {
-        let interval = Interval::bounded_below(3);
-        assert_eq!(interval.lower(), BoundValue::Num(3));
-        assert_eq!(interval.upper(), BoundValue::PosInf);
-    }
-
-    #[test]
-    fn test_unbounded() {
-        let interval = Interval::unbounded();
-        assert_eq!(interval.lower(), BoundValue::NegInf);
-        assert_eq!(interval.upper(), BoundValue::PosInf);
-    }
-
-    #[test]
-    fn test_is_empty() {
-        let interval = Interval::new(10, 5);
-        assert!(interval.is_empty());
-
-        let non_empty_interval = Interval::new(5, 10);
-        assert!(!non_empty_interval.is_empty());
-    }
-
-    #[test]
-    fn test_partial_cmp() {
-        assert!(BoundValue::PosInf > BoundValue::Num(100));
-        assert!(BoundValue::NegInf < BoundValue::Num(-100));
-        assert_eq!(
-            BoundValue::Num(50).partial_cmp(&BoundValue::Num(50)),
-            Some(Ordering::Equal)
-        );
-        assert_eq!(
-            BoundValue::Num(10).partial_cmp(&BoundValue::Num(20)),
-            Some(Ordering::Less)
-        );
-    }
-
-    #[test]
-    fn test_intersect_overlapping_intervals() {
-        let interval1 = Interval::new(3, 10);
-        let interval2 = Interval::new(5, 12);
-        let result = interval1.intersect(interval2);
-        assert_eq!(result, Interval::new(5, 10));
-    }
-
-    #[test]
-    fn test_intersect_non_overlapping_intervals() {
-        let interval1 = Interval::new(3, 5);
-        let interval2 = Interval::new(6, 10);
-        let result = interval1.intersect(interval2);
-        assert!(result.is_empty(),);
-    }
-
-    #[test]
-    fn test_intersect_touching_intervals() {
-        let interval1 = Interval::new(3, 5);
-        let interval2 = Interval::new(5, 10);
-        let result = interval1.intersect(interval2);
-        assert_eq!(result, Interval::new(5, 5));
-    }
-
-    #[test]
-    fn test_intersect_with_infinite_bounds() {
-        let interval1 = Interval::new(BoundValue::NegInf, 10);
-        let interval2 = Interval::new(5, BoundValue::PosInf);
-        let result = interval1.intersect(interval2);
-        assert_eq!(result, Interval::new(5, 10));
-    }
-
-    #[test]
-    fn test_insert_and_get() {
-        let mut interval_map = Domain::default();
-
-        let var = Variable::new(0, "x".to_string(), Sort::Int);
-        let var = Rc::new(var);
-        let interval = Interval::new(1, 5);
-
-        interval_map.set(var.clone(), interval);
-
-        assert_eq!(interval_map.get(&var), Some(Interval::new(1, 5)));
-    }
-
-    #[test]
-    fn test_remove() {
-        let mut interval_map = Domain::default();
-
-        let var = Variable::new(0, "x".to_string(), Sort::Int);
-        let var = Rc::new(var);
-        let interval = Interval::new(1, 5);
-
-        interval_map.set(var.clone(), interval);
-        let removed = interval_map.remove(&var);
-
-        assert_eq!(removed, Some(Interval::new(1, 5)));
-        assert!(interval_map.get(&var).is_none());
-    }
-
-    #[test]
-    fn test_len_and_is_empty() {
-        let mut interval_map = Domain::default();
-
-        assert_eq!(interval_map.len(), 0);
-        assert!(interval_map.is_empty());
-
-        let var = Variable::new(0, "x".to_string(), Sort::Int);
-        let var = Rc::new(var);
-        let interval = Interval::new(1, 5);
-
-        interval_map.set(var, interval);
-
-        assert_eq!(interval_map.len(), 1);
-        assert!(!interval_map.is_empty());
-    }
-
-    #[test]
-    fn test_bounds_intersection() {
-        let mut bounds1 = Domain::default();
-        let mut bounds2 = Domain::default();
-
-        let var_x = Variable::new(0, "x".to_string(), Sort::Int);
-        let var_y = Variable::new(1, "y".to_string(), Sort::Int);
-        let var_x = Rc::new(var_x);
-        let var_y = Rc::new(var_y);
-
-        bounds1.set(var_x.clone(), Interval::new(1, 10));
-        bounds1.set(var_y.clone(), Interval::new(20, 30));
-
-        bounds2.set(var_x.clone(), Interval::new(5, 15));
-        bounds2.set(var_y.clone(), Interval::new(25, 35));
-
-        let intersection = bounds1.intersect(&bounds2);
-
-        assert_eq!(intersection.len(), 2);
-        assert_eq!(intersection.get(&var_x), Some(Interval::new(5, 10)));
-        assert_eq!(intersection.get(&var_y), Some(Interval::new(25, 30)));
-    }
-
-    #[test]
-    fn test_bounds_intersection_empty() {
-        let mut bounds1 = Domain::default();
-        let mut bounds2 = Domain::default();
-
-        let var_x = Variable::new(0, "x".to_string(), Sort::Int);
-        let var_x = Rc::new(var_x);
-
-        bounds1.set(var_x.clone(), Interval::new(1, 10));
-        bounds2.set(var_x.clone(), Interval::new(15, 20));
-
-        let intersection = bounds1.intersect(&bounds2);
-
-        assert!(
-            intersection.get(&var_x).unwrap().is_empty(),
-            "Expected empty but got {}",
-            intersection
-        );
-    }
-
-    #[test]
-    fn test_bounds_intersection_disjoint_vars() {
-        let mut bounds1 = Domain::default();
-        let mut bounds2 = Domain::default();
-
-        let var_x = Variable::new(0, "x".to_string(), Sort::Int);
-        let var_y = Variable::new(1, "y".to_string(), Sort::Int);
-        let var_x = Rc::new(var_x);
-        let var_y = Rc::new(var_y);
-
-        bounds1.set(var_x.clone(), Interval::new(1, 10));
-        bounds2.set(var_y.clone(), Interval::new(5, 15));
-
-        let intersection = bounds1.intersect(&bounds2);
-
-        assert!(intersection.is_empty());
-    }
-}
-
-impl Arbitrary for Interval {
-    fn arbitrary(g: &mut quickcheck::Gen) -> Self {
-        let v1 = isize::arbitrary(g);
-        let v2 = isize::arbitrary(g);
-        Interval::new(v1.min(v2), v1.max(v2))
-    }
+trait InferringStrategy: Default + Clone {
+    fn infer(&mut self) -> Option<Bounds>;
+    fn conflict(&self) -> bool;
 }

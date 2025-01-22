@@ -1,6 +1,8 @@
 use core::panic;
 use std::time::Instant;
 
+use crate::bounds::{BoundInferer, Bounds};
+use crate::domain::Domain;
 use encoder::ProblemEncoder;
 
 use indexmap::{IndexMap, IndexSet};
@@ -11,12 +13,12 @@ pub use options::SolverOptions;
 use crate::{
     abstraction::{build_abstraction, Abstraction, LitDefinition},
     alphabet::{self, Alphabet},
-    bounds::{infer::BoundInferer, Domain, Interval},
+    interval::Interval,
     node::{
         canonical::{canonicalize, Assignment},
         get_entailed_literals,
         smt::to_script,
-        Node, NodeKind, NodeManager, NodeSubstitution, Sorted,
+        Node, NodeKind, NodeManager, NodeSubstitution, Sort, Sorted,
     },
     sat::{to_cnf, PFormula, PLit},
 };
@@ -69,14 +71,12 @@ impl std::fmt::Display for SolverResult {
 }
 
 pub struct Engine {
-    solver: Solver,
     options: SolverOptions,
 }
 
 impl Engine {
     pub fn with_options(options: SolverOptions) -> Self {
-        let solver = Solver::with_options(options.clone());
-        Self { options, solver }
+        Self { options }
     }
 
     pub fn solve(&mut self, root: &Node, mngr: &mut NodeManager) -> Result<SolverResult, Error> {
@@ -112,7 +112,7 @@ impl Engine {
         log::debug!("Canonicalized\n{}", formula);
 
         // Initialize the bounds
-        let init_bounds = match self.init_bounds(&formula, mngr) {
+        let init_dom = match self.init_domain(&formula, mngr) {
             Some(bs) => bs,
             None => {
                 log::info!("No valid initial bounds. Unsat.");
@@ -125,7 +125,7 @@ impl Engine {
         log::info!("Built abstraction ({:?})", timer.elapsed());
 
         log::info!("Initialized bounds ({:?})", timer.elapsed());
-        log::debug!("Initial bounds: {}", init_bounds);
+        log::debug!("Initial bounds: {}", init_dom);
 
         // timer = Instant::now();
 
@@ -146,19 +146,16 @@ impl Engine {
             self.options.clone(),
             abstraction.skeleton().clone(),
             alphabet,
-            init_bounds,
+            init_dom,
         );
 
-        self.cegar_loop(
+        let res = self.cegar_loop(
             solver,
             abstraction.definitions().cloned().collect_vec(),
             mngr,
-        )
+        );
 
-        // if self.options.check_model && !self.check_assignment(fm, &assign) {
-        //     // If the assignment is not a solution, we found a bug.
-        //     panic!("The found model is invalid");
-        // }
+        panic!("Combine with preprocessing substitutions!");
     }
 
     fn cegar_loop(
@@ -172,9 +169,9 @@ impl Engine {
         // First call: check if skeleton is unsat
         // if unsat, return UNSAT
         // if sat, continue with CEGAR loop
-        if solver.solve(mngr)?.is_unsat() {
+        /*if solver.solve(mngr)?.is_unsat() {
             return Ok(SolverResult::Unsat);
-        }
+        }*/
 
         log::debug!("Boolean Skeleton is SAT. Continuing to encode.");
 
@@ -187,58 +184,47 @@ impl Engine {
         solver.solve(mngr)
     }
 
-    /// Initialize the bounds for the first round of the solver.
-    /// The bounds are inferred from the entailed literals of the formula but clamped to the bounds specified in the options.
-    fn init_bounds(&self, fm: &Node, mngr: &mut NodeManager) -> Option<Domain> {
+    fn init_domain(&self, fm: &Node, mngr: &mut NodeManager) -> Option<Domain> {
         let mut inferer = BoundInferer::default();
         for lit in get_entailed_literals(fm) {
             inferer.add_literal(lit.clone(), mngr)
         }
 
-        let mut bounds = inferer.infer()?;
-        log::debug!("Inferred bounds for entailed literals: {}", bounds);
-        for var in fm
-            .variables()
-            .iter()
-            .filter(|v| v.sort().is_int() || v.sort().is_string())
-        {
-            let v_bounds = bounds.get(var.as_ref());
-            let lower = if let Some(lower) = v_bounds.and_then(|b| b.lower_finite()) {
-                lower
-            } else {
-                0
+        let init_bounds = inferer.infer()?;
+        // Clamp all bounds and add Booleans to the domain
+        let mut domain = Domain::default();
+        for v in fm.variables() {
+            match v.sort() {
+                Sort::Int | Sort::String => {
+                    let lower = init_bounds
+                        .get(&v)
+                        .and_then(|b| b.lower_finite())
+                        .unwrap_or(0);
+                    let upper = init_bounds
+                        .get(&v)
+                        .and_then(|b| b.upper_finite())
+                        .unwrap_or(self.options.init_upper_bound)
+                        .max(lower) // at least lower
+                        .max(1); // at least 1
+                    let interval = Interval::new(lower, upper);
+                    // Clamp the bound to max
+                    let interval = interval.intersect(self.options.max_bounds);
+                    match v.sort() {
+                        Sort::Int => domain.set_int(v.clone(), interval),
+                        Sort::String => domain.set_string(v.clone(), interval),
+                        _ => unreachable!(),
+                    };
+                }
+                Sort::Bool => domain.set_bool(v.clone()),
+                Sort::RegLan => unreachable!(),
             };
-            let upper = if let Some(upper) = v_bounds.and_then(|b| b.upper_finite()) {
-                upper.min(self.options.init_upper_bound)
-            } else {
-                self.options.init_upper_bound
-            }
-            .max(lower)
-            .max(1); // need to be at least 1
-            bounds.set(var.clone(), Interval::new(lower, upper));
         }
-        let clamped = self.clamp_bounds(bounds);
-        // Clamp the bounds to the maximum bounds, if set
-        Some(clamped)
+        Some(domain)
     }
 
     /// Check if the assignment is a solution for the formula.
     fn check_assignment(&self, fm: &Node, assign: &Assignment) -> bool {
         assign.satisfies(fm)
-    }
-
-    /// Clamp the bounds to the maximum bounds.
-    fn clamp_bounds(&self, bounds: Domain) -> Domain {
-        if let Some(max_bound) = self.options.max_bounds {
-            let mut new_bounds = bounds.clone();
-            for (var, bound) in bounds.iter() {
-                let new_bound = bound.intersect(max_bound);
-                new_bounds.set(var.clone(), new_bound);
-            }
-            new_bounds
-        } else {
-            bounds
-        }
     }
 }
 
@@ -341,7 +327,7 @@ impl AbstractionSolver {
                         .unwrap_or(mngr.ttrue());
                     match refine::refine_bounds(&failed, &bounds, &fm, self.options.step, mngr) {
                         refine::BoundRefinement::Refined(b) => {
-                            let clamped = self.clamp_bounds(b);
+                            let clamped = self.clamp_bounds_in_dom(b);
                             // if the clamped bound are equal to the bounds we used in this round, nothing changed
                             // in that case, the limit is reached
                             if clamped == bounds {
@@ -364,6 +350,22 @@ impl AbstractionSolver {
                 None => panic!("Cadical failed to solve"),
             }
         }
+    }
+
+    fn clamp_bounds_in_dom(&self, dom: Domain) -> Domain {
+        let mut new_dom = dom.clone();
+        for (var, bound) in dom.iter_string() {
+            let new_bound = bound.intersect(self.options.max_bounds);
+            new_dom.set_string(var.clone(), new_bound);
+        }
+        for (var, bound) in dom.iter_int() {
+            let new_bound = bound.intersect(self.options.max_bounds);
+            new_dom.set_int(var.clone(), new_bound);
+        }
+        for v in dom.iter_bool() {
+            new_dom.set_bool(v.clone());
+        }
+        new_dom
     }
 
     fn to_formula(&self, mngr: &mut NodeManager, root: &PFormula) -> Option<Node> {
@@ -394,256 +396,6 @@ impl AbstractionSolver {
                     None
                 }
             }
-        }
-    }
-
-    /// Clamp the bounds to the maximum bounds.
-    fn clamp_bounds(&self, bounds: Domain) -> Domain {
-        if let Some(max_bound) = self.options.max_bounds {
-            let mut new_bounds = bounds.clone();
-            for (var, bound) in bounds.iter() {
-                let new_bound = bound.intersect(max_bound);
-                new_bounds.set(var.clone(), new_bound);
-            }
-            new_bounds
-        } else {
-            bounds
-        }
-    }
-}
-
-/// The solver.
-#[derive(Default)]
-pub struct Solver {
-    options: SolverOptions,
-}
-
-impl Solver {
-    pub fn with_options(options: SolverOptions) -> Self {
-        Self { options }
-    }
-
-    pub fn solve(&mut self, root: &Node, mngr: &mut NodeManager) -> Result<SolverResult, Error> {
-        log::info!("Starting solver");
-        let mut timer = Instant::now();
-
-        log::debug!("Solving: {}", root);
-
-        // Preprocess
-        let mut preprocessor = preprocessing::Preprocessor::default();
-
-        let preprocessed = if self.options.simplify {
-            preprocessor.apply(root, self.options.preprocess_extra_passes, mngr)?
-        } else {
-            root.clone()
-        };
-        log::info!("Preprocessed ({:?})", timer.elapsed());
-        if self.options.print_preprocessed {
-            //let smt = ir::smt::to_smtlib(&preprocessed);
-            println!("{}", to_script(&preprocessed));
-        }
-
-        // Early return if the formula is trivially sat/unsat
-        if let NodeKind::Bool(v) = *preprocessed.kind() {
-            return Ok(if v {
-                SolverResult::Sat(Some(preprocessor.applied_substitutions().clone()))
-            } else {
-                SolverResult::Unsat
-            });
-        }
-
-        // Canonicalize
-        let formula = canonicalize(&preprocessed, mngr)?;
-        log::info!("Canonicalized ({:?})", timer.elapsed());
-        log::debug!("Canonicalized\n{}", formula);
-
-        // Initialize the bounds
-        let init_bounds = match self.init_bounds(&formula, mngr) {
-            Some(bs) => bs,
-            None => {
-                log::info!("No valid initial bounds. Unsat.");
-                return Ok(SolverResult::Unsat);
-            }
-        };
-
-        timer = Instant::now();
-        let abstraction = build_abstraction(&formula)?;
-        log::info!("Built abstraction ({:?})", timer.elapsed());
-
-        log::info!("Initialized bounds ({:?})", timer.elapsed());
-        log::debug!("Initial bounds: {}", init_bounds);
-
-        // timer = Instant::now();
-
-        // Initialize the alphabet
-        let alphabet = alphabet::infer(&formula);
-        log::info!("Inferred alphabet ({:?})", timer.elapsed());
-        log::debug!("Alphabet: {}", alphabet);
-        timer = Instant::now();
-
-        if self.options.dry {
-            return Ok(SolverResult::Unknown);
-        }
-        // Start CEGAR loop
-        let res = self.run(&formula, abstraction, init_bounds, alphabet, mngr);
-
-        log::info!("Done solving ({:?})", timer.elapsed());
-        res
-    }
-
-    fn init_bounds(&self, fm: &Node, mngr: &mut NodeManager) -> Option<Domain> {
-        let mut inferer = BoundInferer::default();
-        for lit in get_entailed_literals(fm) {
-            inferer.add_literal(lit, mngr)
-        }
-
-        let mut bounds = inferer.infer()?;
-        log::debug!("Inferred bounds for entailed literals: {}", bounds);
-        for var in fm
-            .variables()
-            .iter()
-            .filter(|v| v.sort().is_int() || v.sort().is_string())
-        {
-            let v_bounds = bounds.get(var.as_ref());
-            let lower = if let Some(lower) = v_bounds.and_then(|b| b.lower_finite()) {
-                lower
-            } else {
-                0
-            };
-            let upper = if let Some(upper) = v_bounds.and_then(|b| b.upper_finite()) {
-                upper.min(self.options.init_upper_bound)
-            } else {
-                self.options.init_upper_bound
-            }
-            .max(lower)
-            .max(1); // need to be at least 1
-            bounds.set(var.clone(), Interval::new(lower, upper));
-        }
-        let clamped = self.clamp_bounds(bounds);
-        // Clamp the bounds to the maximum bounds, if set
-        Some(clamped)
-    }
-
-    fn run(
-        &mut self,
-        fm: &Node,
-        abs: Abstraction,
-        init_bounds: Domain,
-        alphabet: Alphabet,
-        mngr: &mut NodeManager,
-    ) -> Result<SolverResult, Error> {
-        // INPUT: Instance (Abstraction(Definition, Skeleton), Init-Bounds, Alphabet, OriginalFormula)
-
-        // Initialize the SAT solver
-        let mut cadical: cadical::Solver = cadical::Solver::default();
-        // Check if skeleton is trivially unsat
-        let skeleton_cnf = to_cnf(abs.skeleton());
-
-        let mut t = Instant::now();
-        for clause in skeleton_cnf.into_iter() {
-            cadical.add_clause(clause);
-        }
-        if cadical.solve() == Some(false) {
-            log::info!("Skeleton is unsat");
-            return Ok(SolverResult::Unsat);
-        }
-        log::info!("Skeleton is SAT ({:?})", t.elapsed());
-
-        // Initialize the problem encoder
-
-        let defs = abs.definitions().cloned().collect_vec();
-
-        let mut encoder = ProblemEncoder::new(alphabet, fm.variables());
-
-        // Initialize the bounds
-        let mut bounds = init_bounds;
-
-        let mut round = 0;
-
-        // Start Solving Loop
-        loop {
-            round += 1;
-            log::info!("Round {} with bounds {}", round, bounds);
-            // Encode and Solve
-            t = Instant::now();
-            let encoding = encoder.encode(defs.clone().into_iter(), &bounds, mngr)?;
-            let (cnf, asm) = encoding.into_inner();
-            log::info!("Encoded ({} clauses) ({:?})", cnf.len(), t.elapsed());
-            t = Instant::now();
-            for clause in cnf {
-                cadical.add_clause(clause);
-            }
-            log::info!("Added clauses to cadical ({:?})", t.elapsed());
-
-            t = Instant::now();
-            let res = cadical.solve_with(asm.into_iter());
-            log::info!("Done SAT solving: {:?} ({:?})", res, t.elapsed());
-
-            match res {
-                Some(true) => {
-                    // If SAT, check if model is a solution for the original formula.
-                    let assign = encoder.get_model(&cadical);
-
-                    log::info!("Found model: {}", assign);
-
-                    if self.options.check_model && !self.check_assignment(fm, &assign) {
-                        // If the assignment is not a solution, we found a bug.
-                        panic!("The found model is invalid");
-                    }
-                    // encoder.print_debug(&cadical);
-                    let subs = NodeSubstitution::from_assignment(&assign, mngr);
-                    return Ok(SolverResult::Sat(Some(subs)));
-                }
-
-                Some(false) => {
-                    log::info!("Unsat");
-                    let failed = encoder.get_failed_literals(&cadical);
-                    log::info!("{} Failed literal(s)", failed.len());
-                    log::debug!("Failed literals: {}", failed.iter().join(", "));
-                    // Refine bounds. If bounds are at max, return UNSAT. Otherwise, continue with new bounds.
-                    match refine::refine_bounds(&failed, &bounds, fm, self.options.step, mngr) {
-                        refine::BoundRefinement::Refined(b) => {
-                            let clamped = self.clamp_bounds(b);
-                            // if the clamped bound are equal to the bounds we used in this round, nothing changed
-                            // in that case, the limit is reached
-                            if clamped == bounds {
-                                if self.options.unsat_on_max_bound {
-                                    return Ok(SolverResult::Unsat);
-                                } else {
-                                    return Ok(SolverResult::Unknown);
-                                }
-                            } else {
-                                bounds = clamped;
-                            }
-                        }
-                        refine::BoundRefinement::SmallModelReached => {
-                            // If we blocked an assignment, we can't be sure that the formula is unsat.
-                            // Otherwise, we can return UNSAT.
-                            return Ok(SolverResult::Unsat);
-                        }
-                    }
-                }
-                None => panic!("Cadical failed to solve"),
-            }
-        }
-    }
-
-    /// Check if the assignment is a solution for the formula.
-    fn check_assignment(&self, fm: &Node, assign: &Assignment) -> bool {
-        assign.satisfies(fm)
-    }
-
-    /// Clamp the bounds to the maximum bounds.
-    fn clamp_bounds(&self, bounds: Domain) -> Domain {
-        if let Some(max_bound) = self.options.max_bounds {
-            let mut new_bounds = bounds.clone();
-            for (var, bound) in bounds.iter() {
-                let new_bound = bound.intersect(max_bound);
-                new_bounds.set(var.clone(), new_bound);
-            }
-            new_bounds
-        } else {
-            bounds
         }
     }
 }

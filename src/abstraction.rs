@@ -131,6 +131,7 @@ pub fn build_abstraction(node: &Node) -> Result<Abstraction, NodeError> {
                     PFormula::nlit(v)
                 })
             }
+            // TODO: Instead of a Lit, the LitDefintion should take a Node. If that Node is a Lit, then it is supported. Otherwise it is unsupported.
             _ => panic!("Unsupported node {}", fm.kind()), // TODO: do nothing here instead
         }
     }
