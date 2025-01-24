@@ -4,7 +4,7 @@ use std::{fmt::Display, rc::Rc};
 
 use indexmap::IndexMap;
 
-use crate::node::{Node, NodeKind, Variable};
+use crate::node::{Node, NodeKind, NodeSubstitution, Variable};
 
 use super::{
     ArithOperator, Atom, AtomKind, FactorConstraintType, LinearArithTerm, LinearConstraint,
@@ -293,6 +293,26 @@ impl Assignment {
             }
         }
         Some(res)
+    }
+}
+
+impl From<NodeSubstitution> for Assignment {
+    fn from(subs: NodeSubstitution) -> Self {
+        let mut assignment = Assignment::new();
+        for (lhs, rhs) in subs.iter() {
+            let variable = match lhs.kind() {
+                NodeKind::Variable(v) => v.clone(),
+                _ => continue,
+            };
+            let value = match rhs.kind() {
+                NodeKind::Bool(b) => AssignedValue::Bool(*b),
+                NodeKind::String(s) => AssignedValue::String(s.clone()),
+                NodeKind::Int(i) => AssignedValue::Int(*i),
+                _ => continue,
+            };
+            assignment.assign(variable, value.clone());
+        }
+        assignment
     }
 }
 

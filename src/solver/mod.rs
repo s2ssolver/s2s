@@ -1,7 +1,7 @@
 use core::panic;
 use std::time::Instant;
 
-use crate::bounds::{BoundInferer, Bounds};
+use crate::bounds::BoundInferer;
 use crate::domain::Domain;
 use encoder::ProblemEncoder;
 
@@ -11,7 +11,7 @@ use itertools::Itertools;
 pub use options::SolverOptions;
 
 use crate::{
-    abstraction::{build_abstraction, Abstraction, LitDefinition},
+    abstraction::{build_abstraction, LitDefinition},
     alphabet::{self, Alphabet},
     interval::Interval,
     node::{
@@ -91,46 +91,34 @@ impl Engine {
         } else {
             root.clone()
         };
+
+        let pre_subs = preprocessor.applied_substitutions().clone();
+
         log::info!("Preprocessed ({:?})", timer.elapsed());
         if self.options.print_preprocessed {
-            //let smt = ir::smt::to_smtlib(&preprocessed);
             println!("{}", to_script(&preprocessed));
         }
 
         // Early return if the formula is trivially sat/unsat
         if let NodeKind::Bool(v) = *preprocessed.kind() {
             return Ok(if v {
-                SolverResult::Sat(Some(preprocessor.applied_substitutions().clone()))
+                SolverResult::Sat(Some(pre_subs))
             } else {
                 SolverResult::Unsat
             });
         }
 
         // Canonicalize
-        let formula = canonicalize(&preprocessed, mngr)?;
+        let canonical = canonicalize(&preprocessed, mngr)?;
         log::info!("Canonicalized ({:?})", timer.elapsed());
-        log::debug!("Canonicalized\n{}", formula);
-
-        // Initialize the bounds
-        let init_dom = match self.init_domain(&formula, mngr) {
-            Some(bs) => bs,
-            None => {
-                log::info!("No valid initial bounds. Unsat.");
-                return Ok(SolverResult::Unsat);
-            }
-        };
+        log::debug!("Canonicalized\n{}", canonical);
 
         timer = Instant::now();
-        let abstraction = build_abstraction(&formula)?;
-        log::info!("Built abstraction ({:?})", timer.elapsed());
-
-        log::info!("Initialized bounds ({:?})", timer.elapsed());
-        log::debug!("Initial bounds: {}", init_dom);
 
         // timer = Instant::now();
 
         // Initialize the alphabet
-        let alphabet = alphabet::infer(&formula);
+        let alphabet = alphabet::infer(&canonical);
         log::info!(
             "Inferred alphabet of size {} ({:?})",
             alphabet.len(),
@@ -142,46 +130,72 @@ impl Engine {
             return Ok(SolverResult::Unknown);
         }
 
-        let solver = AbstractionSolver::new(
+        let res = match self.cegar_loop(&canonical, mngr)? {
+            SolverResult::Sat(model) => {
+                let model = model.map(|m| m.compose(pre_subs, mngr));
+                SolverResult::Sat(model)
+            }
+            SolverResult::Unsat => SolverResult::Unsat,
+            SolverResult::Unknown => SolverResult::Unknown,
+        };
+        Ok(res)
+    }
+
+    fn cegar_loop(&mut self, fm: &Node, mngr: &mut NodeManager) -> Result<SolverResult, Error> {
+        // Initialize domain
+        let init_dom = match self.init_domain(&fm, mngr) {
+            Some(bs) => bs,
+            None => {
+                log::info!("No valid initial bounds. Unsat.");
+                return Ok(SolverResult::Unsat);
+            }
+        };
+
+        // Initialize the alphabet
+        let alphabet = alphabet::infer(&fm);
+        log::info!("Inferred alphabet of size {}", alphabet.len(),);
+        log::debug!("Alphabet: {}", alphabet);
+
+        // Build the abstraction
+        let abstraction = build_abstraction(&fm)?;
+
+        let mut solver = AbstractionSolver::new(
             self.options.clone(),
             abstraction.skeleton().clone(),
             alphabet,
             init_dom,
         );
 
-        let res = self.cegar_loop(
-            solver,
-            abstraction.definitions().cloned().collect_vec(),
-            mngr,
-        );
-
-        panic!("Combine with preprocessing substitutions!");
-    }
-
-    fn cegar_loop(
-        &mut self,
-        mut solver: AbstractionSolver,
-        defs: Vec<LitDefinition>,
-        mngr: &mut NodeManager,
-    ) -> Result<SolverResult, Error> {
-        log::info!("Starting solver loop");
-
         // First call: check if skeleton is unsat
         // if unsat, return UNSAT
         // if sat, continue with CEGAR loop
-        /*if solver.solve(mngr)?.is_unsat() {
+        if solver.solve(mngr)?.is_unsat() {
             return Ok(SolverResult::Unsat);
-        }*/
-
+        }
         log::debug!("Boolean Skeleton is SAT. Continuing to encode.");
 
         // select the initial definitions
-        let defs = defs.clone();
+        let defs = abstraction.definitions();
         for d in defs {
-            solver.add_definition(&d);
+            solver.add_definition(d);
         }
 
-        solver.solve(mngr)
+        log::info!("Starting CEGAR loop");
+
+        match solver.solve(mngr)? {
+            SolverResult::Sat(Some(model)) => {
+                log::info!("Found model: {}", model);
+                if self.check_assignment(&fm, &model.clone().into()) {
+                    return Ok(SolverResult::Sat(Some(model)));
+                } else {
+                    log::error!("Model does not satisfy the formula");
+                    return Ok(SolverResult::Unknown);
+                }
+            }
+            SolverResult::Sat(None) => unreachable!(),
+            SolverResult::Unsat => return Ok(SolverResult::Unsat),
+            SolverResult::Unknown => return Ok(SolverResult::Unknown),
+        }
     }
 
     fn init_domain(&self, fm: &Node, mngr: &mut NodeManager) -> Option<Domain> {
@@ -310,7 +324,6 @@ impl AbstractionSolver {
                     let assign = self.encoder.get_model(&self.cadical);
 
                     log::info!("Found model: {}", assign);
-
                     // encoder.print_debug(&cadical);
                     let subs = NodeSubstitution::from_assignment(&assign, mngr);
                     return Ok(SolverResult::Sat(Some(subs)));
