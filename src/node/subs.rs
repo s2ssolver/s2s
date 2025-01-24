@@ -1,9 +1,10 @@
 use std::{
     collections::HashMap,
     fmt::{Display, Formatter},
+    rc::Rc,
 };
 
-use super::{canonical::Assignment, Node, NodeManager};
+use super::{canonical::Assignment, Node, NodeKind, NodeManager, Variable};
 
 /// A substitution that maps nodes to other nodes.
 ///
@@ -15,53 +16,59 @@ use super::{canonical::Assignment, Node, NodeManager};
 /// Substitutions might be ciclic, but they are always guaranteed to terminate.
 #[derive(Debug, Clone, Default)]
 pub struct NodeSubstitution {
-    map: HashMap<Node, Node>,
+    map: HashMap<Rc<Variable>, Node>,
 }
 
 impl NodeSubstitution {
     /// Insert a key-value pair into the substitution map.
     /// This function might break the consistency condition of the substitution.
     /// It thus not intended to be used directly, but only used internallay
-    fn insert(&mut self, key: Node, value: Node) {
+    fn insert(&mut self, key: Rc<Variable>, value: Node) {
         // Insert the key-value pair into the substitution map.
         self.map.insert(key, value);
     }
 
     /// Add a new key-value pair to the substitution map.
-    /// This takes O(n) time, where n is the number of key-value pairs in the substitution map.
-    pub fn add(&mut self, key: Node, value: Node, mngr: &mut NodeManager) {
-        let mut as_sub = NodeSubstitution::default();
-        as_sub.insert(key.clone(), value.clone());
-
-        let mut new_map = HashMap::with_capacity(self.map.len() + 1);
-        // Apply the substitution to all key-value pairs in the substitution map.
-        for (k, v) in self.map.iter() {
-            let composed_v = as_sub.apply(v, mngr);
-            let composed_k = as_sub.apply(k, mngr);
-            new_map.insert(composed_k.clone(), composed_v);
+    /// Panics if the key is already in the substitution map.
+    /// Adviced to use `compose` instead
+    pub fn add(&mut self, key: Rc<Variable>, value: Node) {
+        if self.map.contains_key(&key) {
+            panic!("Variable already in substitution");
         }
-        // Insert the new key-value pair into the substitution map.
-        new_map.insert(key, value);
-
-        // Update the substitution map.
-        self.map = new_map;
+        self.insert(key, value);
     }
 
-    /// Compose this substitution with another substitution.
-    /// Essentially, this function applies the other substitution to all values in this substitution.
-    pub fn compose(mut self, other: Self, mngr: &mut NodeManager) -> Self {
-        for (key, value) in other.map {
-            self.add(key, value, mngr);
+    // Returns the composition of this substitution with another substitution.
+    /// This has the same effect as applying this substitution first, and then applying the other substitution to the result.
+    /// Applies the other substitution to all values in this substitution.
+    pub fn compose(&self, other: NodeSubstitution, mngr: &mut NodeManager) -> Self {
+        let mut subst = NodeSubstitution::default();
+
+        // Apply the other substitution to all values in this substitution.
+        for (key, value) in self.iter() {
+            let new_value = other.apply(value, mngr);
+            subst.add(key.clone(), new_value);
         }
-        self
+        // ensure that all keys in the other substitution are in the new substitution
+        for (key, value) in other.iter() {
+            if !subst.map.contains_key(key) {
+                subst.add(key.clone(), value.clone());
+            }
+        }
+
+        subst
     }
 
     /// Apply the substitution to the given node.
     pub fn apply(&self, node: &Node, mngr: &mut NodeManager) -> Node {
         // If the node is in the substitution map, return the corresponding value.
         // Because the substitution is an automorphism, recursion will terminate once the substitution is applied to a node.
-        if let Some(value) = self.map.get(node) {
-            return value.clone();
+        if let NodeKind::Variable(v) = node.kind() {
+            if let Some(value) = self.map.get(v) {
+                return value.clone();
+            } else {
+                return node.clone();
+            }
         }
 
         // Otherwise, recursively apply the substitution to the children of the node.
@@ -71,21 +78,12 @@ impl NodeSubstitution {
             .map(|child| self.apply(child, mngr))
             .collect();
 
-        let node = mngr.create_node(node.kind().clone(), children);
-
-        // check if the node is in the substitution map
-        // if it is, return the corresponding value
-        if let Some(value) = self.map.get(&node) {
-            value.clone()
-        } else {
-            node
-        }
+        mngr.create_node(node.kind().clone(), children)
     }
 
     pub fn from_assignment(assignment: &Assignment, mngr: &mut NodeManager) -> Self {
         let mut subst = NodeSubstitution::default();
         for (var, value) in assignment.iter() {
-            let var_node = mngr.var(var.clone());
             let value = if let Some(true) = value.as_bool() {
                 mngr.ttrue()
             } else if let Some(false) = value.as_bool() {
@@ -97,16 +95,16 @@ impl NodeSubstitution {
             } else {
                 panic!("Unsupported value in assignment")
             };
-            subst.add(var_node, value, mngr);
+            subst.add(var.clone(), value);
         }
         subst
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = (&Node, &Node)> {
+    pub fn iter(&self) -> impl Iterator<Item = (&Rc<Variable>, &Node)> {
         self.map.iter()
     }
 
-    pub fn iter_mut(&mut self) -> impl Iterator<Item = (&Node, &mut Node)> {
+    pub fn iter_mut(&mut self) -> impl Iterator<Item = (&Rc<Variable>, &mut Node)> {
         self.map.iter_mut()
     }
 }
@@ -137,16 +135,15 @@ mod tests {
 
         let anode = mngr.var(a.clone());
         let bnode = mngr.var(b.clone());
-        subst.add(anode.clone(), bnode.clone(), &mut mngr);
+        subst.add(a.clone(), bnode.clone());
 
         assert_eq!(subst.apply(&anode, &mut mngr), bnode);
         assert_eq!(subst.apply(&bnode, &mut mngr), bnode);
     }
 
     #[test]
-    fn add_var_to_var_transitive() {
+    fn compose_var_to_var() {
         let mut mngr = NodeManager::default();
-        let mut subst = NodeSubstitution::default();
 
         let a = mngr.temp_var(Sort::Bool);
         let b = mngr.temp_var(Sort::Bool);
@@ -156,19 +153,21 @@ mod tests {
         let bnode = mngr.var(b.clone());
         let cnode = mngr.var(c.clone());
 
-        subst.add(anode.clone(), bnode.clone(), &mut mngr);
-        subst.add(bnode.clone(), cnode.clone(), &mut mngr);
+        let mut subst1 = NodeSubstitution::default();
+        subst1.add(a.clone(), bnode.clone()); // a -> b
 
-        assert_eq!(subst.apply(&anode, &mut mngr), cnode);
-        assert_eq!(subst.apply(&bnode, &mut mngr), cnode);
+        let mut subst2 = NodeSubstitution::default();
+        subst2.add(b.clone(), cnode.clone()); // b -> c
+
+        let comp = subst1.compose(subst2, &mut mngr);
+
+        assert_eq!(comp.apply(&anode, &mut mngr), cnode);
+        assert_eq!(comp.apply(&bnode, &mut mngr), cnode);
     }
 
     #[test]
-    fn add_and_to_var() {
-        // a&b -> c
-
+    fn compose_var_to_var_2() {
         let mut mngr = NodeManager::default();
-        let mut subst = NodeSubstitution::default();
 
         let a = mngr.temp_var(Sort::Bool);
         let b = mngr.temp_var(Sort::Bool);
@@ -177,53 +176,16 @@ mod tests {
         let anode = mngr.var(a.clone());
         let bnode = mngr.var(b.clone());
         let cnode = mngr.var(c.clone());
-        let a_and_b = mngr.and(vec![anode.clone(), bnode.clone()]);
-        subst.add(a_and_b.clone(), cnode.clone(), &mut mngr);
-        assert_eq!(subst.apply(&a_and_b, &mut mngr), cnode);
-    }
 
-    #[test]
-    fn add_and_to_var_semicyclic() {
-        // a && b -> c, c -> a => a && b -> a
-        // This is not invalid because there is no substitution for a
+        let mut subst1 = NodeSubstitution::default();
+        subst1.add(a.clone(), bnode.clone()); // a -> b
 
-        let mut mngr = NodeManager::default();
-        let mut subst = NodeSubstitution::default();
+        let mut subst2 = NodeSubstitution::default();
+        subst2.add(b.clone(), cnode.clone()); // b -> c
 
-        let a = mngr.temp_var(Sort::Bool);
-        let b = mngr.temp_var(Sort::Bool);
-        let c = mngr.temp_var(Sort::Bool);
+        let comp = subst2.compose(subst1, &mut mngr);
 
-        let anode = mngr.var(a.clone());
-        let bnode = mngr.var(b.clone());
-        let cnode = mngr.var(c.clone());
-        let a_and_b = mngr.and(vec![anode.clone(), bnode.clone()]);
-        subst.add(a_and_b.clone(), cnode.clone(), &mut mngr);
-        subst.add(cnode.clone(), anode.clone(), &mut mngr);
-
-        assert_eq!(subst.apply(&a_and_b, &mut mngr), anode);
-    }
-
-    #[test]
-    fn add_and_to_var_transitive_key() {
-        // a && b -> c, a -> b => b && b -> c
-
-        let mut mngr = NodeManager::default();
-        let mut subst = NodeSubstitution::default();
-
-        let a = mngr.temp_var(Sort::Bool);
-        let b = mngr.temp_var(Sort::Bool);
-        let c = mngr.temp_var(Sort::Bool);
-
-        let anode = mngr.var(a.clone());
-        let bnode = mngr.var(b.clone());
-        let cnode = mngr.var(c.clone());
-        let a_and_b = mngr.and(vec![anode.clone(), bnode.clone()]);
-        subst.add(a_and_b.clone(), cnode.clone(), &mut mngr);
-        subst.add(anode.clone(), bnode.clone(), &mut mngr);
-
-        let b_and_b = mngr.and(vec![bnode.clone(), bnode.clone()]);
-        assert_eq!(subst.apply(&a_and_b, &mut mngr), cnode);
-        assert_eq!(subst.apply(&b_and_b, &mut mngr), cnode);
+        assert_eq!(comp.apply(&anode, &mut mngr), bnode);
+        assert_eq!(comp.apply(&bnode, &mut mngr), cnode);
     }
 }

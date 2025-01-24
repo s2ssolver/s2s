@@ -5,7 +5,7 @@ use crate::bounds::BoundInferer;
 use crate::domain::Domain;
 use encoder::ProblemEncoder;
 
-use indexmap::{IndexMap, IndexSet};
+use indexmap::IndexMap;
 use itertools::Itertools;
 
 pub use options::SolverOptions;
@@ -132,7 +132,7 @@ impl Engine {
 
         let res = match self.cegar_loop(&canonical, mngr)? {
             SolverResult::Sat(model) => {
-                let model = model.map(|m| m.compose(pre_subs, mngr));
+                let model = model.map(|m| pre_subs.compose(m, mngr));
                 SolverResult::Sat(model)
             }
             SolverResult::Unsat => SolverResult::Unsat,
@@ -272,7 +272,7 @@ impl AbstractionSolver {
             skeleton,
             cadical: sat_solver,
             defs: IndexMap::new(),
-            encoder: ProblemEncoder::new(alphabet, IndexSet::new()),
+            encoder: ProblemEncoder::new(alphabet),
             next_bounds: init_bounds,
         }
     }

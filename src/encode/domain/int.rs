@@ -96,7 +96,7 @@ impl IntegerEncoder {
     ) -> EncodingResult {
         let mut res = EncodingResult::empty();
 
-        for (int_var, bound) in bounds.iter_int().filter(|(v, b)| v.sort().is_int()) {
+        for (int_var, bound) in bounds.iter_int().filter(|(v, _)| v.sort().is_int()) {
             let mut len_choices = vec![];
             let last_upper_bound = self
                 .get_last_bound(int_var)

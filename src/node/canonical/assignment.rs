@@ -300,17 +300,13 @@ impl From<NodeSubstitution> for Assignment {
     fn from(subs: NodeSubstitution) -> Self {
         let mut assignment = Assignment::new();
         for (lhs, rhs) in subs.iter() {
-            let variable = match lhs.kind() {
-                NodeKind::Variable(v) => v.clone(),
-                _ => continue,
-            };
             let value = match rhs.kind() {
                 NodeKind::Bool(b) => AssignedValue::Bool(*b),
                 NodeKind::String(s) => AssignedValue::String(s.clone()),
                 NodeKind::Int(i) => AssignedValue::Int(*i),
                 _ => continue,
             };
-            assignment.assign(variable, value.clone());
+            assignment.assign(lhs.clone(), value.clone());
         }
         assignment
     }

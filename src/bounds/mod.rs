@@ -29,10 +29,6 @@ pub struct Bounds {
 }
 
 impl Bounds {
-    pub fn new() -> Self {
-        Self::default()
-    }
-
     pub fn set(&mut self, var: Rc<Variable>, bound: Interval) {
         self.bounds.insert(var, bound);
     }

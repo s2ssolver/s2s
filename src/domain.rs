@@ -172,15 +172,6 @@ impl Domain {
     //     }
     // }
 
-    /// Returns an iterator over the variables and their bounds.
-    pub fn iter(&self) -> impl Iterator<Item = (&Rc<Variable>, &VarDomain)> {
-        self.domains.iter()
-    }
-
-    pub fn into_iter(self) -> impl Iterator<Item = (Rc<Variable>, VarDomain)> {
-        self.domains.into_iter()
-    }
-
     /// Returns an iterator over the string variables and their length bounds.
     pub fn iter_string(&self) -> impl Iterator<Item = (&Rc<Variable>, &Interval)> {
         self.domains.iter().filter_map(|(var, dom)| match dom {

@@ -1,4 +1,4 @@
-use std::{ops::Neg, rc::Rc, time::Instant};
+use std::{ops::Neg, time::Instant};
 
 use cadical::Solver;
 use indexmap::{IndexMap, IndexSet};
@@ -12,7 +12,7 @@ use crate::{
     },
     node::{
         canonical::{Assignment, Literal},
-        NodeManager, NodeSubstitution, Variable,
+        NodeManager, NodeSubstitution,
     },
     sat::{nlit, plit, pvar, PLit, PVar},
 };
@@ -65,7 +65,7 @@ pub struct ProblemEncoder {
 }
 
 impl ProblemEncoder {
-    pub fn new(alphabet: Alphabet, variables: IndexSet<Rc<Variable>>) -> Self {
+    pub fn new(alphabet: Alphabet) -> Self {
         Self {
             probes: IndexMap::new(),
             encoders: IndexMap::new(),
