@@ -1,0 +1,6 @@
+(set-logic ALL)
+(declare-fun T () Bool)
+(declare-fun v () String)
+(assert (not (= v "")))
+(assert (or (not T) (= v "")))
+(check-sat)
