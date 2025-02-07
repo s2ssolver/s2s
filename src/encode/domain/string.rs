@@ -225,7 +225,6 @@ impl StringDomainEncoder {
         log::debug!("Encoding string lengths");
 
         for (str_var, bound) in dom.iter_string() {
-            println!("\t Encoding lengths for {}", str_var);
             let mut len_choices = vec![];
             let last_bound = self.pre_upper_bound(str_var).map(|b| b + 1).unwrap_or(0);
 
@@ -236,7 +235,6 @@ impl StringDomainEncoder {
             let upper = bound.upper_finite().expect("Unbounded string variable") as usize;
 
             if last_bound > 0 {
-                println!("\t\t Last bound {}", last_bound);
                 let len = last_bound - 1;
                 let choice = encoding.string().get_len(str_var, len).unwrap();
                 // if the variable has this length, then only lambdas follow

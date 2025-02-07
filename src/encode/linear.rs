@@ -78,7 +78,7 @@ impl LiteralEncoder for MddEncoder {
         let mut queue = VecDeque::new();
         // (level, value, pvar)
         queue.push_back((0, 0, self.mdd_root));
-        println!("{}", dom);
+
         while let Some((level, value, node_var)) = queue.pop_front() {
             match &self.linear.lhs()[level] {
                 LinearSummand::Mult(var, coeff) => {

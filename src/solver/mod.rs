@@ -159,25 +159,46 @@ impl Engine {
         // Build the abstraction
         let abstraction = build_abstraction(&fm)?;
 
-        let mut solver = AbstractionSolver::new(
+        let mut solver = Solver::new(
             self.options.clone(),
             abstraction.skeleton().clone(),
             alphabet,
             init_dom,
         );
+        let mut defs = abstraction.definitions().cloned().collect_vec();
 
-        // First call: check if skeleton is unsat
-        // if unsat, return UNSAT
-        // if sat, continue with CEGAR loop
-        if solver.solve(mngr)?.is_unsat() {
-            return Ok(SolverResult::Unsat);
+        loop {
+            match solver.solve(mngr)? {
+                SolverResult::Sat(subs) => {
+                    let model = subs.unwrap();
+                    let assign = model.clone().into();
+                    log::info!("Found model: {}", model);
+                    if self.check_assignment(&fm, &assign) {
+                        return Ok(SolverResult::Sat(Some(model)));
+                    } else {
+                        log::error!("Model does not satisfy the formula");
+                        match self.pick_defs(fm, &assign, &defs) {
+                            Some(d) => {
+                                solver.add_definition(&d);
+                                defs.retain(|def| def.defining() != d.defining());
+                            }
+                            None => {
+                                log::error!("No more definitions to add. Returning Unknown");
+                                return Ok(SolverResult::Unknown);
+                            }
+                        }
+                    }
+                }
+                SolverResult::Unsat => return Ok(SolverResult::Unsat),
+                SolverResult::Unknown => return Ok(SolverResult::Unknown),
+            }
         }
         log::debug!("Boolean Skeleton is SAT. Continuing to encode.");
 
         // select the initial definitions
-        let defs = abstraction.definitions();
+
         for d in defs {
-            solver.add_definition(d);
+            solver.add_definition(&d);
         }
 
         log::info!("Starting CEGAR loop");
@@ -240,9 +261,18 @@ impl Engine {
     fn check_assignment(&self, fm: &Node, assign: &Assignment) -> bool {
         assign.satisfies(fm)
     }
+
+    fn pick_defs<'a>(
+        &self,
+        fm: &Node,
+        assign: &Assignment,
+        defs: &'a [LitDefinition],
+    ) -> Option<LitDefinition> {
+        defs.first().cloned()
+    }
 }
 
-struct AbstractionSolver {
+struct Solver {
     options: SolverOptions,
 
     cadical: cadical::Solver,
@@ -255,7 +285,7 @@ struct AbstractionSolver {
     next_bounds: Domain,
 }
 
-impl AbstractionSolver {
+impl Solver {
     pub fn new(
         options: SolverOptions,
         skeleton: PFormula,
