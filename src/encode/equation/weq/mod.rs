@@ -8,10 +8,10 @@ pub use ineq::WordInEquationEncoder;
 
 #[cfg(test)]
 mod testutils {
-    use crate::node;
-    use crate::{
+    use crate::node::{self, NodeKind};
+    use crate::node::{
         canonical::{self, WordEquation},
-        node::NodeManager,
+        NodeManager,
     };
 
     pub(crate) fn parse_simple_equation(
@@ -22,11 +22,11 @@ mod testutils {
         let node = node::testutils::parse_equation(lhs, rhs, mngr);
         let c = canonical::canonicalize(&node, mngr).unwrap();
         match c.kind() {
-            canonical::FormulaKind::Literal(literal) => match literal.atom().kind() {
+            NodeKind::Literal(literal) => match literal.atom().kind() {
                 canonical::AtomKind::WordEquation(weq) => weq.clone(),
                 _ => unreachable!(),
             },
-            _ => unreachable!(),
+            x => unreachable!("Expected a literal but got {x}"),
         }
     }
 }

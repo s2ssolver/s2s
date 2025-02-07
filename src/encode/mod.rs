@@ -1,9 +1,11 @@
 use std::fmt::Display;
 
 use crate::{
-    bounds::Bounds,
-    canonical::{AtomKind, Literal, RegularConstraint},
-    node::NodeManager,
+    domain::Domain,
+    node::{
+        canonical::{AtomKind, Literal, RegularConstraint},
+        NodeManager,
+    },
     sat::{Clause, Cnf, PLit},
 };
 
@@ -185,7 +187,7 @@ pub trait LiteralEncoder {
 
     fn encode(
         &mut self,
-        bounds: &Bounds,
+        bounds: &Domain,
         substitution: &DomainEncoding,
     ) -> Result<EncodingResult, EncodingError>;
 

@@ -53,7 +53,7 @@ impl IndependentVariableAssignment {
                         } else {
                             mngr.const_str("")
                         };
-                        subs.add(lhs.clone(), rhs, mngr);
+                        subs.add(v.clone(), rhs);
                         Some(subs)
                     }
                     NodeKind::Int(i) => {
@@ -65,7 +65,7 @@ impl IndependentVariableAssignment {
                         } else {
                             mngr.const_int(1)
                         };
-                        subs.add(lhs.clone(), rhs, mngr);
+                        subs.add(v.clone(), rhs);
                         Some(subs)
                     }
                     _ => None,
@@ -110,7 +110,7 @@ impl IndependentVariableAssignment {
                 let rhs_str = rhs.iter().collect::<String>();
                 debug_assert!(rhs_str.len() == rhs.len());
                 let rhs = mngr.const_string(rhs_str);
-                subs.add(lhs.clone(), rhs, mngr);
+                subs.add(v.clone(), rhs);
                 return Some(subs);
             }
             _ => (),
@@ -122,10 +122,10 @@ impl IndependentVariableAssignment {
     fn apply(&self, atom: &Node, polarity: bool, mngr: &mut NodeManager) -> Option<Simplification> {
         debug_assert!(atom.is_atomic(), "{} is not an atomic formula", atom);
         match atom.kind() {
-            NodeKind::Variable(rc) => {
+            NodeKind::Variable(v) => {
                 let mut subs = NodeSubstitution::default();
-                if self.independent(rc) {
-                    subs.add(atom.clone(), mngr.ttrue(), mngr);
+                if self.independent(v) {
+                    subs.add(v.clone(), mngr.ttrue());
                     return Some(Simplification::new(subs, None));
                 }
             }
@@ -165,7 +165,7 @@ impl IndependentVariableAssignment {
                             if polarity {
                                 let mut subs = NodeSubstitution::default();
                                 let rhs = mngr.const_str(asstr);
-                                subs.add(container.clone(), rhs, mngr);
+                                subs.add(v.clone(), rhs);
                                 return Some(Simplification::new(subs, None));
                             } else {
                                 // abort here to not decent into the children

@@ -55,7 +55,6 @@ impl Default for Simplifier {
             rules: vec![
                 SimpRules::entailed_boolean_vars(),
                 SimpRules::entailed_assignments(),
-                SimpRules::remove_entailed(),
                 SimpRules::independent_variable_assignment(),
                 SimpRules::zero_length_epsilon(),
                 SimpRules::levis_weq(),
@@ -141,7 +140,7 @@ enum SimpRules {
     /* Entailments */
     EntailedBooleanVars(entailed::EntailedBooleanVars),
     EntailedAssigments(entailed::EntailedAssigments),
-    RemoveEntailed(entailed::RemoveEntailed),
+
     /* Independet Variables */
     IndependentVariableAssignment(independent::IndependentVariableAssignment),
 
@@ -162,10 +161,6 @@ impl SimpRules {
 
     pub fn entailed_assignments() -> Self {
         SimpRules::EntailedAssigments(entailed::EntailedAssigments)
-    }
-
-    pub fn remove_entailed() -> Self {
-        SimpRules::RemoveEntailed(entailed::RemoveEntailed::default())
     }
 
     pub fn independent_variable_assignment() -> Self {
@@ -190,7 +185,6 @@ impl SimpRules {
         match self {
             SimpRules::EntailedBooleanVars(rule) => rule,
             SimpRules::EntailedAssigments(rule) => rule,
-            SimpRules::RemoveEntailed(rule) => rule,
             SimpRules::IndependentVariableAssignment(rule) => rule,
             SimpRules::ZeroLengthEpsilon(rule) => rule,
             SimpRules::LevisWeq(rule) => rule,
@@ -202,7 +196,6 @@ impl SimpRules {
         match self {
             SimpRules::EntailedBooleanVars(rule) => rule,
             SimpRules::EntailedAssigments(rule) => rule,
-            SimpRules::RemoveEntailed(rule) => rule,
             SimpRules::IndependentVariableAssignment(rule) => rule,
             SimpRules::ZeroLengthEpsilon(rule) => rule,
             SimpRules::LevisWeq(rule) => rule,

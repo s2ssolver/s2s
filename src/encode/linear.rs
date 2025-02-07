@@ -1,11 +1,14 @@
-use std::collections::VecDeque;
+use std::{collections::VecDeque, rc::Rc};
 
 use indexmap::IndexMap;
 
 use crate::{
-    bounds::Bounds,
-    canonical::{ArithOperator, LinearConstraint, LinearSummand},
-    node::Sorted,
+    domain::Domain,
+    interval::Interval,
+    node::{
+        canonical::{ArithOperator, LinearConstraint, LinearSummand},
+        Sorted, Variable,
+    },
     sat::{nlit, plit, pvar, PVar},
 };
 
@@ -25,7 +28,7 @@ pub struct MddEncoder {
     /// Is 0 when the encoder is reset.
     round: usize,
 
-    last_bounds: Option<Bounds>,
+    last_bounds: Option<Domain>,
 }
 
 impl MddEncoder {
@@ -48,6 +51,10 @@ impl MddEncoder {
             last_bounds: None,
         }
     }
+
+    fn last_bound(&self, v: &Rc<Variable>) -> Option<Interval> {
+        self.last_bounds.as_ref().and_then(|b| b.get_int(v))
+    }
 }
 
 impl LiteralEncoder for MddEncoder {
@@ -61,8 +68,8 @@ impl LiteralEncoder for MddEncoder {
 
     fn encode(
         &mut self,
-        bounds: &Bounds,
-        dom: &DomainEncoding,
+        dom: &Domain,
+        dom_enc: &DomainEncoding,
     ) -> Result<EncodingResult, EncodingError> {
         self.round += 1;
 
@@ -76,19 +83,30 @@ impl LiteralEncoder for MddEncoder {
             match &self.linear.lhs()[level] {
                 LinearSummand::Mult(var, coeff) => {
                     let v = var.variable();
-                    let current_u_bound =
-                        bounds.get_upper_finite(v).expect("Unbounded variable") as i64;
-                    let current_l_bound =
-                        bounds.get_lower_finite(v).expect("Unbounded variable") as i64;
+                    let current_bound = if v.sort().is_string() {
+                        dom.get_string(v)
+                    } else if v.sort().is_int() {
+                        dom.get_int(v)
+                    } else {
+                        unreachable!()
+                    };
+                    let current_u_bound = current_bound
+                        .and_then(|i| i.upper_finite())
+                        .expect("Unbounded variable")
+                        as i64;
+                    let current_l_bound = current_bound
+                        .and_then(|i| i.lower_finite())
+                        .expect("Unbounded variable")
+                        as i64;
 
                     for l in current_l_bound..=current_u_bound {
-                        if let Some(last_bounds) = self.last_bounds.as_ref() {
-                            if last_bounds
-                                .get_lower_finite(v)
+                        if let Some(last_bound) = self.last_bound(v) {
+                            if last_bound
+                                .lower_finite()
                                 .map(|ll| l >= ll as i64)
                                 .unwrap_or(false)
-                                && last_bounds
-                                    .get_upper_finite(v)
+                                && last_bound
+                                    .upper_finite()
                                     .map(|uu| l <= uu as i64)
                                     .unwrap_or(false)
                             {
@@ -98,9 +116,9 @@ impl LiteralEncoder for MddEncoder {
                         }
                         // If string: get length encoding, if int: get int encoding
                         let len_assign_var = if v.sort().is_int() {
-                            dom.int().get(v, l).unwrap()
+                            dom_enc.int().get(v, l).unwrap()
                         } else {
-                            dom.string().get_len(v, l as usize).unwrap()
+                            dom_enc.string().get_len(v, l as usize).unwrap()
                         };
                         let new_value = value + l * coeff;
                         if level + 1 < self.linear.lhs().len() {
@@ -176,6 +194,7 @@ impl LiteralEncoder for MddEncoder {
             res.add_clause(vec![nlit(self.mdd_false)]);
         }
         // TODO: This leads to soundness errors, need to investigate!
+        log::debug!("LAST BOUND NOT KEPT!");
         //self.last_bounds = Some(bounds.clone());
         Ok(res)
     }

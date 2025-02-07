@@ -1,4 +1,6 @@
-use crate::bounds::{step::BoundStep, Interval};
+use crate::interval::Interval;
+
+use super::refine::BoundStep;
 
 const DEFAULT_SIMPLIFY: bool = true;
 const DEFAULT_PREPROCESS_PASSES: usize = 20;
@@ -13,7 +15,7 @@ pub struct SolverOptions {
     /// If set to 0, will only apply preprocessing while the size of the formula is decreasing.
     pub preprocess_extra_passes: usize,
     pub cegar: bool,
-    pub max_bounds: Option<Interval>,
+    pub max_bounds: Interval,
     pub step: BoundStep,
     pub check_model: bool,
     pub unsat_on_max_bound: bool,
@@ -27,7 +29,7 @@ impl Default for SolverOptions {
             simplify: DEFAULT_SIMPLIFY,
             preprocess_extra_passes: DEFAULT_PREPROCESS_PASSES,
             cegar: true,
-            max_bounds: None,
+            max_bounds: Interval::unbounded(),
             step: BoundStep::default(),
             check_model: DEFAULT_CHECK_MODEL,
             unsat_on_max_bound: DEFAULT_UNSAT_ON_MAX_BOUND,
@@ -69,7 +71,7 @@ impl SolverOptions {
     /// If no solution is found within this bound, the solver returns `unknown`.
     /// Use `unsat_on_max_bound` to change this behavior to return `unsat` instead.
     pub fn max_bounds(&mut self, max_bounds: u32) -> &mut Self {
-        self.max_bounds = Some(Interval::new(max_bounds, max_bounds));
+        self.max_bounds = Interval::bounded_above(max_bounds);
         self
     }
 

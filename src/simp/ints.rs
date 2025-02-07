@@ -52,8 +52,7 @@ impl ZeroLengthEpsilon {
             let mut subs = NodeSubstitution::default();
             let epsi = mngr.const_str("");
             for v in vars {
-                let asnode = mngr.var(v);
-                subs.add(asnode, epsi.clone(), mngr);
+                subs.add(v, epsi.clone());
             }
             Some(Simplification::new(subs, None))
         } else {

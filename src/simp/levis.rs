@@ -58,16 +58,16 @@ fn levis_step(lhs: &Node, rhs: &Node, mngr: &mut NodeManager) -> Option<NodeSubs
         /* One side is constant, the other variable */
         (Some(Symbol::Const(c)), Some(Symbol::Variable(v))) if not_empty(c, &mut rhs) => {
             let prefix = mngr.const_str(&c.to_string());
-            let var = mngr.var(v.clone());
-            let subs = mngr.concat(vec![prefix, var.clone()]);
-            substitution.add(var, subs, mngr);
+            let v_node = mngr.var(v.clone());
+            let subs = mngr.concat(vec![prefix, v_node.clone()]);
+            substitution.add(v, subs);
             Some(substitution)
         }
         (Some(Symbol::Variable(v)), Some(Symbol::Const(c))) if not_empty(c, &mut lhs) => {
             let prefix = mngr.const_str(&c.to_string());
-            let var_node = mngr.var(v.clone());
-            let subs = mngr.concat(vec![prefix, var_node.clone()]);
-            substitution.add(mngr.var(v.clone()), subs, mngr);
+            let v_node = mngr.var(v.clone());
+            let subs = mngr.concat(vec![prefix, v_node.clone()]);
+            substitution.add(v.clone(), subs);
             Some(substitution)
         }
         // All other cases are either not reducible or already reduced by stripping common prefixes

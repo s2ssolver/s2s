@@ -190,9 +190,9 @@ dependencies = [
 
 [[package]]
 name = "cadical"
-version = "0.1.14"
+version = "0.1.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4e96d3046c68b3f7dce64d48b5e8dd33d3b0160ca3d96b51cec20b7a6b7451b8"
+checksum = "1b7642d2346ccd3933353ffdec9ca19fba2afec4b89ec47e71de8b1d0c1f7cc0"
 dependencies = [
  "cc",
 ]

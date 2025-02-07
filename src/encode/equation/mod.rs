@@ -9,7 +9,7 @@ use weq::{WordEquationEncoder, WordInEquationEncoder};
 
 // use crate::model::constraints::WordEquation;
 
-use crate::canonical::WordEquation;
+use crate::node::canonical::WordEquation;
 
 use self::{assign::AssignmentEncoder, vareq::VareqEncoder};
 

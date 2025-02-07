@@ -7,7 +7,10 @@ use regulaer::{
     re::Regex,
 };
 
-use super::{Sort, Sorted, Variable};
+use super::{
+    canonical::{Atom, AtomKind, Literal},
+    Sort, Sorted, Variable,
+};
 
 use super::{error::NodeError, Node, NodeKind, OwnedNode};
 
@@ -24,6 +27,9 @@ pub struct NodeManager {
 
     /// Registry of nodes
     node_registry: IndexMap<NodeKey, Node>,
+
+    /// Registry of atoms, indexed by kind
+    atom_registry: IndexMap<AtomKind, Rc<Atom>>,
 
     /// Registry of variables, indexed by name
     variables: IndexMap<String, Rc<Variable>>,
@@ -250,7 +256,13 @@ impl NodeManager {
 
     /// Boolean conjunction
     pub fn and(&mut self, rs: Vec<Node>) -> Node {
-        self.intern_node(NodeKind::And, rs)
+        if rs.is_empty() {
+            return self.ttrue();
+        } else if rs.len() == 1 {
+            return rs[0].clone();
+        } else {
+            self.intern_node(NodeKind::And, rs)
+        }
     }
 
     /// Boolean disjunction
@@ -452,6 +464,24 @@ impl NodeManager {
         debug_assert!(l.sort().is_int());
         debug_assert!(r.sort().is_int());
         self.intern_node(NodeKind::Ge, vec![l, r])
+    }
+
+    /* Literals */
+
+    pub fn literal(&mut self, lit: Literal) -> Node {
+        self.intern_node(NodeKind::Literal(lit), vec![])
+    }
+
+    pub fn atom(&mut self, kind: AtomKind) -> Rc<Atom> {
+        if let Some(atom) = self.atom_registry.get(&kind) {
+            return atom.clone();
+        } else {
+            let id = self.next_id;
+            self.next_id += 1;
+            let atom = Rc::new(Atom::new(kind.clone(), id));
+            self.atom_registry.insert(kind.clone(), atom.clone());
+            atom
+        }
     }
 }
 

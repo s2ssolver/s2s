@@ -4,18 +4,15 @@ mod bool;
 mod int;
 mod string;
 
-use std::rc::Rc;
-
 use bool::{BoolDomain, BoolEncoder};
-use indexmap::IndexSet;
+
 pub use int::IntDomain;
 use int::IntegerEncoder;
 pub use string::StringDomain;
 use string::StringDomainEncoder;
 
 use crate::{
-    alphabet::Alphabet, bounds::Bounds, canonical::Assignment, encode::EncodingResult,
-    node::Variable,
+    alphabet::Alphabet, domain::Domain, encode::EncodingResult, node::canonical::Assignment,
 };
 
 #[derive(Clone, Debug)]
@@ -31,19 +28,19 @@ pub struct DomainEncoding {
     alphabet: Alphabet,
 
     /// The bounds of the integer variables
-    pub(super) bounds: Bounds,
+    pub(super) dom: Domain,
 }
 
 /// Propositional encoding of the domains of all variables.
 
 impl DomainEncoding {
-    pub fn new(alphabet: Alphabet, bounds: Bounds) -> Self {
+    pub fn new(alphabet: Alphabet, bounds: Domain) -> Self {
         Self {
             string: StringDomain::new(),
             int: IntDomain::default(),
             bool: BoolDomain::default(),
             alphabet,
-            bounds,
+            dom: bounds,
         }
     }
 
@@ -64,7 +61,7 @@ impl DomainEncoding {
     }
 
     pub fn get_model(&self, solver: &cadical::Solver) -> Assignment {
-        let mut model = self.string.get_model(solver, &self.bounds);
+        let mut model = self.string.get_model(solver, &self.dom);
         let overwrite = model.extend(&self.int.get_model(solver));
         assert!(overwrite == 0);
         let overwrite = model.extend(&self.bool.get_model(solver));
@@ -75,9 +72,6 @@ impl DomainEncoding {
 
 /// Encoder for the domains of all variables.
 pub struct DomainEncoder {
-    /// The set of variables to encode
-    variables: IndexSet<Rc<Variable>>,
-
     /// The encoder for string variables
     strings: StringDomainEncoder,
     /// The encoder for integer variables
@@ -89,29 +83,29 @@ pub struct DomainEncoder {
 }
 
 impl DomainEncoder {
-    pub fn new(alphabet: Alphabet, variables: IndexSet<Rc<Variable>>) -> Self {
+    pub fn new(alphabet: Alphabet) -> Self {
         Self {
             strings: StringDomainEncoder::new(alphabet),
             integers: IntegerEncoder::new(),
             bool: BoolEncoder::default(),
-            variables,
             encoding: None,
         }
     }
 
-    pub fn encode(&mut self, bounds: &Bounds) -> EncodingResult {
+    /// Encodes the domain of all variables for which bounds are given.
+    pub fn encode(&mut self, dom: &Domain) -> EncodingResult {
         let mut encoding = self.encoding.take().unwrap_or(DomainEncoding::new(
             self.strings.alphabet().clone(),
-            bounds.clone(),
+            dom.clone(),
         ));
 
         // Bool encoding does not depend on the bounds and does not return a CNF.
-        self.bool.encode(&mut encoding, &self.variables);
+        self.bool.encode(&mut encoding, dom);
 
-        let mut res = self.strings.encode(bounds, &mut encoding, &self.variables);
+        let mut res = self.strings.encode(dom, &mut encoding);
 
-        res.extend(self.integers.encode(bounds, &mut encoding, &self.variables));
-        encoding.bounds = bounds.clone();
+        res.extend(self.integers.encode(dom, &mut encoding));
+        encoding.dom = dom.clone();
         self.encoding = Some(encoding);
         res
     }
