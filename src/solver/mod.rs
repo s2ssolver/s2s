@@ -1,12 +1,11 @@
 use core::panic;
 use std::time::Instant;
 
+use crate::bounds::BoundInferer;
 use crate::domain::Domain;
-use crate::node::canonical::Literal;
-use crate::{bounds::BoundInferer, node::canonical::AtomKind};
 use encoder::ProblemEncoder;
 
-use indexmap::{IndexMap, IndexSet};
+use indexmap::IndexMap;
 use itertools::Itertools;
 
 pub use options::SolverOptions;
@@ -83,8 +82,10 @@ impl Engine {
 
     pub fn solve(&mut self, root: &Node, mngr: &mut NodeManager) -> Result<SolverResult, Error> {
         log::info!("Starting engine");
-        let mut timer = Instant::now();
+
         log::debug!("Solving: {}", root);
+
+        let timer = Instant::now();
 
         // Preprocess
         let mut preprocessor = preprocessing::Preprocessor::default();
@@ -94,9 +95,10 @@ impl Engine {
             root.clone()
         };
 
+        // These are the substitutions applied by the preprocessor
+        // We need to store them and re-apply them to the model of the preprocessed formula, to get the model of the original formula
         let pre_subs = preprocessor.applied_substitutions().clone();
 
-        log::info!("Preprocessed ({:?})", timer.elapsed());
         if self.options.print_preprocessed {
             println!("{}", to_script(&preprocessed));
         }
@@ -112,27 +114,19 @@ impl Engine {
 
         // Canonicalize
         let canonical = canonicalize(&preprocessed, mngr)?;
-        log::info!("Canonicalized ({:?})", timer.elapsed());
         log::debug!("Canonicalized\n{}", canonical);
-
-        timer = Instant::now();
-
-        // timer = Instant::now();
 
         // Initialize the alphabet
         let alphabet = alphabet::infer(&canonical);
-        log::info!(
-            "Inferred alphabet of size {} ({:?})",
-            alphabet.len(),
-            timer.elapsed()
-        );
+        log::info!("Inferred alphabet of size {}", alphabet.len(),);
         log::debug!("Alphabet: {}", alphabet);
 
+        log::info!("Done preprocessing. ({:?})", timer.elapsed());
         if self.options.dry {
             return Ok(SolverResult::Unknown);
         }
 
-        let res = match self.cegar_loop(&canonical, mngr)? {
+        let res = match self.cegar_loop(&canonical, alphabet, mngr)? {
             SolverResult::Sat(model) => {
                 let model = model.map(|m| pre_subs.compose(m, mngr));
                 SolverResult::Sat(model)
@@ -143,7 +137,12 @@ impl Engine {
         Ok(res)
     }
 
-    fn cegar_loop(&mut self, fm: &Node, mngr: &mut NodeManager) -> Result<SolverResult, Error> {
+    fn cegar_loop(
+        &mut self,
+        fm: &Node,
+        alph: Alphabet,
+        mngr: &mut NodeManager,
+    ) -> Result<SolverResult, Error> {
         // Initialize domain
         let init_dom = match self.init_domain(&fm, mngr) {
             Some(bs) => bs,
@@ -153,41 +152,39 @@ impl Engine {
             }
         };
 
-        // Initialize the alphabet
-        let alphabet = alphabet::infer(&fm);
-        log::info!("Inferred alphabet of size {}", alphabet.len(),);
-        log::debug!("Alphabet: {}", alphabet);
-
         // Build the abstraction
         let abstraction = build_abstraction(&fm)?;
 
         let mut solver = Solver::new(
             self.options.clone(),
             abstraction.skeleton().clone(),
-            alphabet,
+            alph,
             init_dom,
         );
         let mut defs = abstraction.definitions().cloned().collect_vec();
 
-        let mut round = 0;
         loop {
-            round += 1;
-            log::info!("CEGAR Round {}", round);
-
+            // Try to solve the current over-approximation
             match solver.solve(mngr)? {
                 SolverResult::Sat(subs) => {
+                    // SAT, check if the model is a solution for the original formula
                     let model = subs.unwrap();
                     let assign = model.clone().into();
                     log::info!("Found model for over-approximation");
                     if self.check_assignment(&fm, &assign) {
+                        // If the model satisfies the formula, we are done
                         return Ok(SolverResult::Sat(Some(model)));
                     } else {
-                        log::info!("!Model does not satisfy the formula");
+                        // Over-approximation is SAT, but model does not satisfy the formula
+                        // Pick the next definitions to encode
+                        log::info!("Model does not satisfy the formula");
                         let next = self.pick_defs(fm, &assign, &defs);
                         if next.is_empty() {
+                            // In the future, this should block the current assignment and continue
                             log::error!("No more definitions to add. Returning Unknown");
                             return Ok(SolverResult::Unknown);
                         } else {
+                            // Add the next definitions to the solver
                             for d in next {
                                 log::info!("Adding literal: {}", d);
                                 solver.add_definition(&d);
@@ -196,7 +193,7 @@ impl Engine {
                         }
                     }
                 }
-                SolverResult::Unsat => return Ok(SolverResult::Unsat),
+                SolverResult::Unsat => return Ok(SolverResult::Unsat), // Over-approximation is UNSAT, the formula is UNSAT
                 SolverResult::Unknown => return Ok(SolverResult::Unknown),
             }
         }
@@ -245,50 +242,16 @@ impl Engine {
         assign.satisfies(fm)
     }
 
+    /// Pick the next definition(s) to encode.
+    /// Currently, this is a no-op, and just returns the input definitions.
+    /// That is, all definitions are encoded after the first iteration.
     fn pick_defs<'a>(
         &self,
-        fm: &Node,
-        assign: &Assignment,
+        _fm: &Node,
+        _assign: &Assignment,
         defs: &'a [LitDefinition],
     ) -> Vec<LitDefinition> {
-        //return defs.to_vec().clone();
-
-        let mut ret = Vec::new();
-        if let Some(l) = defs.first() {
-            ret.push(l.clone());
-        }
-        return ret;
-
-        let defined: IndexSet<Literal> =
-            IndexSet::from_iter(defs.iter().map(|d| d.defined().clone()));
-
-        fn canidates<'a>(
-            fm: &Node,
-            assign: &Assignment,
-            defined: IndexSet<Literal>,
-        ) -> Vec<Vec<LitDefinition>> {
-            match fm.kind() {
-                NodeKind::And => {
-                    // Filter children that are satisfied by the assignment
-                    let unsat = fm.iter().filter(|c| !assign.satisfies(c));
-                    todo!()
-                }
-                NodeKind::Literal(literal) => match literal.atom().kind() {
-                    AtomKind::Boolvar(variable) => todo!(),
-                    AtomKind::WordEquation(word_equation) => todo!(),
-                    AtomKind::InRe(regular_constraint) => todo!(),
-                    AtomKind::FactorConstraint(regular_factor_constraint) => {
-                        todo!()
-                    }
-                    AtomKind::Linear(linear_constraint) => todo!(),
-                },
-                _ => todo!(),
-            }
-        }
-
-        todo!()
-
-        //defs.to_vec().clone()
+        defs.to_vec()
     }
 }
 

@@ -24,10 +24,6 @@ impl VarDomain {
     pub fn is_int(&self) -> bool {
         matches!(self, VarDomain::Int(_))
     }
-
-    pub fn is_string(&self) -> bool {
-        matches!(self, VarDomain::String(_))
-    }
 }
 
 impl Display for VarDomain {

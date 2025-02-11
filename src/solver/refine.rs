@@ -148,8 +148,8 @@ impl Hash for Cube {
 }
 
 pub(super) struct BoundRefiner {
-    cadical: cadical::Solver,
-    entailed_defs: IndexSet<PLit>,
+    _cadical: cadical::Solver,
+    _entailed_defs: IndexSet<PLit>,
 
     conflict_cubes: Vec<Cube>,
     cube_bounds: IndexMap<Cube, Bounds>,
@@ -162,8 +162,8 @@ impl BoundRefiner {
             cadical.add_clause(clause);
         }
         BoundRefiner {
-            cadical,
-            entailed_defs: IndexSet::new(),
+            _cadical: cadical,
+            _entailed_defs: IndexSet::new(),
             conflict_cubes: Vec::new(),
             cube_bounds: IndexMap::new(),
         }
@@ -233,8 +233,11 @@ impl BoundRefiner {
         }
     }
 
+    /// Legacy implementation of the small-model bounds computation.
+    /// This iterates all subsets of the literals and computes the bounds for each subset.
+    /// This is way coarser than the dnf based implementation.
     /// Computes the small-model bounds for any combinations given literals that can be satisfied by the formula.
-    fn small_model_bounds(
+    fn _small_model_bounds(
         &mut self,
         literals: &[LitDefinition],
         fm: &Node,
@@ -249,15 +252,15 @@ impl BoundRefiner {
         // We check if some more are entailed by invoking the SAT solver.
         let mut new_not_entailed = Vec::new();
         for l in not_entailed.into_iter() {
-            if self.entailed_defs.contains(&l.defining()) {
+            if self._entailed_defs.contains(&l.defining()) {
                 // This is also entailed
                 entailed.push(l);
                 log::debug!("Entailed: {}", l);
                 continue;
-            } else if let Some(false) = self.cadical.solve_with(vec![-l.defining()]) {
+            } else if let Some(false) = self._cadical.solve_with(vec![-l.defining()]) {
                 // This is also entailed
                 entailed.push(l);
-                self.entailed_defs.insert(l.defining());
+                self._entailed_defs.insert(l.defining());
                 log::debug!("Entailed: {}", l);
             } else {
                 new_not_entailed.push(l);

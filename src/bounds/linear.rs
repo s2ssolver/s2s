@@ -1,6 +1,5 @@
 //! Linear Bound Refinement
 
-use core::panic;
 use std::{collections::HashMap, rc::Rc};
 
 use indexmap::IndexSet;
