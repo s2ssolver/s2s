@@ -1,5 +1,6 @@
 //! Linear Bound Refinement
 
+use core::panic;
 use std::{collections::HashMap, rc::Rc};
 
 use indexmap::IndexSet;
@@ -76,6 +77,7 @@ impl LinearRefiner {
 
         let mut changed = true;
         let mut refined = bounds.clone();
+
         while changed {
             changed = false;
             for linear in &self.linears {
@@ -107,7 +109,7 @@ impl LinearRefiner {
     fn refinement_step(&self, bounds: &Bounds, linear: &LinearConstraint) -> Option<Bounds> {
         let mut new_bounds = bounds.clone();
         let mut changed = false;
-        log::trace!("Refining bounds {} w.r.t. {}", bounds, linear);
+        log::trace!("Refining step: {} w.r.t. {}", bounds, linear);
         for var in linear.variables() {
             let (op, term, divisor) = self.solve_for(linear, &var);
             log::trace!("\t {} {} ({}) / {}", var, op, term, divisor);

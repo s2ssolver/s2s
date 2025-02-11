@@ -58,7 +58,7 @@ impl FailedProbe {
 
 pub struct ProblemEncoder {
     /// The probe variable for each literal. These are used to check which literals failed, i.e., the encoding of which literals are part of the unsat core.
-    probes: IndexMap<Literal, FailedProbe>,
+    probes: IndexMap<LitDefinition, FailedProbe>,
 
     encoders: IndexMap<Literal, Box<dyn LiteralEncoder>>,
     domain_encoder: DomainEncoder,
@@ -109,15 +109,15 @@ impl ProblemEncoder {
         mngr: &mut NodeManager,
     ) -> Result<EncodingResult, EncodingError> {
         let lit = def.defined();
-        let def = def.defining();
+        let defining = def.defining();
         let mut encoding = self.get_encoder(lit, mngr).encode(bounds, dom)?;
 
         // Add -def var to every clause
         encoding.iter_clauses_mut().for_each(|cl| {
-            cl.push(def.neg());
+            cl.push(defining.neg());
         });
 
-        let probe = self.probes.entry(lit.clone()).or_default();
+        let probe = self.probes.entry(def.clone()).or_default();
         probe.set_assumptions(encoding.assumptions().clone());
         let pvar = probe.probe_var();
 
@@ -144,7 +144,7 @@ impl ProblemEncoder {
     }
 
     /// Returns the failed literals.
-    pub fn get_failed_literals(&self, solver: &Solver) -> Vec<Literal> {
+    pub fn get_failed_literals(&self, solver: &Solver) -> Vec<LitDefinition> {
         let mut failed = Vec::new();
         for (lit, probes) in self.probes.iter() {
             for probe in probes.iter() {

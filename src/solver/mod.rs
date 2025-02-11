@@ -1,14 +1,16 @@
 use core::panic;
 use std::time::Instant;
 
-use crate::bounds::BoundInferer;
 use crate::domain::Domain;
+use crate::node::canonical::Literal;
+use crate::{bounds::BoundInferer, node::canonical::AtomKind};
 use encoder::ProblemEncoder;
 
-use indexmap::IndexMap;
+use indexmap::{IndexMap, IndexSet};
 use itertools::Itertools;
 
 pub use options::SolverOptions;
+use refine::BoundRefiner;
 
 use crate::{
     abstraction::{build_abstraction, LitDefinition},
@@ -167,24 +169,29 @@ impl Engine {
         );
         let mut defs = abstraction.definitions().cloned().collect_vec();
 
+        let mut round = 0;
         loop {
+            round += 1;
+            log::info!("CEGAR Round {}", round);
+
             match solver.solve(mngr)? {
                 SolverResult::Sat(subs) => {
                     let model = subs.unwrap();
                     let assign = model.clone().into();
-                    log::info!("Found model: {}", model);
+                    log::info!("Found model for over-approximation");
                     if self.check_assignment(&fm, &assign) {
                         return Ok(SolverResult::Sat(Some(model)));
                     } else {
-                        log::error!("Model does not satisfy the formula");
-                        match self.pick_defs(fm, &assign, &defs) {
-                            Some(d) => {
+                        log::info!("!Model does not satisfy the formula");
+                        let next = self.pick_defs(fm, &assign, &defs);
+                        if next.is_empty() {
+                            log::error!("No more definitions to add. Returning Unknown");
+                            return Ok(SolverResult::Unknown);
+                        } else {
+                            for d in next {
+                                log::info!("Adding literal: {}", d);
                                 solver.add_definition(&d);
                                 defs.retain(|def| def.defining() != d.defining());
-                            }
-                            None => {
-                                log::error!("No more definitions to add. Returning Unknown");
-                                return Ok(SolverResult::Unknown);
                             }
                         }
                     }
@@ -192,30 +199,6 @@ impl Engine {
                 SolverResult::Unsat => return Ok(SolverResult::Unsat),
                 SolverResult::Unknown => return Ok(SolverResult::Unknown),
             }
-        }
-        log::debug!("Boolean Skeleton is SAT. Continuing to encode.");
-
-        // select the initial definitions
-
-        for d in defs {
-            solver.add_definition(&d);
-        }
-
-        log::info!("Starting CEGAR loop");
-
-        match solver.solve(mngr)? {
-            SolverResult::Sat(Some(model)) => {
-                log::info!("Found model: {}", model);
-                if self.check_assignment(&fm, &model.clone().into()) {
-                    return Ok(SolverResult::Sat(Some(model)));
-                } else {
-                    log::error!("Model does not satisfy the formula");
-                    return Ok(SolverResult::Unknown);
-                }
-            }
-            SolverResult::Sat(None) => unreachable!(),
-            SolverResult::Unsat => return Ok(SolverResult::Unsat),
-            SolverResult::Unknown => return Ok(SolverResult::Unknown),
         }
     }
 
@@ -267,8 +250,45 @@ impl Engine {
         fm: &Node,
         assign: &Assignment,
         defs: &'a [LitDefinition],
-    ) -> Option<LitDefinition> {
-        defs.first().cloned()
+    ) -> Vec<LitDefinition> {
+        //return defs.to_vec().clone();
+
+        let mut ret = Vec::new();
+        if let Some(l) = defs.first() {
+            ret.push(l.clone());
+        }
+        return ret;
+
+        let defined: IndexSet<Literal> =
+            IndexSet::from_iter(defs.iter().map(|d| d.defined().clone()));
+
+        fn canidates<'a>(
+            fm: &Node,
+            assign: &Assignment,
+            defined: IndexSet<Literal>,
+        ) -> Vec<Vec<LitDefinition>> {
+            match fm.kind() {
+                NodeKind::And => {
+                    // Filter children that are satisfied by the assignment
+                    let unsat = fm.iter().filter(|c| !assign.satisfies(c));
+                    todo!()
+                }
+                NodeKind::Literal(literal) => match literal.atom().kind() {
+                    AtomKind::Boolvar(variable) => todo!(),
+                    AtomKind::WordEquation(word_equation) => todo!(),
+                    AtomKind::InRe(regular_constraint) => todo!(),
+                    AtomKind::FactorConstraint(regular_factor_constraint) => {
+                        todo!()
+                    }
+                    AtomKind::Linear(linear_constraint) => todo!(),
+                },
+                _ => todo!(),
+            }
+        }
+
+        todo!()
+
+        //defs.to_vec().clone()
     }
 }
 
@@ -283,6 +303,8 @@ struct Solver {
 
     encoder: ProblemEncoder,
     next_bounds: Domain,
+
+    refiner: BoundRefiner,
 }
 
 impl Solver {
@@ -294,6 +316,7 @@ impl Solver {
     ) -> Self {
         let mut sat_solver = cadical::Solver::default();
         let cnf = to_cnf(&skeleton);
+        let refiner = BoundRefiner::new(cnf.clone());
         for clause in cnf.into_iter() {
             sat_solver.add_clause(clause);
         }
@@ -301,6 +324,7 @@ impl Solver {
             options,
             skeleton,
             cadical: sat_solver,
+            refiner,
             defs: IndexMap::new(),
             encoder: ProblemEncoder::new(alphabet),
             next_bounds: init_bounds,
@@ -314,7 +338,6 @@ impl Solver {
                 def.defining()
             );
         }
-        log::debug!("Adding definition: {}", def);
         self.defs.insert(def.defining().clone(), def.clone());
     }
 
@@ -353,7 +376,7 @@ impl Solver {
                     // If SAT, check if model is a solution for the original formula.
                     let assign = self.encoder.get_model(&self.cadical);
 
-                    log::info!("Found model: {}", assign);
+                    log::info!("Encoding is SAT");
                     // encoder.print_debug(&cadical);
                     let subs = NodeSubstitution::from_assignment(&assign, mngr);
                     return Ok(SolverResult::Sat(Some(subs)));
@@ -368,7 +391,10 @@ impl Solver {
                     let fm = self
                         .to_formula(mngr, &self.skeleton)
                         .unwrap_or(mngr.ttrue());
-                    match refine::refine_bounds(&failed, &bounds, &fm, self.options.step, mngr) {
+                    match self
+                        .refiner
+                        .refine_bounds(&failed, &bounds, &fm, self.options.step, mngr)
+                    {
                         refine::BoundRefinement::Refined(b) => {
                             let clamped = self.clamp_bounds_in_dom(b);
                             // if the clamped bound are equal to the bounds we used in this round, nothing changed

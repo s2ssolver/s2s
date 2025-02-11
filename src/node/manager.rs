@@ -267,7 +267,11 @@ impl NodeManager {
 
     /// Boolean disjunction
     pub fn or(&mut self, rs: Vec<Node>) -> Node {
-        self.intern_node(NodeKind::Or, rs)
+        match rs.len() {
+            0 => self.ffalse(),
+            1 => rs[0].clone(),
+            _ => self.intern_node(NodeKind::Or, rs),
+        }
     }
 
     /// Boolean negation

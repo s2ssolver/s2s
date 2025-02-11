@@ -1,10 +1,16 @@
 //! Functions for increasing bounds on variables.
 
-use indexmap::IndexSet;
+use core::panic;
+use std::hash::Hash;
+
+use indexmap::{IndexMap, IndexSet};
+use itertools::Itertools;
 
 use crate::{
+    abstraction::LitDefinition,
     interval::{BoundValue, Interval},
-    node::{canonical::Literal, get_entailed_literals, Node, NodeManager},
+    node::{canonical::Literal, get_entailed_literals, Node, NodeKind, NodeManager},
+    sat::{Cnf, PLit},
 };
 
 use crate::bounds::{BoundInferer, Bounds};
@@ -130,117 +136,294 @@ pub enum BoundRefinement {
     SmallModelReached,
 }
 
-/// Refines the bounds of the string and integer variables in the domain based on the given literals.
-pub fn refine_bounds(
-    literals: &[Literal],
-    bounds: &Domain,
-    fm: &Node,
-    step: BoundStep,
-    mngr: &mut NodeManager,
-) -> BoundRefinement {
-    // Find the small-model bounds of any combination of the literal
-    let smp_bounds = match small_model_bounds(literals, fm, mngr) {
-        Some(b) => b,
-        None => return BoundRefinement::SmallModelReached, // No satisfying assignment
-    };
-    let mut small_model_reached = true;
-    let mut bounds = bounds.clone();
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct Cube(IndexSet<Literal>);
 
-    // Update the bounds of the variables in literals based on the step function but clamp to the small-model bounds
-    let vars = literals
-        .iter()
-        .flat_map(|l| l.variables())
-        .collect::<IndexSet<_>>();
-    for v in vars {
-        // Check if the variable is bounded
-        if let Some(current_dom) = bounds.get(&v) {
-            match current_dom {
-                VarDomain::Int(current_bounds) | VarDomain::String(current_bounds) => {
-                    let increased = step.apply(current_bounds);
-                    let clamped = increased.intersect(smp_bounds.get(&v).unwrap());
-                    // Ensure we don't shrink the upper bounds or increase the lower bounds
-                    let new_lower = clamped.lower().min(current_bounds.lower());
-                    let new_upper = clamped.upper().max(current_bounds.upper());
-                    let new_bounds = Interval::new(new_lower, new_upper);
-                    if new_bounds != current_bounds {
-                        // changed
-                        small_model_reached = false;
-                    }
-                    // TODO: Check if the limit is reached
-                    match current_dom {
-                        VarDomain::Int(_) => bounds.set_string(v.clone(), new_bounds),
-                        VarDomain::String(_) => bounds.set_string(v.clone(), new_bounds),
-                        VarDomain::Bool => unreachable!(),
-                    };
-                }
-                VarDomain::Bool => {} // keep as is
-            }
+impl Hash for Cube {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        for l in self.0.iter() {
+            l.hash(state);
         }
-    }
-
-    if small_model_reached {
-        BoundRefinement::SmallModelReached
-    } else {
-        BoundRefinement::Refined(bounds)
     }
 }
 
-/// Computes the small-model bounds for any combinations given literals that can be satisfied by the formula.
-fn small_model_bounds(literals: &[Literal], fm: &Node, mngr: &mut NodeManager) -> Option<Bounds> {
-    // Split literals into entailed and not entailed
-    let entailed = get_entailed_literals(fm);
-    let (entailed, not_entailed): (Vec<_>, Vec<_>) =
-        literals.iter().partition(|l| entailed.contains(*l));
+pub(super) struct BoundRefiner {
+    cadical: cadical::Solver,
+    entailed_defs: IndexSet<PLit>,
 
-    let mut base_inferer = BoundInferer::default();
-    for l in entailed {
-        base_inferer.add_literal(l.clone(), mngr);
-    }
-    // The bounds of the conjunction of all entailed literals.
-    // If these are conflicting, then any combination of literals is conflicting.
-    let base_bounds = base_inferer.infer()?;
+    conflict_cubes: Vec<Cube>,
+    cube_bounds: IndexMap<Cube, Bounds>,
+}
 
-    // Build all possible combinations of the entailed literals.
-    // That it, compute the subset of the power set of the literals such that each subset contains all entailed literals.
-    // For each combination compute the small-model bounds.
-    let mut combinations = Vec::with_capacity(2usize.pow(not_entailed.len() as u32 + 1));
-    combinations.push((base_inferer, base_bounds));
-
-    // Dynamic programming to build the combinations.
-    // We filter out any combination that is conflicting.
-    for l in not_entailed {
-        let mut new_combinations = Vec::new();
-        for (inferer, _) in &combinations {
-            let mut new_inferer = inferer.clone();
-            new_inferer.add_literal(l.clone(), mngr);
-            if let Some(bounds) = new_inferer.infer() {
-                new_combinations.push((new_inferer, bounds));
-            }
+impl BoundRefiner {
+    pub fn new(skeleton: Cnf) -> Self {
+        let mut cadical = cadical::Solver::new();
+        for clause in skeleton.into_iter() {
+            cadical.add_clause(clause);
         }
-        combinations.extend(new_combinations);
+        BoundRefiner {
+            cadical,
+            entailed_defs: IndexSet::new(),
+            conflict_cubes: Vec::new(),
+            cube_bounds: IndexMap::new(),
+        }
     }
 
-    // There are no combinations with non-conflicting bounds.
-    if combinations.is_empty() {
-        None
-    } else {
-        // For each variable, take the minimum of the lower bounds and the maximum of the upper bounds.
-        let mut smp_bounds = Bounds::default();
-        for (_, bounds) in combinations {
-            for (v, b) in bounds.iter() {
-                match smp_bounds.get(v) {
-                    Some(existings) => {
-                        let lower = std::cmp::min(existings.lower(), b.lower());
-                        let upper = std::cmp::max(existings.upper(), b.upper());
-                        smp_bounds.set(v.clone(), Interval::new(lower, upper));
+    /// Refines the bounds of the string and integer variables in the domain based on the given literals.
+    pub fn refine_bounds(
+        &mut self,
+        literals: &[LitDefinition],
+        bounds: &Domain,
+        fm: &Node,
+        step: BoundStep,
+        mngr: &mut NodeManager,
+    ) -> BoundRefinement {
+        // Find the small-model bounds of any combination of the literal
+        let smp_bounds = match self.small_mode_bounds_dnf(literals, fm, mngr) {
+            Some(b) => b,
+            None => return BoundRefinement::SmallModelReached, // No satisfying assignment
+        };
+
+        let mut small_model_reached = true;
+        let mut bounds = bounds.clone();
+
+        // Update the bounds of the variables in literals based on the step function but clamp to the small-model bounds
+        let vars = literals
+            .iter()
+            .flat_map(|l| l.defined().variables())
+            .collect::<IndexSet<_>>();
+        for v in vars {
+            // Check if the variable is bounded
+            if let Some(current_dom) = bounds.get(&v) {
+                match current_dom {
+                    VarDomain::Int(current_bounds) | VarDomain::String(current_bounds) => {
+                        let increased = step.apply(current_bounds);
+                        let clamped =
+                            increased.intersect(smp_bounds.get(&v).unwrap_or_else(|| {
+                                if current_dom.is_int() {
+                                    Interval::unbounded()
+                                } else {
+                                    Interval::bounded_below(0)
+                                }
+                            }));
+                        // Ensure we don't shrink the upper bounds or increase the lower bounds
+                        let new_lower = clamped.lower().min(current_bounds.lower());
+                        let new_upper = clamped.upper().max(current_bounds.upper());
+                        let new_bounds = Interval::new(new_lower, new_upper);
+                        if new_bounds != current_bounds {
+                            // changed
+                            small_model_reached = false;
+                        }
+                        // TODO: Check if the limit is reached
+                        match current_dom {
+                            VarDomain::Int(_) => bounds.set_int(v.clone(), new_bounds),
+                            VarDomain::String(_) => bounds.set_string(v.clone(), new_bounds),
+                            VarDomain::Bool => unreachable!(),
+                        };
                     }
-                    None => {
-                        smp_bounds.set(v.clone(), *b);
-                    }
+                    VarDomain::Bool => {} // keep as is
                 }
             }
         }
-        Some(smp_bounds)
+
+        if small_model_reached {
+            BoundRefinement::SmallModelReached
+        } else {
+            BoundRefinement::Refined(bounds)
+        }
+    }
+
+    /// Computes the small-model bounds for any combinations given literals that can be satisfied by the formula.
+    fn small_model_bounds(
+        &mut self,
+        literals: &[LitDefinition],
+        fm: &Node,
+        mngr: &mut NodeManager,
+    ) -> Option<Bounds> {
+        // Split literals into entailed and not entailed
+        let entailed = get_entailed_literals(fm);
+        let (mut entailed, not_entailed): (Vec<_>, Vec<_>) = literals
+            .iter()
+            .partition(|l| entailed.contains(l.defined()));
+
+        // We check if some more are entailed by invoking the SAT solver.
+        let mut new_not_entailed = Vec::new();
+        for l in not_entailed.into_iter() {
+            if self.entailed_defs.contains(&l.defining()) {
+                // This is also entailed
+                entailed.push(l);
+                log::debug!("Entailed: {}", l);
+                continue;
+            } else if let Some(false) = self.cadical.solve_with(vec![-l.defining()]) {
+                // This is also entailed
+                entailed.push(l);
+                self.entailed_defs.insert(l.defining());
+                log::debug!("Entailed: {}", l);
+            } else {
+                new_not_entailed.push(l);
+            }
+        }
+        let not_entailed = new_not_entailed;
+
+        let mut base_inferer = BoundInferer::default();
+        for l in entailed {
+            base_inferer.add_literal(l.defined().clone(), mngr);
+        }
+        // The bounds of the conjunction of all entailed literals.
+        // If these are conflicting, then any combination of literals is conflicting.
+        let base_bounds = base_inferer.infer()?;
+
+        // Build all possible combinations of the entailed literals.
+        // That it, compute the subset of the power set of the literals such that each subset contains all entailed literals.
+        // For each combination compute the small-model bounds.
+        let mut combinations: Vec<(BoundInferer, Bounds)> =
+            Vec::with_capacity(2usize.pow(not_entailed.len() as u32 + 1));
+        combinations.push((base_inferer, base_bounds));
+
+        // Dynamic programming to build the combinations.
+        // We filter out any combination that is conflicting.
+        for l in not_entailed {
+            let mut new_combinations = Vec::new();
+            for (inferer, _) in &combinations {
+                let mut new_inferer = inferer.clone();
+                new_inferer.add_literal(l.defined().clone(), mngr);
+                if let Some(bounds) = new_inferer.infer() {
+                    new_combinations.push((new_inferer, bounds));
+                }
+            }
+            combinations.extend(new_combinations);
+        }
+        Self::max_smp_of(combinations.into_iter().map(|(_, b)| b).collect())
+    }
+
+    fn max_smp_of(alternatives: Vec<Bounds>) -> Option<Bounds> {
+        // There are no combinations with non-conflicting bounds.
+        if alternatives.is_empty() {
+            None
+        } else {
+            // For each variable, take the minimum of the lower bounds and the maximum of the upper bounds.
+            let mut smp_bounds = Bounds::default();
+            for bounds in alternatives {
+                for (v, b) in bounds.iter() {
+                    match smp_bounds.get(v) {
+                        Some(existings) => {
+                            let lower = std::cmp::min(existings.lower(), b.lower());
+                            let upper = std::cmp::max(existings.upper(), b.upper());
+                            smp_bounds.set(v.clone(), Interval::new(lower, upper));
+                        }
+                        None => {
+                            smp_bounds.set(v.clone(), *b);
+                        }
+                    }
+                }
+            }
+            Some(smp_bounds)
+        }
+    }
+
+    fn small_mode_bounds_dnf(
+        &mut self,
+        defs: &[LitDefinition],
+        fm: &Node,
+        mngr: &mut NodeManager,
+    ) -> Option<Bounds> {
+        // build the dnf of fm but only with the the given literals
+        let present_lits: IndexSet<Literal> =
+            IndexSet::from_iter(defs.iter().map(|d| d.defined().clone()));
+
+        let dnf = Self::build_dnf(&present_lits, fm);
+        log::info!("DNF has {} cubes", dnf.len());
+        log::debug!(
+            "DNF: \n{}",
+            dnf.iter()
+                .map(|c| format!(
+                    "{}",
+                    c.0.iter()
+                        .map(|l| l.to_string())
+                        .collect::<Vec<_>>()
+                        .join(",")
+                ))
+                .collect::<Vec<_>>()
+                .join("\n")
+        );
+
+        let mut alternatives = Vec::new();
+        for cube in dnf.into_iter().sorted_by(|a, b| a.0.len().cmp(&b.0.len())) {
+            // check if there is a subset of conflicting literals
+
+            if self.conflict_cubes.iter().any(|c| c.0.is_subset(&cube.0)) {
+                continue;
+            }
+            log::debug!("Bounds for cube [{}]:", cube.0.iter().join(","));
+            if let Some(b) = self.cube_bounds.get(&cube) {
+                alternatives.push(b.clone());
+                continue;
+            } else {
+                let mut inferer = BoundInferer::default();
+
+                for l in &cube.0 {
+                    inferer.add_literal(l.clone(), mngr);
+                }
+
+                if let Some(bounds) = inferer.infer() {
+                    log::debug!("\t{}", bounds);
+                    alternatives.push(bounds);
+                } else {
+                    log::debug!("\tConflicting");
+                    self.conflict_cubes.push(cube.clone());
+                }
+            }
+        }
+        Self::max_smp_of(alternatives)
+    }
+
+    fn build_dnf(literals: &IndexSet<Literal>, fm: &Node) -> Vec<Cube> {
+        match fm.kind() {
+            NodeKind::And => {
+                let mut dnf = vec![Cube(IndexSet::new())];
+                for child in fm.children() {
+                    let child_dnf = Self::build_dnf(literals, child);
+                    // build the cross product
+                    let mut new_dnf = Vec::new();
+                    for cube in dnf.into_iter() {
+                        for ccube in child_dnf.iter() {
+                            let mut new_cube = cube.clone();
+                            let mut conflict = false;
+                            for l in &ccube.0 {
+                                if new_cube.0.contains(&l.flip_polarity()) {
+                                    // conflicting literals
+                                    conflict = true;
+                                    break;
+                                }
+                                new_cube.0.insert(l.clone());
+                            }
+                            if !conflict {
+                                new_dnf.push(new_cube);
+                            }
+                        }
+                    }
+                    dnf = new_dnf;
+                }
+                dnf
+            }
+            NodeKind::Or => {
+                let mut dnf = Vec::new();
+                for child in fm.children() {
+                    let child_dnf = Self::build_dnf(literals, child);
+                    dnf.extend(child_dnf);
+                }
+                dnf
+            }
+            NodeKind::Literal(l) => {
+                let c = if literals.contains(l) {
+                    IndexSet::from_iter(vec![l.clone()])
+                } else {
+                    IndexSet::new()
+                };
+                vec![Cube(c)]
+            }
+            _ => panic!("Unexpected node kind: {:?}", fm.kind()),
+        }
     }
 }
 

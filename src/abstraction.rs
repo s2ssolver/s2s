@@ -16,7 +16,7 @@ use crate::{
 
 /// A definition is a pair (l, L) where l is a propositional literals and L is theory literal.
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct LitDefinition {
     defining: PLit,
     defined: Literal,

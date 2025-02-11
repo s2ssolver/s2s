@@ -179,6 +179,7 @@ impl StringDomainEncoder {
 
         // Encode the substitutions for each string variable
         for (str_var, bound) in dom.iter_string() {
+            debug_assert!(str_var.sort().is_string());
             let last_bound = self.pre_upper_bound(str_var).unwrap_or(0);
             let new_bound = bound.upper_finite().expect("Unbounded string variable") as usize;
 
@@ -226,11 +227,12 @@ impl StringDomainEncoder {
 
         for (str_var, bound) in dom.iter_string() {
             let mut len_choices = vec![];
+            debug_assert!(str_var.sort().is_string());
             let last_bound = self.pre_upper_bound(str_var).map(|b| b + 1).unwrap_or(0);
 
             let lower = bound.lower_finite().unwrap_or(0);
 
-            debug_assert!(lower >= 0);
+            debug_assert!(lower >= 0, "Negative lower bound {} for {}", lower, str_var);
             let lower = lower as usize;
             let upper = bound.upper_finite().expect("Unbounded string variable") as usize;
 
@@ -284,10 +286,11 @@ impl StringDomainEncoder {
     /// Returns None prior to the first round.
     /// Must be integer variable.
     fn pre_upper_bound(&self, var: &Variable) -> Option<usize> {
+        debug_assert!(var.sort().is_string());
         match self.last_dom.as_ref() {
             Some(last_dom) => last_dom
                 .get_string(var)
-                .expect("Unbounded string variable")
+                .expect(format!("Unbounded string variable: {:?}", var).as_str())
                 .upper_finite()
                 .map(|i| i as usize),
             None => None,
