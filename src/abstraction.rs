@@ -1,19 +1,22 @@
 use std::{
-    fmt,
-    fmt::{Display, Formatter},
+    fmt::{self, Display, Formatter},
+    rc::Rc,
 };
 
 use indexmap::IndexMap;
 
 use crate::{
-    canonical::{Atom, Formula, FormulaKind, Literal},
-    node::error::NodeError,
+    node::{
+        canonical::{Atom, Literal},
+        error::NodeError,
+        Node, NodeKind,
+    },
     sat::{nlit, plit, pvar, PFormula, PLit, PVar},
 };
 
 /// A definition is a pair (l, L) where l is a propositional literals and L is theory literal.
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct LitDefinition {
     defining: PLit,
     defined: Literal,
@@ -85,27 +88,27 @@ impl Polarity {
     }
 }
 
-pub fn build_abstraction(node: &Formula) -> Result<Abstraction, NodeError> {
+pub fn build_abstraction(node: &Node) -> Result<Abstraction, NodeError> {
     // Helper function to recursively abstract a node.
     // If an atomical node is encountered, checks if it is already defined, otherwise defines it.
     fn do_abstract(
-        fm: &Formula,
-        atom_defs: &mut IndexMap<Atom, (PVar, Polarity)>,
+        fm: &Node,
+        atom_defs: &mut IndexMap<Rc<Atom>, (PVar, Polarity)>,
     ) -> Result<PFormula, NodeError> {
         match fm.kind() {
-            FormulaKind::And(fs) | FormulaKind::Or(fs) => {
+            NodeKind::And | NodeKind::Or => {
                 let mut ps = Vec::new();
-                for c in fs {
+                for c in fm.children() {
                     ps.push(do_abstract(c, atom_defs)?);
                 }
                 let res = match fm.kind() {
-                    FormulaKind::Or(_) => PFormula::Or(ps),
-                    FormulaKind::And(_) => PFormula::And(ps),
+                    NodeKind::Or => PFormula::Or(ps),
+                    NodeKind::And => PFormula::And(ps),
                     _ => unreachable!(),
                 };
                 Ok(res)
             }
-            FormulaKind::Literal(lit) => {
+            NodeKind::Literal(lit) => {
                 let atom = lit.atom();
                 let pol = if lit.polarity() {
                     Polarity::Positive
@@ -128,7 +131,8 @@ pub fn build_abstraction(node: &Formula) -> Result<Abstraction, NodeError> {
                     PFormula::nlit(v)
                 })
             }
-            FormulaKind::Unsupported(n) => panic!("Unsupported node {}", n),
+            // TODO: Instead of a Lit, the LitDefintion should take a Node. If that Node is a Lit, then it is supported. Otherwise it is unsupported.
+            _ => panic!("Unsupported node {}", fm.kind()), // TODO: do nothing here instead
         }
     }
     let mut atom_defs = IndexMap::new();

@@ -14,11 +14,9 @@ use regulaer::{
 };
 
 use crate::{
-    bounds::Bounds,
-    canonical::RegularConstraint,
+    domain::Domain,
     encode::{domain::DomainEncoding, EncodingError, EncodingResult, LiteralEncoder, LAMBDA},
-    node::NodeManager,
-    node::Variable,
+    node::{canonical::RegularConstraint, NodeManager, Variable},
     sat::{nlit, plit, pvar, PVar},
     smt::smt_max_char,
 };
@@ -110,7 +108,15 @@ impl NFAEncoder {
 
                             // Follow transition if we read a character in the given range
                             for c in s..=e {
-                                let sub_var = dom.string().get_sub(&self.var, l, c).unwrap();
+                                let sub_var = dom.string().get_sub(&self.var, l, c).expect(
+                                    format!(
+                                        "Substitution h({})[{}] = '{}' not found",
+                                        self.var,
+                                        l,
+                                        c.escape_debug()
+                                    )
+                                    .as_str(),
+                                );
                                 // reach_var /\ sub_var => reach_next
                                 let clause = vec![nlit(reach_var), nlit(sub_var), plit(reach_next)];
                                 res.add_clause(clause);
@@ -250,10 +256,13 @@ impl LiteralEncoder for NFAEncoder {
 
     fn encode(
         &mut self,
-        bounds: &Bounds,
+        bounds: &Domain,
         dom: &DomainEncoding,
     ) -> Result<EncodingResult, EncodingError> {
-        let bound = bounds.get_upper_finite(&self.var).unwrap_or(0) as usize;
+        let bound = bounds
+            .get_string(&self.var)
+            .and_then(|i| i.upper_finite())
+            .unwrap_or(0) as usize;
 
         log::trace!("Bound: {}", bound);
         if Some(bound) == self.last_bound {
@@ -434,7 +443,9 @@ mod test {
 
     use super::*;
 
-    use crate::{alphabet::Alphabet, bounds::Interval, encode::domain::DomainEncoder, node::Sort};
+    use crate::{
+        alphabet::Alphabet, encode::domain::DomainEncoder, interval::Interval, node::Sort,
+    };
 
     fn solve_with_bounds(re: Regex, pol: bool, ubounds: &[usize]) -> Option<bool> {
         let mut mngr = NodeManager::default();
@@ -444,15 +455,15 @@ mod test {
 
         let nfa = mngr.get_nfa(&re);
 
-        let mut bounds = Bounds::default();
+        let mut bounds = Domain::default();
 
         let mut encoder = NFAEncoder::new(&var, nfa, pol);
-        let mut dom_encoder = DomainEncoder::new(alph, IndexSet::from_iter(vec![var.clone()]));
+        let mut dom_encoder = DomainEncoder::new(alph);
         let mut solver: Solver = cadical::Solver::default();
 
         let mut result = None;
         for bound in ubounds {
-            bounds.set(var.as_ref().clone(), Interval::new(0, *bound as isize));
+            bounds.set_string(var.clone(), Interval::new(0, *bound as isize));
             let mut res = EncodingResult::empty();
 
             res.extend(dom_encoder.encode(&bounds));

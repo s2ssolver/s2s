@@ -1,4 +1,4 @@
-use std::{ops::Neg, rc::Rc, time::Instant};
+use std::{ops::Neg, time::Instant};
 
 use cadical::Solver;
 use indexmap::{IndexMap, IndexSet};
@@ -6,15 +6,18 @@ use indexmap::{IndexMap, IndexSet};
 use crate::{
     abstraction::LitDefinition,
     alphabet::Alphabet,
-    bounds::Bounds,
-    canonical::{Assignment, Literal},
     encode::{
         domain::{DomainEncoder, DomainEncoding},
         get_encoder, EncodingError, EncodingResult, LiteralEncoder,
     },
-    node::{NodeManager, NodeSubstitution, Variable},
+    node::{
+        canonical::{Assignment, Literal},
+        NodeManager, NodeSubstitution,
+    },
     sat::{nlit, plit, pvar, PLit, PVar},
 };
+
+use crate::domain::Domain;
 
 /// A probe is a set of assumptions that determine whether the encoding of the literal is part of the unsat core.
 /// It consists of a probe variable and the assumptions that were used to encode the literal.
@@ -55,39 +58,42 @@ impl FailedProbe {
 
 pub struct ProblemEncoder {
     /// The probe variable for each literal. These are used to check which literals failed, i.e., the encoding of which literals are part of the unsat core.
-    probes: IndexMap<Literal, FailedProbe>,
+    probes: IndexMap<LitDefinition, FailedProbe>,
 
     encoders: IndexMap<Literal, Box<dyn LiteralEncoder>>,
     domain_encoder: DomainEncoder,
 }
 
 impl ProblemEncoder {
-    pub fn new(alphabet: Alphabet, variables: IndexSet<Rc<Variable>>) -> Self {
+    pub fn new(alphabet: Alphabet) -> Self {
         Self {
             probes: IndexMap::new(),
             encoders: IndexMap::new(),
-            domain_encoder: DomainEncoder::new(alphabet, variables),
+            domain_encoder: DomainEncoder::new(alphabet),
         }
     }
 
     pub fn encode(
         &mut self,
-        defs: &[LitDefinition],
-        bounds: &Bounds,
+        defs: impl Iterator<Item = LitDefinition> + Clone,
+        bounds: &Domain,
         mngr: &mut NodeManager,
     ) -> Result<EncodingResult, EncodingError> {
         // INPUT: BOUNDS
-        // Encode the domain
+
         let t = Instant::now();
+
+        // Encode the domain
         let mut res = self.domain_encoder.encode(bounds);
+
         log::debug!("Encoded domain ({:?})", t.elapsed());
 
         // TODO: Instead let domain_encoder return the encoding of the domain or an Rc<DomainEncoding>
         let dom = self.domain_encoder.encoding().clone();
         // Encode all definitions
-        for def in defs.iter() {
+        for def in defs {
             let t = Instant::now();
-            let cnf = self.encode_def(def, bounds, &dom, mngr)?;
+            let cnf = self.encode_def(&def, bounds, &dom, mngr)?;
             res.extend(cnf);
             log::debug!("Encoded {} ({:?})", def, t.elapsed());
         }
@@ -98,20 +104,20 @@ impl ProblemEncoder {
     fn encode_def(
         &mut self,
         def: &LitDefinition,
-        bounds: &Bounds,
+        bounds: &Domain,
         dom: &DomainEncoding,
         mngr: &mut NodeManager,
     ) -> Result<EncodingResult, EncodingError> {
         let lit = def.defined();
-        let def = def.defining();
+        let defining = def.defining();
         let mut encoding = self.get_encoder(lit, mngr).encode(bounds, dom)?;
 
         // Add -def var to every clause
         encoding.iter_clauses_mut().for_each(|cl| {
-            cl.push(def.neg());
+            cl.push(defining.neg());
         });
 
-        let probe = self.probes.entry(lit.clone()).or_default();
+        let probe = self.probes.entry(def.clone()).or_default();
         probe.set_assumptions(encoding.assumptions().clone());
         let pvar = probe.probe_var();
 
@@ -138,7 +144,7 @@ impl ProblemEncoder {
     }
 
     /// Returns the failed literals.
-    pub fn get_failed_literals(&self, solver: &Solver) -> Vec<Literal> {
+    pub fn get_failed_literals(&self, solver: &Solver) -> Vec<LitDefinition> {
         let mut failed = Vec::new();
         for (lit, probes) in self.probes.iter() {
             for probe in probes.iter() {

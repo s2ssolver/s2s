@@ -4,11 +4,11 @@ use indexmap::{IndexMap, IndexSet};
 use regulaer::{automaton::NFA, re::Regex};
 
 use crate::{
-    bounds::{Bounds, Interval},
+    interval::Interval,
     node::{NodeManager, Variable},
 };
 
-use super::InferringStrategy;
+use super::{Bounds, InferringStrategy};
 
 type InRe = (Rc<Variable>, Regex, bool);
 type VarEq = (Rc<Variable>, Rc<Variable>);
@@ -188,7 +188,7 @@ impl InferringStrategy for RegularBoundsInferer {
             let upper = nfa.num_states().saturating_sub(1);
             let lower = nfa.shortest().unwrap_or(0);
             // TODO: use shortest path to find lower bound.
-            bounds.set(v.as_ref().clone(), Interval::new(lower, upper));
+            bounds.set(v.clone(), Interval::new(lower, upper));
         }
 
         // Adjust based on the non-equality constraints.
@@ -214,10 +214,10 @@ impl InferringStrategy for RegularBoundsInferer {
             for var in &component {
                 match prod {
                     Some(prod) => {
-                        bounds.set(var.as_ref().clone(), Interval::new(0, prod));
+                        bounds.set(var.clone(), Interval::new(0, prod));
                     }
                     None => {
-                        bounds.set(var.as_ref().clone(), Interval::bounded_below(0));
+                        bounds.set(var.clone(), Interval::bounded_below(0));
                     }
                 }
             }
@@ -225,7 +225,7 @@ impl InferringStrategy for RegularBoundsInferer {
         // Undo the substitutions.
         for (x, y) in self.eqs.iter() {
             if let Some(bound) = bounds.get(x) {
-                bounds.set(y.as_ref().clone(), bound);
+                bounds.set(y.clone(), bound);
             }
         }
 

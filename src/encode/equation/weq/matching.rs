@@ -3,10 +3,12 @@ use std::{fmt::Display, rc::Rc};
 use indexmap::IndexMap;
 
 use crate::{
-    bounds::Bounds,
-    canonical::{Pattern, Symbol},
+    domain::Domain,
     encode::{domain::DomainEncoding, EncodingResult, LAMBDA},
-    node::Variable,
+    node::{
+        canonical::{Pattern, Symbol},
+        Variable,
+    },
     sat::{nlit, plit, pvar, PVar},
 };
 
@@ -130,7 +132,7 @@ pub(super) struct PatternMatchingEncoder {
     /// The length of the word to be matched.
     len: Option<usize>,
     /// The bounds of the variables in the pattern used to encode the matching.
-    bounds: Bounds,
+    bounds: Domain,
 
     /// A Boolean variable that is added as an assumption to the SAT solver.
     /// The negation of this variable is added as an assumption.
@@ -149,7 +151,7 @@ impl PatternMatchingEncoder {
             pattern,
             start_pos: IndexMap::new(),
             len: None,
-            bounds: Bounds::empty(),
+            bounds: Domain::empty(),
             selector: None,
             match_cache: IndexMap::new(),
         }
@@ -159,7 +161,7 @@ impl PatternMatchingEncoder {
     pub fn encode(
         &mut self,
         word: &WordEncoding,
-        bounds: &Bounds,
+        bounds: &Domain,
         dom: &DomainEncoding,
     ) -> EncodingResult {
         assert!(
@@ -237,8 +239,8 @@ impl PatternMatchingEncoder {
     fn encode_match(
         &mut self,
         word: &WordEncoding,
-        bounds: &Bounds,
-        dom: &DomainEncoding,
+        dom: &Domain,
+        dom_enc: &DomainEncoding,
         res: &mut EncodingResult,
     ) {
         let segs = self.pattern.length(); // the number of segments in the pattern
@@ -246,12 +248,16 @@ impl PatternMatchingEncoder {
         for seg in 0..segs {
             match self.pattern.get(seg).clone() {
                 PatternSegment::Variable(v) => {
-                    let vbound = bounds
-                        .get_upper_finite(&v)
-                        .expect("No upper bound for variable")
-                        as usize;
-                    let last_vbound = self.bounds.get_upper_finite(&v).unwrap_or(0) as usize;
-                    self.encode_match_variable(seg, &v, vbound, last_vbound, word, dom, res)
+                    let vbound =
+                        dom.get_string(&v)
+                            .and_then(|i| i.upper_finite())
+                            .expect("No upper bound for variable") as usize;
+                    let last_vbound = self
+                        .bounds
+                        .get_string(&v)
+                        .and_then(|i| i.upper_finite())
+                        .unwrap_or(0) as usize;
+                    self.encode_match_variable(seg, &v, vbound, last_vbound, word, dom_enc, res)
                 }
                 PatternSegment::Word(w) => self.encode_match_const(seg, &w, word, res),
             }

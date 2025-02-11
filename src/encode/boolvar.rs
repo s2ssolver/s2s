@@ -1,7 +1,7 @@
 use std::rc::Rc;
 
 use crate::{
-    bounds::Bounds,
+    domain::Domain,
     node::{Sorted, Variable},
     sat::{nlit, plit},
 };
@@ -37,7 +37,7 @@ impl LiteralEncoder for BoolVarEncoder {
 
     fn encode(
         &mut self,
-        _bounds: &Bounds,
+        _bounds: &Domain,
         dom: &DomainEncoding,
     ) -> Result<EncodingResult, EncodingError> {
         if self.encoded {

@@ -5,9 +5,9 @@ use std::{
 
 use indexmap::IndexSet;
 
-use crate::{
-    canonical::{util::partition_by_vars, AtomKind, Formula, Literal},
-    node::Sorted,
+use crate::node::{
+    canonical::{util::partition_by_vars, AtomKind, Literal},
+    get_literals, Node, Sorted,
 };
 
 use regulaer::{alph::Alphabet as InnerAlphabet, re::RegexProps};
@@ -60,7 +60,7 @@ impl Display for Alphabet {
 /// Returns an [Alphabet] that is large enough such that if the formula is satisfiable
 /// in any super-alphabet of the inferred alphabet, then it is satisfiable in the inferred alphabet.
 /// The formula must be in normal form.
-pub fn infer(fm: &Formula) -> Alphabet {
+pub fn infer(fm: &Node) -> Alphabet {
     let mut inferred_alphabet = alphabet_of(fm);
     let complement_alphabet = inferred_alphabet.complement();
     let num_additional_chars = additional_chars(fm);
@@ -89,9 +89,9 @@ pub fn infer(fm: &Formula) -> Alphabet {
 const SMT_MAX_CHAR: u32 = 0x2FFFF;
 /// Returns the alphabet of constants in the formula.
 /// The alphabet is not canonicalized.
-fn alphabet_of(fm: &Formula) -> InnerAlphabet {
+fn alphabet_of(fm: &Node) -> InnerAlphabet {
     let mut alph = InnerAlphabet::default();
-    for l in fm.literals() {
+    for l in get_literals(fm) {
         for c in constants_of(&l) {
             if c as u32 <= SMT_MAX_CHAR {
                 alph.insert_char(c);
@@ -105,20 +105,20 @@ fn alphabet_of(fm: &Formula) -> InnerAlphabet {
 fn constants_of(lit: &Literal) -> IndexSet<char> {
     let atom = lit.atom();
     match atom.kind() {
-        crate::canonical::AtomKind::Boolvar(_) => IndexSet::new(),
-        crate::canonical::AtomKind::WordEquation(weq) => weq.constants(),
-        crate::canonical::AtomKind::InRe(inre) => inre.re().alphabet().iter_chars().collect(),
-        crate::canonical::AtomKind::FactorConstraint(rfc) => rfc.rhs().chars().collect(),
-        crate::canonical::AtomKind::Linear(_) => IndexSet::new(),
+        AtomKind::Boolvar(_) => IndexSet::new(),
+        AtomKind::WordEquation(weq) => weq.constants(),
+        AtomKind::InRe(inre) => inre.re().alphabet().iter_chars().collect(),
+        AtomKind::FactorConstraint(rfc) => rfc.rhs().chars().collect(),
+        AtomKind::Linear(_) => IndexSet::new(),
     }
 }
 
 /// Returns the number of additional characters we need to the alphabet in order to stay equisatisfiable.
-fn additional_chars(fm: &Formula) -> usize {
+fn additional_chars(fm: &Node) -> usize {
     // Partition the literals based on variable dependencies
 
     // Cloning is cheap, because all atoms are reference counted pointers
-    let lits = Vec::from_iter(fm.literals());
+    let lits = Vec::from_iter(get_literals(fm));
     let parts = partition_by_vars(&lits);
 
     // For each partition, compute the number of characters needed to encode the partition and take the maximum
@@ -186,14 +186,11 @@ fn addition_chars_lits(lits: &[Literal]) -> usize {
 mod tests {
 
     use super::*;
-    use crate::{
-        canonical::canonicalize,
-        node::{Node, NodeManager, Sort},
-    };
+    use crate::node::{canonical::canonicalize, Node, NodeKind, NodeManager, Sort};
 
     fn to_lit(node: &Node, mngr: &mut NodeManager) -> Literal {
         match canonicalize(node, mngr).unwrap().kind() {
-            crate::canonical::FormulaKind::Literal(literal) => literal.clone(),
+            NodeKind::Literal(literal) => literal.clone(),
             _ => unreachable!(),
         }
     }

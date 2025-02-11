@@ -17,7 +17,7 @@ impl SimpRule for ConstantPrefixSuffix {
         if entailed && node.is_atomic() && *node.kind() == NodeKind::InRe {
             debug_assert!(node.children().len() == 2);
             let lhs = &node.children()[0];
-            if let NodeKind::Variable(_) = &lhs.kind() {
+            if let NodeKind::Variable(v) = &lhs.kind() {
                 if let NodeKind::Regex(regex) = &node.children()[1].kind() {
                     if let Some(pre) = regex.prefix().filter(|p| !p.is_empty()) {
                         // X -> preX
@@ -27,7 +27,7 @@ impl SimpRule for ConstantPrefixSuffix {
                         let pattern = mngr.concat(vec![prefix_w, lhs.clone()]);
 
                         let mut subst = NodeSubstitution::default();
-                        subst.add(lhs.clone(), pattern, mngr);
+                        subst.add(v.clone(), pattern);
                         return Some(subst.into());
                     } else if let Some(suf) = regex.suffix().filter(|s| !s.is_empty()) {
                         // X -> Xsuf
@@ -37,7 +37,7 @@ impl SimpRule for ConstantPrefixSuffix {
                         let pattern = mngr.concat(vec![lhs.clone(), suffix_w]);
 
                         let mut subst = NodeSubstitution::default();
-                        subst.add(lhs.clone(), pattern, mngr);
+                        subst.add(v.clone(), pattern);
                         return Some(subst.into());
                     }
                 } else {

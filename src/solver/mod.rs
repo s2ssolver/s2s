@@ -1,31 +1,36 @@
 use core::panic;
 use std::time::Instant;
 
+use crate::domain::Domain;
+use crate::node::canonical::Literal;
+use crate::{bounds::BoundInferer, node::canonical::AtomKind};
 use encoder::ProblemEncoder;
 
+use indexmap::{IndexMap, IndexSet};
 use itertools::Itertools;
 
 pub use options::SolverOptions;
+use refine::BoundRefiner;
 
 use crate::{
-    abstraction::{build_abstraction, Abstraction},
+    abstraction::{build_abstraction, LitDefinition},
     alphabet::{self, Alphabet},
-    bounds::{infer::BoundInferer, Bounds, Interval},
-    canonical::{canonicalize, Assignment, Formula},
-    node::{smt::to_script, Node, NodeKind, NodeManager, NodeSubstitution, Sorted},
-    sat::to_cnf,
+    interval::Interval,
+    node::{
+        canonical::{canonicalize, Assignment},
+        get_entailed_literals,
+        smt::to_script,
+        Node, NodeKind, NodeManager, NodeSubstitution, Sort, Sorted,
+    },
+    sat::{to_cnf, PFormula, PLit},
 };
 
 use crate::error::PublicError as Error;
 
-//mod analysis;
 mod encoder;
-
 mod options;
 mod preprocessing;
 mod refine;
-//mod engine;
-//mod manager;
 
 /// The result of a satisfiability check
 pub enum SolverResult {
@@ -67,55 +72,80 @@ impl std::fmt::Display for SolverResult {
     }
 }
 
-/// The solver.
-
-#[derive(Default)]
-pub struct Solver {
+pub struct Engine {
     options: SolverOptions,
 }
 
-impl Solver {
+impl Engine {
     pub fn with_options(options: SolverOptions) -> Self {
         Self { options }
     }
 
     pub fn solve(&mut self, root: &Node, mngr: &mut NodeManager) -> Result<SolverResult, Error> {
-        log::info!("Starting solver");
+        log::info!("Starting engine");
         let mut timer = Instant::now();
-
         log::debug!("Solving: {}", root);
 
         // Preprocess
         let mut preprocessor = preprocessing::Preprocessor::default();
-
         let preprocessed = if self.options.simplify {
             preprocessor.apply(root, self.options.preprocess_extra_passes, mngr)?
         } else {
             root.clone()
         };
+
+        let pre_subs = preprocessor.applied_substitutions().clone();
+
         log::info!("Preprocessed ({:?})", timer.elapsed());
         if self.options.print_preprocessed {
-            //let smt = ir::smt::to_smtlib(&preprocessed);
             println!("{}", to_script(&preprocessed));
         }
 
         // Early return if the formula is trivially sat/unsat
         if let NodeKind::Bool(v) = *preprocessed.kind() {
             return Ok(if v {
-                SolverResult::Sat(Some(preprocessor.applied_subsitutions().clone()))
+                SolverResult::Sat(Some(pre_subs))
             } else {
                 SolverResult::Unsat
             });
         }
 
         // Canonicalize
-        let formula = canonicalize(&preprocessed, mngr)?;
+        let canonical = canonicalize(&preprocessed, mngr)?;
         log::info!("Canonicalized ({:?})", timer.elapsed());
-        log::debug!("Canonicalized\n{}", formula);
+        log::debug!("Canonicalized\n{}", canonical);
 
-        // Initialize the bounds
+        timer = Instant::now();
 
-        let init_bounds = match self.init_bounds(&formula, mngr) {
+        // timer = Instant::now();
+
+        // Initialize the alphabet
+        let alphabet = alphabet::infer(&canonical);
+        log::info!(
+            "Inferred alphabet of size {} ({:?})",
+            alphabet.len(),
+            timer.elapsed()
+        );
+        log::debug!("Alphabet: {}", alphabet);
+
+        if self.options.dry {
+            return Ok(SolverResult::Unknown);
+        }
+
+        let res = match self.cegar_loop(&canonical, mngr)? {
+            SolverResult::Sat(model) => {
+                let model = model.map(|m| pre_subs.compose(m, mngr));
+                SolverResult::Sat(model)
+            }
+            SolverResult::Unsat => SolverResult::Unsat,
+            SolverResult::Unknown => SolverResult::Unknown,
+        };
+        Ok(res)
+    }
+
+    fn cegar_loop(&mut self, fm: &Node, mngr: &mut NodeManager) -> Result<SolverResult, Error> {
+        // Initialize domain
+        let init_dom = match self.init_domain(&fm, mngr) {
             Some(bs) => bs,
             None => {
                 log::info!("No valid initial bounds. Unsat.");
@@ -123,129 +153,230 @@ impl Solver {
             }
         };
 
-        timer = Instant::now();
-        let abstraction = build_abstraction(&formula)?;
-        log::info!("Built abstraction ({:?})", timer.elapsed());
-
-        log::info!("Initialized bounds ({:?})", timer.elapsed());
-        log::debug!("Initial bounds: {}", init_bounds);
-
-        // timer = Instant::now();
-
         // Initialize the alphabet
-        let alphabet = alphabet::infer(&formula);
-        log::info!("Inferred alphabet ({:?})", timer.elapsed());
+        let alphabet = alphabet::infer(&fm);
+        log::info!("Inferred alphabet of size {}", alphabet.len(),);
         log::debug!("Alphabet: {}", alphabet);
-        timer = Instant::now();
 
-        if self.options.dry {
-            return Ok(SolverResult::Unknown);
+        // Build the abstraction
+        let abstraction = build_abstraction(&fm)?;
+
+        let mut solver = Solver::new(
+            self.options.clone(),
+            abstraction.skeleton().clone(),
+            alphabet,
+            init_dom,
+        );
+        let mut defs = abstraction.definitions().cloned().collect_vec();
+
+        let mut round = 0;
+        loop {
+            round += 1;
+            log::info!("CEGAR Round {}", round);
+
+            match solver.solve(mngr)? {
+                SolverResult::Sat(subs) => {
+                    let model = subs.unwrap();
+                    let assign = model.clone().into();
+                    log::info!("Found model for over-approximation");
+                    if self.check_assignment(&fm, &assign) {
+                        return Ok(SolverResult::Sat(Some(model)));
+                    } else {
+                        log::info!("!Model does not satisfy the formula");
+                        let next = self.pick_defs(fm, &assign, &defs);
+                        if next.is_empty() {
+                            log::error!("No more definitions to add. Returning Unknown");
+                            return Ok(SolverResult::Unknown);
+                        } else {
+                            for d in next {
+                                log::info!("Adding literal: {}", d);
+                                solver.add_definition(&d);
+                                defs.retain(|def| def.defining() != d.defining());
+                            }
+                        }
+                    }
+                }
+                SolverResult::Unsat => return Ok(SolverResult::Unsat),
+                SolverResult::Unknown => return Ok(SolverResult::Unknown),
+            }
         }
-        // Start CEGAR loop
-        let res = self.run(&formula, abstraction, init_bounds, alphabet, mngr);
-
-        log::info!("Done solving ({:?})", timer.elapsed());
-        res
     }
 
-    fn init_bounds(&self, fm: &Formula, mngr: &mut NodeManager) -> Option<Bounds> {
+    fn init_domain(&self, fm: &Node, mngr: &mut NodeManager) -> Option<Domain> {
         let mut inferer = BoundInferer::default();
-        for lit in fm.entailed_lits() {
+        for lit in get_entailed_literals(fm) {
             inferer.add_literal(lit.clone(), mngr)
         }
 
-        let mut bounds = inferer.infer()?;
-        log::debug!("Inferred bounds for entailed literals: {}", bounds);
-        for var in fm
-            .vars()
-            .iter()
-            .filter(|v| v.sort().is_int() || v.sort().is_string())
-        {
-            let v_bounds = bounds.get(var.as_ref());
-            let lower = if let Some(lower) = v_bounds.and_then(|b| b.lower_finite()) {
-                lower
-            } else {
-                0
+        let init_bounds = inferer.infer()?;
+        // Clamp all bounds and add Booleans to the domain
+        let mut domain = Domain::default();
+        for v in fm.variables() {
+            match v.sort() {
+                Sort::Int | Sort::String => {
+                    let lower = init_bounds
+                        .get(&v)
+                        .and_then(|b| b.lower_finite())
+                        .unwrap_or(0);
+                    let upper = init_bounds
+                        .get(&v)
+                        .and_then(|b| b.upper_finite())
+                        .unwrap_or(self.options.init_upper_bound)
+                        .max(lower) // at least lower
+                        .max(1); // at least 1
+                    let interval = Interval::new(lower, upper);
+                    // Clamp the bound to max
+                    let interval = interval.intersect(self.options.max_bounds);
+                    match v.sort() {
+                        Sort::Int => domain.set_int(v.clone(), interval),
+                        Sort::String => domain.set_string(v.clone(), interval),
+                        _ => unreachable!(),
+                    };
+                }
+                Sort::Bool => domain.set_bool(v.clone()),
+                Sort::RegLan => unreachable!(),
             };
-            let upper = if let Some(upper) = v_bounds.and_then(|b| b.upper_finite()) {
-                upper.min(self.options.init_upper_bound)
-            } else {
-                self.options.init_upper_bound
-            }
-            .max(lower)
-            .max(1); // need to be at least 1
-            bounds.set(var.as_ref().clone(), Interval::new(lower, upper));
         }
-        let clamped = self.clamp_bounds(bounds);
-        // Clamp the bounds to the maximum bounds, if set
-        Some(clamped)
+        Some(domain)
     }
 
-    fn run(
-        &mut self,
-        fm: &Formula,
-        abs: Abstraction,
-        init_bounds: Bounds,
+    /// Check if the assignment is a solution for the formula.
+    fn check_assignment(&self, fm: &Node, assign: &Assignment) -> bool {
+        assign.satisfies(fm)
+    }
+
+    fn pick_defs<'a>(
+        &self,
+        fm: &Node,
+        assign: &Assignment,
+        defs: &'a [LitDefinition],
+    ) -> Vec<LitDefinition> {
+        //return defs.to_vec().clone();
+
+        let mut ret = Vec::new();
+        if let Some(l) = defs.first() {
+            ret.push(l.clone());
+        }
+        return ret;
+
+        let defined: IndexSet<Literal> =
+            IndexSet::from_iter(defs.iter().map(|d| d.defined().clone()));
+
+        fn canidates<'a>(
+            fm: &Node,
+            assign: &Assignment,
+            defined: IndexSet<Literal>,
+        ) -> Vec<Vec<LitDefinition>> {
+            match fm.kind() {
+                NodeKind::And => {
+                    // Filter children that are satisfied by the assignment
+                    let unsat = fm.iter().filter(|c| !assign.satisfies(c));
+                    todo!()
+                }
+                NodeKind::Literal(literal) => match literal.atom().kind() {
+                    AtomKind::Boolvar(variable) => todo!(),
+                    AtomKind::WordEquation(word_equation) => todo!(),
+                    AtomKind::InRe(regular_constraint) => todo!(),
+                    AtomKind::FactorConstraint(regular_factor_constraint) => {
+                        todo!()
+                    }
+                    AtomKind::Linear(linear_constraint) => todo!(),
+                },
+                _ => todo!(),
+            }
+        }
+
+        todo!()
+
+        //defs.to_vec().clone()
+    }
+}
+
+struct Solver {
+    options: SolverOptions,
+
+    cadical: cadical::Solver,
+
+    skeleton: PFormula,
+    /// The definitions of the abstraction variables
+    defs: IndexMap<PLit, LitDefinition>,
+
+    encoder: ProblemEncoder,
+    next_bounds: Domain,
+
+    refiner: BoundRefiner,
+}
+
+impl Solver {
+    pub fn new(
+        options: SolverOptions,
+        skeleton: PFormula,
         alphabet: Alphabet,
-        mngr: &mut NodeManager,
-    ) -> Result<SolverResult, Error> {
-        // INPUT: Instance (Abstraction(Definition, Skeleton), Init-Bounds, Alphabet, OriginalFormula)
-
-        // Initialize the SAT solver
-        let mut cadical: cadical::Solver = cadical::Solver::default();
-        // Check if skeleton is trivially unsat
-        let skeleton_cnf = to_cnf(abs.skeleton());
-
-        let mut t = Instant::now();
-        for clause in skeleton_cnf.into_iter() {
-            cadical.add_clause(clause);
+        init_bounds: Domain,
+    ) -> Self {
+        let mut sat_solver = cadical::Solver::default();
+        let cnf = to_cnf(&skeleton);
+        let refiner = BoundRefiner::new(cnf.clone());
+        for clause in cnf.into_iter() {
+            sat_solver.add_clause(clause);
         }
-        if cadical.solve() == Some(false) {
-            log::info!("Skeleton is unsat");
-            return Ok(SolverResult::Unsat);
+        Self {
+            options,
+            skeleton,
+            cadical: sat_solver,
+            refiner,
+            defs: IndexMap::new(),
+            encoder: ProblemEncoder::new(alphabet),
+            next_bounds: init_bounds,
         }
-        log::info!("Skeleton is SAT ({:?})", t.elapsed());
+    }
 
-        // Initialize the problem encoder
+    pub fn add_definition(&mut self, def: &LitDefinition) {
+        if self.defs.contains_key(&def.defining()) {
+            panic!(
+                "Definition for literal {} already exists. Cannot redefine.",
+                def.defining()
+            );
+        }
+        self.defs.insert(def.defining().clone(), def.clone());
+    }
 
-        let defs = abs.definitions().cloned().collect_vec();
-        let mut encoder = ProblemEncoder::new(alphabet, fm.vars());
-
+    fn solve(&mut self, mngr: &mut NodeManager) -> Result<SolverResult, Error> {
         // Initialize the bounds
-        let mut bounds = init_bounds;
 
         let mut round = 0;
 
         // Start Solving Loop
         loop {
+            // keep track of the current bounds
+            let bounds = self.next_bounds.clone();
             round += 1;
             log::info!("Round {} with bounds {}", round, bounds);
-            // Encode and Solve
-            t = Instant::now();
-            let encoding = encoder.encode(&defs, &bounds, mngr)?;
-            let (cnf, asm) = encoding.into_inner();
-            log::info!("Encoded ({} clauses) ({:?})", cnf.len(), t.elapsed());
-            t = Instant::now();
-            for clause in cnf {
-                cadical.add_clause(clause);
-            }
-            log::info!("Added clauses to cadical ({:?})", t.elapsed());
 
-            t = Instant::now();
-            let res = cadical.solve_with(asm.into_iter());
-            log::info!("Done SAT solving: {:?} ({:?})", res, t.elapsed());
+            // Encode and Solve
+            let mut timer = Instant::now();
+
+            let encoding =
+                self.encoder
+                    .encode(self.defs.values().cloned().into_iter(), &bounds, mngr)?;
+            let (cnf, asm) = encoding.into_inner();
+            log::info!("Encoded ({} clauses) ({:?})", cnf.len(), timer.elapsed());
+            timer = Instant::now();
+            for clause in cnf {
+                self.cadical.add_clause(clause);
+            }
+            log::info!("Added clauses to cadical ({:?})", timer.elapsed());
+
+            timer = Instant::now();
+            let res = self.cadical.solve_with(asm.into_iter());
+            log::info!("Done SAT solving: {:?} ({:?})", res, timer.elapsed());
 
             match res {
                 Some(true) => {
                     // If SAT, check if model is a solution for the original formula.
-                    let assign = encoder.get_model(&cadical);
+                    let assign = self.encoder.get_model(&self.cadical);
 
-                    log::info!("Found model: {}", assign);
-
-                    if self.options.check_model && !self.check_assignment(fm, &assign) {
-                        // If the assignment is not a solution, we found a bug.
-                        panic!("The found model is invalid");
-                    }
+                    log::info!("Encoding is SAT");
                     // encoder.print_debug(&cadical);
                     let subs = NodeSubstitution::from_assignment(&assign, mngr);
                     return Ok(SolverResult::Sat(Some(subs)));
@@ -253,13 +384,19 @@ impl Solver {
 
                 Some(false) => {
                     log::info!("Unsat");
-                    let failed = encoder.get_failed_literals(&cadical);
+                    let failed = self.encoder.get_failed_literals(&self.cadical);
                     log::info!("{} Failed literal(s)", failed.len());
                     log::debug!("Failed literals: {}", failed.iter().join(", "));
                     // Refine bounds. If bounds are at max, return UNSAT. Otherwise, continue with new bounds.
-                    match refine::refine_bounds(&failed, &bounds, fm, self.options.step, mngr) {
+                    let fm = self
+                        .to_formula(mngr, &self.skeleton)
+                        .unwrap_or(mngr.ttrue());
+                    match self
+                        .refiner
+                        .refine_bounds(&failed, &bounds, &fm, self.options.step, mngr)
+                    {
                         refine::BoundRefinement::Refined(b) => {
-                            let clamped = self.clamp_bounds(b);
+                            let clamped = self.clamp_bounds_in_dom(b);
                             // if the clamped bound are equal to the bounds we used in this round, nothing changed
                             // in that case, the limit is reached
                             if clamped == bounds {
@@ -269,7 +406,7 @@ impl Solver {
                                     return Ok(SolverResult::Unknown);
                                 }
                             } else {
-                                bounds = clamped;
+                                self.next_bounds = clamped
                             }
                         }
                         refine::BoundRefinement::SmallModelReached => {
@@ -284,24 +421,50 @@ impl Solver {
         }
     }
 
-    /// Check if the assignment is a solution for the formula.
-    fn check_assignment(&self, fm: &Formula, assign: &Assignment) -> bool {
-        assign.satisfies(fm)
+    fn clamp_bounds_in_dom(&self, dom: Domain) -> Domain {
+        let mut new_dom = dom.clone();
+        for (var, bound) in dom.iter_string() {
+            let new_bound = bound.intersect(self.options.max_bounds);
+            new_dom.set_string(var.clone(), new_bound);
+        }
+        for (var, bound) in dom.iter_int() {
+            let new_bound = bound.intersect(self.options.max_bounds);
+            new_dom.set_int(var.clone(), new_bound);
+        }
+        for v in dom.iter_bool() {
+            new_dom.set_bool(v.clone());
+        }
+        new_dom
     }
 
-    /// Refines the abstraction by picking new definitions to encode.
-
-    /// Clamp the bounds to the maximum bounds.
-    fn clamp_bounds(&self, bounds: Bounds) -> Bounds {
-        if let Some(max_bound) = self.options.max_bounds {
-            let mut new_bounds = bounds.clone();
-            for (var, bound) in bounds.iter() {
-                let new_bound = bound.intersect(max_bound);
-                new_bounds.set(var.clone(), new_bound);
+    fn to_formula(&self, mngr: &mut NodeManager, root: &PFormula) -> Option<Node> {
+        match root {
+            PFormula::And(vec) => {
+                let mut children = Vec::with_capacity(vec.len());
+                for child in vec {
+                    if let Some(node) = self.to_formula(mngr, child) {
+                        children.push(node);
+                    }
+                }
+                Some(mngr.and(children))
             }
-            new_bounds
-        } else {
-            bounds
+            PFormula::Or(vec) => {
+                let mut children = Vec::with_capacity(vec.len());
+                for child in vec {
+                    if let Some(node) = self.to_formula(mngr, child) {
+                        children.push(node);
+                    }
+                }
+                Some(mngr.or(children))
+            }
+            PFormula::Lit(l) => {
+                if let Some(def) = self.defs.get(l) {
+                    debug_assert!(def.defining() == *l);
+                    Some(mngr.literal(def.defined().clone()))
+                } else {
+                    None
+                }
+            }
         }
     }
 }

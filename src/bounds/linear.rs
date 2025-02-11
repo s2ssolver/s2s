@@ -1,18 +1,21 @@
 //! Linear Bound Refinement
 
+use core::panic;
 use std::{collections::HashMap, rc::Rc};
 
 use indexmap::IndexSet;
 
 use crate::{
-    bounds::{BoundValue, Bounds},
-    canonical::{
-        ArithOperator, LinearArithTerm, LinearConstraint, LinearSummand, Symbol, WordEquation,
+    interval::BoundValue,
+    node::{
+        canonical::{
+            ArithOperator, LinearArithTerm, LinearConstraint, LinearSummand, Symbol, WordEquation,
+        },
+        Sorted, Variable,
     },
-    node::{Sorted, Variable},
 };
 
-use super::InferringStrategy;
+use super::{Bounds, InferringStrategy};
 
 /// Implements a the iterative linear bound refinement algorithm.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -74,6 +77,7 @@ impl LinearRefiner {
 
         let mut changed = true;
         let mut refined = bounds.clone();
+
         while changed {
             changed = false;
             for linear in &self.linears {
@@ -105,7 +109,7 @@ impl LinearRefiner {
     fn refinement_step(&self, bounds: &Bounds, linear: &LinearConstraint) -> Option<Bounds> {
         let mut new_bounds = bounds.clone();
         let mut changed = false;
-        log::trace!("Refining bounds {} w.r.t. {}", bounds, linear);
+        log::trace!("Refining step: {} w.r.t. {}", bounds, linear);
         for var in linear.variables() {
             let (op, term, divisor) = self.solve_for(linear, &var);
             log::trace!("\t {} {} ({}) / {}", var, op, term, divisor);
@@ -121,7 +125,7 @@ impl LinearRefiner {
                             log::trace!("\t\t {op} {dived}");
                             if dived < self.ub(var.as_ref(), bounds) {
                                 changed = true;
-                                new_bounds.set_upper(var.as_ref(), dived);
+                                new_bounds.set_upper(var, dived);
                             }
                         }
                     }
@@ -138,7 +142,7 @@ impl LinearRefiner {
 
                             if dived > self.lb(var.as_ref(), bounds) {
                                 changed = true;
-                                new_bounds.set_lower(var.as_ref(), dived);
+                                new_bounds.set_lower(var, dived);
                             }
                         }
                     }
