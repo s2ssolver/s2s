@@ -56,9 +56,11 @@ impl Rewriter {
     pub fn rewrite(&mut self, node: &Node, passes: usize, mngr: &mut NodeManager) -> Option<Node> {
         self.rewrite_cache.clear();
         self.applied_rules.clear();
+
+        let node = pull_ites(node, mngr);
         let mut current = None;
         for _ in 0..passes {
-            match self.rewrite_pass(current.as_ref().unwrap_or(node), mngr) {
+            match self.rewrite_pass(current.as_ref().unwrap_or(&node), mngr) {
                 Some(rew) => current = Some(rew),
                 None => break,
             }
@@ -109,5 +111,17 @@ impl Rewriter {
     /// Returns the applied rules.
     pub fn applied(&self) -> &[(Node, Node)] {
         &self.applied_rules
+    }
+}
+
+/// Pulls all ITE expressions that return non-boolean values to a Boolean level.
+/// Meaning, if node contains a non-Boolean predicate P (..., ITE c t e, ...), then this will ''pull'' the ITE expression one level higher: ITE c (P ..., t, ...) (P ..., e, ...)
+pub fn pull_ites(node: &Node, mngr: &mut NodeManager) -> Node {
+    let ch_normed = node.children().iter().map(|c| pull_ites(c, mngr)).collect();
+    let new_node = mngr.create_node(node.kind().clone(), ch_normed);
+    if let Some(rew) = ite::PullIte.apply(&new_node, mngr) {
+        rew
+    } else {
+        new_node
     }
 }
