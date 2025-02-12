@@ -464,7 +464,12 @@ impl LinearConstraint {
                 LinearSummand::Const(c) => rhs_new -= c,
             }
         }
-        self.lhs = lhs_new;
+        self.lhs = if lhs_new.is_empty() {
+            LinearArithTerm::from_const(0)
+        } else {
+            lhs_new
+        };
+
         self.rhs = rhs_new;
         self.is_canonical = true;
     }
