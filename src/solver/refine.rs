@@ -425,7 +425,9 @@ impl BoundRefiner {
                 };
                 vec![Cube(c)]
             }
-            _ => panic!("Unexpected node kind: {:?}", fm.kind()),
+            NodeKind::Bool(true) => vec![Cube(IndexSet::new())],
+            NodeKind::Bool(false) => Vec::new(),
+            _ => panic!("Unexpected node kind: {:?}({})", fm.kind(), fm),
         }
     }
 }
