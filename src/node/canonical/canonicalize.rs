@@ -377,7 +377,9 @@ impl Canonicalizer {
             NodeKind::Ge => ArithOperator::Geq,
             _ => unreachable!("Not a linear constraint"),
         };
-        let lc = LinearConstraint::new(clhs, op, crhs);
+        let mut lc = LinearConstraint::new(clhs, op, crhs);
+        lc.canonicalize();
+
         Ok(mngr.atom(AtomKind::Linear(lc)))
     }
 
@@ -421,11 +423,19 @@ impl Canonicalizer {
                 self.canonicalize_linear_arith_term(as_mult, mngr)
             }
             NodeKind::Sub => {
-                // rewrite (- t1 ... tn) as (+ (- t1) ... (- tn))
+                // rewrite (- t1 t2 ... tn) as (+ t1 (- t2)... (- tn))
+                debug_assert!(node.children().len() > 1);
                 let norm = node
                     .children()
                     .iter()
-                    .map(|s| mngr.neg(s.clone()))
+                    .enumerate()
+                    .map(|(i, s)| {
+                        if i == 0 {
+                            s.clone()
+                        } else {
+                            mngr.neg(s.clone())
+                        }
+                    })
                     .collect();
                 let as_addition = mngr.add(norm);
                 self.canonicalize_linear_arith_term(as_addition, mngr)
