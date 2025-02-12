@@ -5,7 +5,7 @@ use std::{collections::HashMap, rc::Rc};
 use indexmap::IndexSet;
 
 use crate::{
-    interval::BoundValue,
+    interval::{BoundValue, Interval},
     node::{
         canonical::{
             ArithOperator, LinearArithTerm, LinearConstraint, LinearSummand, Symbol, WordEquation,
@@ -345,7 +345,19 @@ pub fn length_abstraction(weq: &WordEquation) -> LinearConstraint {
 
 impl InferringStrategy for LinearRefiner {
     fn infer(&mut self) -> Option<Bounds> {
-        self.refine(&Bounds::default())
+        let mut init_bounds = Bounds::default();
+
+        for l in self.linears.iter() {
+            for v in l.lhs().vars() {
+                if v.is_int() {
+                    init_bounds.set(v.variable().clone(), Interval::unbounded());
+                } else if v.is_len() {
+                    init_bounds.set(v.variable().clone(), Interval::bounded_below(0));
+                }
+            }
+        }
+
+        self.refine(&init_bounds)
     }
 
     fn conflict(&self) -> bool {
