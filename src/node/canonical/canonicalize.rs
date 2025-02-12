@@ -413,8 +413,11 @@ impl Canonicalizer {
             NodeKind::Neg => {
                 debug_assert!(node.children().len() == 1);
                 // rewrite (- t) as (-1 * t)
+                debug_assert!(node.children().len() == 1);
+                let ch = node.children().first().unwrap();
+                debug_assert!(ch.sort().is_int());
                 let negone = mngr.const_int(-1);
-                let as_mult = mngr.mul(vec![negone, node.clone()]);
+                let as_mult = mngr.mul(vec![negone, ch.clone()]);
                 self.canonicalize_linear_arith_term(as_mult, mngr)
             }
             NodeKind::Sub => {
@@ -429,7 +432,6 @@ impl Canonicalizer {
             }
             NodeKind::Mul => {
                 // distribute the multiplication, abort if we have non-linear terms
-
                 let mut res = LinearArithTerm::from_const(1);
                 for e in node.children() {
                     let next = self.canonicalize_linear_arith_term(e.clone(), mngr)?;
