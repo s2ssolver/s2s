@@ -41,6 +41,7 @@ impl Default for Rewriter {
                 Box::new(regex::ReStripConstantSuffix),
                 Box::new(regex::PullComplement),
                 Box::new(int::LengthOfConcatToAddition),
+                Box::new(int::TrivialIntRelations),
                 Box::new(int::FoldConstantInts),
             ],
             rewrite_cache: IndexMap::new(),

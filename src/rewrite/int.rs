@@ -84,55 +84,73 @@ impl RewriteRule for FoldConstantInts {
                 }
                 _ => None,
             }
-        } else if node.sort().is_bool() {
-            // Try reduce constant relations
-            if node.children().len() == 2 {
-                let lhs = node.children().first().unwrap();
-                let rhs = node.children().last().unwrap();
-                if let (NodeKind::Int(i1), NodeKind::Int(i2)) = (lhs.kind(), rhs.kind()) {
-                    match node.kind() {
-                        NodeKind::Eq => {
-                            if i1 == i2 {
-                                Some(mngr.ttrue())
-                            } else {
-                                Some(mngr.ffalse())
-                            }
+        } else {
+            None
+        }
+    }
+}
+
+pub struct TrivialIntRelations;
+
+impl RewriteRule for TrivialIntRelations {
+    fn apply(&self, node: &Node, mngr: &mut NodeManager) -> Option<Node> {
+        if node.sort().is_bool() && node.children().len() == 2 {
+            let lhs = node.children().first().unwrap();
+            let rhs = node.children().last().unwrap();
+            match (lhs.kind(), rhs.kind()) {
+                (NodeKind::Int(i1), NodeKind::Int(i2)) => match node.kind() {
+                    NodeKind::Eq => {
+                        if i1 == i2 {
+                            Some(mngr.ttrue())
+                        } else {
+                            Some(mngr.ffalse())
                         }
-                        NodeKind::Le => {
-                            if i1 <= i2 {
-                                Some(mngr.ttrue())
-                            } else {
-                                Some(mngr.ffalse())
-                            }
-                        }
-                        NodeKind::Lt => {
-                            if i1 < i2 {
-                                Some(mngr.ttrue())
-                            } else {
-                                Some(mngr.ffalse())
-                            }
-                        }
-                        NodeKind::Ge => {
-                            if i1 >= i2 {
-                                Some(mngr.ttrue())
-                            } else {
-                                Some(mngr.ffalse())
-                            }
-                        }
-                        NodeKind::Gt => {
-                            if i1 > i2 {
-                                Some(mngr.ttrue())
-                            } else {
-                                Some(mngr.ffalse())
-                            }
-                        }
-                        _ => None,
                     }
-                } else {
-                    None
+                    NodeKind::Le => {
+                        if i1 <= i2 {
+                            Some(mngr.ttrue())
+                        } else {
+                            Some(mngr.ffalse())
+                        }
+                    }
+                    NodeKind::Lt => {
+                        if i1 < i2 {
+                            Some(mngr.ttrue())
+                        } else {
+                            Some(mngr.ffalse())
+                        }
+                    }
+                    NodeKind::Ge => {
+                        if i1 >= i2 {
+                            Some(mngr.ttrue())
+                        } else {
+                            Some(mngr.ffalse())
+                        }
+                    }
+                    NodeKind::Gt => {
+                        if i1 > i2 {
+                            Some(mngr.ttrue())
+                        } else {
+                            Some(mngr.ffalse())
+                        }
+                    }
+                    _ => None,
+                },
+                (NodeKind::Variable(v1), NodeKind::Variable(v2)) => {
+                    if v1 == v2 {
+                        match node.kind() {
+                            NodeKind::Eq => Some(mngr.ttrue()),
+                            NodeKind::Le => Some(mngr.ttrue()),
+                            NodeKind::Lt => Some(mngr.ffalse()),
+                            NodeKind::Ge => Some(mngr.ttrue()),
+                            NodeKind::Gt => Some(mngr.ffalse()),
+                            _ => None,
+                        }
+                    } else {
+                        None
+                    }
                 }
-            } else {
-                None
+                _ => None,
             }
         } else {
             None
