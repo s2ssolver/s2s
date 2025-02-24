@@ -56,7 +56,8 @@ impl FailedProbe {
     }
 }
 
-pub struct ProblemEncoder {
+/// Encodes a set of definitions into CNF.
+pub struct DefintionEncoder {
     /// The probe variable for each literal. These are used to check which literals failed, i.e., the encoding of which literals are part of the unsat core.
     probes: IndexMap<LitDefinition, FailedProbe>,
 
@@ -64,7 +65,7 @@ pub struct ProblemEncoder {
     domain_encoder: DomainEncoder,
 }
 
-impl ProblemEncoder {
+impl DefintionEncoder {
     pub fn new(alphabet: Alphabet) -> Self {
         Self {
             probes: IndexMap::new(),

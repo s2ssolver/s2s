@@ -3,7 +3,7 @@ use std::time::Instant;
 
 use crate::bounds::BoundInferer;
 use crate::domain::Domain;
-use encoder::ProblemEncoder;
+use encoder::DefintionEncoder;
 
 use indexmap::IndexMap;
 use itertools::Itertools;
@@ -31,7 +31,11 @@ mod options;
 mod preprocessing;
 mod refine;
 
-/// The result of a satisfiability check
+/// The result of a satisfiability check.
+/// Can be either of
+/// - `Sat` if the instance is satisfiable. The model, if given, is a solution to the instance.
+/// - `Unsat` if the instance is unsatisfiable
+/// - `Unknown` if the solver could not determine the satisfiability of the instance
 pub enum SolverResult {
     /// The instance is satisfiable. The model, if given, is a solution to the instance.
     Sat(Option<NodeSubstitution>),
@@ -71,6 +75,8 @@ impl std::fmt::Display for SolverResult {
     }
 }
 
+/// The main solver engine.
+/// The engine is responsible for solving a given formula.
 pub struct Engine {
     options: SolverOptions,
 }
@@ -80,6 +86,8 @@ impl Engine {
         Self { options }
     }
 
+    /// Solve the given formula.
+    /// Returns the result of the satisfiability check, or an error if the solver failed.
     pub fn solve(&mut self, root: &Node, mngr: &mut NodeManager) -> Result<SolverResult, Error> {
         log::info!("Starting engine");
 
@@ -97,8 +105,9 @@ impl Engine {
 
         // These are the substitutions applied by the preprocessor
         // We need to store them and re-apply them to the model of the preprocessed formula, to get the model of the original formula
-        let pre_subs = preprocessor.applied_substitutions().clone();
+        let prepr_subst = preprocessor.applied_substitutions().clone();
 
+        // If the 'print_preprocessed' option is set, print the preprocessed formula
         if self.options.print_preprocessed {
             println!("{}", to_script(&preprocessed));
         }
@@ -106,13 +115,14 @@ impl Engine {
         // Early return if the formula is trivially sat/unsat
         if let NodeKind::Bool(v) = *preprocessed.kind() {
             return Ok(if v {
-                SolverResult::Sat(Some(pre_subs))
+                SolverResult::Sat(Some(prepr_subst))
             } else {
                 SolverResult::Unsat
             });
         }
 
-        // Canonicalize
+        // Canonicalize.
+        // This brings the formula into a normal that the solver understands.
         let canonical = canonicalize(&preprocessed, mngr)?;
         log::debug!("Canonicalized\n{}", canonical);
 
@@ -120,15 +130,17 @@ impl Engine {
         let alphabet = alphabet::infer(&canonical);
         log::info!("Inferred alphabet of size {}", alphabet.len(),);
         log::debug!("Alphabet: {}", alphabet);
-
         log::info!("Done preprocessing. ({:?})", timer.elapsed());
+
+        // If the 'dry' option is set, return Unknown
         if self.options.dry {
             return Ok(SolverResult::Unknown);
         }
 
+        // Run the CEGAR loop.
         let res = match self.cegar_loop(&canonical, alphabet, mngr)? {
             SolverResult::Sat(model) => {
-                let model = model.map(|m| pre_subs.compose(m, mngr));
+                let model = model.map(|m| prepr_subst.compose(m, mngr));
                 SolverResult::Sat(model)
             }
             SolverResult::Unsat => SolverResult::Unsat,
@@ -137,6 +149,15 @@ impl Engine {
         Ok(res)
     }
 
+    /// The main CEGAR loop.
+    /// This function implements the Counter-Example Guided Abstraction Refinement loop.
+    /// The function first builds the Boolean abstraction of the formula, which consists of a skeleton formula and a set of definitions.
+    /// Each definition is a (bi-)implication between a Boolean literal in the skeleton and a first-order literal of the formula.
+    /// The loop then iteratively solves an over-approximation by encoding the skeleton and and a subset of the definitions.
+    /// If the over-abstraction is satisfiable, the model is checked against the original formula.
+    /// If the model satisfies the formula, the formula is satisfiable.
+    /// If the model does not satisfy the formula, then the model is used to refine the abstraction.
+    /// The loop continues until the formula is proven to be unsatisfiable, or the solver gives up.
     fn cegar_loop(
         &mut self,
         fm: &Node,
@@ -152,19 +173,25 @@ impl Engine {
             }
         };
 
-        // Build the abstraction
+        // Build the abstraction.
+        // This is the skeleton of the formula.
         let abstraction = build_abstraction(&fm)?;
 
+        // Initialize the solver.
+        // Initially, it only knows the skeleton and the alphabet.
         let mut solver = Solver::new(
             self.options.clone(),
             abstraction.skeleton().clone(),
             alph,
             init_dom,
         );
+
+        // The set of definitions to encode
+        // Every definition is a (bi-)implication between a Boolean literal and a first-order literal that needs to be encoded
         let mut defs = abstraction.definitions().cloned().collect_vec();
 
         loop {
-            // Try to solve the current over-approximation
+            // Try to solve the current over-approximation. The first call only contains the skeleton.
             match solver.solve(mngr)? {
                 SolverResult::Sat(subs) => {
                     // SAT, check if the model is a solution for the original formula
@@ -199,6 +226,9 @@ impl Engine {
         }
     }
 
+    /// Initialize the domain of all variables in the formula.
+    /// The domain is the range of values that a variable can take.
+    /// The domain is encoded as the first step of the encoding.
     fn init_domain(&self, fm: &Node, mngr: &mut NodeManager) -> Option<Domain> {
         let mut inferer = BoundInferer::default();
         for lit in get_entailed_literals(fm) {
@@ -264,7 +294,7 @@ struct Solver {
     /// The definitions of the abstraction variables
     defs: IndexMap<PLit, LitDefinition>,
 
-    encoder: ProblemEncoder,
+    encoder: DefintionEncoder,
     next_bounds: Domain,
 
     refiner: BoundRefiner,
@@ -289,7 +319,7 @@ impl Solver {
             cadical: sat_solver,
             refiner,
             defs: IndexMap::new(),
-            encoder: ProblemEncoder::new(alphabet),
+            encoder: DefintionEncoder::new(alphabet),
             next_bounds: init_bounds,
         }
     }
