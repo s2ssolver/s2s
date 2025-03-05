@@ -2,12 +2,14 @@ use smt2parser::visitors::CommandVisitor;
 
 use crate::{
     node::{Node, Sort},
-    smt::{AstError, Constant, Keyword, SExpr, SmtCommand, Symbol},
+    smt::{AstError, SmtCommand},
 };
 
-use super::ScriptBuilder;
+use super::{Constant, Keyword, SExpr, ScriptBuilder, Symbol};
 
-impl<'a> CommandVisitor<Node, Symbol, Sort, Keyword, Constant, SExpr> for ScriptBuilder<'a> {
+// CommandVisitor<Rc<OwnedNode>, std::string::String, smt::parse::Sort, std::string::String, smt::parse::Constant, smt::parse::SExpr>
+
+impl CommandVisitor<Node, Symbol, Sort, Keyword, Constant, SExpr> for ScriptBuilder<'_> {
     type T = SmtCommand;
 
     type E = AstError;

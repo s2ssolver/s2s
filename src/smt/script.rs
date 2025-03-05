@@ -1,8 +1,8 @@
 use std::fmt::{self, Display, Formatter};
 
-use crate::node::{Node, NodeKind};
+use crate::node::{Node, NodeKind, Sort};
 
-use super::{Sort, Symbol};
+use super::parse::Symbol;
 
 #[derive(Debug, Default, Clone)]
 pub struct Script {
@@ -91,7 +91,7 @@ trait ToSmt {
 impl ToSmt for Node {
     fn to_smt(&self) -> String {
         if self.children().is_empty() {
-            return self.kind().to_smt();
+            self.kind().to_smt()
         } else {
             let ch = self
                 .children()

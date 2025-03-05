@@ -1,6 +1,6 @@
 use num_bigint::BigUint;
 
-use super::Symbol;
+use super::parse::Symbol;
 
 #[derive(Debug, thiserror::Error)]
 pub enum AstError {

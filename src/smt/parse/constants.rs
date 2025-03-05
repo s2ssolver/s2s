@@ -1,11 +1,12 @@
 use num_traits::cast::ToPrimitive;
 use smt2parser::visitors;
 
-use crate::smt::{AstError, Constant};
+use super::Constant;
+use crate::smt::AstError;
 
 use super::ScriptBuilder;
 
-impl<'a> ScriptBuilder<'a> {
+impl ScriptBuilder<'_> {
     fn parse_smtlib_string(&self, input: &str) -> Result<String, AstError> {
         let mut chars = input.chars().peekable();
         let mut result = String::with_capacity(input.len());
@@ -37,7 +38,7 @@ impl<'a> ScriptBuilder<'a> {
                                 match u32::from_str_radix(&hex, 16) {
                                     Ok(codepoint) if codepoint <= 0x2FFFF => {
                                         let as_char = char::from_u32(codepoint)
-                                            .ok_or_else(|| AstError::InvalidCodePoint(codepoint))?;
+                                            .ok_or(AstError::InvalidCodePoint(codepoint))?;
                                         result.push(as_char);
                                     }
                                     _ => return Err(AstError::InvalidEscapeSequence(hex)),
@@ -55,7 +56,7 @@ impl<'a> ScriptBuilder<'a> {
                                 match u32::from_str_radix(&hex, 16) {
                                     Ok(codepoint) => {
                                         let as_char = char::from_u32(codepoint)
-                                            .ok_or_else(|| AstError::InvalidCodePoint(codepoint))?;
+                                            .ok_or(AstError::InvalidCodePoint(codepoint))?;
                                         result.push(as_char);
                                     }
                                     _ => return Err(AstError::InvalidEscapeSequence(hex)),
@@ -101,7 +102,7 @@ impl<'a> ScriptBuilder<'a> {
     }
 }
 
-impl<'a> visitors::ConstantVisitor for ScriptBuilder<'a> {
+impl visitors::ConstantVisitor for ScriptBuilder<'_> {
     type T = Constant;
 
     type E = AstError;

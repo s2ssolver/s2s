@@ -2,7 +2,7 @@ use smt2parser::visitors;
 
 use super::ScriptBuilder;
 
-impl<'a> visitors::KeywordVisitor for ScriptBuilder<'a> {
+impl visitors::KeywordVisitor for ScriptBuilder<'_> {
     type T = String;
 
     type E = super::AstError;

@@ -5,14 +5,16 @@ use crate::{
     Error, SolverOptions, SolverResult,
 };
 
+/// Interpreter for SMT-LIB scripts.
 pub struct Interpreter<'a> {
     mngr: &'a mut NodeManager,
-    _options: SolverOptions,
 
     engine: Engine,
     last_res: Option<SolverResult>,
 
-    assertions: Vec<Node>,
+    /// Assertion that have been pushed to the stack, but for which `check_sat` has not been called.
+    /// Calling `check_sat` will pop all assertions from this stack and push them to the engine.
+    assertion_stack: Vec<Node>,
 }
 
 impl<'a> Interpreter<'a> {
@@ -20,10 +22,9 @@ impl<'a> Interpreter<'a> {
         let engine = Engine::with_options(options.clone());
         Self {
             mngr,
-            _options: options,
             engine,
             last_res: None,
-            assertions: Vec::new(),
+            assertion_stack: Vec::new(),
         }
     }
 
@@ -37,7 +38,6 @@ impl<'a> Interpreter<'a> {
                     let res = self.check_sat()?;
                     println!("{}", res);
                     self.last_res = Some(res);
-                    // transfer the assertions to the solver and check sat
                 }
                 SmtCommand::Echo(msg) => {
                     println!("{}", msg);
@@ -57,12 +57,11 @@ impl<'a> Interpreter<'a> {
     }
 
     pub fn assert(&mut self, node: &Node) {
-        self.assertions.push(node.clone());
+        self.assertion_stack.push(node.clone());
     }
 
     pub fn check_sat(&mut self) -> Result<SolverResult, Error> {
-        let root = self.mngr.and(std::mem::take(&mut self.assertions));
-        //self.solver.solve(&root, self.mngr)
+        let root = self.mngr.and(std::mem::take(&mut self.assertion_stack));
         self.engine.solve(&root, self.mngr)
     }
 }

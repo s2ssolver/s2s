@@ -17,20 +17,19 @@ mod interval;
 
 mod encode;
 mod error;
-mod interpret;
+
 pub mod node;
 mod rewrite;
 mod sat;
 mod simp;
-mod smt;
+pub mod smt;
 mod solver;
 
 use std::{io::BufRead, time::Instant};
 
 pub use error::PublicError as Error;
-pub use interpret::Interpreter;
 use node::NodeManager;
-use smt::{Script, ScriptBuilder};
+use smt::{Interpreter, Script, ScriptBuilder};
 pub use solver::{SolverOptions, SolverResult};
 
 /// Solves an SMT problem over the theory of strings.

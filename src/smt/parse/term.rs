@@ -3,12 +3,13 @@ use smt2parser::visitors::TermVisitor;
 
 use crate::{
     node::{Node, NodeKind, Sort, Sorted},
-    smt::{AstError, Constant, Identifier, Index, Keyword, SExpr, Symbol},
+    smt::AstError,
 };
 
 use super::ScriptBuilder;
+use super::{Constant, Identifier, Index, Keyword, SExpr, Symbol};
 
-impl<'a> TermVisitor<Constant, Identifier, Keyword, SExpr, Symbol, Sort> for ScriptBuilder<'a> {
+impl TermVisitor<Constant, Identifier, Keyword, SExpr, Symbol, Sort> for ScriptBuilder<'_> {
     type T = Node;
 
     type E = AstError;

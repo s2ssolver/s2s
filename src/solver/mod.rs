@@ -361,7 +361,7 @@ impl Solver {
             log::info!("Added clauses to cadical ({:?})", timer.elapsed());
 
             timer = Instant::now();
-            let res = self.cadical.solve_with(asm.into_iter());
+            let res = self.cadical.solve_with(asm);
             log::info!("Done SAT solving: {:?} ({:?})", res, timer.elapsed());
 
             match res {

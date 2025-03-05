@@ -7,12 +7,90 @@ mod sort;
 mod symbol;
 mod term;
 
+use std::fmt::Display;
+
 use crate::node::{Node, NodeManager, Sort};
 
-use super::{AstError, Script, Symbol};
-use super::{Constant, Identifier, Keyword, SExpr, SmtCommand};
+use super::SmtCommand;
+use super::{AstError, Script};
 
+use itertools::Itertools;
 use smt2parser::visitors::Smt2Visitor;
+
+pub type Symbol = String;
+
+pub type Keyword = String;
+
+#[derive(Debug, Clone, Eq, PartialEq, Hash)]
+pub enum Index {
+    Num(usize),
+    Symbol(Symbol),
+}
+
+impl Display for Index {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Index::Num(n) => write!(f, "{}", n),
+            Index::Symbol(s) => write!(f, "{}", s),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Hash)]
+pub struct Identifier {
+    symbol: Symbol,
+    indices: Vec<Index>,
+}
+
+impl Identifier {
+    pub fn simple(symbol: Symbol) -> Self {
+        Self::indexed(symbol, vec![])
+    }
+
+    pub fn indexed(symbol: Symbol, indices: Vec<Index>) -> Self {
+        Self { symbol, indices }
+    }
+
+    pub fn symbol(&self) -> &Symbol {
+        &self.symbol
+    }
+
+    pub fn indices(&self) -> &[Index] {
+        &self.indices
+    }
+}
+impl Display for Identifier {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if self.indices.is_empty() {
+            write!(f, "{}", self.symbol)
+        } else {
+            write!(f, "(_ {} {})", self.symbol, self.indices.iter().format(" "))
+        }
+    }
+}
+
+pub struct SExpr;
+impl Display for SExpr {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "")
+    }
+}
+
+pub enum Constant {
+    String(String),
+    Int(isize),
+    Real(f64),
+}
+
+impl Display for Constant {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Constant::String(s) => write!(f, "\"{}\"", s),
+            Constant::Int(i) => write!(f, "{}", i),
+            Constant::Real(r) => write!(f, "{}", r),
+        }
+    }
+}
 
 pub struct ScriptBuilder<'a> {
     smt25: bool,
@@ -34,7 +112,7 @@ impl<'a> ScriptBuilder<'a> {
     }
 }
 
-impl<'a> Smt2Visitor for ScriptBuilder<'a> {
+impl Smt2Visitor for ScriptBuilder<'_> {
     type Error = AstError;
 
     type Constant = Constant;
