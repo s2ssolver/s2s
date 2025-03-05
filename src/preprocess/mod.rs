@@ -1,12 +1,15 @@
 use indexmap::IndexSet;
 
-use crate::{
-    node::{
-        error::NodeError, get_entailed, normal::to_nnf, Node, NodeManager, NodeSubstitution, Sorted,
-    },
-    rewrite::Rewriter,
-    simp::Simplifier,
+mod canonicalize;
+mod rewrite;
+mod simp;
+
+use crate::node::{
+    error::NodeError, get_entailed, normal::to_nnf, Node, NodeManager, NodeSubstitution, Sorted,
 };
+pub use canonicalize::canonicalize;
+use rewrite::Rewriter;
+use simp::Simplifier;
 
 #[derive(Default)]
 pub struct Preprocessor {

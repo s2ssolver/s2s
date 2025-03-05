@@ -13,6 +13,7 @@ mod testutils {
         canonical::{self, WordEquation},
         NodeManager,
     };
+    use crate::preprocess;
 
     pub(crate) fn parse_simple_equation(
         lhs: &str,
@@ -20,7 +21,7 @@ mod testutils {
         mngr: &mut NodeManager,
     ) -> WordEquation {
         let node = node::testutils::parse_equation(lhs, rhs, mngr);
-        let c = canonical::canonicalize(&node, mngr).unwrap();
+        let c = preprocess::canonicalize(&node, mngr).unwrap();
         match c.kind() {
             NodeKind::Literal(literal) => match literal.atom().kind() {
                 canonical::AtomKind::WordEquation(weq) => weq.clone(),

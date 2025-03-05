@@ -5,12 +5,10 @@ use crate::{
     domain::Domain,
     interval::Interval,
     node::{
-        canonical::{canonicalize, Assignment},
-        get_entailed_literals,
-        smt::to_script,
-        Node, NodeKind, NodeManager, NodeSubstitution, Sort, Sorted,
+        canonical::Assignment, get_entailed_literals, smt::to_script, Node, NodeKind, NodeManager,
+        NodeSubstitution, Sort, Sorted,
     },
-    preprocessing::Preprocessor,
+    preprocess::{canonicalize, Preprocessor},
     solver::Solver,
     SolverAnswer, SolverOptions,
 };

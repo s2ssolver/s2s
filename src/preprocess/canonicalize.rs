@@ -1,19 +1,22 @@
 //! Conversion of nodes into canonical form.
 
-pub use int::*;
-
 use regulaer::{
     alph::CharRange,
     re::{ReBuilder, RegOp, Regex, RegexProps, Word},
 };
-pub use string::*;
 
 use crate::{
-    node::{self, NodeManager, Sort, Sorted},
+    node::{
+        self,
+        canonical::{
+            ArithOperator, Atom, AtomKind, LinearArithTerm, LinearConstraint, LinearSummand,
+            Literal, Pattern, RegularConstraint, RegularFactorConstraint, Symbol, WordEquation,
+        },
+        NodeManager, Sort, Sorted, Variable,
+    },
     smt::smt_max_char,
 };
 
-use super::*;
 use indexmap::IndexMap;
 use node::{error::NodeError, Node, NodeKind};
 
@@ -724,11 +727,12 @@ mod test {
             _ => unreachable!(),
         }
 
-        match comp.comp_char(0 as char, &mut builder).op() {
-            regulaer::re::RegOp::Union(items) => {
-                assert_eq!(items[0], builder.range(1 as char, smt_max_char()));
+        let comped = comp.comp_char(0 as char, &mut builder);
+        match comped.op() {
+            regulaer::re::RegOp::Range(r) => {
+                assert_eq!(*r, CharRange::new(1 as char, smt_max_char()));
             }
-            _ => unreachable!(),
+            _ => unreachable!("Expected range got {}", comped),
         }
     }
 
@@ -782,6 +786,6 @@ mod test {
         let mut builder = ReBuilder::default();
         let w = "".chars().collect();
         let r = comp.comp_word(w, &mut builder);
-        assert_eq!(*r.op(), RegOp::All);
+        assert_eq!(r, builder.plus(builder.any_char()));
     }
 }

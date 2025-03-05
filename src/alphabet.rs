@@ -186,7 +186,10 @@ fn addition_chars_lits(lits: &[Literal]) -> usize {
 mod tests {
 
     use super::*;
-    use crate::node::{canonical::canonicalize, Node, NodeKind, NodeManager, Sort};
+    use crate::{
+        node::{Node, NodeKind, NodeManager, Sort},
+        preprocess::canonicalize,
+    };
 
     fn to_lit(node: &Node, mngr: &mut NodeManager) -> Literal {
         match canonicalize(node, mngr).unwrap().kind() {

@@ -20,10 +20,9 @@ mod error;
 
 mod engine;
 pub mod node;
-mod preprocessing;
-mod rewrite;
+mod preprocess;
 mod sat;
-mod simp;
+
 pub mod smt;
 mod solver;
 

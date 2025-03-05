@@ -9,15 +9,13 @@ use indexmap::IndexSet;
 use crate::node::Variable;
 
 mod assignment;
-mod canonicalize;
+
 mod int;
 mod string;
 pub mod util;
 pub use assignment::Assignment;
 pub use int::*;
 pub use string::*;
-
-pub use canonicalize::canonicalize;
 
 use super::Id;
 
