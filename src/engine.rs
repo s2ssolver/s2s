@@ -112,6 +112,7 @@ impl Engine {
         // Canonicalize.
         // This brings the formula into a normal that the solver understands.
         let canonical = canonicalize(&simped, mngr)?;
+        log::debug!("Canonicalized formula: {}", canonical);
 
         Ok((canonical, prepr_subst))
     }
@@ -184,19 +185,19 @@ impl Engine {
         loop {
             // Try to solve the current over-approximation. The first call only contains the skeleton.
             match solver.solve(mngr)? {
-                SolverAnswer::Sat(subs) => {
+                SolverAnswer::Sat(h) => {
                     // SAT, check if the model is a solution for the original formula
-                    let model = subs.unwrap();
-                    let assign = model.clone().into();
+                    let model = h.unwrap();
+                    let h = model.clone().into();
                     log::info!("Found model for over-approximation");
-                    if self.check_assignment(&fm, &assign) {
+                    if self.check_assignment(&fm, &h) {
                         // If the model satisfies the formula, we are done
                         return Ok(SolverAnswer::Sat(Some(model)));
                     } else {
                         // Over-approximation is SAT, but model does not satisfy the formula
                         // Pick the next definitions to encode
                         log::info!("Model does not satisfy the formula");
-                        let next = self.pick_defs(&fm, &assign, &defs);
+                        let next = self.pick_defs(&fm, &h, &defs);
                         if next.is_empty() {
                             // In the future, this should block the current assignment and continue
                             log::error!("No more definitions to add. Returning Unknown");

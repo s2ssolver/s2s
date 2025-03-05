@@ -21,8 +21,8 @@ impl<'a> Interpreter<'a> {
     pub fn run(&mut self, script: &Script) -> Result<(), Error> {
         for cmd in script.iter() {
             match cmd {
-                SmtCommand::Assert(node) => {
-                    self.assert(node);
+                SmtCommand::Assert(fm) => {
+                    self.assert(fm);
                 }
                 SmtCommand::CheckSat => {
                     let res = self.check_sat()?;
