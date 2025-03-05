@@ -1,8 +1,8 @@
 use crate::{
+    engine::Engine,
     node::{Node, NodeManager},
     smt::{Script, SmtCommand},
-    solver::Engine,
-    Error, SolverOptions, SolverResult,
+    Error, SolverAnswer, SolverOptions,
 };
 
 /// Interpreter for SMT-LIB scripts.
@@ -10,22 +10,12 @@ pub struct Interpreter<'a> {
     mngr: &'a mut NodeManager,
 
     engine: Engine,
-    last_res: Option<SolverResult>,
-
-    /// Assertion that have been pushed to the stack, but for which `check_sat` has not been called.
-    /// Calling `check_sat` will pop all assertions from this stack and push them to the engine.
-    assertion_stack: Vec<Node>,
 }
 
 impl<'a> Interpreter<'a> {
     pub fn new(options: SolverOptions, mngr: &'a mut NodeManager) -> Self {
         let engine = Engine::with_options(options.clone());
-        Self {
-            mngr,
-            engine,
-            last_res: None,
-            assertion_stack: Vec::new(),
-        }
+        Self { mngr, engine }
     }
 
     pub fn run(&mut self, script: &Script) -> Result<(), Error> {
@@ -37,14 +27,13 @@ impl<'a> Interpreter<'a> {
                 SmtCommand::CheckSat => {
                     let res = self.check_sat()?;
                     println!("{}", res);
-                    self.last_res = Some(res);
                 }
                 SmtCommand::Echo(msg) => {
                     println!("{}", msg);
                 }
                 SmtCommand::Exit => return Ok(()),
                 SmtCommand::GetModel => {
-                    if let Some(SolverResult::Sat(Some(m))) = &self.last_res {
+                    if let SolverAnswer::Sat(Some(m)) = &self.engine.get_result() {
                         println!("{}", m);
                     } else {
                         eprintln!("error: no model to get");
@@ -57,11 +46,13 @@ impl<'a> Interpreter<'a> {
     }
 
     pub fn assert(&mut self, node: &Node) {
-        self.assertion_stack.push(node.clone());
+        self.engine.assert(node);
     }
 
-    pub fn check_sat(&mut self) -> Result<SolverResult, Error> {
-        let root = self.mngr.and(std::mem::take(&mut self.assertion_stack));
-        self.engine.solve(&root, self.mngr)
+    pub fn check_sat(&mut self) -> Result<SolverAnswer, Error> {
+        // let root = self.mngr.and(std::mem::take(&mut self.assertion_stack));
+        // self.engine.solve(&root, self.mngr)
+        self.engine.check(self.mngr)?;
+        Ok(self.engine.get_result().clone())
     }
 }

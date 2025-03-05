@@ -18,7 +18,9 @@ mod interval;
 mod encode;
 mod error;
 
+mod engine;
 pub mod node;
+mod preprocessing;
 mod rewrite;
 mod sat;
 mod simp;
@@ -28,9 +30,11 @@ mod solver;
 use std::{io::BufRead, time::Instant};
 
 pub use error::PublicError as Error;
+
+pub use engine::Engine as Blastr;
 use node::NodeManager;
 use smt::{Interpreter, Script, ScriptBuilder};
-pub use solver::{SolverOptions, SolverResult};
+pub use solver::{SolverAnswer, SolverOptions};
 
 /// Solves an SMT problem over the theory of strings.
 /// The input problem must be in SMT-LIB format.
