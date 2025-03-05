@@ -125,7 +125,11 @@ impl IndependentVariableAssignment {
             NodeKind::Variable(v) => {
                 let mut subs = NodeSubstitution::default();
                 if self.independent(v) {
-                    subs.add(v.clone(), mngr.ttrue());
+                    if polarity {
+                        subs.add(v.clone(), mngr.ttrue());
+                    } else {
+                        subs.add(v.clone(), mngr.ffalse());
+                    }
                     return Some(Simplification::new(subs, None));
                 }
             }
