@@ -1,0 +1,6 @@
+(set-logic QF_S)
+(declare-const X String)
+(assert (str.in_re X (re.union (str.to_re "Sat") (str.to_re ""))))
+(assert (str.in_re X (re.++ (re.range "A" "Z") (re.range "a" "z") (re.range "a" "z") (re.comp (str.to_re " ")))))
+(check-sat)
+(get-model)

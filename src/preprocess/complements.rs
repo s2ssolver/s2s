@@ -123,20 +123,16 @@ impl ReCompRemover {
 
     /// Comp(A|B) = Comp(A) & Comp(B)
     fn comp_union(&mut self, rs: Vec<Regex>, builder: &mut ReBuilder) -> Regex {
-        let rs = rs
-            .into_iter()
-            .map(|r| self.remove_comp_re(&r, builder))
-            .collect();
-        builder.inter(rs)
+        let rs = rs.into_iter().map(|r| builder.comp(r)).collect();
+        let as_inter = builder.inter(rs);
+        self.remove_comp_re(&as_inter, builder)
     }
 
     /// Comp(A&B) = Comp(A) | Comp(B)
     fn comp_inter(&mut self, rs: Vec<Regex>, builder: &mut ReBuilder) -> Regex {
-        let rs = rs
-            .into_iter()
-            .map(|r| self.remove_comp_re(&r, builder))
-            .collect();
-        builder.union(rs)
+        let rs = rs.into_iter().map(|r| builder.comp(r)).collect();
+        let as_union = builder.union(rs);
+        self.remove_comp_re(&as_union, builder)
     }
 
     fn comp_empty_word(&self, builder: &mut ReBuilder) -> Regex {
@@ -150,15 +146,16 @@ impl ReCompRemover {
             let a = w.first().unwrap();
             let v = w.drop(1);
 
-            // (comp a) | (a . (comp v))
+            // \epsi | ((comp a). ALL) | (a . (comp v))
 
             let a_comp = self.comp_char(a, builder);
+            let a_comp_all = builder.concat(vec![a_comp, builder.all()]);
             let b_comp = self.comp_word(v, builder);
 
             let re_a = builder.word(a.into());
             let a_bcomp = builder.concat(vec![re_a, b_comp]);
 
-            builder.union(vec![a_comp, a_bcomp])
+            builder.union(vec![builder.epsilon(), a_comp_all, a_bcomp])
         }
     }
 
