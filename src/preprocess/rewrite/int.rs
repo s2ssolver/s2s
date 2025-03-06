@@ -97,6 +97,18 @@ impl RewriteRule for TrivialIntRelations {
         if node.sort().is_bool() && node.children().len() == 2 {
             let lhs = node.children().first().unwrap();
             let rhs = node.children().last().unwrap();
+
+            if lhs == rhs {
+                return match node.kind() {
+                    NodeKind::Eq => Some(mngr.ttrue()),
+                    NodeKind::Le => Some(mngr.ttrue()),
+                    NodeKind::Lt => Some(mngr.ffalse()),
+                    NodeKind::Ge => Some(mngr.ttrue()),
+                    NodeKind::Gt => Some(mngr.ffalse()),
+                    _ => None,
+                };
+            }
+
             match (lhs.kind(), rhs.kind()) {
                 (NodeKind::Int(i1), NodeKind::Int(i2)) => match node.kind() {
                     NodeKind::Eq => {
@@ -136,20 +148,6 @@ impl RewriteRule for TrivialIntRelations {
                     }
                     _ => None,
                 },
-                (NodeKind::Variable(v1), NodeKind::Variable(v2)) => {
-                    if v1 == v2 {
-                        match node.kind() {
-                            NodeKind::Eq => Some(mngr.ttrue()),
-                            NodeKind::Le => Some(mngr.ttrue()),
-                            NodeKind::Lt => Some(mngr.ffalse()),
-                            NodeKind::Ge => Some(mngr.ttrue()),
-                            NodeKind::Gt => Some(mngr.ffalse()),
-                            _ => None,
-                        }
-                    } else {
-                        None
-                    }
-                }
                 _ => None,
             }
         } else {

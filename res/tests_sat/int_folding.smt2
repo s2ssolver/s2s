@@ -1,0 +1,6 @@
+(set-logic QF_SLIA)
+(declare-fun T () Int)
+(declare-fun v () String)
+(assert (= 1 (+ T 1)))
+(assert (<= (str.len v) (str.len v)))
+(check-sat)
