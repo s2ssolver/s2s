@@ -139,7 +139,7 @@ fn addition_chars_lits(lits: &[Literal]) -> usize {
 
     let mut string_vars = IndexSet::new();
     let mut num_ineqs = 0;
-    let mut at_least_one = false;
+    let mut contains_linear = false;
 
     for lit in lits {
         let pol = lit.polarity();
@@ -147,7 +147,7 @@ fn addition_chars_lits(lits: &[Literal]) -> usize {
             AtomKind::Boolvar(_) => (),
             AtomKind::InRe(in_re) => {
                 string_vars.insert(in_re.lhs().clone());
-                at_least_one = true;
+                contains_linear = true;
             }
             AtomKind::WordEquation(weq) => {
                 string_vars.extend(weq.variables());
@@ -158,25 +158,27 @@ fn addition_chars_lits(lits: &[Literal]) -> usize {
             }
             AtomKind::FactorConstraint(fc) => {
                 string_vars.insert(fc.of().clone());
-                at_least_one = true;
+                contains_linear = true;
             }
             AtomKind::Linear(lc) => {
                 // Can contain string vars, but if they don't occur in the other literals, we need at most one character to account for all possible lengths
                 if lc.variables().iter().any(|v| v.sort().is_string()) {
-                    at_least_one = true;
+                    contains_linear = true;
                 }
             }
         }
     }
 
     let num_vars = string_vars.len();
-    let res = if contains_eq {
-        num_ineqs
-    } else {
-        num_vars.min(num_ineqs)
-    };
-    if at_least_one {
-        res.max(1)
+
+    let res = if contains_eq { num_ineqs } else { num_vars };
+    //    panic!("{} {} {} {}", contains_eq, num_vars, num_ineqs, res);
+    if contains_linear {
+        // double check if this is sound.
+        // here are some minimal example
+        // - x != y /\ |x| = |y| (needs at least 2 characters)
+        // - xx != yy /\ |xx| = |yy| (needs at least 2 characters, but without the linear constraint, only 1 character is needed)
+        res + 1
     } else {
         res
     }
