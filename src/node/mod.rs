@@ -542,7 +542,7 @@ impl Display for NodeKind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             NodeKind::Bool(b) => write!(f, "{}", b),
-            NodeKind::String(s) => write!(f, "\"{}\"", s),
+            NodeKind::String(s) => write!(f, "\"{}\"", s.escape_default()),
             NodeKind::Int(i) => write!(f, "{}", i),
             NodeKind::Regex(regex) => write!(f, "{}", regex),
             NodeKind::Variable(v) => write!(f, "{}", v),

@@ -183,7 +183,7 @@ impl TermVisitor<Constant, Identifier, Keyword, SExpr, Symbol, Sort> for ScriptB
                 if let (NodeKind::String(left), NodeKind::String(right)) =
                     (left.kind(), right.kind())
                 {
-                    let re = if left.len() == 1 && right.len() == 1 {
+                    let re = if left.chars().count() == 1 && right.chars().count() == 1 {
                         self.mngr
                             .re_builder()
                             .range(left.chars().next().unwrap(), right.chars().next().unwrap())
