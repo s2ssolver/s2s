@@ -146,14 +146,22 @@ pub fn int_less_trivial(node: &Node, mngr: &mut NodeManager) -> Option<Node> {
 
 /// Same as `int_less_trivial`, but for greater than and greater or equal.
 pub fn int_greater_trivial(node: &Node, mngr: &mut NodeManager) -> Option<Node> {
-    if *node.kind() == NodeKind::Gt || *node.kind() == NodeKind::Lt {
+    if *node.kind() == NodeKind::Gt || *node.kind() == NodeKind::Ge {
         debug_assert!(node.children().len() == 2);
+
         let lhs = node.children().first().unwrap();
         let rhs = node.children().last().unwrap();
 
         // l > r <==> r < l
         // l >= r <==> r <= l
-        let swapped = mngr.create_node(node.kind().clone(), vec![rhs.clone(), lhs.clone()]);
+
+        let swapped_op = if *node.kind() == NodeKind::Gt {
+            NodeKind::Lt
+        } else {
+            NodeKind::Le
+        };
+        let swapped = mngr.create_node(swapped_op, vec![rhs.clone(), lhs.clone()]);
+
         return int_less_trivial(&swapped, mngr);
     }
 
