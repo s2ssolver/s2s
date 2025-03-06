@@ -34,6 +34,7 @@ impl Preprocessor {
     }
 
     fn simplify(&mut self, root: &Node, passes: usize, mngr: &mut NodeManager) -> Node {
+        //let mut rewriter = RewriterOld::default();
         let mut rewriter = Rewriter::default();
         let mut simplifier = Simplifier::default();
 
@@ -53,12 +54,12 @@ impl Preprocessor {
             }
             last_size = result.size();
             let mut applied = false;
-            if let Some(new_node) = rewriter.rewrite(&result, 10, mngr) {
+
+            // Rewrite passes are cheaper than simplification passes, so we do them first and with a higher limit
+            let new_node = rewriter.rewrite(&result, 100, mngr);
+            if new_node != result {
                 applied = true;
                 result = to_nnf(&new_node, mngr);
-                for (old, new) in rewriter.applied() {
-                    log::debug!("Rewrite: {} -> {}", old, new);
-                }
             }
             if let Some(new_node) = simplifier.simplify(&result, 10, mngr) {
                 applied = true;

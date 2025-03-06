@@ -231,6 +231,12 @@ impl NodeManager {
         self.new_var(name, sort).unwrap() // safe to unwrap
     }
 
+    /// Creates new node with a temporary variable
+    pub fn temp_var_node(&mut self, sort: Sort) -> Node {
+        let tv = self.temp_var(sort);
+        self.var(tv)
+    }
+
     pub fn vars(&self) -> impl Iterator<Item = &Rc<Variable>> {
         self.variables.values()
     }

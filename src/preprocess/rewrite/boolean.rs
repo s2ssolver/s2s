@@ -1,334 +1,322 @@
 use indexmap::IndexSet;
 
-use crate::node::{self, Node, NodeKind, NodeManager};
+use crate::node::{Node, NodeKind, NodeManager};
 
-use super::RewriteRule;
+// TODO: Add the following rules
+// - Absorption Or: A ∨ (A ∧ B) = A
+// - Absorption And: A ∧ (A ∨ B) = A
 
-pub struct BoolConstFolding;
-
-impl RewriteRule for BoolConstFolding {
-    fn apply(&self, node: &Node, mngr: &mut NodeManager) -> Option<Node> {
-        match node.kind() {
-            node::NodeKind::And => fold_and(node.children(), mngr),
-            node::NodeKind::Or => fold_or(node.children(), mngr),
-            node::NodeKind::Not => {
-                debug_assert!(node.children().len() == 1);
-                fold_not(node.children().first().unwrap(), mngr)
-            }
-            _ => None,
-        }
-    }
-}
+/* AND */
 
 /// Fold a conjunction of nodes:
-/// - Removes duplicates and neutral elements (`true`)
-/// - Returns false if:
-///     - contains a literal and its negation, return `false`
-///     - contains a `false`
-/// Afterwards, if there is a only single conjunct left, returns that conjuncts.
-/// If there are no conjuncts left, return `true`
-fn fold_and(conjuncts: &[Node], mngr: &mut NodeManager) -> Option<Node> {
-    let mut folded_conjuncts = IndexSet::new();
-    for c in conjuncts {
-        if c.is_false() {
-            return Some(mngr.ffalse()); // Return `false` immediately
-        } else if c.is_true() {
-            continue; // Skip `true` values
-        } else {
-            // Check if the negation is contained in the set
-            if folded_conjuncts.contains(&mngr.not(c.clone())) {
-                return Some(mngr.ffalse()); // Return `false` if a literal and its negation are present
+/// -  (A /\ false) to false
+/// -  (A /\ true) to A
+pub fn and_const(node: &Node, mngr: &mut NodeManager) -> Option<Node> {
+    if *node.kind() == NodeKind::And {
+        let mut new_children = Vec::with_capacity(node.children().len());
+        for c in node.children() {
+            if c.is_false() {
+                return Some(mngr.ffalse());
+            } else if c.is_true() {
+                continue;
+            } else {
+                new_children.push(c.clone());
             }
-            folded_conjuncts.insert(c.clone());
         }
-    }
-
-    match folded_conjuncts.len() {
-        0 => Some(mngr.ttrue()),                    // All conjuncts were `true`
-        1 => Some(folded_conjuncts.pop().unwrap()), // Single conjunct left
-        _ if folded_conjuncts.len() == conjuncts.len() => None, // No changes
-        _ => Some(mngr.and(folded_conjuncts.into_iter().collect())), // Return the folded `and`
+        Some(mngr.and(new_children))
+    } else {
+        None
     }
 }
 
-/// Fold a conjunction of nodes:
-/// - Removes duplicates and neutral elements (`false`)
-/// - Returns true if:
-///     - contains a literal and its negation
-///     - contains a `true`
-/// Afterwards, if there is a only single conjunct left, returns that node.
-/// If there are no nodes left, return `false`
-fn fold_or(disjuncts: &[Node], mngr: &mut NodeManager) -> Option<Node> {
-    let mut folded_disjuncts = IndexSet::new();
-
-    for d in disjuncts {
-        if d.is_true() {
-            return Some(mngr.ttrue()); // Return `true` immediately if any disjunct is `true`
-        } else if d.is_false() {
-            continue;
-        } else {
-            // Check if the negation is contained in the set
-            if folded_disjuncts.contains(&mngr.not(d.clone())) {
-                return Some(mngr.ttrue()); // Return `true` if a literal and its negation are present
-            }
-            folded_disjuncts.insert(d.clone());
+/// Folds: (A /\ A) to A
+pub fn and_idem(node: &Node, mngr: &mut NodeManager) -> Option<Node> {
+    if *node.kind() == NodeKind::And {
+        let mut new_children = IndexSet::with_capacity(node.children().len());
+        for c in node.children() {
+            new_children.insert(c.clone());
         }
-    }
-
-    match folded_disjuncts.len() {
-        0 => Some(mngr.ffalse()),                   // All disjuncts were `false`
-        1 => Some(folded_disjuncts.pop().unwrap()), // Single disjunct left
-        _ if folded_disjuncts.len() == disjuncts.len() => None, // No changes made
-        _ => Some(mngr.or(folded_disjuncts.into_iter().collect())), // Return the folded `or`
+        Some(mngr.and(new_children.into_iter().collect()))
+    } else {
+        None
     }
 }
 
-/// Fold a negation of a node:
-/// - If the node is `true`, return `false`
-/// - If the node is `false`, return `true`
-/// - If the node is a negation, return the child of the negation
-fn fold_not(node: &Node, mngr: &mut NodeManager) -> Option<Node> {
-    if node.is_true() {
-        Some(mngr.ffalse()) // Negation of `true` is `false`
-    } else if node.is_false() {
-        Some(mngr.ttrue()) // Negation of `false` is `true`
-    } else if let NodeKind::Not = node.kind() {
-        // Safely unwrap the child of the `Not` node
+/// Folds: (A /\ -A) to false
+pub fn and_comp(node: &Node, mngr: &mut NodeManager) -> Option<Node> {
+    if *node.kind() == NodeKind::And {
+        let mut children = IndexSet::with_capacity(node.children().len());
+        for c in node.children() {
+            if children.contains(&mngr.not(c.clone())) {
+                return Some(mngr.ffalse());
+            }
+            children.insert(c.clone());
+        }
+        None
+    } else {
+        None
+    }
+}
+
+/* OR */
+
+/// Fold a disjunction of nodes with constants:
+/// -  (A \/ false) to A
+/// -  (A \/ true) to true
+pub fn or_const(node: &Node, mngr: &mut NodeManager) -> Option<Node> {
+    if *node.kind() == NodeKind::Or {
+        let mut new_children = Vec::with_capacity(node.children().len());
+        for c in node.children() {
+            if c.is_true() {
+                return Some(mngr.ttrue());
+            } else if c.is_false() {
+                continue;
+            } else {
+                new_children.push(c.clone());
+            }
+        }
+        Some(mngr.or(new_children))
+    } else {
+        None
+    }
+}
+
+/// Folds: (A \/ A) to A
+pub fn or_idem(node: &Node, mngr: &mut NodeManager) -> Option<Node> {
+    if *node.kind() == NodeKind::Or {
+        let mut new_children = IndexSet::with_capacity(node.children().len());
+        for c in node.children() {
+            new_children.insert(c.clone());
+        }
+        Some(mngr.or(new_children.into_iter().collect()))
+    } else {
+        None
+    }
+}
+
+/// Folds: (A \/ -A) to true
+pub fn or_comp(node: &Node, mngr: &mut NodeManager) -> Option<Node> {
+    if *node.kind() == NodeKind::Or {
+        let mut children = IndexSet::with_capacity(node.children().len());
+        for c in node.children() {
+            if children.contains(&mngr.not(c.clone())) {
+                return Some(mngr.ttrue());
+            }
+            children.insert(c.clone());
+        }
+        None
+    } else {
+        None
+    }
+}
+
+/* NOT */
+
+/// Folds: -(-A) to A
+pub fn not_double_negation(node: &Node) -> Option<Node> {
+    if let NodeKind::Not = node.kind() {
+        debug_assert!(node.children().len() == 1);
         if let Some(child) = node.children().first() {
-            Some(child.clone()) // Double negation: ¬(¬a) becomes `a`
+            if let NodeKind::Not = child.kind() {
+                debug_assert!(child.children().len() == 1);
+                return Some(child.children().first().unwrap().clone());
+            }
+        }
+    }
+    None
+}
+
+/// Folds: -true to false and -false to true
+pub fn not_const(node: &Node, mngr: &mut NodeManager) -> Option<Node> {
+    if let NodeKind::Not = node.kind() {
+        debug_assert!(node.children().len() == 1);
+        let ch = node.children().first().unwrap();
+        if ch.is_true() {
+            return Some(mngr.ffalse());
+        } else if ch.is_false() {
+            return Some(mngr.ttrue());
+        }
+    }
+    None
+}
+
+/// Folds:
+/// - A = A to true
+/// - A = B to false if A != B and A and B do not contain any variables
+pub fn equality_trivial(node: &Node, mngr: &mut NodeManager) -> Option<Node> {
+    if let NodeKind::Eq = node.kind() {
+        debug_assert!(node.children().len() == 2);
+        let lhs = node.children().first().unwrap();
+        let rhs = node.children().last().unwrap();
+        if lhs == rhs {
+            Some(mngr.ttrue())
         } else {
-            unreachable!("Formula is nod well-formed: Negation node without a child.");
+            if lhs.variables().is_empty() && rhs.variables().is_empty() {
+                Some(mngr.ffalse())
+            } else {
+                None
+            }
         }
     } else {
-        None // No folding performed
+        None
     }
 }
 
 #[cfg(test)]
 mod tests {
 
-    use node::Sort;
+    use crate::node::Sort;
 
     use super::*;
 
     #[test]
-    fn test_fold_and_all_true() {
+    fn and_const_false() {
         let mut mngr = NodeManager::default();
 
-        // Case where all conjuncts are `true`
-        let conjuncts = vec![mngr.ttrue(), mngr.ttrue(), mngr.ttrue()];
-        let result = fold_and(&conjuncts, &mut mngr);
+        let conjuncts = vec![
+            mngr.temp_var_node(Sort::Bool),
+            mngr.ffalse(),
+            mngr.temp_var_node(Sort::Bool),
+        ];
+        let result = and_const(&mngr.and(conjuncts), &mut mngr);
 
-        // Expect the result to be `true`
-        assert_eq!(result, Some(mngr.ttrue()));
-    }
-
-    #[test]
-    fn test_fold_and_contains_false() {
-        let mut mngr = NodeManager::default();
-
-        // Case where the conjunction contains a `false`
-        let a = mngr.temp_var(Sort::Bool);
-        let a = mngr.var(a);
-        let conjuncts = vec![a.clone(), mngr.ffalse()];
-        let result = fold_and(&conjuncts, &mut mngr);
-
-        // Expect the result to be `false`
         assert_eq!(result, Some(mngr.ffalse()));
     }
 
     #[test]
-    fn test_fold_and_contains_true() {
+    fn and_const_true() {
         let mut mngr = NodeManager::default();
 
-        // Case where the conjunction contains a `true`, which should be removed
-        let a = mngr.temp_var(Sort::Bool);
-        let b = mngr.temp_var(Sort::Bool);
-        let a = mngr.var(a);
-        let b = mngr.var(b);
-        let conjuncts = vec![a.clone(), mngr.ttrue(), b.clone()];
-        let result = fold_and(&conjuncts, &mut mngr);
+        let conjuncts = vec![
+            mngr.temp_var_node(Sort::Bool),
+            mngr.temp_var_node(Sort::Bool),
+        ];
+        let mut conjuncts_and_t = conjuncts.clone();
+        conjuncts_and_t.push(mngr.ttrue());
+        let result = and_const(&mngr.and(conjuncts_and_t), &mut mngr);
 
-        // Expect the result to be `a ∧ b` (without `true`)
-        let expected = mngr.and(vec![a, b]);
+        assert_eq!(result, Some(mngr.and(conjuncts)));
+    }
+
+    #[test]
+    fn test_and_idem() {
+        let mut mngr = NodeManager::default();
+
+        let v = mngr.temp_var_node(Sort::Bool);
+        let vv = mngr.temp_var_node(Sort::Bool);
+
+        let conjuncts = vec![v.clone(), vv.clone(), v.clone()];
+        let result = and_idem(&mngr.and(conjuncts), &mut mngr);
+        let expected = mngr.and(vec![v.clone(), vv.clone()]);
+
         assert_eq!(result, Some(expected));
     }
 
     #[test]
-    fn test_fold_and_single_conjunct_left() {
+    fn test_and_comp() {
         let mut mngr = NodeManager::default();
 
-        // Case where there is only one non-`true` conjunct left
-        let a = mngr.temp_var(Sort::Bool);
-        let a = mngr.var(a);
-        let conjuncts = vec![mngr.ttrue(), a.clone()];
-        let result = fold_and(&conjuncts, &mut mngr);
+        let v = mngr.temp_var_node(Sort::Bool);
+        let vv = mngr.temp_var_node(Sort::Bool);
 
-        // Expect the result to be `a`
-        assert_eq!(result, Some(a));
-    }
+        let conjuncts = vec![v.clone(), mngr.not(v.clone()), vv.clone()];
+        let result = and_comp(&mngr.and(conjuncts), &mut mngr);
 
-    #[test]
-    fn test_fold_and_no_changes() {
-        let mut mngr = NodeManager::default();
-
-        // Case where no folding occurs (no `true` or `false`)
-        let a = mngr.temp_var(Sort::Bool);
-        let b = mngr.temp_var(Sort::Bool);
-        let a = mngr.var(a);
-        let b = mngr.var(b);
-        let conjuncts = vec![a.clone(), b.clone()];
-        let result = fold_and(&conjuncts, &mut mngr);
-
-        // Expect no changes, so `None` should be returned
-        assert_eq!(result, None);
-    }
-
-    #[test]
-    fn test_fold_and_empty_conjunction() {
-        let mut mngr = NodeManager::default();
-
-        // Case where the conjunction is empty
-        let conjuncts: Vec<Node> = vec![];
-        let result = fold_and(&conjuncts, &mut mngr);
-
-        // Expect the result to be `true`
-        assert_eq!(result, Some(mngr.ttrue()));
-    }
-
-    #[test]
-    fn test_fold_or_all_false() {
-        let mut mngr = NodeManager::default();
-
-        // Case where all disjuncts are `false`
-        let disjuncts = vec![mngr.ffalse(), mngr.ffalse(), mngr.ffalse()];
-        let result = fold_or(&disjuncts, &mut mngr);
-
-        // Expect the result to be `false`
         assert_eq!(result, Some(mngr.ffalse()));
     }
 
     #[test]
-    fn test_fold_or_contains_true() {
+    fn or_const_true() {
         let mut mngr = NodeManager::default();
 
-        // Case where the disjunction contains a `true`
-        let a = mngr.temp_var(Sort::Bool);
-        let a = mngr.var(a);
-        let disjuncts = vec![a.clone(), mngr.ttrue()];
-        let result = fold_or(&disjuncts, &mut mngr);
+        let conjuncts = vec![
+            mngr.temp_var_node(Sort::Bool),
+            mngr.ttrue(),
+            mngr.temp_var_node(Sort::Bool),
+        ];
+        let result = or_const(&mngr.or(conjuncts), &mut mngr);
 
-        // Expect the result to be `true`
         assert_eq!(result, Some(mngr.ttrue()));
     }
 
     #[test]
-    fn test_fold_or_contains_false() {
+    fn or_const_false() {
         let mut mngr = NodeManager::default();
 
-        // Case where the disjunction contains a `false`, which should be removed
-        let a = mngr.temp_var(Sort::Bool);
-        let b = mngr.temp_var(Sort::Bool);
-        let a = mngr.var(a);
-        let b = mngr.var(b);
-        let disjuncts = vec![a.clone(), mngr.ffalse(), b.clone()];
-        let result = fold_or(&disjuncts, &mut mngr);
+        let conjuncts = vec![
+            mngr.temp_var_node(Sort::Bool),
+            mngr.temp_var_node(Sort::Bool),
+        ];
+        let mut conjuncts_and_t = conjuncts.clone();
+        conjuncts_and_t.push(mngr.ffalse());
+        let result = or_const(&mngr.or(conjuncts_and_t), &mut mngr);
 
-        // Expect the result to be `a ∨ b` (without `false`)
-        let expected = mngr.or(vec![a, b]);
+        assert_eq!(result, Some(mngr.or(conjuncts)));
+    }
+
+    #[test]
+    fn test_or_idem() {
+        let mut mngr = NodeManager::default();
+
+        let v = mngr.temp_var_node(Sort::Bool);
+        let vv = mngr.temp_var_node(Sort::Bool);
+
+        let conjuncts = vec![v.clone(), vv.clone(), v.clone()];
+        let result = or_idem(&mngr.or(conjuncts), &mut mngr);
+        let expected = mngr.or(vec![v.clone(), vv.clone()]);
+
         assert_eq!(result, Some(expected));
     }
 
     #[test]
-    fn test_fold_or_single_disjunct_left() {
+    fn test_or_comp() {
         let mut mngr = NodeManager::default();
 
-        // Case where there is only one non-`false` disjunct left
-        let a = mngr.temp_var(Sort::Bool);
-        let a = mngr.var(a);
-        let disjuncts = vec![mngr.ffalse(), a.clone()];
-        let result = fold_or(&disjuncts, &mut mngr);
+        let v = mngr.temp_var_node(Sort::Bool);
+        let vv = mngr.temp_var_node(Sort::Bool);
 
-        // Expect the result to be `a`
-        assert_eq!(result, Some(a));
-    }
+        let conjuncts = vec![v.clone(), mngr.not(v.clone()), vv.clone()];
+        let result = or_comp(&mngr.or(conjuncts), &mut mngr);
 
-    #[test]
-    fn test_fold_or_no_changes() {
-        let mut mngr = NodeManager::default();
-
-        // Case where no folding occurs (no `true` or `false`)
-        let a = mngr.temp_var(Sort::Bool);
-        let b = mngr.temp_var(Sort::Bool);
-        let a = mngr.var(a);
-        let b = mngr.var(b);
-        let disjuncts = vec![a.clone(), b.clone()];
-        let result = fold_or(&disjuncts, &mut mngr);
-
-        // Expect no changes, so `None` should be returned
-        assert_eq!(result, None);
-    }
-
-    #[test]
-    fn test_fold_or_empty_disjunction() {
-        let mut mngr = NodeManager::default();
-
-        // Case where the disjunction is empty
-        let disjuncts: Vec<Node> = vec![];
-        let result = fold_or(&disjuncts, &mut mngr);
-
-        // Expect the result to be `false`
-        assert_eq!(result, Some(mngr.ffalse()));
-    }
-
-    #[test]
-    fn test_fold_not_true() {
-        let mut mngr = NodeManager::default();
-
-        // Negation of `true` should return `false`
-        let node = mngr.ttrue();
-        let result = fold_not(&node, &mut mngr);
-
-        // Expect the result to be `false`
-        assert_eq!(result, Some(mngr.ffalse()));
-    }
-
-    #[test]
-    fn test_fold_not_false() {
-        let mut mngr = NodeManager::default();
-
-        // Negation of `false` should return `true`
-        let node = mngr.ffalse();
-        let result = fold_not(&node, &mut mngr);
-
-        // Expect the result to be `true`
         assert_eq!(result, Some(mngr.ttrue()));
     }
 
     #[test]
-    fn test_fold_not_double_negation() {
+    fn test_not_double_negation() {
         let mut mngr = NodeManager::default();
 
-        // Negation of a negation ¬(¬a) should return `a`
-        let a = mngr.temp_var(Sort::Bool);
-        let a = mngr.var(a);
-        let not_a = mngr.not(a.clone());
-        let result = fold_not(&not_a, &mut mngr);
+        let v = mngr.temp_var_node(Sort::Bool);
+        let not_v = mngr.not(v.clone());
 
-        // Expect the result to be `a` (double negation removed)
-        assert_eq!(result, Some(a));
+        // Calling mngr.not again would directly return the child of the `Not` node, so we bypass the optimization in the Manager
+        let not_not_v = mngr.intern_node(NodeKind::Not, vec![not_v]);
+
+        let result = not_double_negation(&not_not_v);
+
+        assert_eq!(result, Some(v));
     }
 
     #[test]
-    fn test_fold_not_no_folding() {
+    fn test_not_true() {
         let mut mngr = NodeManager::default();
 
-        // Case where no folding occurs (e.g., `a`)
-        let a = mngr.temp_var(Sort::Bool);
-        let a = mngr.var(a);
-        let result = fold_not(&a, &mut mngr);
+        let t = mngr.ttrue();
+        let not_true = mngr.intern_node(NodeKind::Not, vec![t]);
+        let result = not_const(&not_true, &mut mngr);
 
-        // Expect no folding, so `None` should be returned
-        assert_eq!(result, None);
+        // Expect the result to be `false`
+        assert_eq!(result, Some(mngr.ffalse()));
+    }
+
+    #[test]
+    fn test_not_false() {
+        let mut mngr = NodeManager::default();
+
+        let f = mngr.ffalse();
+        let not_false = mngr.intern_node(NodeKind::Not, vec![f]);
+        let result = not_const(&not_false, &mut mngr);
+
+        // Expect the result to be `true`
+        assert_eq!(result, Some(mngr.ttrue()));
     }
 }

@@ -18,7 +18,9 @@ use super::LiteralEncoder;
 pub fn get_encoder(equation: &WordEquation, pol: bool) -> Box<dyn LiteralEncoder> {
     // Both constants => panic
     match equation {
-        WordEquation::ConstantEquality(_, _) => panic!("Constant equations cannot be encoded"),
+        WordEquation::ConstantEquality(_, _) => {
+            panic!("Constant equations cannot be encoded: {}", equation)
+        }
         WordEquation::VarEquality(lhs, rhs) => Box::new(VareqEncoder::new(lhs, rhs, pol)),
         WordEquation::VarAssignment(lhs, rhs) => Box::new(AssignmentEncoder::new(
             lhs.clone(),

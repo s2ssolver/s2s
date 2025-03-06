@@ -1,5 +1,6 @@
 /// Rewrite rules for transforming Boolean nodes.
 mod boolean;
+mod factors;
 mod int;
 mod ite;
 mod regex;
@@ -9,118 +10,173 @@ use indexmap::IndexMap;
 
 use crate::node::{Node, NodeManager};
 
-pub trait RewriteRule {
-    /// Apply the rule to a node, returning the new node if the rule applies and None otherwise.
-    /// This method may lookup children of the given node but should never recurse.
-    fn apply(&self, node: &Node, mngr: &mut NodeManager) -> Option<Node>;
+#[derive(Debug, Clone, Copy)]
+pub enum RewriteRules {
+    /* Boolean Rewrites */
+    BoolAndConst,
+    BoolAndIdem,
+    BoolAndComp,
+    BoolOrConst,
+    BoolOrIdem,
+    BoolOrComp,
+    BoolNotConst,
+    BoolNotDouble,
+    EqualityTrivial,
+
+    /* ITE */
+    IteBoolean,
+    ItePull,
+
+    /* INRE */
+    InReConstLhs,
+    InReTrivial,
+    InReEquation,
+    InReConstPrefix,
+    InReConstSuffix,
+    InRePullComp,
+
+    /* Integers */
+    IntFoldConst,
+    IntLessTrivial,
+    IntGreaterTrivial,
+    IntEqTrivial,
+    StrLenToAdd,
+
+    /* Word Equation Nodes */
+    WeqStripLcp,
+    WeqStripLcs,
+    WeqConstMismatch,
 }
 
-pub struct Rewriter {
-    rules: Vec<Box<dyn RewriteRule>>,
-    rewrite_cache: IndexMap<Node, Node>,
-    // The applied rules are stored as pairs of (original, rewritten) nodes.
-    // This is used for debugging and logging purposes.
-    // Only contains the rewrite on the level where the rule was applied.
-    // If that lead to parent nodes being affected, they are not included (as they are in rewrite_cache).
-    applied_rules: Vec<(Node, Node)>,
-}
-
-impl Default for Rewriter {
-    fn default() -> Self {
-        Rewriter {
-            rules: vec![
-                Box::new(ite::IteRewrite),
-                Box::new(boolean::BoolConstFolding),
-                Box::new(weq::FoldTrivialEquations),
-                Box::new(weq::WeqStripPrefix),
-                Box::new(weq::WeqStripSuffix),
-                Box::new(weq::WeqConstMismatch),
-                Box::new(regex::FoldConstantInRe),
-                Box::new(regex::FoldConstantRegex),
-                Box::new(regex::ReStripConstantPrefix),
-                Box::new(regex::ReStripConstantSuffix),
-                Box::new(regex::PullComplement),
-                Box::new(int::LengthOfConcatToAddition),
-                Box::new(int::TrivialIntRelations),
-                Box::new(int::FoldConstantInts),
-            ],
-            rewrite_cache: IndexMap::new(),
-            applied_rules: Vec::new(),
+impl RewriteRules {
+    pub fn apply(&self, node: &Node, mngr: &mut NodeManager) -> Option<Node> {
+        match self {
+            RewriteRules::BoolAndConst => boolean::and_const(node, mngr),
+            RewriteRules::BoolAndIdem => boolean::and_idem(node, mngr),
+            RewriteRules::BoolAndComp => boolean::and_comp(node, mngr),
+            RewriteRules::BoolOrConst => boolean::or_const(node, mngr),
+            RewriteRules::BoolOrIdem => boolean::or_idem(node, mngr),
+            RewriteRules::BoolOrComp => boolean::or_comp(node, mngr),
+            RewriteRules::BoolNotConst => boolean::not_const(node, mngr),
+            RewriteRules::BoolNotDouble => boolean::not_double_negation(node),
+            RewriteRules::EqualityTrivial => boolean::equality_trivial(node, mngr),
+            RewriteRules::IteBoolean => ite::ite_bool(node, mngr),
+            RewriteRules::ItePull => ite::ite_pull(node, mngr),
+            RewriteRules::InReConstLhs => regex::inre_constant_lhs(node, mngr),
+            RewriteRules::InReTrivial => regex::inre_trivial(node, mngr),
+            RewriteRules::InReEquation => regex::inre_equation(node, mngr),
+            RewriteRules::InReConstPrefix => regex::inre_strip_prefix(node, mngr),
+            RewriteRules::InReConstSuffix => regex::inre_strip_suffix(node, mngr),
+            RewriteRules::InRePullComp => regex::inre_pull_comp(node, mngr),
+            RewriteRules::IntFoldConst => int::fold_constant_ints(node, mngr),
+            RewriteRules::IntLessTrivial => int::int_less_trivial(node, mngr),
+            RewriteRules::IntGreaterTrivial => int::int_greater_trivial(node, mngr),
+            RewriteRules::IntEqTrivial => int::int_equality_trivial(node, mngr),
+            RewriteRules::StrLenToAdd => int::string_length_addition(node, mngr),
+            RewriteRules::WeqStripLcp => weq::strip_lcp(node, mngr),
+            RewriteRules::WeqStripLcs => weq::strip_lcs(node, mngr),
+            RewriteRules::WeqConstMismatch => weq::const_mismatch(node, mngr),
         }
     }
 }
 
-impl Rewriter {
-    /// Rewrite the given node using the rules in this rewriter.
-    /// Performs up to `max_passes` passes over the node.
-    /// Each pass traverses the AST in post-order, applying the rules.
-    pub fn rewrite(&mut self, node: &Node, passes: usize, mngr: &mut NodeManager) -> Option<Node> {
-        self.rewrite_cache.clear();
-        self.applied_rules.clear();
+pub struct Rewriter {
+    rules: Vec<RewriteRules>,
+    rewrite_cache: IndexMap<Node, Node>,
+}
 
-        let node = pull_ites(node, mngr);
-        let mut current = None;
-        for _ in 0..passes {
-            match self.rewrite_pass(current.as_ref().unwrap_or(&node), mngr) {
-                Some(rew) => current = Some(rew),
-                None => break,
+impl Rewriter {
+    pub fn rewrite(&mut self, node: &Node, max_passes: usize, mngr: &mut NodeManager) -> Node {
+        let mut current = node.clone();
+        for _ in 0..max_passes {
+            let rw = self.pass(&current, mngr);
+            if rw == current {
+                // nothing changed, return
+                break;
+            } else {
+                // something changed, continue
+                current = rw;
             }
         }
 
         current
     }
 
-    /// Does a post-order traversal of the AST, applying the matching rules.
-    /// If a rule matches, then the node is replaced with the result of the rule.
-    /// If no rule matches, then the node is unchanged.
-    /// This method returns None if no rule was applied.
-    fn rewrite_pass(&mut self, node: &Node, mngr: &mut NodeManager) -> Option<Node> {
-        // Check was already rewritten.
-        // If so, return the cached result.
-        if let Some(new_node) = self.rewrite_cache.get(node) {
-            return Some(new_node.clone());
+    /// Perform a rewrite pass over the given node.
+    /// This method applies the rules in the order they were added to the rewriter.
+    /// It first applies the rules to the children of the node and then to the node itself.
+    /// A single pass calls every rule once for every node in the AST.
+    pub fn pass(&mut self, node: &Node, mngr: &mut NodeManager) -> Node {
+        if let Some(cached) = self.rewrite_cache.get(node) {
+            return cached.clone();
         }
 
+        // Apply to children first.
         let mut children = Vec::new();
-        let mut applied = false;
         for child in node.children() {
-            if let Some(new_child) = self.rewrite_pass(child, mngr) {
-                children.push(new_child);
-                applied = true;
-            } else {
-                children.push(child.clone());
-            }
+            children.push(self.pass(child, mngr));
         }
+
+        // Rewrite the current node.
         let mut new_node = mngr.create_node(node.kind().clone(), children);
         for rule in &self.rules {
             if let Some(result) = rule.apply(&new_node, mngr) {
-                self.applied_rules.push((new_node.clone(), result.clone()));
-                applied = true;
+                log::debug!("({:?}): {} -> {}", rule, new_node, result);
                 new_node = result;
                 break;
             }
         }
-        if applied {
-            self.rewrite_cache
-                .insert(new_node.clone(), new_node.clone());
-            Some(new_node)
-        } else {
-            None
-        }
-    }
 
-    /// Returns the applied rules.
-    pub fn applied(&self) -> &[(Node, Node)] {
-        &self.applied_rules
+        self.rewrite_cache.insert(node.clone(), new_node.clone());
+        new_node
     }
 }
 
+impl Default for Rewriter {
+    fn default() -> Self {
+        Rewriter {
+            rules: REWRITE.iter().copied().collect(),
+            rewrite_cache: IndexMap::new(),
+        }
+    }
+}
+
+const REWRITE: &'static [RewriteRules] = &[
+    RewriteRules::ItePull,    // Must be first
+    RewriteRules::IteBoolean, // Must be second
+    RewriteRules::BoolAndConst,
+    RewriteRules::BoolAndIdem,
+    RewriteRules::BoolAndComp,
+    RewriteRules::BoolOrConst,
+    RewriteRules::BoolOrIdem,
+    RewriteRules::BoolOrComp,
+    RewriteRules::BoolNotConst,
+    RewriteRules::BoolNotDouble,
+    RewriteRules::EqualityTrivial,
+    RewriteRules::InReConstLhs,
+    RewriteRules::InReTrivial,
+    RewriteRules::InReEquation,
+    RewriteRules::InReConstPrefix,
+    RewriteRules::InReConstSuffix,
+    RewriteRules::InRePullComp,
+    RewriteRules::IntFoldConst,
+    RewriteRules::IntLessTrivial,
+    RewriteRules::IntGreaterTrivial,
+    RewriteRules::IntEqTrivial,
+    RewriteRules::StrLenToAdd,
+    RewriteRules::WeqStripLcp,
+    RewriteRules::WeqStripLcs,
+    RewriteRules::WeqConstMismatch,
+];
+
 /// Pulls all ITE expressions that return non-boolean values to a Boolean level.
 /// Meaning, if node contains a non-Boolean predicate P (..., ITE c t e, ...), then this will ''pull'' the ITE expression one level higher: ITE c (P ..., t, ...) (P ..., e, ...)
+/// Might be required as a first pass before running all other rewrites.
+#[allow(dead_code)]
 pub fn pull_ites(node: &Node, mngr: &mut NodeManager) -> Node {
     let ch_normed = node.children().iter().map(|c| pull_ites(c, mngr)).collect();
     let new_node = mngr.create_node(node.kind().clone(), ch_normed);
-    if let Some(rew) = ite::PullIte.apply(&new_node, mngr) {
+    if let Some(rew) = ite::ite_pull(&new_node, mngr) {
         rew
     } else {
         new_node
