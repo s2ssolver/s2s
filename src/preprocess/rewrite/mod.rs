@@ -46,6 +46,11 @@ pub enum RewriteRules {
     WeqStripLcp,
     WeqStripLcs,
     WeqConstMismatch,
+
+    /* Factor Constraints */
+    PrefixTrivial,
+    SuffixTrivial,
+    ContainsTrivial,
 }
 
 impl RewriteRules {
@@ -76,6 +81,9 @@ impl RewriteRules {
             RewriteRules::WeqStripLcp => weq::strip_lcp(node, mngr),
             RewriteRules::WeqStripLcs => weq::strip_lcs(node, mngr),
             RewriteRules::WeqConstMismatch => weq::const_mismatch(node, mngr),
+            RewriteRules::PrefixTrivial => factors::trivial_prefixof(node, mngr),
+            RewriteRules::SuffixTrivial => factors::trivial_suffixof(node, mngr),
+            RewriteRules::ContainsTrivial => factors::trivial_contains(node, mngr),
         }
     }
 }
@@ -87,6 +95,7 @@ pub struct Rewriter {
 
 impl Rewriter {
     pub fn rewrite(&mut self, node: &Node, max_passes: usize, mngr: &mut NodeManager) -> Node {
+        let node = pull_ites(node, mngr);
         let mut current = node.clone();
         for _ in 0..max_passes {
             let rw = self.pass(&current, mngr);
@@ -167,12 +176,13 @@ const REWRITE: &'static [RewriteRules] = &[
     RewriteRules::WeqStripLcp,
     RewriteRules::WeqStripLcs,
     RewriteRules::WeqConstMismatch,
+    RewriteRules::PrefixTrivial,
+    RewriteRules::SuffixTrivial,
+    RewriteRules::ContainsTrivial,
 ];
 
 /// Pulls all ITE expressions that return non-boolean values to a Boolean level.
 /// Meaning, if node contains a non-Boolean predicate P (..., ITE c t e, ...), then this will ''pull'' the ITE expression one level higher: ITE c (P ..., t, ...) (P ..., e, ...)
-/// Might be required as a first pass before running all other rewrites.
-#[allow(dead_code)]
 pub fn pull_ites(node: &Node, mngr: &mut NodeManager) -> Node {
     let ch_normed = node.children().iter().map(|c| pull_ites(c, mngr)).collect();
     let new_node = mngr.create_node(node.kind().clone(), ch_normed);

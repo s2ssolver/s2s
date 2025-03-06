@@ -10,6 +10,16 @@ pub enum Symbol {
     Variable(Rc<Variable>),
 }
 
+impl Symbol {
+    pub fn is_const(&self) -> bool {
+        matches!(self, Symbol::Const(_))
+    }
+
+    pub fn is_variable(&self) -> bool {
+        matches!(self, Symbol::Variable(_))
+    }
+}
+
 /// Iterator over the symbols in a node that represents a string term.
 pub struct SymbolIterator<'a> {
     node: &'a Node,
