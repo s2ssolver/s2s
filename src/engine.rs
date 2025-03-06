@@ -137,10 +137,6 @@ impl Engine {
             });
         }
 
-        if self.options.dry {
-            return Ok(SolverAnswer::Unknown);
-        }
-
         // Infer alphabet
         let alphabet = alphabet::infer(&fm);
         log::info!("Inferred alphabet of size {}", alphabet.len(),);
@@ -166,6 +162,10 @@ impl Engine {
             alphabet,
             init_dom,
         );
+
+        if self.options.dry {
+            return Ok(SolverAnswer::Unknown);
+        }
 
         // Start over-approximation loop
         self.solve_cegar(

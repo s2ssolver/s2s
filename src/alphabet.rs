@@ -10,7 +10,7 @@ use crate::node::{
     get_literals, Node, Sorted,
 };
 
-use regulaer::{alph::Alphabet as InnerAlphabet, re::RegexProps};
+use regulaer::alph::Alphabet as InnerAlphabet;
 
 /// A wrapper around the regular crate's alphabet
 #[derive(Debug, Clone, Default)]
@@ -133,13 +133,15 @@ fn additional_chars(fm: &Node) -> usize {
 /// Returns the number of additional characters needed for the given set of literals.
 /// If the literals do not contain (proper) word equations, then the number of additional characters is min(#string vars, #string inequalities).
 /// If the literals contain word equations, then the number of additional characters is #string inequalities.
-/// Addtionally, if the the literals contain at least one linear constraint or one regular constraint, then the number of additional characters is at least 1.
+/// If the literals contain length a constraints, then another character is needed on top of the above.
+/// Always returns at least 1.
 fn addition_chars_lits(lits: &[Literal]) -> usize {
     let mut contains_eq = false;
+    let mut contains_lc = false;
+    let mut contains_inre = false;
 
     let mut string_vars = IndexSet::new();
     let mut num_ineqs = 0;
-    let mut at_least_one = false;
 
     for lit in lits {
         let pol = lit.polarity();
@@ -147,7 +149,7 @@ fn addition_chars_lits(lits: &[Literal]) -> usize {
             AtomKind::Boolvar(_) => (),
             AtomKind::InRe(in_re) => {
                 string_vars.insert(in_re.lhs().clone());
-                at_least_one = true;
+                contains_inre = true;
             }
             AtomKind::WordEquation(weq) => {
                 string_vars.extend(weq.variables());
@@ -158,28 +160,36 @@ fn addition_chars_lits(lits: &[Literal]) -> usize {
             }
             AtomKind::FactorConstraint(fc) => {
                 string_vars.insert(fc.of().clone());
-                at_least_one = true;
+                contains_inre = true;
             }
             AtomKind::Linear(lc) => {
                 // Can contain string vars, but if they don't occur in the other literals, we need at most one character to account for all possible lengths
                 if lc.variables().iter().any(|v| v.sort().is_string()) {
-                    at_least_one = true;
+                    contains_lc = true;
                 }
             }
         }
     }
 
     let num_vars = string_vars.len();
-    let res = if contains_eq {
-        num_ineqs
-    } else {
-        num_vars.min(num_ineqs)
+
+    let res = match (contains_inre, contains_eq) {
+        (true, true) => num_ineqs,
+        (true, false) => num_vars.min(num_ineqs),
+        (false, true) => num_ineqs,
+        (false, false) => num_vars.min(num_ineqs),
     };
-    if at_least_one {
-        res.max(1)
+    //    panic!("{} {} {} {}", contains_eq, num_vars, num_ineqs, res);
+    let res = if contains_lc {
+        // double check if this is sound.
+        // here are some minimal example
+        // - x != y /\ |x| = |y| (needs at least 2 characters)
+        // - xx != yy /\ |xx| = |yy| (needs at least 2 characters, but without the linear constraint, only 1 character is needed)
+        res + 1
     } else {
         res
-    }
+    };
+    res.max(1)
 }
 
 #[cfg(test)]
@@ -224,8 +234,8 @@ mod tests {
         let literals = vec![];
         let result = addition_chars_lits(&literals);
         assert_eq!(
-            result, 0,
-            "Expected 0 additional characters for an empty literal set"
+            result, 1,
+            "Expected 1 additional characters for an empty literal set"
         );
     }
 
@@ -241,8 +251,8 @@ mod tests {
 
     #[test]
     fn test_addition_chars_single_in_re_neq() {
+        // x in foo /\ x != y
         let mut mngr = NodeManager::default();
-
         let inre = make_in_re("x", &mut mngr);
         let neq = make_neq("x", "y", &mut mngr);
         let result = addition_chars_lits(&[inre, neq]);
@@ -261,7 +271,8 @@ mod tests {
     }
 
     #[test]
-    fn test_addition_chars_single_in_re_neq_more_ineqs() {
+    fn test_addition_chars_only_neqs() {
+        // x!=y /\ x != z /\ x != u /\ y != z /\ y != u /\ z != u
         let mut mngr = NodeManager::default();
 
         let neq_xy = make_neq("x", "y", &mut mngr);
@@ -279,6 +290,7 @@ mod tests {
 
     #[test]
     fn test_addition_lc_wo_string() {
+        // x * 5 + y * 3 + 2 = 10
         let mut mngr = NodeManager::default();
         let x = mngr
             .new_var("x".to_string(), Sort::Int)
@@ -305,7 +317,7 @@ mod tests {
         let lit = to_lit(&lc, &mut mngr);
 
         let result = addition_chars_lits(&[lit]);
-        assert_eq!(result, 0);
+        assert_eq!(result, 1);
     }
 
     #[test]
@@ -375,6 +387,8 @@ mod tests {
 
     #[test]
     fn test_addition_lc_two_strings_with_neq() {
+        // x * 5 + y * 3 + 2 = 10 /\ x != y
+
         let mut mngr = NodeManager::default();
         let x_len = mngr
             .new_var("x".to_string(), Sort::String)
@@ -405,11 +419,13 @@ mod tests {
         let neq = make_neq("x", "y", &mut mngr);
 
         let result = addition_chars_lits(&[lit, neq]);
-        assert_eq!(result, 1);
+
+        assert_eq!(result, 2);
     }
 
     #[test]
     fn test_addition_lc_three_strings_with_neq() {
+        // x * 5 + y * 3 + 2 = 10 /\ x != y /\ y != z
         let mut mngr = NodeManager::default();
         let x_len = mngr
             .new_var("x".to_string(), Sort::String)
@@ -441,6 +457,6 @@ mod tests {
         let neq_2 = make_neq("y", "z", &mut mngr);
 
         let result = addition_chars_lits(&[lit, neq, neq_2]);
-        assert_eq!(result, 2);
+        assert_eq!(result, 3);
     }
 }

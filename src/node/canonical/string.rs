@@ -501,10 +501,10 @@ impl WordEquation {
         Self::new(self.lhs().reversed(), self.rhs().reversed())
     }
 
-    /// We call a word equation `proper` if it contains at least one side with both a variable and a constant.
+    /// We call a word equation `proper` if it contains at least one with concatenation.
     pub fn is_proper(&self) -> bool {
-        (self.lhs().contains_constant() && !self.lhs().is_constant())
-            || (self.rhs().contains_constant() && !self.rhs().is_constant())
+        (self.lhs().len() > 1 && !self.lhs().is_constant())
+            || (self.rhs().len() > 1 && !self.rhs().is_constant())
     }
 }
 
