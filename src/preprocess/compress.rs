@@ -27,6 +27,9 @@ impl RangeCompressor {
                 let compressed_re = self.compress_re_ranges(regex, partitioning, mngr.re_builder());
                 mngr.const_regex(compressed_re)
             }
+            // Cannot compress negated regular constraints, so we return the node as is
+            // Since the formula is in NNF, this check is sufficient
+            NodeKind::Not => return node.clone(),
             _ => {
                 let mut new_children = Vec::with_capacity(node.children().len());
                 for c in node.children() {
