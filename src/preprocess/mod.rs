@@ -1,12 +1,14 @@
-use indexmap::IndexSet;
-
 mod canonicalize;
+mod complements;
+mod compress;
 mod elim;
 mod rewrite;
 mod simp;
 
 use crate::node::{error::NodeError, normal::to_nnf, Node, NodeManager, NodeSubstitution};
 pub use canonicalize::canonicalize;
+
+use compress::RangeCompressor;
 use elim::EliminateEntailed;
 use rewrite::Rewriter;
 use simp::Simplifier;
@@ -75,4 +77,14 @@ impl Preprocessor {
     pub fn applied_substitutions(&self) -> &NodeSubstitution {
         &self.subs
     }
+}
+
+pub fn compress_ranges(node: &Node, mngr: &mut NodeManager) -> Node {
+    let compressor = RangeCompressor::default();
+    compressor.compress(node, mngr)
+}
+
+pub fn remove_complements(node: &Node, mngr: &mut NodeManager) -> Node {
+    let mut comp_remover = complements::ReCompRemover::default();
+    comp_remover.remove_comps(node, mngr)
 }

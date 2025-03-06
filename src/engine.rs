@@ -1,3 +1,5 @@
+use std::time::Instant;
+
 use crate::{
     abstraction::{build_abstraction, LitDefinition},
     alphabet,
@@ -8,7 +10,7 @@ use crate::{
         canonical::Assignment, get_entailed_literals, smt::to_script, Node, NodeKind, NodeManager,
         NodeSubstitution, Sort, Sorted,
     },
-    preprocess::{canonicalize, Preprocessor},
+    preprocess::{canonicalize, compress_ranges, remove_complements, Preprocessor},
     solver::Solver,
     SolverAnswer, SolverOptions,
 };
@@ -102,6 +104,15 @@ impl Engine {
         // We need to store them and re-apply them to the model of the preprocessed formula, to get the model of the original formula
         let prepr_subst = preprocessor.applied_substitutions().clone();
 
+        // Try to remove regular complementations
+        let simped = remove_complements(&simped, mngr);
+
+        // Compress the char ranges
+        let t = Instant::now();
+        let compressed = compress_ranges(&simped, mngr);
+        log::debug!("Compressed formula in {:?}", t.elapsed());
+        log::debug!("Compressed formula: {}", compressed);
+
         // If the 'print_preprocessed' option is set, print the preprocessed formula
         if self.options.print_preprocessed {
             println!("{}", to_script(&simped));
@@ -109,7 +120,7 @@ impl Engine {
 
         // Canonicalize.
         // This brings the formula into a normal that the solver understands.
-        let canonical = canonicalize(&simped, mngr)?;
+        let canonical = canonicalize(&compressed, mngr)?;
         log::debug!("Canonicalized formula: {}", canonical);
 
         Ok((canonical, prepr_subst))
