@@ -1,13 +1,13 @@
 use indexmap::IndexSet;
 
 mod canonicalize;
+mod elim;
 mod rewrite;
 mod simp;
 
-use crate::node::{
-    error::NodeError, get_entailed, normal::to_nnf, Node, NodeManager, NodeSubstitution, Sorted,
-};
+use crate::node::{error::NodeError, normal::to_nnf, Node, NodeManager, NodeSubstitution};
 pub use canonicalize::canonicalize;
+use elim::EliminateEntailed;
 use rewrite::Rewriter;
 use simp::Simplifier;
 
@@ -74,39 +74,5 @@ impl Preprocessor {
 
     pub fn applied_substitutions(&self) -> &NodeSubstitution {
         &self.subs
-    }
-}
-
-/// Removes all other occurrences of an entailed literals from the formula by replacing them with `true` or `false`.
-/// This is neither a simplification nor a rewrite rule, but an additional preprocessing step.
-#[derive(Clone, Default)]
-pub struct EliminateEntailed {
-    // All nodes that have a non-entailed occurrence.
-    entailed: IndexSet<Node>,
-}
-
-impl EliminateEntailed {
-    fn occurrs_entailed(&self, node: &Node) -> bool {
-        self.entailed.contains(node)
-    }
-
-    pub fn apply(&mut self, root: Node, mngr: &mut NodeManager) -> Node {
-        self.entailed = get_entailed(&root);
-        self.apply_node(root, true, mngr)
-    }
-
-    fn apply_node(&self, node: Node, entailed: bool, mngr: &mut NodeManager) -> Node {
-        if node.sort().is_bool() && !entailed && self.occurrs_entailed(&node) {
-            mngr.ttrue()
-        } else {
-            // apply to children
-            let kind = node.kind().clone();
-            let children = node
-                .children()
-                .into_iter()
-                .map(|child| self.apply_node(child.clone(), entailed, mngr))
-                .collect();
-            mngr.create_node(kind, children)
-        }
     }
 }
