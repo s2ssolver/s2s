@@ -162,8 +162,10 @@ impl ReCompRemover {
     }
 
     fn comp_char(&mut self, a: char, builder: &mut ReBuilder) -> Regex {
-        let r = CharRange::singleton(a);
-        self.comp_range(r, builder)
+        //let r = CharRange::singleton(a);
+        //self.comp_range(r, builder)
+        let r = builder.range(a, a);
+        builder.comp(r)
     }
 
     fn comp_range(&mut self, r: CharRange, builder: &mut ReBuilder) -> Regex {
@@ -198,6 +200,7 @@ mod test {
     use super::ReCompRemover;
 
     #[test]
+    #[ignore = "Using complement transitions instead"]
     fn re_comp_canonicalize_char() {
         let mut comp = ReCompRemover::default();
         let mut builder = ReBuilder::default();
