@@ -198,7 +198,11 @@ impl NodeManager {
             self.nfas.insert(regex.clone(), nfa.clone());
             nfa
         };
-        log::debug!("Compiled NFA ({:?})", t.elapsed());
+        log::debug!(
+            "Compiled NFA ({:?}) (size: {})",
+            t.elapsed(),
+            nfa.num_states() + nfa.num_transitions()
+        );
         nfa
     }
     /* Variables */

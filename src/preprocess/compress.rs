@@ -6,14 +6,64 @@ use regulaer::{
 
 use crate::node::{Node, NodeKind, NodeManager};
 
+use super::complements::ReCompRemoveer;
+
 #[derive(Default)]
-pub struct RangeCompressor {}
+pub struct RangeCompressor {
+    comp_folder: ReCompRemoveer,
+}
 
 impl RangeCompressor {
-    pub fn compress(&self, node: &Node, mngr: &mut NodeManager) -> Node {
-        let partioning = self.partition_alphabet(node);
-        let compressed = self.compress_ranges(node, &partioning, mngr);
+    pub fn compress(&mut self, node: &Node, mngr: &mut NodeManager) -> Node {
+        // Try to get rid of complements first
+        let node = self.rewrite_complements(node, mngr, true);
+        let partioning = self.partition_alphabet(&node);
+        let compressed = self.compress_ranges(&node, &partioning, mngr);
         compressed
+    }
+
+    /// Tries to remove the complements in regular constraints.
+    /// For regex with positive polarity, this also rewrites complements of ranges as unions of ranges, meaning `comp([a-c])` becomes `[smt::min-(a-1)]|[(a+1)-smt::max]`.
+    /// This is done to allow for more effective range compression.
+    /// In negative polarity, compression is not sound and range complements are left as they are.
+    fn rewrite_complements(&mut self, node: &Node, mngr: &mut NodeManager, polarity: bool) -> Node {
+        match node.kind() {
+            NodeKind::InRe => {
+                debug_assert!(node.children().len() == 2);
+                if let NodeKind::Regex(regex) = node.children()[1].kind() {
+                    match self.comp_folder.apply(regex, mngr.re_builder(), polarity) {
+                        Some(re) => {
+                            let re_node = mngr.const_regex(re);
+                            mngr.create_node(
+                                NodeKind::InRe,
+                                vec![node.children()[0].clone(), re_node],
+                            )
+                        }
+                        None => node.clone(),
+                    }
+                } else {
+                    unreachable!()
+                }
+            }
+            NodeKind::Not => {
+                let kind = node.kind().clone();
+                let children = node
+                    .children()
+                    .iter()
+                    .map(|child| self.rewrite_complements(child, mngr, !polarity))
+                    .collect();
+                mngr.create_node(kind, children)
+            }
+            _ => {
+                let kind = node.kind().clone();
+                let children = node
+                    .children()
+                    .iter()
+                    .map(|child| self.rewrite_complements(child, mngr, polarity))
+                    .collect();
+                mngr.create_node(kind, children)
+            }
+        }
     }
 
     pub fn compress_ranges(
@@ -191,9 +241,12 @@ mod test {
     use quickcheck_macros::quickcheck;
     use regulaer::{alph::CharRange, parse::parse_rust};
 
-    use crate::node::{
-        testutils::{parse_equation, parse_pattern},
-        NodeManager,
+    use crate::{
+        node::{
+            testutils::{parse_equation, parse_pattern},
+            NodeManager,
+        },
+        preprocess::compress::RangeCompressor,
     };
 
     #[test]
@@ -201,7 +254,7 @@ mod test {
         let mut mngr = NodeManager::default();
         let p = parse_pattern("XabYabc", &mut mngr);
 
-        let compressor = super::RangeCompressor {};
+        let compressor = RangeCompressor::default();
         let partitioning = compressor.partition_alphabet(&p);
 
         assert!(partitioning.contains(&CharRange::singleton('a')));
@@ -214,7 +267,7 @@ mod test {
         let mut mngr = NodeManager::default();
         let p = parse_equation("XabYabc", "abXcYd", &mut mngr);
 
-        let compressor = super::RangeCompressor {};
+        let compressor = RangeCompressor::default();
         let partitioning = compressor.partition_alphabet(&p);
 
         assert!(partitioning.contains(&CharRange::singleton('a')));
@@ -227,7 +280,7 @@ mod test {
     fn word_to_partitioning(chars: Vec<char>) {
         let word = chars.into_iter().filter(|c| c.is_alphanumeric());
 
-        let compressor = super::RangeCompressor {};
+        let compressor = RangeCompressor::default();
         let partitioning = compressor.word_to_partitioning(word.clone());
 
         let unique_chars = word.unique().collect::<Vec<_>>();
@@ -246,7 +299,7 @@ mod test {
 
         println!("Parsed: {}", re);
 
-        let compressor = super::RangeCompressor {};
+        let compressor = RangeCompressor::default();
         let partitioning = compressor.partition_re_alphabet(&re);
 
         assert!(
@@ -267,7 +320,7 @@ mod test {
 
         println!("Parsed: {}", re);
 
-        let compressor = super::RangeCompressor {};
+        let compressor = RangeCompressor::default();
         let partitioning = compressor.partition_re_alphabet(&re);
 
         assert_eq!(partitioning.len(), 5);

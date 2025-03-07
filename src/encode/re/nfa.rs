@@ -90,7 +90,6 @@ impl NFAEncoder {
 
                 for transition in self.nfa.get_state(state)?.transitions() {
                     let reach_next = self.reach_vars[&(transition.get_dest(), l + 1)];
-
                     match transition.get_type() {
                         TransitionType::Range(range) if range_any(range) => {
                             // Follow transition if we do not read lambda
@@ -113,7 +112,7 @@ impl NFAEncoder {
                                         "Substitution h({})[{}] = '{}' not found",
                                         self.var,
                                         l,
-                                        c.escape_debug()
+                                        c.escape_debug(),
                                     )
                                     .as_str(),
                                 );
