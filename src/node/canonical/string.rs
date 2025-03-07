@@ -8,6 +8,7 @@ use indexmap::IndexSet;
 use regulaer::re::Regex;
 
 use crate::node::{NodeManager, Sort, Sorted, Variable};
+use smallvec::smallvec;
 
 /// Represents a pattern symbol, which can be either a constant word or a variable.
 #[derive(Clone, Debug, PartialEq, Hash, Eq)]
@@ -588,9 +589,11 @@ impl RegularFactorConstraint {
         let all = mngr.re_builder().all();
         let w = mngr.re_builder().word(self.rhs.clone().into());
         match self.typ {
-            FactorConstraintType::Prefix => mngr.re_builder().concat(vec![w, all]),
-            FactorConstraintType::Suffix => mngr.re_builder().concat(vec![all, w]),
-            FactorConstraintType::Contains => mngr.re_builder().concat(vec![all.clone(), w, all]),
+            FactorConstraintType::Prefix => mngr.re_builder().concat(smallvec![w, all]),
+            FactorConstraintType::Suffix => mngr.re_builder().concat(smallvec![all, w]),
+            FactorConstraintType::Contains => {
+                mngr.re_builder().concat(smallvec![all.clone(), w, all])
+            }
         }
     }
 }

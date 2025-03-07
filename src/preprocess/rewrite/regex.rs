@@ -1,4 +1,4 @@
-use regulaer::re::{deriv::Deriver, RegOp, RegexProps};
+use regulaer::re::{deriv::Deriver, ReOp};
 
 use crate::node::{
     utils::{reverse, Symbol, SymbolIterator},
@@ -38,10 +38,10 @@ pub fn inre_trivial(node: &Node, mngr: &mut NodeManager) -> Option<Node> {
         debug_assert!(node.children().len() == 2);
         let re = &node.children()[1];
         if let NodeKind::Regex(re) = re.kind() {
-            if re.is_none().unwrap_or(false) {
+            if re.none().unwrap_or(false) {
                 // none regex accepts no string
                 return Some(mngr.ffalse());
-            } else if re.is_universal().unwrap_or(false) {
+            } else if re.universal().unwrap_or(false) {
                 // universal regex accepts all strings
                 return Some(mngr.ttrue());
             }
@@ -136,7 +136,7 @@ pub fn inre_pull_comp(node: &Node, mngr: &mut NodeManager) -> Option<Node> {
         let rhs = &node.children()[1];
 
         if let NodeKind::Regex(re) = rhs.kind() {
-            if let RegOp::Comp(inner) = re.op() {
+            if let ReOp::Comp(inner) = re.op() {
                 let new_rhs = mngr.create_node(NodeKind::Regex(inner.clone()), vec![]);
                 let new_node = mngr.in_re(lhs.clone(), new_rhs);
                 let negated = mngr.not(new_node);

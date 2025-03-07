@@ -1,5 +1,3 @@
-use regulaer::re::RegexProps;
-
 use crate::node::NodeKind;
 
 use super::*;

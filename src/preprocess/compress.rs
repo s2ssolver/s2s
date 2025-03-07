@@ -1,7 +1,7 @@
 use itertools::Itertools;
 use regulaer::{
     alph::{Alphabet, CharPartitioning, CharRange},
-    re::{ReBuilder, RegOp, Regex},
+    re::{ReBuilder, ReOp, Regex},
 };
 
 use crate::node::{Node, NodeKind, NodeManager};
@@ -47,7 +47,7 @@ impl RangeCompressor {
         builder: &mut ReBuilder,
     ) -> Regex {
         match re.op() {
-            RegOp::Range(r) => {
+            ReOp::Range(r) => {
                 let reps = self.find_representative_range(r, partitioning);
                 let as_res = reps
                     .iter()
@@ -55,44 +55,44 @@ impl RangeCompressor {
                     .collect();
                 builder.union(as_res)
             }
-            RegOp::Concat(rs) | RegOp::Union(rs) | RegOp::Inter(rs) => {
+            ReOp::Concat(rs) | ReOp::Union(rs) | ReOp::Inter(rs) => {
                 let compressed_rs = rs
                     .iter()
                     .map(|r| self.compress_re_ranges(r, partitioning, builder))
-                    .collect_vec();
+                    .collect();
                 match re.op() {
-                    RegOp::Concat(_) => builder.concat(compressed_rs),
-                    RegOp::Union(_) => builder.union(compressed_rs),
-                    RegOp::Inter(_) => builder.inter(compressed_rs),
+                    ReOp::Concat(_) => builder.concat(compressed_rs),
+                    ReOp::Union(_) => builder.union(compressed_rs),
+                    ReOp::Inter(_) => builder.inter(compressed_rs),
                     _ => unreachable!(),
                 }
             }
-            RegOp::Star(r) => {
+            ReOp::Star(r) => {
                 let compressed_r = self.compress_re_ranges(r, partitioning, builder);
                 builder.star(compressed_r)
             }
-            RegOp::Plus(r) => {
+            ReOp::Plus(r) => {
                 let compressed_r = self.compress_re_ranges(r, partitioning, builder);
                 builder.plus(compressed_r)
             }
-            RegOp::Opt(r) => {
+            ReOp::Opt(r) => {
                 let compressed_r = self.compress_re_ranges(r, partitioning, builder);
                 builder.opt(compressed_r)
             }
-            RegOp::Comp(r) => {
+            ReOp::Comp(r) => {
                 let compressed_r = self.compress_re_ranges(r, partitioning, builder);
                 builder.comp(compressed_r)
             }
-            RegOp::Diff(r1, r2) => {
+            ReOp::Diff(r1, r2) => {
                 let compressed_r1 = self.compress_re_ranges(r1, partitioning, builder);
                 let compressed_r2 = self.compress_re_ranges(r2, partitioning, builder);
                 builder.diff(compressed_r1, compressed_r2)
             }
-            RegOp::Pow(r, p) => {
+            ReOp::Pow(r, p) => {
                 let compressed_r = self.compress_re_ranges(r, partitioning, builder);
                 builder.pow(compressed_r, *p)
             }
-            RegOp::Loop(r, l, u) => {
+            ReOp::Loop(r, l, u) => {
                 let compressed_r = self.compress_re_ranges(r, partitioning, builder);
                 builder.loop_(compressed_r, *l, *u)
             }
@@ -147,8 +147,8 @@ impl RangeCompressor {
 
     fn partition_re_alphabet(&self, re: &Regex) -> CharPartitioning {
         match re.op() {
-            RegOp::Const(word) => self.word_to_partitioning(word.iter()),
-            RegOp::Concat(rs) | RegOp::Union(rs) | RegOp::Inter(rs) => {
+            ReOp::Literal(word) => self.word_to_partitioning(word.iter()),
+            ReOp::Concat(rs) | ReOp::Union(rs) | ReOp::Inter(rs) => {
                 let mut res = CharPartitioning::default();
                 for r in rs {
                     res = res.refine(&self.partition_re_alphabet(r));
@@ -156,22 +156,22 @@ impl RangeCompressor {
 
                 res
             }
-            RegOp::Range(r) => {
+            ReOp::Range(r) => {
                 let mut res = CharPartitioning::default();
                 res.insert_unchecked(*r);
                 res
             }
-            RegOp::Diff(regex, regex1) => {
+            ReOp::Diff(regex, regex1) => {
                 let mut res = self.partition_re_alphabet(regex);
                 res = res.refine(&self.partition_re_alphabet(regex1));
                 res
             }
-            RegOp::Star(r)
-            | RegOp::Plus(r)
-            | RegOp::Opt(r)
-            | RegOp::Comp(r)
-            | RegOp::Pow(r, _)
-            | RegOp::Loop(r, _, _) => self.partition_re_alphabet(r),
+            ReOp::Star(r)
+            | ReOp::Plus(r)
+            | ReOp::Opt(r)
+            | ReOp::Comp(r)
+            | ReOp::Pow(r, _)
+            | ReOp::Loop(r, _, _) => self.partition_re_alphabet(r),
             _ => CharPartitioning::default(),
         }
     }

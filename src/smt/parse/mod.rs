@@ -23,7 +23,7 @@ pub type Keyword = String;
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub enum Index {
-    Num(usize),
+    Num(u32),
     Symbol(Symbol),
 }
 

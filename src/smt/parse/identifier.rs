@@ -20,7 +20,7 @@ impl visitors::QualIdentifierVisitor<smt2parser::concrete::Identifier<Symbol>, S
                 let mut new_indices = Vec::with_capacity(indices.len());
                 for idx in indices {
                     let converted = match idx {
-                        visitors::Index::Numeral(n) => match n.to_usize().map(Index::Num) {
+                        visitors::Index::Numeral(n) => match n.to_u32().map(Index::Num) {
                             Some(i) => i,
                             None => return Err(AstError::NumeralOutOfBounds(n)),
                         },

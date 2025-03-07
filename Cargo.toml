@@ -16,7 +16,7 @@ quickcheck = "1.0.3"
 indexmap = "1.9.3"
 smt2parser = "0.6.1"
 num-bigint = "0.3.3"
-regulaer = {git = "https://git.zs.informatik.uni-kiel.de/kel/regulaer-rs", branch = "dev"}
+regulaer = {git = "https://git.zs.informatik.uni-kiel.de/kel/regulaer-rs", tag = "v0.2.4"}
 smallvec = "1.10.0"
 thiserror = "1.0.63"
 num-traits = "0.2.19"

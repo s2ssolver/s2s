@@ -122,6 +122,26 @@ impl NFAEncoder {
                                 res.add_clause(clause);
                             }
                         }
+                        TransitionType::NotRange(range) => {
+                            let s = range.start();
+                            let e = range.end();
+
+                            // Follow transition if we read a character **NOT** in the given range
+                            for c in s..=e {
+                                let sub_var = dom.string().get_sub(&self.var, l, c).expect(
+                                    format!(
+                                        "Substitution h({})[{}] = '{}' not found",
+                                        self.var,
+                                        l,
+                                        c.escape_debug()
+                                    )
+                                    .as_str(),
+                                );
+                                // reach_var /\ sub_var => reach_next
+                                let clause = vec![nlit(reach_var), plit(sub_var), plit(reach_next)];
+                                res.add_clause(clause);
+                            }
+                        }
                         TransitionType::Epsilon => {
                             // That must not happen
                             return Err(EncodingError::not_epsi_free());
@@ -184,6 +204,29 @@ impl NFAEncoder {
                             for c in s..=e {
                                 let sub_var = dom.string().get_sub(&self.var, l - 1, c).unwrap();
                                 range_clause.push(plit(sub_var));
+                            }
+
+                            res.add_clause(range_clause);
+                        }
+                        TransitionType::NotRange(range) if range.len() == 1 => {
+                            // Is predecessor if we **NOT** read the given character
+                            let c = range.start();
+                            let sub_var = dom.string().get_sub(&self.var, l - 1, c).unwrap();
+                            res.add_clause(vec![nlit(def_var), plit(reach_prev)]);
+                            res.add_clause(vec![nlit(def_var), nlit(sub_var)]);
+                        }
+                        TransitionType::NotRange(range) => {
+                            // Is predecessor if we read a character in the given range
+                            let s = range.start();
+                            let e = range.end();
+
+                            // reach_prev /\ (-sub_var_1 \/ ... \/ -sub_var_n)
+                            res.add_clause(vec![nlit(def_var), plit(reach_prev)]);
+
+                            let mut range_clause = vec![nlit(def_var)];
+                            for c in s..=e {
+                                let sub_var = dom.string().get_sub(&self.var, l - 1, c).unwrap();
+                                range_clause.push(nlit(sub_var));
                             }
 
                             res.add_clause(range_clause);
@@ -439,7 +482,9 @@ fn precompute_delta_inv(
 #[cfg(test)]
 mod test {
     use cadical::Solver;
-    use regulaer::re::{Regex, RegexProps};
+    use regulaer::re::Regex;
+
+    use smallvec::smallvec;
 
     use super::*;
 
@@ -451,7 +496,7 @@ mod test {
         let mut mngr = NodeManager::default();
         let var = mngr.temp_var(Sort::String);
 
-        let alph = Alphabet::from(re.alphabet());
+        let alph = Alphabet::from(re.alphabet().as_ref().clone());
 
         let nfa = mngr.get_nfa(&re);
 
@@ -529,7 +574,7 @@ mod test {
 
         let builder = mngr.re_builder();
 
-        let args = vec![builder.word("foo".into()), builder.word("bar".into())];
+        let args = smallvec![builder.word("foo".into()), builder.word("bar".into())];
         let re = builder.concat(args);
 
         assert_eq!(solve_with_bounds(re, true, &[10]), Some(true));

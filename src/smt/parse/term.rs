@@ -9,6 +9,8 @@ use crate::{
 use super::ScriptBuilder;
 use super::{Constant, Identifier, Index, Keyword, SExpr, Symbol};
 
+use smallvec::smallvec;
+
 impl TermVisitor<Constant, Identifier, Keyword, SExpr, Symbol, Sort> for ScriptBuilder<'_> {
     type T = Node;
 
@@ -199,7 +201,7 @@ impl TermVisitor<Constant, Identifier, Keyword, SExpr, Symbol, Sort> for ScriptB
                 }
             }
             "re.++" => {
-                let mut re_args = vec![];
+                let mut re_args = smallvec![];
                 for arg in args {
                     if let NodeKind::Regex(re) = arg.kind() {
                         re_args.push(re.clone());
@@ -211,7 +213,7 @@ impl TermVisitor<Constant, Identifier, Keyword, SExpr, Symbol, Sort> for ScriptB
                 self.mngr.create_node(NodeKind::Regex(re), vec![])
             }
             "re.union" => {
-                let mut re_args = vec![];
+                let mut re_args = smallvec![];
                 for arg in args {
                     if let NodeKind::Regex(re) = arg.kind() {
                         re_args.push(re.clone());
@@ -223,7 +225,7 @@ impl TermVisitor<Constant, Identifier, Keyword, SExpr, Symbol, Sort> for ScriptB
                 self.mngr.create_node(NodeKind::Regex(re), vec![])
             }
             "re.inter" => {
-                let mut re_args = vec![];
+                let mut re_args = smallvec![];
                 for arg in args {
                     if let NodeKind::Regex(re) = arg.kind() {
                         re_args.push(re.clone());
