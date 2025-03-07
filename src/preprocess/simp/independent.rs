@@ -86,7 +86,6 @@ impl IndependentVariableAssignment {
             NodeKind::Variable(v) if self.independent(v) => {
                 let mut subs = NodeSubstitution::default();
                 // TODO: CHECK IF a empty in lang and return accordingly
-
                 let regex = if pol {
                     regex.clone()
                 } else {
@@ -102,11 +101,13 @@ impl IndependentVariableAssignment {
                     }
                 };
 
-                if pol {
-                    debug_assert!(regex.accepts(&rhs));
-                } else {
-                    debug_assert!(!regex.accepts(&rhs));
-                }
+                debug_assert!(
+                    regex.accepts(&rhs),
+                    "Regex: {} does not accept '{}'",
+                    regex,
+                    rhs
+                );
+
                 let rhs_str = rhs.iter().collect::<String>();
                 debug_assert!(rhs_str.len() == rhs.len());
                 let rhs = mngr.const_string(rhs_str);
