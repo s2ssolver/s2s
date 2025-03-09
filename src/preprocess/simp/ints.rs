@@ -12,40 +12,53 @@ pub struct ZeroLengthEpsilon;
 
 impl ZeroLengthEpsilon {
     fn apply(lhs: &Node, mngr: &mut NodeManager) -> Option<Simplification> {
+        // Collects all in the given node of sort string that need to be replaced by epsilon
+        // Returns false if a variable is found that is not of sort string
         fn collect_vars(n: &Node, in_len: bool, vars: &mut HashSet<Rc<Variable>>) -> bool {
             match n.kind() {
                 NodeKind::Length => {
                     assert!(!in_len);
                     for c in n.children() {
+                        // must be true since the length of a string is a string
                         collect_vars(c, true, vars);
                     }
+                    true
                 }
                 NodeKind::Concat => {
                     assert!(in_len);
                     for c in n.children() {
+                        // must be true since we can only concatenate strings
                         collect_vars(c, in_len, vars);
                     }
+                    true
                 }
                 NodeKind::Variable(v) if in_len => {
+                    // must be a string, we are in a length
                     assert!(v.sort().is_string());
                     vars.insert(v.clone());
+                    true
                 }
                 NodeKind::Mul | NodeKind::Add => {
                     assert!(!in_len);
                     for c in n.children() {
-                        collect_vars(c, in_len, vars);
+                        if !collect_vars(c, in_len, vars) {
+                            // If we find a variable that is not of sort string, we can't apply the rule
+                            // and return false
+                            return false;
+                        }
                     }
+                    true
                 }
-                NodeKind::Int(i) => {
-                    if *i < 0 {
-                        return false;
-                    }
-                }
+                NodeKind::Int(i) => *i >= 0, // if we find a negative integer, we can't apply the rule
                 NodeKind::Sub => return false,
-                NodeKind::Variable(_) => return false,
+                NodeKind::Variable(v) => {
+                    debug_assert!(!in_len);
+                    debug_assert!(v.sort().is_int());
+                    // if we find a variable that is not of sort string, we can't apply the rule
+                    return false;
+                }
                 _ => return false,
             }
-            true
         }
         let mut vars = HashSet::new();
         if collect_vars(lhs, false, &mut vars) {
