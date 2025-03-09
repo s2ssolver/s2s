@@ -1,7 +1,13 @@
 use core::panic;
 use std::time::Instant;
 
-use crate::domain::Domain;
+use crate::{
+    domain::Domain,
+    node::{
+        canonical::{AtomKind, Literal},
+        Sort,
+    },
+};
 use encoder::DefintionEncoder;
 
 use indexmap::IndexMap;
@@ -248,7 +254,9 @@ impl Solver {
                     debug_assert!(def.defining() == *l);
                     Some(mngr.literal(def.defined().clone()))
                 } else {
-                    None
+                    let tvar = mngr.temp_var(Sort::Bool);
+                    let atom = mngr.atom(AtomKind::Boolvar(tvar));
+                    Some(mngr.literal(Literal::positive(atom)))
                 }
             }
         }
