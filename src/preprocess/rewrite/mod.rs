@@ -46,6 +46,7 @@ pub enum RewriteRules {
     WeqStripLcp,
     WeqStripLcs,
     WeqConstMismatch,
+    WeqLengthReasoning,
 
     /* Factor Constraints */
     PrefixTrivial,
@@ -80,6 +81,7 @@ impl RewriteRules {
             RewriteRules::StrLenToAdd => int::string_length_addition(node, mngr),
             RewriteRules::WeqStripLcp => weq::strip_lcp(node, mngr),
             RewriteRules::WeqStripLcs => weq::strip_lcs(node, mngr),
+            RewriteRules::WeqLengthReasoning => weq::length_reasoning(node, mngr),
             RewriteRules::WeqConstMismatch => weq::const_mismatch(node, mngr),
             RewriteRules::PrefixTrivial => factors::trivial_prefixof(node, mngr),
             RewriteRules::SuffixTrivial => factors::trivial_suffixof(node, mngr),
@@ -176,6 +178,7 @@ const REWRITE: &'static [RewriteRules] = &[
     RewriteRules::WeqStripLcp,
     RewriteRules::WeqStripLcs,
     RewriteRules::WeqConstMismatch,
+    RewriteRules::WeqLengthReasoning,
     RewriteRules::PrefixTrivial,
     RewriteRules::SuffixTrivial,
     RewriteRules::ContainsTrivial,

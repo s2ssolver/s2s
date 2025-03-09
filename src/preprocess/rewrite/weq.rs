@@ -1,5 +1,8 @@
+use indexmap::IndexMap;
+use num_integer::Integer;
+
 use crate::node::{
-    utils::{reverse, SymbolIterator},
+    utils::{reverse, Symbol, SymbolIterator},
     Node, NodeKind, NodeManager, Sorted,
 };
 
@@ -69,6 +72,70 @@ pub fn const_mismatch(node: &Node, mngr: &mut NodeManager) -> Option<Node> {
         // Check for last character mismatch
         if let (Some(lhs_char), Some(rhs_char)) = (last_char(lhs), last_char(rhs)) {
             if lhs_char != rhs_char {
+                return Some(mngr.ffalse());
+            }
+        }
+    }
+    None
+}
+
+/// Reasons on the length abstraction of the word equation.
+/// If the length abstraction is |x_1|c_1 + |x_2|c_2 + ... + |x_n|c_n = b, then it is unsatisfiable if:
+/// - b is odd and all coefficients are even
+/// - gcd(c_1, c_2, ..., c_n) does not divide b
+/// - all coefficients are 0 but b is non-zero
+/// - all coefficients are negative but b is positive
+/// - all coefficients are positive but b is negative
+pub fn length_reasoning(node: &Node, mngr: &mut NodeManager) -> Option<Node> {
+    if *node.kind() == NodeKind::Eq {
+        debug_assert!(node.children().len() == 2);
+        let lhs = &node.children()[0];
+        let rhs = &node.children()[1];
+
+        let lhs_iter = SymbolIterator::new(lhs);
+        let rhs_iter = SymbolIterator::new(rhs);
+
+        let mut coeffs: IndexMap<std::rc::Rc<crate::node::Variable>, i32> = IndexMap::new();
+        let mut r: i32 = 0;
+
+        for s in lhs_iter {
+            match s {
+                Symbol::Const(_) => r -= 1,
+                Symbol::Variable(v) => *coeffs.entry(v).or_insert(0) += 1,
+            }
+        }
+        for s in rhs_iter {
+            match s {
+                Symbol::Const(_) => r += 1,
+                Symbol::Variable(v) => *coeffs.entry(v).or_insert(0) -= 1,
+            }
+        }
+        // Check if the equation is trivially unsatisfiable
+
+        // Parity condition
+        if r % 2 != 0 && coeffs.values().all(|&c| (c.abs() as u64) % 2 == 0) {
+            return Some(mngr.ffalse());
+        }
+
+        // lefthand-side is 0 but right-hand-side is non-zero
+        if r != 0 && (coeffs.values().all(|&c| c == 0) || coeffs.is_empty()) {
+            return Some(mngr.ffalse());
+        }
+
+        // All coefficients < 0 but the constant term is positive
+        if r > 0 && coeffs.values().all(|&c| c < 0) {
+            return Some(mngr.ffalse());
+        }
+
+        // All coefficients >= 0 but the constant term is negative
+        if r < 0 && coeffs.values().all(|&c| c >= 0) {
+            return Some(mngr.ffalse());
+        }
+
+        // Divisibility condition: gcd(c_1, c_2, ..., c_n) divides b
+        if !coeffs.is_empty() && r != 0 {
+            let gcd = coeffs.values().fold(0, |a: i32, &b| a.gcd(&b.abs()));
+            if r % gcd != 0 {
                 return Some(mngr.ffalse());
             }
         }
