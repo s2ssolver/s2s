@@ -5,7 +5,7 @@ mod regular;
 use std::{fmt::Display, rc::Rc};
 
 use indexmap::{IndexMap, IndexSet};
-use linear::LinearRefiner;
+pub use linear::LinearRefiner;
 use regular::RegularBoundsInferer;
 
 use crate::{
@@ -317,7 +317,7 @@ impl BoundInferer {
     }
 }
 
-trait InferringStrategy: Default + Clone {
+pub trait InferringStrategy: Default + Clone {
     fn infer(&mut self) -> Option<Bounds>;
     fn conflict(&self) -> bool;
 }

@@ -1,14 +1,22 @@
 use std::time::Instant;
 
+use indexmap::IndexSet;
+use regulaer::re::{ReOp, Regex};
+
 use crate::{
     abstraction::{build_abstraction, LitDefinition},
     alphabet,
-    bounds::BoundInferer,
+    bounds::{BoundInferer, InferringStrategy, LinearRefiner},
     domain::Domain,
     interval::Interval,
     node::{
-        canonical::Assignment, get_entailed_literals, smt::to_script, Node, NodeKind, NodeManager,
-        NodeSubstitution, Sort, Sorted,
+        canonical::{
+            ArithOperator, Assignment, AtomKind, LinearArithTerm, LinearConstraint, Literal,
+            WordEquation,
+        },
+        get_entailed_literals,
+        smt::to_script,
+        Node, NodeKind, NodeManager, NodeSubstitution, Sort, Sorted,
     },
     preprocess::{canonicalize, compress_ranges, Preprocessor},
     solver::Solver,
@@ -113,7 +121,7 @@ impl Engine {
 
         // If the 'print_preprocessed' option is set, print the preprocessed formula
         if self.options.print_preprocessed {
-            println!("{}", to_script(&simped));
+            println!("{}", to_script(&compressed));
         }
 
         // Canonicalize.
@@ -144,7 +152,7 @@ impl Engine {
         let abstraction = build_abstraction(&fm)?;
 
         // Initialize domain for all variables
-        let init_dom = match self.init_domain(&fm, mngr) {
+        let init_dom = match self.init_domain_approx(&fm, mngr) {
             Some(bs) => bs,
             None => {
                 log::info!("No valid initial bounds. Unsat.");
@@ -240,7 +248,7 @@ impl Engine {
     /// Initialize the domain of all variables in the formula.
     /// The domain is the range of values that a variable can take.
     /// The domain is encoded as the first step of the encoding.
-    fn init_domain(&self, fm: &Node, mngr: &mut NodeManager) -> Option<Domain> {
+    fn _init_domain_exact(&self, fm: &Node, mngr: &mut NodeManager) -> Option<Domain> {
         let mut inferer = BoundInferer::default();
         for lit in get_entailed_literals(fm) {
             inferer.add_literal(lit.clone(), mngr)
@@ -278,8 +286,151 @@ impl Engine {
         Some(domain)
     }
 
+    /// Initialize the domain of all variables in the formula.
+    /// The domain is the range of values that a variable can take.
+    /// The domain is encoded as the first step of the encoding.
+    fn init_domain_approx(&self, fm: &Node, _mngr: &mut NodeManager) -> Option<Domain> {
+        let mut seen: IndexSet<Literal> = IndexSet::new();
+        let mut refiner = LinearRefiner::default();
+        for lit in get_entailed_literals(fm) {
+            seen.insert(lit.clone());
+            if seen.contains(&lit.flip_polarity()) {
+                return None;
+            }
+            match lit.atom().kind() {
+                AtomKind::InRe(inre) if lit.polarity() => {
+                    let re = inre.re();
+                    if let Some(s) = re_smallest(re) {
+                        // |x| >= s
+
+                        let lc = LinearConstraint::new(
+                            LinearArithTerm::from_var(inre.lhs().clone()),
+                            ArithOperator::Geq,
+                            s as i64,
+                        );
+                        refiner.add_linear(lc);
+                    }
+                    if let Some(s) = re_longest(re) {
+                        // |x| <= s
+                        let lc = LinearConstraint::new(
+                            LinearArithTerm::from_var(inre.lhs().clone()),
+                            ArithOperator::Leq,
+                            s as i64,
+                        );
+                        refiner.add_linear(lc);
+                    }
+                }
+                AtomKind::WordEquation(weq) if lit.polarity() => refiner.add_weq(weq),
+                _ => (),
+            }
+        }
+
+        let init_bounds = refiner.infer()?;
+        // Clamp all bounds and add Booleans to the domain
+        let mut domain = Domain::default();
+        for v in fm.variables() {
+            match v.sort() {
+                Sort::Int | Sort::String => {
+                    let lower = init_bounds
+                        .get(&v)
+                        .and_then(|b| b.lower_finite())
+                        .unwrap_or(0);
+                    let upper = init_bounds
+                        .get(&v)
+                        .and_then(|b| b.upper_finite())
+                        .unwrap_or(self.options.init_upper_bound)
+                        .max(lower) // at least lower
+                        .max(1); // at least 1
+                    let interval = Interval::new(lower, upper);
+                    // Clamp the bound to max
+                    let interval = interval.intersect(self.options.max_bounds);
+                    match v.sort() {
+                        Sort::Int => domain.set_int(v.clone(), interval),
+                        Sort::String => domain.set_string(v.clone(), interval),
+                        _ => unreachable!(),
+                    };
+                }
+                Sort::Bool => domain.set_bool(v.clone()),
+                Sort::RegLan => unreachable!(),
+            };
+        }
+        Some(domain)
+    }
+
     /// Check if the assignment is a solution for the formula.
     fn check_assignment(&self, fm: &Node, assign: &Assignment) -> bool {
         assign.satisfies(fm)
     }
 }
+
+fn re_smallest(re: &Regex) -> Option<usize> {
+    match re.op() {
+        ReOp::Literal(word) => Some(word.len()),
+        ReOp::Range(r) if !r.is_empty() => Some(1),
+        ReOp::None => None,
+        ReOp::Any => Some(1),
+        ReOp::All => Some(0),
+        ReOp::Concat(rs) => {
+            let mut sum = 0;
+            for r in rs {
+                sum += re_smallest(r)?;
+            }
+            Some(sum)
+        }
+        ReOp::Union(rs) | ReOp::Inter(rs) => {
+            let mut min = usize::MAX;
+            for r in rs {
+                if let Some(s) = re_smallest(r) {
+                    min = min.min(s);
+                }
+            }
+            if min == usize::MAX {
+                None
+            } else {
+                Some(min)
+            }
+        }
+        ReOp::Star(_) | ReOp::Opt(_) | ReOp::Pow(_, 0) | ReOp::Loop(_, 0, _) => Some(0),
+        ReOp::Plus(r) => re_smallest(r),
+        ReOp::Pow(r, p) => re_smallest(r).map(|s| s * (*p as usize)),
+        ReOp::Loop(r, l, u) if l <= u => re_smallest(r).map(|s| s * (*l as usize)),
+        _ => None,
+    }
+}
+
+fn re_longest(re: &Regex) -> Option<usize> {
+    match re.op() {
+        ReOp::Literal(word) => Some(word.len()),
+        ReOp::Range(r) if !r.is_empty() => Some(1),
+        ReOp::None => None,
+        ReOp::Any => Some(1),
+        ReOp::All => None,
+        ReOp::Concat(rs) => {
+            let mut sum = 0;
+            for r in rs {
+                sum += re_longest(r)?;
+            }
+            Some(sum)
+        }
+        ReOp::Union(rs) | ReOp::Inter(rs) => {
+            let mut max: isize = -1;
+            for r in rs {
+                if let Some(s) = re_longest(r) {
+                    max = max.min(s as isize);
+                }
+            }
+            if max == -1 {
+                None
+            } else {
+                Some(max as usize)
+            }
+        }
+        ReOp::Star(_) => None,
+        ReOp::Opt(r) | ReOp::Plus(r) => re_longest(r),
+        ReOp::Pow(_, 0) | ReOp::Loop(_, _, 0) => Some(0),
+        ReOp::Pow(r, p) => re_longest(r).map(|s| s * (*p as usize)),
+        ReOp::Loop(r, l, u) if l <= u => re_longest(r).map(|s| s * (*u as usize)),
+        _ => None,
+    }
+}
+
