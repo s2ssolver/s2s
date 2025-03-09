@@ -117,6 +117,9 @@ impl FragmentFinder {
                 }
                 if let WordEquation::General(_, _) = weq {
                     self.weq_vars.extend(weq.variables());
+                } else {
+                    // x=y and x=w are handled as the regular constraint
+                    self.in_re_vars.extend(weq.variables());
                 }
             }
             AtomKind::FactorConstraint(refc) => {
@@ -247,6 +250,7 @@ impl BoundInferer {
         if self.conflicting() {
             return None;
         }
+
         let frag = self.fragment.get_fragment();
 
         let bounds = match frag {

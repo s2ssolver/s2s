@@ -370,6 +370,7 @@ impl BoundRefiner {
 
                 if let Some(bounds) = inferer.infer() {
                     log::debug!("\t{}", bounds);
+                    self.cube_bounds.insert(cube.clone(), bounds.clone());
                     alternatives.push(bounds);
                 } else {
                     log::debug!("\tConflicting");
