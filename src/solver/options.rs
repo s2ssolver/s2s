@@ -6,6 +6,8 @@ const DEFAULT_SIMPLIFY: bool = true;
 const DEFAULT_PREPROCESS_PASSES: usize = 20;
 const DEFAULT_CHECK_MODEL: bool = false;
 const DEFAULT_UNSAT_ON_MAX_BOUND: bool = false;
+const DEFAULT_SMT25: bool = false;
+
 #[derive(Debug, Clone)]
 pub struct SolverOptions {
     pub dry: bool,
@@ -21,6 +23,9 @@ pub struct SolverOptions {
     pub unsat_on_max_bound: bool,
     pub init_upper_bound: i32,
     pub print_preprocessed: bool,
+
+    /// Whether or not parse SMT-LIB 2.5 syntax.
+    pub smt25: bool,
 }
 impl Default for SolverOptions {
     fn default() -> Self {
@@ -35,6 +40,7 @@ impl Default for SolverOptions {
             unsat_on_max_bound: DEFAULT_UNSAT_ON_MAX_BOUND,
             init_upper_bound: 2,
             print_preprocessed: false,
+            smt25: DEFAULT_SMT25,
         }
     }
 }

@@ -1,13 +1,11 @@
 use num_bigint::BigUint;
 
-use super::parse::Symbol;
-
 #[derive(Debug, thiserror::Error)]
 pub enum AstError {
     #[error("Unsupported: {0}")]
     Unsupported(String),
     #[error("Undeclared symbol: {0}")]
-    Undeclared(Symbol),
+    Undeclared(String),
     #[error("Only numerals in bounds of isize are supported ({0})")]
     NumeralOutOfBounds(BigUint),
     #[error("Symbol already declared: {0}")]

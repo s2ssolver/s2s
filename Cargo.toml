@@ -20,6 +20,7 @@ regulaer = {git = "https://git.zs.informatik.uni-kiel.de/kel/regulaer-rs", tag =
 smallvec = "1.10.0"
 thiserror = "1.0.63"
 num-traits = "0.2.19"
+num-integer = "0.1.46"
 
 
 [dev-dependencies]

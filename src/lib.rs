@@ -32,7 +32,7 @@ pub use error::PublicError as Error;
 
 pub use engine::Engine as Blastr;
 use node::NodeManager;
-use smt::{Interpreter, Script, ScriptBuilder};
+use smt::{Interpreter, Script};
 pub use solver::{SolverAnswer, SolverOptions};
 
 /// Solves an SMT problem over the theory of strings.
@@ -40,19 +40,24 @@ pub use solver::{SolverAnswer, SolverOptions};
 /// Returns the result of the satisfiability check.
 /// Optionally, the solver can be configured with additional options.
 /// If no options are given, the solver uses the default options.
-pub fn solve_smt(smt: impl BufRead, options: Option<SolverOptions>) -> Result<(), Error> {
+pub fn solve_smt(smt: impl BufRead, options: SolverOptions) -> Result<(), Error> {
     let mut mngr = NodeManager::default();
 
     let t = Instant::now();
     // Parse the input problem
-    let script = parse_script(smt, &mut mngr)?;
+    let script = parse_script(smt, &options, &mut mngr)?;
     log::info!("Parsed in {:?}", t.elapsed());
 
-    let mut interpreter = Interpreter::new(options.unwrap_or_default(), &mut mngr);
+    let mut interpreter = Interpreter::new(options, &mut mngr);
     interpreter.run(&script)
 }
 
-pub fn parse_script(smt: impl BufRead, mngr: &mut NodeManager) -> Result<Script, Error> {
-    let parser = ScriptBuilder::new(mngr);
-    Ok(parser.parse_script(smt)?)
+pub fn parse_script(
+    smt: impl BufRead,
+    options: &SolverOptions,
+    mngr: &mut NodeManager,
+) -> Result<Script, Error> {
+    //let parser = ScriptBuilder::new(mngr);
+    //Ok(parser.parse_script(smt)?)
+    smt::parse_script(smt, options.smt25, mngr).map_err(Into::into)
 }

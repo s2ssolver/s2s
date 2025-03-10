@@ -56,7 +56,7 @@ fn main() {
 
     let opts = convert_options(&cli);
     let smt = std::io::BufReader::new(std::fs::File::open(file).unwrap());
-    match solve_smt(smt, Some(opts)) {
+    match solve_smt(smt, opts) {
         Ok(_) => (),
         Err(err) => {
             log::error!("Error: {}", err);

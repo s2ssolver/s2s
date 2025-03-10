@@ -1,16 +1,15 @@
 use super::Node;
 use super::NodeKind;
-use super::Sorted;
 
+use crate::smt::Command;
 use crate::smt::Script;
-use crate::smt::SmtCommand;
 
 pub fn to_script(node: &Node) -> Script {
     let mut script = Script::default();
 
     let vs = node.variables();
     for v in vs {
-        let decl = SmtCommand::DeclareConst(v.name().to_string(), v.sort().into());
+        let decl = Command::DeclareConst(v);
         script.push(decl);
     }
 
@@ -20,10 +19,10 @@ pub fn to_script(node: &Node) -> Script {
         vec![node.clone()]
     };
     for assertion in assertions {
-        let assert = SmtCommand::Assert(assertion);
+        let assert = Command::Assert(assertion);
         script.push(assert);
     }
-    script.push(SmtCommand::CheckSat);
+    script.push(Command::CheckSat);
 
     script
 }
