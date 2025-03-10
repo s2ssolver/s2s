@@ -202,7 +202,7 @@ mod tests {
     };
 
     fn to_lit(node: &Node, mngr: &mut NodeManager) -> Literal {
-        match canonicalize(node, mngr).unwrap().kind() {
+        match canonicalize(node, mngr).kind() {
             NodeKind::Literal(literal) => literal.clone(),
             _ => unreachable!(),
         }

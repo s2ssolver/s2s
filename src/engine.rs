@@ -131,7 +131,7 @@ impl Engine {
 
         // Canonicalize.
         // This brings the formula into a normal that the solver understands.
-        let canonical = canonicalize(&compressed, mngr)?;
+        let canonical = canonicalize(&compressed, mngr);
         log::debug!("Canonicalized formula: {}", canonical);
 
         Ok((canonical, prepr_subst))
@@ -209,7 +209,8 @@ impl Engine {
                     // SAT, check if the model is a solution for the original formula
                     let model = h.unwrap();
                     let h = model.clone().into();
-                    log::info!("Found model for over-approximation");
+                    log::debug!("Found model for over-approximation");
+                    log::trace!("Model: {}", model);
                     if self.check_assignment(&fm, &h) {
                         // If the model satisfies the formula, we are done
                         return Ok(SolverAnswer::Sat(Some(model)));

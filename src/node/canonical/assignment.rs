@@ -4,7 +4,7 @@ use std::{fmt::Display, rc::Rc};
 
 use indexmap::IndexMap;
 
-use crate::node::{Node, NodeKind, NodeSubstitution, Variable};
+use crate::node::{Node, NodeKind, NodeSubstitution, Sort, Sorted, Variable};
 
 use super::{
     ArithOperator, Atom, AtomKind, FactorConstraintType, LinearArithTerm, LinearConstraint,
@@ -185,7 +185,165 @@ impl Assignment {
             NodeKind::And => formula.children().iter().all(|f| self.satisfies(f)),
             NodeKind::Or => formula.children().iter().any(|f| self.satisfies(f)),
             NodeKind::Literal(lit) => self.satisfies_lit(lit),
-            _ => false,
+            NodeKind::Bool(t) => *t,
+            NodeKind::Variable(v) if v.sort().is_bool() => {
+                self.get_bool(v.as_ref()).map_or(false, |value| value)
+            }
+            NodeKind::Imp => {
+                let lhs = self.satisfies(&formula.children()[0]);
+                let rhs = self.satisfies(&formula.children()[1]);
+                !lhs || rhs
+            }
+            NodeKind::Equiv => {
+                let lhs = self.satisfies(&formula.children()[0]);
+                let rhs = self.satisfies(&formula.children()[1]);
+                lhs == rhs
+            }
+            NodeKind::Not => !self.satisfies(&formula.children()[0]),
+            NodeKind::Ite => {
+                let cond = self.satisfies(&formula.children()[0]);
+                if cond {
+                    self.satisfies(&formula.children()[1])
+                } else {
+                    self.satisfies(&formula.children()[2])
+                }
+            }
+            NodeKind::Eq => {
+                let lhs = &formula.children()[0];
+                let rhs = &formula.children()[1];
+                match (lhs.sort(), rhs.sort()) {
+                    (Sort::String, Sort::String) => {
+                        let lhs = self.inst_string_term(lhs);
+                        let rhs = self.inst_string_term(rhs);
+                        match (lhs, rhs) {
+                            (Some(lhs), Some(rhs)) => lhs == rhs,
+                            _ => false,
+                        }
+                    }
+                    (Sort::Int, Sort::Int) => {
+                        let lhs = self.inst_int_term(lhs);
+                        let rhs = self.inst_int_term(rhs);
+                        match (lhs, rhs) {
+                            (Some(lhs), Some(rhs)) => lhs == rhs,
+                            _ => false,
+                        }
+                    }
+                    _ => unreachable!("Unexpected formula: {}", formula),
+                }
+            }
+            NodeKind::PrefixOf => {
+                let lhs = self.inst_string_term(&formula.children()[0]);
+                let rhs = self.inst_string_term(&formula.children()[1]);
+                match (lhs, rhs) {
+                    (Some(lhs), Some(rhs)) => lhs.starts_with(&rhs),
+                    _ => false,
+                }
+            }
+            NodeKind::SuffixOf => {
+                let lhs = self.inst_string_term(&formula.children()[0]);
+                let rhs = self.inst_string_term(&formula.children()[1]);
+                match (lhs, rhs) {
+                    (Some(lhs), Some(rhs)) => lhs.ends_with(&rhs),
+                    _ => false,
+                }
+            }
+            NodeKind::Contains => {
+                let lhs = self.inst_string_term(&formula.children()[0]);
+                let rhs = self.inst_string_term(&formula.children()[1]);
+                match (lhs, rhs) {
+                    (Some(lhs), Some(rhs)) => lhs.contains(&rhs),
+                    _ => false,
+                }
+            }
+            NodeKind::InRe => {
+                let lhs = self.inst_string_term(&formula.children()[0]);
+                if let NodeKind::Regex(re) = &formula.children()[1].kind() {
+                    re.accepts(&lhs.unwrap().into())
+                } else {
+                    panic!("Unexpected formula: {}", formula)
+                }
+            }
+            NodeKind::Lt | NodeKind::Le | NodeKind::Gt | NodeKind::Ge => {
+                let lhs = self.inst_int_term(&formula.children()[0]);
+                let rhs = self.inst_int_term(&formula.children()[1]);
+                match (lhs, rhs) {
+                    (Some(lhs), Some(rhs)) => match formula.kind() {
+                        NodeKind::Lt => lhs < rhs,
+                        NodeKind::Le => lhs <= rhs,
+                        NodeKind::Gt => lhs > rhs,
+                        NodeKind::Ge => lhs >= rhs,
+                        _ => unreachable!(),
+                    },
+                    _ => false,
+                }
+            }
+
+            _ => unreachable!("Unexpected formula: {}", formula),
+        }
+    }
+
+    fn inst_string_term(&self, term: &Node) -> Option<String> {
+        match term.kind() {
+            NodeKind::String(s) => Some(s.clone()),
+            NodeKind::Variable(v) => self.get_str(v.as_ref()).cloned(),
+            NodeKind::Concat => {
+                let mut result = String::new();
+                for child in term.children() {
+                    result.push_str(&self.inst_string_term(child)?);
+                }
+                Some(result)
+            }
+            NodeKind::Replace => {
+                let mut result = self.inst_string_term(&term.children()[0])?;
+                let from = self.inst_string_term(&term.children()[1])?;
+                let to = self.inst_string_term(&term.children()[2])?;
+                result = result.replacen(&from, &to, 1);
+                Some(result)
+            }
+            NodeKind::ReplaceAll => {
+                let mut result = self.inst_string_term(&term.children()[0])?;
+                let from = self.inst_string_term(&term.children()[1])?;
+                let to = self.inst_string_term(&term.children()[2])?;
+                result = result.replace(&from, &to);
+                Some(result)
+            }
+            NodeKind::SubStr | NodeKind::At => {
+                todo!()
+            }
+            _ => None,
+        }
+    }
+
+    fn inst_int_term(&self, term: &Node) -> Option<i64> {
+        match term.kind() {
+            NodeKind::Int(i) => Some(*i),
+            NodeKind::Variable(v) => self.get_int(v.as_ref()),
+            NodeKind::Add => {
+                let mut result = 0;
+                for child in term.children() {
+                    result += self.inst_int_term(child)?;
+                }
+                Some(result)
+            }
+            NodeKind::Sub => {
+                let mut result = self.inst_int_term(&term.children()[0])?;
+                for child in term.children().iter().skip(1) {
+                    result -= self.inst_int_term(child)?;
+                }
+                Some(result)
+            }
+            NodeKind::Mul => {
+                let mut result = 1;
+                for child in term.children() {
+                    result *= self.inst_int_term(child)?;
+                }
+                Some(result)
+            }
+            NodeKind::Neg => {
+                let child = &term.children()[0];
+                Some(-self.inst_int_term(child)?)
+            }
+            _ => None,
         }
     }
 

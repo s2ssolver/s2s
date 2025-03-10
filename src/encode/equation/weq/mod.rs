@@ -21,7 +21,7 @@ mod testutils {
         mngr: &mut NodeManager,
     ) -> WordEquation {
         let node = node::testutils::parse_equation(lhs, rhs, mngr);
-        let c = preprocess::canonicalize(&node, mngr).unwrap();
+        let c = preprocess::canonicalize(&node, mngr);
         match c.kind() {
             NodeKind::Literal(literal) => match literal.atom().kind() {
                 canonical::AtomKind::WordEquation(weq) => weq.clone(),

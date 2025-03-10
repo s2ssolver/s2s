@@ -217,7 +217,7 @@ impl<'a> Converter<'a> {
             args.push(self.term(arg)?);
         }
 
-        let app = match fun {
+        let app = match &fun {
             smt::QualIdentifier::Simple { identifier } => match identifier {
                 smt::Identifier::Simple { symbol } => match symbol.0.as_str() {
                     // Core
@@ -278,7 +278,10 @@ impl<'a> Converter<'a> {
                     }
 
                     "str.replace" if args.len() == 3 => {
-                        return Err(AstError::Unsupported("str.replace".to_string()))
+                        let to = args.pop().unwrap();
+                        let from = args.pop().unwrap();
+                        let s = args.pop().unwrap();
+                        self.mngr.str_replace(s, from, to)
                     }
                     "str.replace_all" if args.len() == 3 => {
                         return Err(AstError::Unsupported("str.replace_all".to_string()))
@@ -306,6 +309,9 @@ impl<'a> Converter<'a> {
                         let right = args.pop().unwrap();
                         let left = args.pop().unwrap();
                         self.mngr.in_re(left, right)
+                    }
+                    "str.in_re" => {
+                        panic!("str.in_re requires two arguments but got {}", args.len())
                     }
                     "str.to_re" if args.len() == 1 => {
                         let arg = args.pop().unwrap();
@@ -457,10 +463,10 @@ impl<'a> Converter<'a> {
                         let left = args.pop().unwrap();
                         self.mngr.ge(left, right)
                     }
-                    other => {
+                    _ => {
                         return Err(AstError::Unsupported(format!(
                             "Unsupported function: {}",
-                            other
+                            fun
                         )))
                     }
                 },
@@ -505,10 +511,10 @@ impl<'a> Converter<'a> {
                             return Err(AstError::Unsupported(format!("(re.^ {} {})", arg, exp)));
                         }
                     }
-                    other => {
+                    _ => {
                         return Err(AstError::Unsupported(format!(
                             "Unsupported function: {}",
-                            other
+                            fun
                         )))
                     }
                 },

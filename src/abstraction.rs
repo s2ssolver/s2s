@@ -94,12 +94,13 @@ pub fn build_abstraction(node: &Node) -> Result<Abstraction, NodeError> {
     fn do_abstract(
         fm: &Node,
         atom_defs: &mut IndexMap<Rc<Atom>, (PVar, Polarity)>,
+        undefs: &mut IndexMap<Node, PVar>, // Nodes that cannot be defined as canonical literals
     ) -> Result<PFormula, NodeError> {
         match fm.kind() {
             NodeKind::And | NodeKind::Or => {
                 let mut ps = Vec::new();
                 for c in fm.children() {
-                    ps.push(do_abstract(c, atom_defs)?);
+                    ps.push(do_abstract(c, atom_defs, undefs)?);
                 }
                 let res = match fm.kind() {
                     NodeKind::Or => PFormula::Or(ps),
@@ -131,12 +132,36 @@ pub fn build_abstraction(node: &Node) -> Result<Abstraction, NodeError> {
                     PFormula::nlit(v)
                 })
             }
-            // TODO: Instead of a Lit, the LitDefintion should take a Node. If that Node is a Lit, then it is supported. Otherwise it is unsupported.
-            _ => panic!("Unsupported node {}", fm.kind()), // TODO: do nothing here instead
+            NodeKind::Not => {
+                // this is an unsupported negated atom: we need to add a Boolean var which does not define a canonical literal
+                let atom = &fm.children()[0];
+                debug_assert!(atom.is_atomic());
+                let v = if let Some(v) = undefs.get(atom) {
+                    *v
+                } else {
+                    let v = pvar();
+                    undefs.insert(atom.clone(), v);
+                    v
+                };
+                Ok(PFormula::nlit(v))
+            }
+            _ => {
+                // this is an unsupported atom: we need to add a Boolean var which does not define a canonical literal
+                debug_assert!(fm.is_atomic());
+                let v = if let Some(v) = undefs.get(fm) {
+                    *v
+                } else {
+                    let v = pvar();
+                    undefs.insert(fm.clone(), v);
+                    v
+                };
+                Ok(PFormula::nlit(v))
+            }
         }
     }
     let mut atom_defs = IndexMap::new();
-    let skeleton = do_abstract(node, &mut atom_defs)?;
+    let mut undefs = IndexMap::new();
+    let skeleton = do_abstract(node, &mut atom_defs, &mut undefs)?;
     let mut defs = Vec::with_capacity(atom_defs.len());
     for (atom, (v, pol)) in atom_defs {
         if pol.positive() {

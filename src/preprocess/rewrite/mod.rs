@@ -4,6 +4,7 @@ mod factors;
 mod int;
 mod ite;
 mod regex;
+mod replace;
 mod weq;
 
 use indexmap::IndexMap;
@@ -52,6 +53,9 @@ pub enum RewriteRules {
     PrefixTrivial,
     SuffixTrivial,
     ContainsTrivial,
+
+    /* Replace */
+    ReplaceIdem,
 }
 
 impl RewriteRules {
@@ -86,6 +90,7 @@ impl RewriteRules {
             RewriteRules::PrefixTrivial => factors::trivial_prefixof(node, mngr),
             RewriteRules::SuffixTrivial => factors::trivial_suffixof(node, mngr),
             RewriteRules::ContainsTrivial => factors::trivial_contains(node, mngr),
+            RewriteRules::ReplaceIdem => replace::replace_idem(node, mngr),
         }
     }
 }
@@ -182,6 +187,7 @@ const REWRITE: &'static [RewriteRules] = &[
     RewriteRules::PrefixTrivial,
     RewriteRules::SuffixTrivial,
     RewriteRules::ContainsTrivial,
+    RewriteRules::ReplaceIdem,
 ];
 
 /// Pulls all ITE expressions that return non-boolean values to a Boolean level.

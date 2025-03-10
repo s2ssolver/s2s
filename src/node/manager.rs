@@ -98,6 +98,12 @@ impl NodeManager {
                 let l = children.pop().unwrap();
                 self.contains(l, r)
             }
+            NodeKind::Replace if children.len() == 3 => {
+                let to = children.pop().unwrap();
+                let from = children.pop().unwrap();
+                let s = children.pop().unwrap();
+                self.str_replace(s, from, to)
+            }
             NodeKind::Add => self.add(children),
             NodeKind::Sub => self.sub(children),
             NodeKind::Neg if children.len() == 1 => self.neg(children.pop().unwrap()),
@@ -122,7 +128,6 @@ impl NodeManager {
                 let l = children.pop().unwrap();
                 self.ge(l, r)
             }
-
             _ => panic!(
                 "Invalid arity ({}) for kind {kind} ({:?})",
                 children.len(),
@@ -389,6 +394,22 @@ impl NodeManager {
 
     pub fn contains(&mut self, l: Node, r: Node) -> Node {
         self.intern_node(NodeKind::Contains, vec![l, r])
+    }
+
+    pub fn substr(&mut self, s: Node, start: Node, end: Node) -> Node {
+        self.intern_node(NodeKind::SubStr, vec![s, start, end])
+    }
+
+    pub fn at(&mut self, s: Node, i: Node) -> Node {
+        self.intern_node(NodeKind::At, vec![s, i])
+    }
+
+    pub fn str_replace(&mut self, s: Node, from: Node, to: Node) -> Node {
+        self.intern_node(NodeKind::Replace, vec![s, from, to])
+    }
+
+    pub fn str_replace_all(&mut self, s: Node, from: Node, to: Node) -> Node {
+        self.intern_node(NodeKind::ReplaceAll, vec![s, from, to])
     }
 
     /// Regular Membership

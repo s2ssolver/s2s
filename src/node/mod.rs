@@ -161,6 +161,14 @@ pub enum NodeKind {
     SuffixOf,
     /// Containment Constraint
     Contains,
+    /// Substring
+    SubStr,
+    /// At
+    At,
+    /// Replace first occurrence of a substring with another substring
+    Replace,
+    /// Replace all occurrences of a substring with another substring
+    ReplaceAll,
 
     /* Linear Integer Functions */
     /// Addition
@@ -202,7 +210,12 @@ impl NodeKind {
             | NodeKind::Not
             | NodeKind::Ite => false,
             NodeKind::Eq => true,
-            NodeKind::Concat | NodeKind::Length => false,
+            NodeKind::Concat
+            | NodeKind::Length
+            | NodeKind::SubStr
+            | NodeKind::At
+            | NodeKind::Replace
+            | NodeKind::ReplaceAll => false,
             NodeKind::InRe | NodeKind::PrefixOf | NodeKind::SuffixOf | NodeKind::Contains => true,
             NodeKind::Add | NodeKind::Neg | NodeKind::Sub | NodeKind::Mul => false,
             NodeKind::Lt | NodeKind::Le | NodeKind::Gt | NodeKind::Ge => true,
@@ -519,7 +532,12 @@ impl Sorted for OwnedNode {
             NodeKind::Regex(_) => Sort::RegLan,
             NodeKind::Variable(v) => v.sort(),
 
-            NodeKind::Concat | NodeKind::String(_) => Sort::String,
+            NodeKind::Concat
+            | NodeKind::String(_)
+            | NodeKind::SubStr
+            | NodeKind::At
+            | NodeKind::Replace
+            | NodeKind::ReplaceAll => Sort::String,
             NodeKind::InRe | NodeKind::PrefixOf | NodeKind::SuffixOf | NodeKind::Contains => {
                 Sort::Bool
             }
@@ -554,6 +572,10 @@ impl Display for NodeKind {
             NodeKind::Ite => write!(f, "ite"),
             NodeKind::Eq => write!(f, "="),
             NodeKind::Concat => write!(f, "concat"),
+            NodeKind::SubStr => write!(f, "substr"),
+            NodeKind::At => write!(f, "at"),
+            NodeKind::Replace => write!(f, "replace"),
+            NodeKind::ReplaceAll => write!(f, "replaceall"),
             NodeKind::Length => write!(f, "len"),
             NodeKind::InRe => write!(f, "in_re"),
             NodeKind::PrefixOf => write!(f, "prefixof"),
