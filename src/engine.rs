@@ -247,7 +247,62 @@ impl Engine {
         _assign: &Assignment,
         defs: &'a [LitDefinition],
     ) -> Vec<LitDefinition> {
-        defs.to_vec()
+        let mut boolvars = Vec::new();
+        // "x=y" and "x=w"
+        let mut simple_eqs = Vec::new();
+        // "x in R" with simple regex R, also factor relations
+        let mut simple_inres = Vec::new();
+        // "x in R" with complex regex R (intersection, complement, diff)
+        let mut extended_inres: Vec<LitDefinition> = Vec::new();
+        // Propagate word equations
+        let mut weqs = Vec::new();
+        // Lenght constraints
+        let mut lc = Vec::new();
+        for d in defs {
+            let lit = d.defined();
+            match lit.atom().kind() {
+                AtomKind::Boolvar(_) => boolvars.push(d.clone()),
+                AtomKind::WordEquation(weq) => match weq {
+                    WordEquation::ConstantEquality(_, _) => unreachable!(),
+                    WordEquation::VarEquality(_, _) => simple_eqs.push(d.clone()),
+                    WordEquation::VarAssignment(_, _) => simple_eqs.push(d.clone()),
+                    WordEquation::General(_, _) => weqs.push(d.clone()),
+                },
+                AtomKind::InRe(inre) => {
+                    if inre.re().simple() {
+                        simple_inres.push(d.clone());
+                    } else {
+                        extended_inres.push(d.clone());
+                    }
+                }
+                AtomKind::FactorConstraint(_) => simple_inres.push(d.clone()),
+                AtomKind::Linear(_) => lc.push(d.clone()),
+            }
+        }
+        let mut result = boolvars;
+        result.extend(simple_eqs);
+        result.extend(simple_inres);
+        if !result.is_empty() {
+            return result;
+        }
+        // add word equations and length constraints
+        result.extend(weqs);
+        result.extend(lc);
+        if !result.is_empty() {
+            return result;
+        }
+        // add extended inres
+        let posneg: (Vec<LitDefinition>, Vec<LitDefinition>) = extended_inres
+            .into_iter()
+            .partition(|d| d.defined().polarity());
+        // first only the positiv
+        result.extend(posneg.0);
+        if !result.is_empty() {
+            return result;
+        }
+        // then the negative
+        result.extend(posneg.1);
+        result
     }
 
     /// Initialize the domain of all variables in the formula.
@@ -438,4 +493,3 @@ fn re_longest(re: &Regex) -> Option<usize> {
         _ => None,
     }
 }
-

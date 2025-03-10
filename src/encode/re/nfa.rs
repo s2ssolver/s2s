@@ -107,15 +107,18 @@ impl NFAEncoder {
 
                             // Follow transition if we read a character in the given range
                             for c in s..=e {
-                                let sub_var = dom.string().get_sub(&self.var, l, c).expect(
-                                    format!(
-                                        "Substitution h({})[{}] = '{}' not found",
-                                        self.var,
-                                        l,
-                                        c.escape_debug(),
-                                    )
-                                    .as_str(),
-                                );
+                                let sub_var = match dom.string().get_sub(&self.var, l, c) {
+                                    Some(v) => v,
+                                    None => {
+                                        panic!(
+                                            "Substitution h({})[{}] = '{}' not found\n{}",
+                                            self.var,
+                                            l,
+                                            c.escape_debug(),
+                                            self.nfa.dot().unwrap()
+                                        )
+                                    }
+                                };
                                 // reach_var /\ sub_var => reach_next
                                 let clause = vec![nlit(reach_var), nlit(sub_var), plit(reach_next)];
                                 res.add_clause(clause);
