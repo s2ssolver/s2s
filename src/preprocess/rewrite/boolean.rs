@@ -23,10 +23,13 @@ pub fn and_const(node: &Node, mngr: &mut NodeManager) -> Option<Node> {
                 new_children.push(c.clone());
             }
         }
-        Some(mngr.and(new_children))
-    } else {
-        None
+        if new_children.is_empty() {
+            return Some(mngr.ttrue());
+        } else if new_children.len() < node.children().len() {
+            return Some(mngr.and(new_children));
+        }
     }
+    None
 }
 
 /// Folds: (A /\ A) to A
@@ -36,10 +39,13 @@ pub fn and_idem(node: &Node, mngr: &mut NodeManager) -> Option<Node> {
         for c in node.children() {
             new_children.insert(c.clone());
         }
-        Some(mngr.and(new_children.into_iter().collect()))
-    } else {
-        None
+        if new_children.is_empty() {
+            return Some(mngr.ttrue());
+        } else if new_children.len() < node.children().len() {
+            return Some(mngr.and(new_children.into_iter().collect()));
+        }
     }
+    None
 }
 
 /// Folds: (A /\ -A) to false
@@ -75,10 +81,13 @@ pub fn or_const(node: &Node, mngr: &mut NodeManager) -> Option<Node> {
                 new_children.push(c.clone());
             }
         }
-        Some(mngr.or(new_children))
-    } else {
-        None
+        if new_children.is_empty() {
+            return Some(mngr.ffalse());
+        } else if new_children.len() < node.children().len() {
+            return Some(mngr.or(new_children));
+        }
     }
+    None
 }
 
 /// Folds: (A \/ A) to A
@@ -88,10 +97,13 @@ pub fn or_idem(node: &Node, mngr: &mut NodeManager) -> Option<Node> {
         for c in node.children() {
             new_children.insert(c.clone());
         }
-        Some(mngr.or(new_children.into_iter().collect()))
-    } else {
-        None
+        if new_children.is_empty() {
+            return Some(mngr.ffalse());
+        } else if new_children.len() < node.children().len() {
+            return Some(mngr.or(new_children.into_iter().collect()));
+        }
     }
+    None
 }
 
 /// Folds: (A \/ -A) to true
