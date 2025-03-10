@@ -21,13 +21,10 @@ pub struct Preprocessor {
 impl Preprocessor {
     pub fn apply(
         &mut self,
-        root: &Node,
+        nnf: &Node,
         passes: usize,
         mngr: &mut NodeManager,
     ) -> Result<Node, NodeError> {
-        // convert to nnf
-        let nnf = to_nnf(root, mngr);
-        // simplify
         let simped = self.simplify(&nnf, passes, mngr);
         log::debug!("Simplified:\n{}", simped);
         Ok(simped)

@@ -71,28 +71,32 @@ pub fn to_nnf(node: &Node, mngr: &mut NodeManager) -> Node {
         NodeKind::Not => {
             debug_assert_eq!(node.children().len(), 1);
             let child = &node.children()[0];
-            let child_nnf = to_nnf(child, mngr);
-            match child_nnf.kind() {
+            match child.kind() {
                 NodeKind::Not => {
                     // Double negation: ¬¬a is equivalent to a
-                    child_nnf.children()[0].clone()
+                    debug_assert_eq!(child.children().len(), 1);
+                    to_nnf(&child.children()[0], mngr)
                 }
-                NodeKind::Or | NodeKind::And => {
-                    // De Morgan's laws: ¬(a ∨ b) is equivalent to ¬a ∧ ¬b
+                NodeKind::And | NodeKind::Or => {
                     // De Morgan's laws: ¬(a ∧ b) is equivalent to ¬a ∨ ¬b
-                    let children_in_nnf: Vec<Node> = child_nnf
-                        .children()
-                        .iter()
-                        .map(|child| mngr.not(child.clone()))
-                        .collect();
-
-                    match child_nnf.kind() {
-                        NodeKind::Or => mngr.and(children_in_nnf),
-                        NodeKind::And => mngr.or(children_in_nnf),
+                    let mut nnf_children = Vec::with_capacity(child.children().len());
+                    for ch in child.children() {
+                        let negated_child = mngr.not(ch.clone());
+                        nnf_children.push(to_nnf(&negated_child, mngr));
+                    }
+                    match child.kind() {
+                        NodeKind::Or => mngr.and(nnf_children),
+                        NodeKind::And => mngr.or(nnf_children),
                         _ => unreachable!(), // This match arm handles only Or and And
                     }
                 }
-                _ => mngr.not(child_nnf),
+                NodeKind::Imp | NodeKind::Equiv => {
+                    // Convert to BNF first
+                    let bnf_node = to_bnf(child, mngr);
+                    let not_bnf_node = mngr.not(bnf_node);
+                    to_nnf(&not_bnf_node, mngr)
+                }
+                _ => node.clone(), // must be a literal, keep it as is
             }
         }
         NodeKind::Imp | NodeKind::Equiv => {
@@ -335,5 +339,69 @@ mod tests {
         let expected = mngr.and(vec![left, right]);
 
         assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn test_to_nnf_not_equivalence() {
+        let mut mngr = NodeManager::default();
+
+        // not(a <-> b) should convert to
+        // <==> not((¬a ∨ b) ∧ (¬b ∨ a))
+        // <==> not(¬a ∨ b) ∨ not(¬b ∨ a)
+        // <==> (a ∧ ¬b) ∨ (b ∧ ¬a)
+        let a = mngr.temp_var(Sort::Bool);
+        let b = mngr.temp_var(Sort::Bool);
+        let var_a = mngr.var(a.clone());
+        let var_b = mngr.var(b.clone());
+        let equiv_node = mngr.equiv(var_a.clone(), var_b.clone());
+        let not_equiv_node = mngr.not(equiv_node);
+
+        let result = to_nnf(&not_equiv_node, &mut mngr);
+
+        let a = mngr.var(a);
+        let b = mngr.var(b);
+        let not_b = mngr.not(b.clone());
+        let not_a = mngr.not(a.clone());
+        let left = mngr.and(vec![a, not_b]);
+        let right = mngr.and(vec![b, not_a]);
+        let expected = mngr.or(vec![left, right]);
+
+        assert_eq!(
+            result, expected,
+            "\nExpected: {}\nGot: {}",
+            expected, result
+        );
+    }
+
+    #[test]
+    fn test_nnf_nested() {
+        let mut mngr = NodeManager::default();
+
+        // not(a /\ not(b \/ c)) should convert to not(a) \/ (b /\ c)
+        let a = mngr.temp_var(Sort::Bool);
+        let b = mngr.temp_var(Sort::Bool);
+        let c = mngr.temp_var(Sort::Bool);
+
+        let var_a = mngr.var(a);
+        let var_b = mngr.var(b);
+        let var_c = mngr.var(c);
+
+        let b_or_c = mngr.or(vec![var_b.clone(), var_c.clone()]);
+        let not_b_or_c = mngr.not(b_or_c);
+        let a_and_not_b_or_c = mngr.and(vec![var_a.clone(), not_b_or_c]);
+        let not_a_and_b_and_c = mngr.not(a_and_not_b_or_c);
+
+        // expected result is not(a) \/ (b /\ c)
+        let not_a = mngr.not(var_a);
+        let b_and_c = mngr.or(vec![var_b, var_c]);
+        let expected = mngr.or(vec![not_a, b_and_c]);
+
+        let result = to_nnf(&not_a_and_b_and_c, &mut mngr);
+
+        assert_eq!(
+            result, expected,
+            "\nExpected: {}\nGot: {}",
+            expected, result
+        );
     }
 }

@@ -15,6 +15,7 @@ use crate::{
             WordEquation,
         },
         get_entailed_literals,
+        normal::to_nnf,
         smt::to_script,
         Node, NodeKind, NodeManager, NodeSubstitution, Sort, Sorted,
     },
@@ -101,11 +102,15 @@ impl Engine {
         mngr: &mut NodeManager,
     ) -> Result<(Node, NodeSubstitution), Error> {
         // Preprocess
+
+        let nnf = to_nnf(fm, mngr);
+
         let mut preprocessor = Preprocessor::default();
+
         let simped = if self.options.simplify {
-            preprocessor.apply(fm, self.options.preprocess_extra_passes, mngr)?
+            preprocessor.apply(&nnf, self.options.preprocess_extra_passes, mngr)?
         } else {
-            fm.clone()
+            nnf
         };
 
         // These are the substitutions applied by the preprocessor
