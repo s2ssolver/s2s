@@ -173,23 +173,21 @@ fn addition_chars_lits(lits: &[Literal]) -> usize {
 
     let num_vars = string_vars.len();
 
+    // If the formula contains a word equation, then we need at least the number of inequalities + 1 characters
+    // If the formula does not contain a word equation, then we need at least the minimum of the number of string variables and the number of inequalities + 1 characters
+    // TODO: By Diekert we can improve number of inequalities + 1 to (1/2 + sqrt(2*(number of ineqs)+1/2))
     let res = match (contains_inre, contains_eq) {
-        (true, true) => num_ineqs,
-        (true, false) => num_vars.min(num_ineqs),
-        (false, true) => num_ineqs,
-        (false, false) => num_vars.min(num_ineqs),
+        (true, true) => num_ineqs + 1,
+        (true, false) => num_vars.min(num_ineqs + 1),
+        (false, true) => num_ineqs + 1,
+        (false, false) => num_vars.min(num_ineqs + 1),
     };
-    //    panic!("{} {} {} {}", contains_eq, num_vars, num_ineqs, res);
-    let res = if contains_lc {
-        // double check if this is sound.
-        // here are some minimal example
-        // - x != y /\ |x| = |y| (needs at least 2 characters)
-        // - xx != yy /\ |xx| = |yy| (needs at least 2 characters, but without the linear constraint, only 1 character is needed)
-        res + 1
-    } else {
-        res
-    };
-    res.max(1)
+    // If the formula contains a linear constraint with string variables, the we need at least one character
+    // here are some minimal example
+    // - x != y /\ |x| = |y| (needs at least 2 characters, satisifed because we are regular and have two string vars)
+    // - xx != yy /\ |xx| = |yy| (needs at least 2 characters, because we concatenation and an inequality)
+    let res = if contains_lc { res.max(1) } else { res };
+    res
 }
 
 #[cfg(test)]
@@ -234,7 +232,7 @@ mod tests {
         let literals = vec![];
         let result = addition_chars_lits(&literals);
         assert_eq!(
-            result, 1,
+            result, 0,
             "Expected 1 additional characters for an empty literal set"
         );
     }
@@ -256,18 +254,19 @@ mod tests {
         let inre = make_in_re("x", &mut mngr);
         let neq = make_neq("x", "y", &mut mngr);
         let result = addition_chars_lits(&[inre, neq]);
-        assert_eq!(result, 1);
+        assert_eq!(result, 2); // 2 string vars, 1 inequality, no concat => min(2, 1+1) = 2 additional characters
     }
 
     #[test]
     fn test_addition_chars_single_neqs_more_vars() {
+        // x != y /\ x != z /\ x != u
         let mut mngr = NodeManager::default();
 
         let neq = make_neq("x", "y", &mut mngr);
         let neq_2 = make_neq("y", "z", &mut mngr);
         let neq_3 = make_neq("z", "u", &mut mngr);
         let result = addition_chars_lits(&[neq, neq_2, neq_3]);
-        assert_eq!(result, 3); // 4 vars, 3 inequalities => 3 additional characters
+        assert_eq!(result, 4); // 4 vars, 3 inequalities => min(4, 3+1) = 4 additional characters
     }
 
     #[test]
@@ -317,7 +316,7 @@ mod tests {
         let lit = to_lit(&lc, &mut mngr);
 
         let result = addition_chars_lits(&[lit]);
-        assert_eq!(result, 1);
+        assert_eq!(result, 0); // only LC without string vars, no additional characters needed
     }
 
     #[test]
