@@ -1,4 +1,4 @@
-use std::rc::Rc;
+use std::{fmt::Display, rc::Rc};
 
 use crate::node::{Node, NodeKind, NodeManager, Sorted, Variable};
 
@@ -8,6 +8,8 @@ pub enum Symbol {
     Const(char),
     /// A variable symbol
     Variable(Rc<Variable>),
+    /// Something else
+    Other(Node),
 }
 
 impl Symbol {
@@ -20,16 +22,26 @@ impl Symbol {
     }
 }
 
-/// Iterator over the symbols in a node that represents a string term.
-pub struct SymbolIterator<'a> {
-    node: &'a Node,
-    index: usize,
-    sub_iter: Option<Box<SymbolIterator<'a>>>,
+impl Display for Symbol {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Symbol::Const(ch) => write!(f, "{}", ch),
+            Symbol::Variable(v) => write!(f, "{}", v),
+            Symbol::Other(node) => write!(f, "{}", node),
+        }
+    }
 }
 
-impl<'a> SymbolIterator<'a> {
+/// Iterator over the symbols in a node that represents a string term.
+pub struct PatternIterator<'a> {
+    node: &'a Node,
+    index: usize,
+    sub_iter: Option<Box<PatternIterator<'a>>>,
+}
+
+impl<'a> PatternIterator<'a> {
     pub fn new(node: &'a Node) -> Self {
-        SymbolIterator {
+        PatternIterator {
             node,
             index: 0,
             sub_iter: None,
@@ -61,7 +73,7 @@ impl<'a> SymbolIterator<'a> {
                 while n < self.node.children().len() {
                     let nth = self.node.children().get(self.index)?;
                     // iterate over the children of the Concat node
-                    let sub_iter = Box::new(SymbolIterator::new(nth));
+                    let sub_iter = Box::new(PatternIterator::new(nth));
                     if let Some(sym) = sub_iter.peek() {
                         return Some(sym);
                     }
@@ -69,7 +81,7 @@ impl<'a> SymbolIterator<'a> {
                 }
                 None
             }
-            _ => None, // Return None for non-string, non-variable nodes
+            _ => Some(Symbol::Other(self.node.clone())),
         }
     }
 
@@ -104,7 +116,7 @@ impl<'a> SymbolIterator<'a> {
                     children.push(n);
 
                     self.sub_iter = if self.index < self.node.children().len() {
-                        Some(Box::new(SymbolIterator::new(
+                        Some(Box::new(PatternIterator::new(
                             &self.node.children()[self.index],
                         )))
                     } else {
@@ -119,7 +131,7 @@ impl<'a> SymbolIterator<'a> {
     }
 }
 
-impl<'a> Iterator for SymbolIterator<'a> {
+impl<'a> Iterator for PatternIterator<'a> {
     type Item = Symbol;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -155,10 +167,10 @@ impl<'a> Iterator for SymbolIterator<'a> {
                 let nth = self.node.children().get(self.index)?;
                 self.index += 1;
                 // iterate over the children of the Concat node
-                self.sub_iter = Some(Box::new(SymbolIterator::new(nth)));
+                self.sub_iter = Some(Box::new(PatternIterator::new(nth)));
                 self.next()
             }
-            _ => None, // Return None for non-string, non-variable nodes
+            _ => Some(Symbol::Other(self.node.clone())),
         }
     }
 }
@@ -380,7 +392,7 @@ mod tests {
     fn test_symbol_iterator_with_simple_string() {
         let mut mngr = NodeManager::default();
         let node = mngr.const_str("abcde");
-        let mut iter = SymbolIterator::new(&node);
+        let mut iter = PatternIterator::new(&node);
 
         assert_eq!(iter.next(), Some(Symbol::Const('a')));
         assert_eq!(iter.next(), Some(Symbol::Const('b')));
@@ -396,7 +408,7 @@ mod tests {
 
         let x = mngr.temp_var(Sort::String);
         let var_x = mngr.var(x.clone());
-        let mut iter = SymbolIterator::new(&var_x);
+        let mut iter = PatternIterator::new(&var_x);
 
         assert_eq!(iter.next(), Some(Symbol::Variable(x.clone())));
         assert_eq!(iter.next(), None);
@@ -410,7 +422,7 @@ mod tests {
         let var_x = mngr.var(x.clone());
         let string_hello = mngr.const_str("abcde");
         let node = mngr.concat(vec![string_hello, var_x.clone()]);
-        let mut iter = SymbolIterator::new(&node);
+        let mut iter = PatternIterator::new(&node);
 
         assert_eq!(iter.next(), Some(Symbol::Const('a')));
         assert_eq!(iter.next(), Some(Symbol::Const('b')));
@@ -433,7 +445,7 @@ mod tests {
         // Create nested concatenation: ("foo" + ("bar" + var_x))
         let inner_concat = mngr.concat(vec![string_bar, var_x.clone()]);
         let node = mngr.concat(vec![string_foo, inner_concat]);
-        let mut iter = SymbolIterator::new(&node);
+        let mut iter = PatternIterator::new(&node);
 
         assert_eq!(iter.next(), Some(Symbol::Const('f')));
         assert_eq!(iter.next(), Some(Symbol::Const('o')));
@@ -450,16 +462,16 @@ mod tests {
         let mut mngr = NodeManager::default();
         let node = mngr.const_str("abcde");
 
-        let iter = SymbolIterator::new(&node);
+        let iter = PatternIterator::new(&node);
         let new_node = iter.to_node(&mut mngr).unwrap();
         assert_eq!(new_node, node);
 
-        let mut iter = SymbolIterator::new(&node);
+        let mut iter = PatternIterator::new(&node);
         iter.next();
         let new_node = iter.to_node(&mut mngr).unwrap();
         assert_eq!(new_node, mngr.const_str("bcde"));
 
-        let mut iter = SymbolIterator::new(&node);
+        let mut iter = PatternIterator::new(&node);
         iter.next();
         iter.next();
         iter.next();
@@ -475,11 +487,11 @@ mod tests {
         let x = mngr.temp_var(Sort::String);
         let var_x = mngr.var(x.clone());
 
-        let iter = SymbolIterator::new(&var_x);
+        let iter = PatternIterator::new(&var_x);
         let new_node = iter.to_node(&mut mngr).unwrap();
         assert_eq!(new_node, var_x);
 
-        let mut iter = SymbolIterator::new(&var_x);
+        let mut iter = PatternIterator::new(&var_x);
         iter.next();
         let new_node = iter.to_node(&mut mngr).unwrap();
         assert_eq!(new_node, mngr.const_str(""));
@@ -497,11 +509,11 @@ mod tests {
         let inner_concat = mngr.concat(vec![string_bar.clone(), var_x.clone()]);
         let node = mngr.concat(vec![string_foo, inner_concat.clone()]);
 
-        let iter = SymbolIterator::new(&node);
+        let iter = PatternIterator::new(&node);
         let new_node = iter.to_node(&mut mngr).unwrap();
         assert_eq!(new_node, node);
 
-        let mut iter = SymbolIterator::new(&node);
+        let mut iter = PatternIterator::new(&node);
         iter.next();
         let new_node = iter.to_node(&mut mngr).unwrap();
         let string_oo = mngr.const_str("oo");
@@ -512,7 +524,7 @@ mod tests {
             expected, new_node
         );
 
-        let mut iter = SymbolIterator::new(&node);
+        let mut iter = PatternIterator::new(&node);
         for _ in 0..7 {
             iter.next();
         }

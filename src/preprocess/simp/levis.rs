@@ -1,5 +1,5 @@
 use crate::node::{
-    utils::{reverse, Symbol, SymbolIterator},
+    utils::{reverse, PatternIterator, Symbol},
     NodeKind, Sorted,
 };
 
@@ -42,7 +42,7 @@ impl SimpRule for LevisWeq {
 
 fn levis_step(lhs: &Node, rhs: &Node, mngr: &mut NodeManager) -> Option<NodeSubstitution> {
     /// Helper function to check if we have "a\beta = Y\alpha" or "Y\alpha = a\beta" and Y cannot be set to the empty string
-    fn not_empty(constant: char, pattern: &mut SymbolIterator) -> bool {
+    fn not_empty(constant: char, pattern: &mut PatternIterator) -> bool {
         let scnd = pattern.next();
         match scnd {
             Some(Symbol::Const(c)) => c != constant,
@@ -51,8 +51,8 @@ fn levis_step(lhs: &Node, rhs: &Node, mngr: &mut NodeManager) -> Option<NodeSubs
         }
     }
 
-    let mut lhs = SymbolIterator::new(lhs);
-    let mut rhs = SymbolIterator::new(rhs);
+    let mut lhs = PatternIterator::new(lhs);
+    let mut rhs = PatternIterator::new(rhs);
     let mut substitution = NodeSubstitution::default();
     match (lhs.next(), rhs.next()) {
         /* One side is constant, the other variable */

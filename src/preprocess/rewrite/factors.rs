@@ -1,7 +1,7 @@
 use itertools::Itertools;
 
 use crate::node::{
-    utils::{reverse, SymbolIterator},
+    utils::{reverse, PatternIterator},
     Node, NodeKind, NodeManager,
 };
 
@@ -11,17 +11,25 @@ pub fn trivial_prefixof(node: &Node, mngr: &mut NodeManager) -> Option<Node> {
         debug_assert!(node.children().len() == 2);
         let lhs = &node.children()[0];
         let rhs = &node.children()[1];
+        // Only works if both lhs and rhs are patterns.
+        match lhs.kind() {
+            NodeKind::Variable(_) | NodeKind::String(_) | NodeKind::Concat => match rhs.kind() {
+                NodeKind::Variable(_) | NodeKind::String(_) | NodeKind::Concat => {
+                    let mut rhs_symbols = PatternIterator::new(rhs);
+                    let lhs_symbols = PatternIterator::new(lhs);
 
-        let mut rhs_symbols = SymbolIterator::new(rhs);
-        let lhs_symbols = SymbolIterator::new(lhs);
-
-        for s in lhs_symbols {
-            if Some(s) != rhs_symbols.next() {
-                return None;
-            }
+                    for s in lhs_symbols {
+                        if Some(s) != rhs_symbols.next() {
+                            return None;
+                        }
+                    }
+                    // If we reached the end of lhs, then lhs is a prefix of rhs.
+                    return Some(mngr.ttrue());
+                }
+                _ => {}
+            },
+            _ => {}
         }
-        // If we reached the end of lhs, then lhs is a prefix of rhs.
-        return Some(mngr.ttrue());
     }
     None
 }
@@ -46,13 +54,24 @@ pub fn trivial_contains(node: &Node, mngr: &mut NodeManager) -> Option<Node> {
         let haystack = &node.children()[0];
         let needle = &node.children()[1];
 
-        let haystack = SymbolIterator::new(haystack).collect_vec();
-        let needle = SymbolIterator::new(needle).collect_vec();
+        // Only works if both haystack and needle are patterns.
+        match haystack.kind() {
+            NodeKind::Variable(_) | NodeKind::String(_) | NodeKind::Concat => match needle.kind() {
+                NodeKind::Variable(_) | NodeKind::String(_) | NodeKind::Concat => {
+                    let haystack = PatternIterator::new(haystack).collect_vec();
+                    let needle = PatternIterator::new(needle).collect_vec();
 
-        if find_subvec(&haystack, &needle) {
-            return Some(mngr.ttrue());
-        } else if haystack.iter().all(|s| s.is_const()) && needle.iter().all(|s| s.is_const()) {
-            return Some(mngr.ffalse());
+                    if find_subvec(&haystack, &needle) {
+                        return Some(mngr.ttrue());
+                    } else if haystack.iter().all(|s| s.is_const())
+                        && needle.iter().all(|s| s.is_const())
+                    {
+                        return Some(mngr.ffalse());
+                    }
+                }
+                _ => {}
+            },
+            _ => {}
         }
     }
     None

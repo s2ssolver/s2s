@@ -2,7 +2,7 @@ use indexmap::IndexMap;
 use num_integer::Integer;
 
 use crate::node::{
-    utils::{reverse, Symbol, SymbolIterator},
+    utils::{reverse, PatternIterator, Symbol},
     Node, NodeKind, NodeManager, Sorted,
 };
 
@@ -14,8 +14,8 @@ pub fn strip_lcp(node: &Node, mngr: &mut NodeManager) -> Option<Node> {
         debug_assert!(node.children().len() == 2);
         debug_assert!(node.children()[0].sort().is_string());
         debug_assert!(node.children()[1].sort().is_string());
-        let mut lhs_iter = SymbolIterator::new(&node.children()[0]);
-        let mut rhs_iter = SymbolIterator::new(&node.children()[1]);
+        let mut lhs_iter = PatternIterator::new(&node.children()[0]);
+        let mut rhs_iter = PatternIterator::new(&node.children()[1]);
 
         let mut i = 0;
         let mut next_lhs = lhs_iter.peek();
@@ -92,8 +92,8 @@ pub fn length_reasoning(node: &Node, mngr: &mut NodeManager) -> Option<Node> {
         let lhs = &node.children()[0];
         let rhs = &node.children()[1];
 
-        let lhs_iter = SymbolIterator::new(lhs);
-        let rhs_iter = SymbolIterator::new(rhs);
+        let lhs_iter = PatternIterator::new(lhs);
+        let rhs_iter = PatternIterator::new(rhs);
 
         let mut coeffs: IndexMap<std::rc::Rc<crate::node::Variable>, i32> = IndexMap::new();
         let mut r: i32 = 0;
@@ -102,12 +102,14 @@ pub fn length_reasoning(node: &Node, mngr: &mut NodeManager) -> Option<Node> {
             match s {
                 Symbol::Const(_) => r -= 1,
                 Symbol::Variable(v) => *coeffs.entry(v).or_insert(0) += 1,
+                Symbol::Other(_) => return None,
             }
         }
         for s in rhs_iter {
             match s {
                 Symbol::Const(_) => r += 1,
                 Symbol::Variable(v) => *coeffs.entry(v).or_insert(0) -= 1,
+                Symbol::Other(_) => return None,
             }
         }
         // Check if the equation is trivially unsatisfiable

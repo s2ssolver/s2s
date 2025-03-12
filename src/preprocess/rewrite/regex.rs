@@ -1,7 +1,7 @@
 use regulaer::re::{deriv::Deriver, ReOp};
 
 use crate::node::{
-    utils::{reverse, Symbol, SymbolIterator},
+    utils::{reverse, Symbol, PatternIterator},
     Node, NodeKind, NodeManager,
 };
 
@@ -82,7 +82,7 @@ pub fn inre_strip_prefix(node: &Node, mngr: &mut NodeManager) -> Option<Node> {
             NodeKind::Regex(s) => s.clone(),
             _ => return None,
         };
-        let mut iter = SymbolIterator::new(&node.children()[0]);
+        let mut iter = PatternIterator::new(&node.children()[0]);
         let mut deriver = Deriver::default();
         while let Some(Symbol::Const(c)) = iter.peek() {
             rewritten = true;
