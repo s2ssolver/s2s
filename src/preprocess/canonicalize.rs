@@ -95,8 +95,7 @@ impl Canonicalizer {
                 _ => unreachable!("Expected boolean function"),
             }
         } else {
-            // The node is a term, this should not happen in a well-formed formula.
-            panic!("Not well-formed: '{}'", node);
+            node.clone()
         };
         self.cache.insert(node.clone(), canon.clone());
         canon
@@ -144,14 +143,17 @@ impl Canonicalizer {
             _ if node.is_bool_fun() => unreachable!("Expected atomic formula but got '{}'", node),
             _ => None,
         };
+
         atom
     }
 
     fn canonicalize_lit(&mut self, node: &Node, mngr: &mut NodeManager) -> Option<Literal> {
         debug_assert!(node.is_literal());
+
         if *node.kind() == NodeKind::Not {
             let atom = node.children().first().unwrap();
             let catom = self.canonicalize_atom(atom, mngr)?;
+
             match atom.kind() {
                 NodeKind::Contains | NodeKind::PrefixOf | NodeKind::SuffixOf
                     if !matches!(catom.kind(), AtomKind::FactorConstraint(_)) =>
@@ -292,6 +294,7 @@ impl Canonicalizer {
 
         let container = self.canonicalize(node.children().first().unwrap(), mngr);
         let contained = self.canonicalize(node.children().last().unwrap(), mngr);
+
         // If `s`  is constant, then this is a regular expression constraint r \in .*s.*
         if let Some(s) = contained.as_str_const() {
             let v = if let Some(v) = container.as_variable() {
