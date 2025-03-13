@@ -77,6 +77,27 @@ pub fn trivial_contains(node: &Node, mngr: &mut NodeManager) -> Option<Node> {
     None
 }
 
+/// Replaces `prefixof(x, "")`, `suffixof(x, "")`, and `contains("", x)` with `x = ""`.
+pub fn factor_of_empty_string(node: &Node, mngr: &mut NodeManager) -> Option<Node> {
+    if *node.kind() == NodeKind::PrefixOf || *node.kind() == NodeKind::SuffixOf {
+        let lhs = &node.children()[0];
+        let rhs = &node.children()[1];
+        if rhs.as_str_const().map(|s| s.is_empty()) == Some(true) {
+            let eq = mngr.eq(lhs.clone(), rhs.clone());
+            return Some(eq);
+        }
+    }
+    if *node.kind() == NodeKind::Contains {
+        let container = &node.children()[0];
+        let contains = &node.children()[1];
+        if container.as_str_const().map(|s| s.is_empty()) == Some(true) {
+            let eq = mngr.eq(container.clone(), contains.clone());
+            return Some(eq);
+        }
+    }
+    None
+}
+
 fn find_subvec<T: PartialEq>(mut haystack: &[T], needle: &[T]) -> bool {
     if needle.len() == 0 {
         return true;

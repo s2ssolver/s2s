@@ -53,9 +53,12 @@ pub enum RewriteRules {
     PrefixTrivial,
     SuffixTrivial,
     ContainsTrivial,
+    FactorOfEmpty,
 
     /* Replace */
     ReplaceIdem,
+    ReplaceInEpsilon,
+    ReplaceEpsilon,
 }
 
 impl RewriteRules {
@@ -90,7 +93,10 @@ impl RewriteRules {
             RewriteRules::PrefixTrivial => factors::trivial_prefixof(node, mngr),
             RewriteRules::SuffixTrivial => factors::trivial_suffixof(node, mngr),
             RewriteRules::ContainsTrivial => factors::trivial_contains(node, mngr),
+            RewriteRules::FactorOfEmpty => factors::factor_of_empty_string(node, mngr),
             RewriteRules::ReplaceIdem => replace::replace_idem(node, mngr),
+            RewriteRules::ReplaceInEpsilon => replace::replace_in_epsilon(node, mngr),
+            RewriteRules::ReplaceEpsilon => replace::replace_epsilon(node, mngr),
         }
     }
 }
@@ -187,7 +193,10 @@ const REWRITE: &'static [RewriteRules] = &[
     RewriteRules::PrefixTrivial,
     RewriteRules::SuffixTrivial,
     RewriteRules::ContainsTrivial,
+    RewriteRules::FactorOfEmpty,
     RewriteRules::ReplaceIdem,
+    RewriteRules::ReplaceEpsilon,
+    RewriteRules::ReplaceInEpsilon,
 ];
 
 /// Pulls all ITE expressions that return non-boolean values to a Boolean level.
