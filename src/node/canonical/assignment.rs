@@ -234,24 +234,25 @@ impl Assignment {
             NodeKind::PrefixOf => {
                 let lhs = self.inst_string_term(&formula.children()[0]);
                 let rhs = self.inst_string_term(&formula.children()[1]);
+
                 match (lhs, rhs) {
-                    (Some(lhs), Some(rhs)) => lhs.starts_with(&rhs),
+                    (Some(prefix), Some(of)) => of.starts_with(&prefix),
                     _ => false,
                 }
             }
             NodeKind::SuffixOf => {
-                let lhs = self.inst_string_term(&formula.children()[0]);
-                let rhs = self.inst_string_term(&formula.children()[1]);
-                match (lhs, rhs) {
-                    (Some(lhs), Some(rhs)) => lhs.ends_with(&rhs),
+                let suffix = self.inst_string_term(&formula.children()[0]);
+                let of = self.inst_string_term(&formula.children()[1]);
+                match (suffix, of) {
+                    (Some(suffix), Some(of)) => of.ends_with(&suffix),
                     _ => false,
                 }
             }
             NodeKind::Contains => {
-                let lhs = self.inst_string_term(&formula.children()[0]);
-                let rhs = self.inst_string_term(&formula.children()[1]);
-                match (lhs, rhs) {
-                    (Some(lhs), Some(rhs)) => lhs.contains(&rhs),
+                let hay = self.inst_string_term(&formula.children()[0]);
+                let needle = self.inst_string_term(&formula.children()[1]);
+                match (hay, needle) {
+                    (Some(hay), Some(needle)) => hay.contains(&needle),
                     _ => false,
                 }
             }

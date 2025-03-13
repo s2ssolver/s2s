@@ -1,0 +1,5 @@
+(set-logic ALL)
+(declare-const y String)
+(assert (and (str.suffixof y "") (not (= y ""))))
+(check-sat)
+(get-model)
