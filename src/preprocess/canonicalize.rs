@@ -251,8 +251,8 @@ impl Canonicalizer {
             // Otherwise, rewrite as a word equation: There exists some t, u such that  r = t ++ s ++ u
             let t = mngr.temp_var(Sort::String);
             let t = mngr.var(t);
-            let rhs = mngr.concat(vec![of.clone(), t.clone()]);
-            let eq = mngr.eq(prefix.clone(), rhs);
+            let rhs = mngr.concat(vec![prefix.clone(), t.clone()]);
+            let eq = mngr.eq(of.clone(), rhs);
             self.canonicalize_weq(&eq, mngr)
         }
     }
@@ -260,10 +260,10 @@ impl Canonicalizer {
     fn canonicalize_suffixof(&mut self, node: &Node, mngr: &mut NodeManager) -> Option<Rc<Atom>> {
         debug_assert!(*node.kind() == NodeKind::SuffixOf);
         debug_assert!(node.children().len() == 2);
-        // Contains(r, s) <--> r contains s
+
         let suffix = node.children().first().unwrap();
         let of = node.children().last().unwrap();
-        // If `s`  is constant, then this is a regular expression constraint r \in .*s.*
+        // If `s`  is constant, then this is a regular expression constraint r \in .*s
         if let Some(s) = suffix.as_str_const() {
             let v = if let Some(v) = of.as_variable() {
                 debug_assert!(v.sort().is_string());
@@ -278,11 +278,11 @@ impl Canonicalizer {
                 ))),
             )
         } else {
-            // Otherwise, rewrite as a word equation: There exists some t, u such that  r = t ++ s ++ u
+            // Otherwise, rewrite as a word equation: There exists some  u such that  r = t ++ suffix
             let t = mngr.temp_var(Sort::String);
             let t = mngr.var(t);
-            let rhs = mngr.concat(vec![t.clone(), of.clone()]);
-            let eq = mngr.eq(suffix.clone(), rhs);
+            let rhs = mngr.concat(vec![t.clone(), suffix.clone()]);
+            let eq = mngr.eq(of.clone(), rhs);
             self.canonicalize_weq(&eq, mngr)
         }
     }

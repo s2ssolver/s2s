@@ -1,0 +1,5 @@
+(set-logic QF_S)
+(declare-const x String)
+(assert (not (str.prefixof x (str.replace x "" x))))
+(check-sat)
+(get-model)
