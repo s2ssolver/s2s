@@ -11,8 +11,8 @@ use crate::{
         get_encoder, EncodingError, EncodingResult, LiteralEncoder,
     },
     node::{
-        canonical::{Assignment, Literal},
-        NodeManager, NodeSubstitution,
+        canonical::{AssignedValue, Assignment, Literal},
+        NodeManager, VarSubstitution,
     },
     sat::{nlit, plit, pvar, PLit, PVar},
 };
@@ -168,8 +168,42 @@ impl DefintionEncoder {
 
     /// Blocks the assignment of the given substitution.
     /// Returns the CNF encoding of the blocked assignment.
-    pub fn _block_assignment(&self, _sub: &NodeSubstitution) {
-        todo!()
+    pub fn block_assignment(&self, asn: &Assignment) -> EncodingResult {
+        let mut res = EncodingResult::empty();
+        for (var, val) in asn.iter() {
+            match val {
+                AssignedValue::String(w) => {
+                    let mut clause = Vec::with_capacity(w.len());
+                    for (i, c) in w.chars().enumerate() {
+                        if let Some(x) = self.domain_encoder.encoding().string().get_sub(var, i, c)
+                        {
+                            clause.push(x);
+                        } else {
+                            // Trivially Cannot be this word because either its outside alphabet or the word is too long
+                            // So we can just break
+                            break;
+                        }
+                    }
+                }
+                AssignedValue::Int(i) => {
+                    if let Some(x) = self.domain_encoder.encoding().int().get(var, *i) {
+                        res.add_clause(vec![nlit(x)]);
+                    }
+                }
+                AssignedValue::Bool(b) => {
+                    if let Some(x) = self.domain_encoder.encoding().bool().get(var) {
+                        if *b {
+                            // must not be true
+                            res.add_clause(vec![nlit(x)]);
+                        } else {
+                            // must not be false
+                            res.add_clause(vec![plit(x)]);
+                        }
+                    }
+                }
+            }
+        }
+        res
     }
 
     /// Returns the model of the current assignment.

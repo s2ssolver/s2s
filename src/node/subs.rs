@@ -15,11 +15,11 @@ use super::{canonical::Assignment, Node, NodeKind, NodeManager, Variable};
 /// This is ensured by the `add` function, which essentially only allows composing the substitution with other substitutions that are also consistent.
 /// Substitutions might be ciclic, but they are always guaranteed to terminate.
 #[derive(Debug, Clone, Default)]
-pub struct NodeSubstitution {
+pub struct VarSubstitution {
     map: HashMap<Rc<Variable>, Node>,
 }
 
-impl NodeSubstitution {
+impl VarSubstitution {
     /// Insert a key-value pair into the substitution map.
     /// This function might break the consistency condition of the substitution.
     /// It thus not intended to be used directly, but only used internallay
@@ -41,8 +41,8 @@ impl NodeSubstitution {
     // Returns the composition of this substitution with another substitution.
     /// This has the same effect as applying this substitution first, and then applying the other substitution to the result.
     /// Applies the other substitution to all values in this substitution.
-    pub fn compose(&self, other: NodeSubstitution, mngr: &mut NodeManager) -> Self {
-        let mut subst = NodeSubstitution::default();
+    pub fn compose(&self, other: VarSubstitution, mngr: &mut NodeManager) -> Self {
+        let mut subst = VarSubstitution::default();
 
         // Apply the other substitution to all values in this substitution.
         for (key, value) in self.iter() {
@@ -82,7 +82,7 @@ impl NodeSubstitution {
     }
 
     pub fn from_assignment(assignment: &Assignment, mngr: &mut NodeManager) -> Self {
-        let mut subst = NodeSubstitution::default();
+        let mut subst = VarSubstitution::default();
         for (var, value) in assignment.iter() {
             let value = if let Some(true) = value.as_bool() {
                 mngr.ttrue()
@@ -109,7 +109,7 @@ impl NodeSubstitution {
     }
 }
 
-impl Display for NodeSubstitution {
+impl Display for VarSubstitution {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         for (key, value) in self.map.iter() {
             writeln!(f, "{} -> {}", key, value)?;
@@ -128,7 +128,7 @@ mod tests {
     #[test]
     fn add_var_to_var() {
         let mut mngr = NodeManager::default();
-        let mut subst = NodeSubstitution::default();
+        let mut subst = VarSubstitution::default();
 
         let a = mngr.temp_var(Sort::Bool);
         let b = mngr.temp_var(Sort::Bool);
@@ -153,10 +153,10 @@ mod tests {
         let bnode = mngr.var(b.clone());
         let cnode = mngr.var(c.clone());
 
-        let mut subst1 = NodeSubstitution::default();
+        let mut subst1 = VarSubstitution::default();
         subst1.add(a.clone(), bnode.clone()); // a -> b
 
-        let mut subst2 = NodeSubstitution::default();
+        let mut subst2 = VarSubstitution::default();
         subst2.add(b.clone(), cnode.clone()); // b -> c
 
         let comp = subst1.compose(subst2, &mut mngr);
@@ -177,10 +177,10 @@ mod tests {
         let bnode = mngr.var(b.clone());
         let cnode = mngr.var(c.clone());
 
-        let mut subst1 = NodeSubstitution::default();
+        let mut subst1 = VarSubstitution::default();
         subst1.add(a.clone(), bnode.clone()); // a -> b
 
-        let mut subst2 = NodeSubstitution::default();
+        let mut subst2 = VarSubstitution::default();
         subst2.add(b.clone(), cnode.clone()); // b -> c
 
         let comp = subst2.compose(subst1, &mut mngr);

@@ -1,6 +1,6 @@
 //! Rules that simplify the formula by replacing entailed literals with their values.
 
-use crate::node::{Node, NodeKind, NodeManager, NodeSubstitution, Sorted};
+use crate::node::{Node, NodeKind, NodeManager, VarSubstitution, Sorted};
 
 use super::{SimpRule, Simplification};
 
@@ -13,7 +13,7 @@ impl SimpRule for EntailedBooleanVars {
         if entailed {
             if let NodeKind::Variable(v) = node.kind() {
                 if v.sort().is_bool() {
-                    let mut subs = NodeSubstitution::default();
+                    let mut subs = VarSubstitution::default();
                     subs.add(v.clone(), mngr.ttrue());
                     return Some(Simplification::new(subs, None));
                 }
@@ -22,7 +22,7 @@ impl SimpRule for EntailedBooleanVars {
                 let child = node.children().first().unwrap();
                 if let NodeKind::Variable(v) = child.kind() {
                     if v.sort().is_bool() {
-                        let mut subs = NodeSubstitution::default();
+                        let mut subs = VarSubstitution::default();
                         subs.add(v.clone(), mngr.ffalse());
                         return Some(Simplification::new(subs, None));
                     }
@@ -52,13 +52,13 @@ impl SimpRule for EntailedAssigments {
                 let rhs = node.children().last().unwrap();
                 if let NodeKind::Variable(v) = lhs.kind() {
                     if rhs.size() < 10 {
-                        let mut subs = NodeSubstitution::default();
+                        let mut subs = VarSubstitution::default();
                         subs.add(v.clone(), rhs.clone());
                         return Some(Simplification::new(subs, None));
                     }
                 } else if let NodeKind::Variable(v) = rhs.kind() {
                     if lhs.size() < 10 {
-                        let mut subs = NodeSubstitution::default();
+                        let mut subs = VarSubstitution::default();
                         subs.add(v.clone(), lhs.clone());
                         return Some(Simplification::new(subs, None));
                     }

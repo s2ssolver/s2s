@@ -154,7 +154,7 @@ pub fn not_const(node: &Node, mngr: &mut NodeManager) -> Option<Node> {
 
 /// Folds:
 /// - A = A to true
-/// - A = B to false if A != B and A and B do not contain any variables
+/// - A = B to false if A != B and A and B are constants
 pub fn equality_trivial(node: &Node, mngr: &mut NodeManager) -> Option<Node> {
     if let NodeKind::Eq = node.kind() {
         debug_assert!(node.children().len() == 2);
@@ -163,7 +163,7 @@ pub fn equality_trivial(node: &Node, mngr: &mut NodeManager) -> Option<Node> {
         if lhs == rhs {
             Some(mngr.ttrue())
         } else {
-            if lhs.variables().is_empty() && rhs.variables().is_empty() {
+            if lhs.is_const() && rhs.is_const() {
                 Some(mngr.ffalse())
             } else {
                 None

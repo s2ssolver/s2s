@@ -5,7 +5,7 @@ mod elim;
 mod rewrite;
 mod simp;
 
-use crate::node::{error::NodeError, normal::to_nnf, Node, NodeManager, NodeSubstitution};
+use crate::node::{error::NodeError, normal::to_nnf, Node, NodeManager, VarSubstitution};
 pub use canonicalize::canonicalize;
 
 use compress::RangeCompressor;
@@ -15,7 +15,7 @@ use simp::Simplifier;
 
 #[derive(Default)]
 pub struct Preprocessor {
-    subs: NodeSubstitution,
+    subs: VarSubstitution,
 }
 
 impl Preprocessor {
@@ -72,7 +72,7 @@ impl Preprocessor {
         result
     }
 
-    pub fn applied_substitutions(&self) -> &NodeSubstitution {
+    pub fn applied_substitutions(&self) -> &VarSubstitution {
         &self.subs
     }
 }

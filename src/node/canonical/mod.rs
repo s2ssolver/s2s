@@ -13,7 +13,7 @@ mod assignment;
 mod int;
 mod string;
 pub mod util;
-pub use assignment::Assignment;
+pub use assignment::{AssignedValue, Assignment};
 pub use int::*;
 pub use string::*;
 

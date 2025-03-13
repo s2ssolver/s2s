@@ -45,6 +45,25 @@ pub fn replace_in_epsilon(node: &Node, mngr: &mut NodeManager) -> Option<Node> {
     None
 }
 
+/// Replacement operation on the same string.
+/// - `replace(x, x, y) = y`
+/// - `replace_all(x, x, y) = y`
+pub fn replace_self(node: &Node, _: &mut NodeManager) -> Option<Node> {
+    match node.kind() {
+        NodeKind::Replace | NodeKind::ReplaceAll => {
+            debug_assert_eq!(node.children().len(), 3);
+            let in_ = node.children()[0].clone();
+            let from = node.children()[1].clone();
+            let to = node.children()[2].clone();
+            if in_ == from {
+                return Some(to);
+            }
+        }
+        _ => {}
+    }
+    None
+}
+
 /// Replacement operation on the empty string.
 /// - `replace(x, "", y)` -> y.x
 /// - `replace_all(x, "", y)` -> x

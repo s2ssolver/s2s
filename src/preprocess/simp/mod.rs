@@ -4,24 +4,24 @@ mod ints;
 mod levis;
 mod reprefix;
 
-use crate::node::{Node, NodeKind, NodeManager, NodeSubstitution};
+use crate::node::{Node, NodeKind, NodeManager, VarSubstitution};
 
 /// A simplification inferred by a simplification rule.
 /// Consists of a node substitution `h` and an optional entailment `n`.
 /// The simplification is applied to the formula by computing `h(F) /\ n`.
 pub struct Simplification {
-    subs: NodeSubstitution,
+    subs: VarSubstitution,
     entails: Option<Node>,
 }
 
 impl Simplification {
     /// Create a new simplification.
-    pub fn new(subs: NodeSubstitution, entails: Option<Node>) -> Self {
+    pub fn new(subs: VarSubstitution, entails: Option<Node>) -> Self {
         Simplification { subs, entails }
     }
 
     /// Get the node substitution.
-    pub fn substitution(&self) -> &NodeSubstitution {
+    pub fn substitution(&self) -> &VarSubstitution {
         &self.subs
     }
 
@@ -31,13 +31,13 @@ impl Simplification {
     }
 }
 
-impl From<NodeSubstitution> for Simplification {
-    fn from(subs: NodeSubstitution) -> Self {
+impl From<VarSubstitution> for Simplification {
+    fn from(subs: VarSubstitution) -> Self {
         Simplification::new(subs, None)
     }
 }
 
-impl From<Simplification> for (NodeSubstitution, Option<Node>) {
+impl From<Simplification> for (VarSubstitution, Option<Node>) {
     fn from(val: Simplification) -> Self {
         (val.subs, val.entails)
     }
@@ -46,7 +46,7 @@ impl From<Simplification> for (NodeSubstitution, Option<Node>) {
 pub struct Simplifier {
     rules: Vec<SimpRules>,
     /// Substitutions that were applied globally in the order they were applied.
-    substitutions: Vec<NodeSubstitution>,
+    substitutions: Vec<VarSubstitution>,
 }
 
 impl Default for Simplifier {
@@ -130,7 +130,7 @@ impl Simplifier {
     }
 
     /// Get the substitutions that were applied globally in the order they were applied.
-    pub fn applied(&self) -> &[NodeSubstitution] {
+    pub fn applied(&self) -> &[VarSubstitution] {
         &self.substitutions
     }
 }

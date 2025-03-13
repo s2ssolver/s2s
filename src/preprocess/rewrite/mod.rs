@@ -5,6 +5,7 @@ mod int;
 mod ite;
 mod regex;
 mod replace;
+mod substr;
 mod weq;
 
 use indexmap::IndexMap;
@@ -41,7 +42,10 @@ pub enum RewriteRules {
     IntLessTrivial,
     IntGreaterTrivial,
     IntEqTrivial,
+    IntDistributeNeg,
     StrLenToAdd,
+    ConstStrLen,
+    LengthPositive,
 
     /* Word Equation Nodes */
     WeqStripLcp,
@@ -55,10 +59,17 @@ pub enum RewriteRules {
     ContainsTrivial,
     FactorOfEmpty,
 
+    /* Substring */
+    SubstrConst,
+    SubstrNegative,
+    AtConst,
+    AtNegative,
+
     /* Replace */
     ReplaceIdem,
     ReplaceInEpsilon,
     ReplaceEpsilon,
+    ReplaceSelf,
 }
 
 impl RewriteRules {
@@ -81,11 +92,14 @@ impl RewriteRules {
             RewriteRules::InReConstPrefix => regex::inre_strip_prefix(node, mngr),
             RewriteRules::InReConstSuffix => regex::inre_strip_suffix(node, mngr),
             RewriteRules::InRePullComp => regex::inre_pull_comp(node, mngr),
+            RewriteRules::ConstStrLen => int::const_string_length(node, mngr),
             RewriteRules::IntFoldConst => int::fold_constant_ints(node, mngr),
             RewriteRules::IntLessTrivial => int::int_less_trivial(node, mngr),
             RewriteRules::IntGreaterTrivial => int::int_greater_trivial(node, mngr),
             RewriteRules::IntEqTrivial => int::int_equality_trivial(node, mngr),
+            RewriteRules::IntDistributeNeg => int::distribute_neg(node, mngr),
             RewriteRules::StrLenToAdd => int::string_length_addition(node, mngr),
+            RewriteRules::LengthPositive => int::length_positive(node, mngr),
             RewriteRules::WeqStripLcp => weq::strip_lcp(node, mngr),
             RewriteRules::WeqStripLcs => weq::strip_lcs(node, mngr),
             RewriteRules::WeqLengthReasoning => weq::length_reasoning(node, mngr),
@@ -94,9 +108,14 @@ impl RewriteRules {
             RewriteRules::SuffixTrivial => factors::trivial_suffixof(node, mngr),
             RewriteRules::ContainsTrivial => factors::trivial_contains(node, mngr),
             RewriteRules::FactorOfEmpty => factors::factor_of_empty_string(node, mngr),
+            RewriteRules::SubstrConst => substr::substr_const(node, mngr),
+            RewriteRules::SubstrNegative => substr::substr_negative(node, mngr),
+            RewriteRules::AtConst => substr::at_const(node, mngr),
+            RewriteRules::AtNegative => substr::at_negative(node, mngr),
             RewriteRules::ReplaceIdem => replace::replace_idem(node, mngr),
             RewriteRules::ReplaceInEpsilon => replace::replace_in_epsilon(node, mngr),
             RewriteRules::ReplaceEpsilon => replace::replace_epsilon(node, mngr),
+            RewriteRules::ReplaceSelf => replace::replace_self(node, mngr),
         }
     }
 }
@@ -181,11 +200,14 @@ const REWRITE: &'static [RewriteRules] = &[
     RewriteRules::InReConstPrefix,
     RewriteRules::InReConstSuffix,
     RewriteRules::InRePullComp,
+    RewriteRules::ConstStrLen,
+    RewriteRules::IntDistributeNeg,
     RewriteRules::IntFoldConst,
     RewriteRules::IntLessTrivial,
     RewriteRules::IntGreaterTrivial,
     RewriteRules::IntEqTrivial,
     RewriteRules::StrLenToAdd,
+    RewriteRules::LengthPositive,
     RewriteRules::WeqStripLcp,
     RewriteRules::WeqStripLcs,
     RewriteRules::WeqConstMismatch,
@@ -194,9 +216,14 @@ const REWRITE: &'static [RewriteRules] = &[
     RewriteRules::SuffixTrivial,
     RewriteRules::ContainsTrivial,
     RewriteRules::FactorOfEmpty,
+    RewriteRules::SubstrConst,
+    RewriteRules::SubstrNegative,
+    RewriteRules::AtConst,
+    RewriteRules::AtNegative,
     RewriteRules::ReplaceIdem,
     RewriteRules::ReplaceEpsilon,
     RewriteRules::ReplaceInEpsilon,
+    RewriteRules::ReplaceSelf,
 ];
 
 /// Pulls all ITE expressions that return non-boolean values to a Boolean level.

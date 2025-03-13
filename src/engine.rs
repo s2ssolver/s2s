@@ -17,7 +17,7 @@ use crate::{
         get_entailed_literals,
         normal::to_nnf,
         smt::to_script,
-        Node, NodeKind, NodeManager, NodeSubstitution, Sort, Sorted,
+        Node, NodeKind, NodeManager, Sort, Sorted, VarSubstitution,
     },
     preprocess::{canonicalize, compress_ranges, Preprocessor},
     solver::Solver,
@@ -100,7 +100,7 @@ impl Engine {
         &mut self,
         fm: &Node,
         mngr: &mut NodeManager,
-    ) -> Result<(Node, NodeSubstitution), Error> {
+    ) -> Result<(Node, VarSubstitution), Error> {
         // Preprocess
 
         let nnf = to_nnf(fm, mngr);
@@ -142,7 +142,7 @@ impl Engine {
         // Early return if the formula is trivially sat/unsat
         if let NodeKind::Bool(v) = *fm.kind() {
             return Ok(if v {
-                SolverAnswer::Sat(Some(NodeSubstitution::default()))
+                SolverAnswer::Sat(Some(VarSubstitution::default()))
             } else {
                 SolverAnswer::Unsat
             });
@@ -202,6 +202,7 @@ impl Engine {
         mut defs: Vec<LitDefinition>,
         mngr: &mut NodeManager,
     ) -> Result<SolverAnswer, Error> {
+        let mut blocked = 0;
         loop {
             // Try to solve the current over-approximation. The first call only contains the skeleton.
             match solver.solve(mngr)? {
@@ -221,8 +222,13 @@ impl Engine {
                         let next = self.pick_defs(&fm, &h, &defs);
                         if next.is_empty() {
                             // In the future, this should block the current assignment and continue
-                            log::error!("No more definitions to add. Returning Unknown");
-                            return Ok(SolverAnswer::Unknown);
+                            log::info!("No more definitions to add. Blocking current assignment.");
+                            solver.block(&h);
+                            blocked += 1;
+                            if blocked > self.options.max_blocking {
+                                log::info!("Too many blocked assignments. Giving up.");
+                                return Ok(SolverAnswer::Unknown);
+                            }
                         } else {
                             // Add the next definitions to the solver
                             for d in next {
@@ -233,7 +239,13 @@ impl Engine {
                         }
                     }
                 }
-                SolverAnswer::Unsat => return Ok(SolverAnswer::Unsat), // Over-approximation is UNSAT, the formula is UNSAT
+                SolverAnswer::Unsat if blocked == 0 => return Ok(SolverAnswer::Unsat), // Over-approximation is UNSAT, the formula is UNSAT
+                SolverAnswer::Unsat => {
+                    // Over-approximation is UNSAT, but we have blocked assignments
+                    // The over-approximation might be unsat because there are no more assignment
+                    //  We must return unknown in this case
+                    return Ok(SolverAnswer::Unknown);
+                }
                 SolverAnswer::Unknown => return Ok(SolverAnswer::Unknown),
             }
         }

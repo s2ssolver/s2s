@@ -1,4 +1,5 @@
 //! Conversion of nodes into canonical form.
+//! TODO: This needs major refactoring.
 
 use crate::node::{
     canonical::{
@@ -34,19 +35,19 @@ impl Canonicalizer {
         let canonical = self.canonicalize_rec(node, mngr);
 
         let mut eqs = Vec::with_capacity(self.def_identities.len());
-        for (n, var) in std::mem::take(&mut self.def_identities).into_iter() {
-            if let Some(rhs) = self.canonicalize_concat(n.clone(), mngr) {
-                let lhs = Pattern::variable(var.clone());
-                let weq = WordEquation::new(lhs, rhs);
-                let atom = mngr.atom(AtomKind::WordEquation(weq));
-                let lit = Literal::new(true, atom);
-                //let fm = Formula::new(FormulaKind::Literal(lit), eq_node.clone());
-                //eqs.push(fm);
-                let node = mngr.literal(lit);
-                eqs.push(node);
-            } else {
-                let vnode = mngr.var(var);
-                eqs.push(mngr.eq(vnode, n));
+        while !self.def_identities.is_empty() {
+            for (n, var) in std::mem::take(&mut self.def_identities).into_iter() {
+                if let Some(rhs) = self.canonicalize_concat(n.clone(), mngr) {
+                    let lhs = Pattern::variable(var.clone());
+                    let weq = WordEquation::new(lhs, rhs);
+                    let atom = mngr.atom(AtomKind::WordEquation(weq));
+                    let lit = Literal::new(true, atom);
+                    let node = mngr.literal(lit);
+                    eqs.push(node);
+                } else {
+                    let vnode = mngr.var(var);
+                    eqs.push(mngr.eq(vnode, n));
+                }
             }
         }
 
@@ -292,8 +293,8 @@ impl Canonicalizer {
         debug_assert!(node.children().len() == 2);
         // Contains(r, s) <--> r contains s
 
-        let container = self.canonicalize(node.children().first().unwrap(), mngr);
-        let contained = self.canonicalize(node.children().last().unwrap(), mngr);
+        let container = self.canonicalize_rec(node.children().first().unwrap(), mngr);
+        let contained = self.canonicalize_rec(node.children().last().unwrap(), mngr);
 
         // If `s`  is constant, then this is a regular expression constraint r \in .*s.*
         if let Some(s) = contained.as_str_const() {
@@ -478,7 +479,7 @@ impl Canonicalizer {
                 Some(res)
             }
             NodeKind::Length => self.canonicalize_string_length(node, mngr),
-            _ => panic!("Not well-formed '{}'", node),
+            _ => None, //panic!("Not well-formed '{}'", node),
         }
     }
 
@@ -519,7 +520,7 @@ impl Canonicalizer {
                 }
                 Some(res)
             }
-            _ => panic!("Not well-formed '{}'", node),
+            _ => None, //panic!("Not well-formed '{}'", node),
         }
     }
 

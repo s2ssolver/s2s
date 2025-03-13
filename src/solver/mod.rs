@@ -3,9 +3,10 @@ use std::time::Instant;
 
 use crate::{
     domain::Domain,
+    encode::EncodingResult,
     node::{
-        canonical::{AtomKind, Literal},
-        Sort,
+        canonical::{AssignedValue, Assignment, AtomKind, Literal},
+        Sort, VarSubstitution,
     },
 };
 use encoder::DefintionEncoder;
@@ -19,7 +20,7 @@ use refine::BoundRefiner;
 use crate::{
     abstraction::LitDefinition,
     alphabet::Alphabet,
-    node::{Node, NodeManager, NodeSubstitution},
+    node::{Node, NodeManager},
     sat::{to_cnf, PFormula, PLit},
 };
 
@@ -37,7 +38,7 @@ mod refine;
 #[derive(Debug, Clone)]
 pub enum SolverAnswer {
     /// The instance is satisfiable. The model, if given, is a solution to the instance.
-    Sat(Option<NodeSubstitution>),
+    Sat(Option<VarSubstitution>),
     /// The instance is unsatisfiable
     Unsat,
     /// The solver could not determine the satisfiability of the instance
@@ -51,7 +52,7 @@ impl SolverAnswer {
     }
 
     /// Returns the model if the instance is satisfiable
-    pub fn get_model(&self) -> Option<&NodeSubstitution> {
+    pub fn get_model(&self) -> Option<&VarSubstitution> {
         match self {
             SolverAnswer::Sat(model) => model.as_ref(),
             _ => None,
@@ -164,7 +165,7 @@ impl Solver {
 
                     log::info!("Encoding is SAT");
                     // encoder.print_debug(&cadical);
-                    let subs = NodeSubstitution::from_assignment(&assign, mngr);
+                    let subs = VarSubstitution::from_assignment(&assign, mngr);
                     return Ok(SolverAnswer::Sat(Some(subs)));
                 }
 
@@ -196,14 +197,22 @@ impl Solver {
                             }
                         }
                         refine::BoundRefinement::SmallModelReached => {
-                            // If we blocked an assignment, we can't be sure that the formula is unsat.
-                            // Otherwise, we can return UNSAT.
                             return Ok(SolverAnswer::Unsat);
                         }
                     }
                 }
                 None => panic!("Cadical failed to solve"),
             }
+        }
+    }
+
+    /// Blocks an assignment by adding a clause to the SAT solver that excludes the assignment.
+    /// This block all assignments for each variable indepenently, not the assignment as a whole.
+    /// That is, if the assignment is `x -> abc` and `y -> def`, the both "x = abc" and "y = def" are blocked for every solution.
+    pub fn block(&mut self, asn: &Assignment) {
+        let (clauses, _) = self.encoder.block_assignment(asn).into_inner();
+        for clause in clauses {
+            self.cadical.add_clause(clause);
         }
     }
 

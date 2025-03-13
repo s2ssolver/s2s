@@ -61,8 +61,9 @@ impl ZeroLengthEpsilon {
             }
         }
         let mut vars = HashSet::new();
-        if collect_vars(lhs, false, &mut vars) {
-            let mut subs = NodeSubstitution::default();
+        if collect_vars(lhs, false, &mut vars) && !vars.is_empty() {
+            // set all variables to epsilon
+            let mut subs = VarSubstitution::default();
             let epsi = mngr.const_str("");
             for v in vars {
                 subs.add(v, epsi.clone());

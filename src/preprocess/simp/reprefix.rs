@@ -24,7 +24,7 @@ impl SimpRule for ConstantPrefixSuffix {
                         let prefix_w = mngr.const_string(as_string);
                         let pattern = mngr.concat(vec![prefix_w, lhs.clone()]);
 
-                        let mut subst = NodeSubstitution::default();
+                        let mut subst = VarSubstitution::default();
                         subst.add(v.clone(), pattern);
                         return Some(subst.into());
                     } else if let Some(suf) = regex.suffix().filter(|s| !s.is_empty()) {
@@ -34,7 +34,7 @@ impl SimpRule for ConstantPrefixSuffix {
                         let suffix_w = mngr.const_string(as_string);
                         let pattern = mngr.concat(vec![lhs.clone(), suffix_w]);
 
-                        let mut subst = NodeSubstitution::default();
+                        let mut subst = VarSubstitution::default();
                         subst.add(v.clone(), pattern);
                         return Some(subst.into());
                     }

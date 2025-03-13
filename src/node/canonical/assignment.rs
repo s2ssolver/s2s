@@ -4,7 +4,7 @@ use std::{fmt::Display, rc::Rc};
 
 use indexmap::IndexMap;
 
-use crate::node::{Node, NodeKind, NodeSubstitution, Sort, Sorted, Variable};
+use crate::node::{Node, NodeKind, Sort, Sorted, VarSubstitution, Variable};
 
 use super::{
     ArithOperator, Atom, AtomKind, FactorConstraintType, LinearArithTerm, LinearConstraint,
@@ -308,8 +308,26 @@ impl Assignment {
                 result = result.replace(&from, &to);
                 Some(result)
             }
-            NodeKind::SubStr | NodeKind::At => {
-                todo!()
+            NodeKind::SubStr => {
+                let s = self.inst_string_term(&term.children()[0])?;
+                let start = self.inst_int_term(&term.children()[1])? as usize;
+                let len = self.inst_int_term(&term.children()[2])? as usize;
+                let substr = s.chars().skip(start).take(len).collect();
+
+                Some(substr)
+            }
+            NodeKind::At => {
+                let s = self.inst_string_term(&term.children()[0])?;
+                let i = self.inst_int_term(&term.children()[1])? as usize;
+                s.chars().nth(i).map(|c| c.to_string())
+            }
+            NodeKind::ToInt => {
+                let s = self.inst_string_term(&term.children()[0])?;
+                s.parse().ok() // TODO: Double check if this is correct
+            }
+            NodeKind::FromInt => {
+                let i = self.inst_int_term(&term.children()[0])?;
+                Some(i.to_string()) // TODO: Double check if this is correct
             }
             _ => None,
         }
@@ -455,8 +473,8 @@ impl Assignment {
     }
 }
 
-impl From<NodeSubstitution> for Assignment {
-    fn from(subs: NodeSubstitution) -> Self {
+impl From<VarSubstitution> for Assignment {
+    fn from(subs: VarSubstitution) -> Self {
         let mut assignment = Assignment::new();
         for (lhs, rhs) in subs.iter() {
             let value = match rhs.kind() {

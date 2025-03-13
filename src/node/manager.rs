@@ -98,11 +98,30 @@ impl NodeManager {
                 let l = children.pop().unwrap();
                 self.contains(l, r)
             }
+            NodeKind::SubStr if children.len() == 3 => {
+                let end = children.pop().unwrap();
+                let start = children.pop().unwrap();
+                let s = children.pop().unwrap();
+                self.substr(s, start, end)
+            }
+            NodeKind::At if children.len() == 2 => {
+                let i = children.pop().unwrap();
+                let s = children.pop().unwrap();
+                self.at(s, i)
+            }
             NodeKind::Replace if children.len() == 3 => {
                 let to = children.pop().unwrap();
                 let from = children.pop().unwrap();
                 let s = children.pop().unwrap();
                 self.str_replace(s, from, to)
+            }
+            NodeKind::ToInt if children.len() == 1 => {
+                let s = children.pop().unwrap();
+                self.str_to_int(s)
+            }
+            NodeKind::FromInt if children.len() == 1 => {
+                let i = children.pop().unwrap();
+                self.str_from_int(i)
             }
             NodeKind::Add => self.add(children),
             NodeKind::Sub => self.sub(children),
@@ -129,7 +148,7 @@ impl NodeManager {
                 self.ge(l, r)
             }
             _ => panic!(
-                "Invalid arity ({}) for kind {kind} ({:?})",
+                "Unknown function or invalid arity ({}) for kind {kind} ({:?})",
                 children.len(),
                 kind
             ),
@@ -410,6 +429,14 @@ impl NodeManager {
 
     pub fn str_replace_all(&mut self, s: Node, from: Node, to: Node) -> Node {
         self.intern_node(NodeKind::ReplaceAll, vec![s, from, to])
+    }
+
+    pub fn str_to_int(&mut self, s: Node) -> Node {
+        self.intern_node(NodeKind::ToInt, vec![s])
+    }
+
+    pub fn str_from_int(&mut self, i: Node) -> Node {
+        self.intern_node(NodeKind::FromInt, vec![i])
     }
 
     /// Regular Membership

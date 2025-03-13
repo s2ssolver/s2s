@@ -131,6 +131,8 @@ impl ToSmt for NodeKind {
             NodeKind::At => "str.at".to_string(),
             NodeKind::Replace => "str.replace".to_string(),
             NodeKind::ReplaceAll => "str.replace_all".to_string(),
+            NodeKind::ToInt => "str.to_int".to_string(),
+            NodeKind::FromInt => "str.from_int".to_string(),
             NodeKind::Add => "+".to_string(),
             NodeKind::Neg | NodeKind::Sub => "-".to_string(),
             NodeKind::Mul => "*".to_string(),

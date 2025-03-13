@@ -38,14 +38,14 @@ impl IndependentVariableAssignment {
         rhs: &Node,
         pol: bool,
         mngr: &mut NodeManager,
-    ) -> Option<NodeSubstitution> {
+    ) -> Option<VarSubstitution> {
         match (lhs.kind(), rhs.kind()) {
             (NodeKind::Variable(v), rhs_v) | (rhs_v, NodeKind::Variable(v))
                 if self.independent(v) =>
             {
                 match rhs_v {
                     NodeKind::String(s) => {
-                        let mut subs = NodeSubstitution::default();
+                        let mut subs = VarSubstitution::default();
                         let rhs = if pol {
                             rhs.clone()
                         } else if s.is_empty() {
@@ -57,7 +57,7 @@ impl IndependentVariableAssignment {
                         Some(subs)
                     }
                     NodeKind::Int(i) => {
-                        let mut subs = NodeSubstitution::default();
+                        let mut subs = VarSubstitution::default();
                         let rhs = if pol {
                             rhs.clone()
                         } else if *i != 0 {
@@ -81,10 +81,10 @@ impl IndependentVariableAssignment {
         regex: &Regex,
         pol: bool,
         mngr: &mut NodeManager,
-    ) -> Option<NodeSubstitution> {
+    ) -> Option<VarSubstitution> {
         match lhs.kind() {
             NodeKind::Variable(v) if self.independent(v) => {
-                let mut subs = NodeSubstitution::default();
+                let mut subs = VarSubstitution::default();
                 // TODO: CHECK IF a empty in lang and return accordingly
                 let regex = if pol {
                     regex.clone()
@@ -124,7 +124,7 @@ impl IndependentVariableAssignment {
         debug_assert!(atom.is_atomic(), "{} is not an atomic formula", atom);
         match atom.kind() {
             NodeKind::Variable(v) => {
-                let mut subs = NodeSubstitution::default();
+                let mut subs = VarSubstitution::default();
                 if self.independent(v) {
                     if polarity {
                         subs.add(v.clone(), mngr.ttrue());
@@ -168,14 +168,14 @@ impl IndependentVariableAssignment {
                     if let Some(v) = container.as_variable() {
                         if self.independent(v) {
                             if polarity {
-                                let mut subs = NodeSubstitution::default();
+                                let mut subs = VarSubstitution::default();
                                 let rhs = mngr.const_str(asstr);
                                 subs.add(v.clone(), rhs);
                                 return Some(Simplification::new(subs, None));
                             } else {
                                 // abort here to not decent into the children
                                 return Some(Simplification::new(
-                                    NodeSubstitution::default(),
+                                    VarSubstitution::default(),
                                     None,
                                 ));
                             }

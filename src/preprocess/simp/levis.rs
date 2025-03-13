@@ -40,7 +40,7 @@ impl SimpRule for LevisWeq {
     }
 }
 
-fn levis_step(lhs: &Node, rhs: &Node, mngr: &mut NodeManager) -> Option<NodeSubstitution> {
+fn levis_step(lhs: &Node, rhs: &Node, mngr: &mut NodeManager) -> Option<VarSubstitution> {
     /// Helper function to check if we have "a\beta = Y\alpha" or "Y\alpha = a\beta" and Y cannot be set to the empty string
     fn not_empty(constant: char, pattern: &mut PatternIterator) -> bool {
         let scnd = pattern.next();
@@ -53,7 +53,7 @@ fn levis_step(lhs: &Node, rhs: &Node, mngr: &mut NodeManager) -> Option<NodeSubs
 
     let mut lhs = PatternIterator::new(lhs);
     let mut rhs = PatternIterator::new(rhs);
-    let mut substitution = NodeSubstitution::default();
+    let mut substitution = VarSubstitution::default();
     match (lhs.next(), rhs.next()) {
         /* One side is constant, the other variable */
         (Some(Symbol::Const(c)), Some(Symbol::Variable(v))) if not_empty(c, &mut rhs) => {

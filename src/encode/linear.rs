@@ -194,8 +194,8 @@ impl LiteralEncoder for MddEncoder {
             res.add_clause(vec![nlit(self.mdd_false)]);
         }
         // TODO: This leads to soundness errors, need to investigate!
-        log::debug!("LAST BOUND NOT KEPT!");
-        //self.last_bounds = Some(bounds.clone());
+        //log::debug!("LAST BOUND NOT KEPT!");
+        self.last_bounds = Some(dom.clone());
         Ok(res)
     }
 }

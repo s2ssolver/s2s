@@ -17,7 +17,7 @@ use canonical::Literal;
 use indexmap::IndexSet;
 pub use manager::NodeManager;
 use regulaer::re::Regex;
-pub use subs::NodeSubstitution;
+pub use subs::VarSubstitution;
 
 pub type Id = usize;
 
@@ -170,6 +170,11 @@ pub enum NodeKind {
     /// Replace all occurrences of a substring with another substring
     ReplaceAll,
 
+    /// Strint to Int conversion
+    ToInt,
+    /// Int to String conversion
+    FromInt,
+
     /* Linear Integer Functions */
     /// Addition
     Add,
@@ -215,7 +220,9 @@ impl NodeKind {
             | NodeKind::SubStr
             | NodeKind::At
             | NodeKind::Replace
-            | NodeKind::ReplaceAll => false,
+            | NodeKind::ReplaceAll
+            | NodeKind::ToInt
+            | NodeKind::FromInt => false,
             NodeKind::InRe | NodeKind::PrefixOf | NodeKind::SuffixOf | NodeKind::Contains => true,
             NodeKind::Add | NodeKind::Neg | NodeKind::Sub | NodeKind::Mul => false,
             NodeKind::Lt | NodeKind::Le | NodeKind::Gt | NodeKind::Ge => true,
@@ -537,7 +544,8 @@ impl Sorted for OwnedNode {
             | NodeKind::SubStr
             | NodeKind::At
             | NodeKind::Replace
-            | NodeKind::ReplaceAll => Sort::String,
+            | NodeKind::ReplaceAll
+            | NodeKind::FromInt => Sort::String,
             NodeKind::InRe | NodeKind::PrefixOf | NodeKind::SuffixOf | NodeKind::Contains => {
                 Sort::Bool
             }
@@ -547,7 +555,8 @@ impl Sorted for OwnedNode {
             | NodeKind::Add
             | NodeKind::Neg
             | NodeKind::Sub
-            | NodeKind::Mul => Sort::Int,
+            | NodeKind::Mul
+            | NodeKind::ToInt => Sort::Int,
             NodeKind::Lt | NodeKind::Le | NodeKind::Gt | NodeKind::Ge => Sort::Bool,
 
             NodeKind::Literal(_) => Sort::Bool,
@@ -581,6 +590,8 @@ impl Display for NodeKind {
             NodeKind::PrefixOf => write!(f, "prefixof"),
             NodeKind::SuffixOf => write!(f, "suffixof"),
             NodeKind::Contains => write!(f, "contains"),
+            NodeKind::ToInt => write!(f, "toint"),
+            NodeKind::FromInt => write!(f, "fromint"),
             NodeKind::Add => write!(f, "+"),
             NodeKind::Sub | NodeKind::Neg => write!(f, "-"),
             NodeKind::Mul => write!(f, "*"),

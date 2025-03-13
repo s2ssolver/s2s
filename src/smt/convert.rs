@@ -216,7 +216,6 @@ impl<'a> Converter<'a> {
         for arg in arguments {
             args.push(self.term(arg)?);
         }
-
         let app = match &fun {
             smt::QualIdentifier::Simple { identifier } => match identifier {
                 smt::Identifier::Simple { symbol } => match symbol.0.as_str() {
@@ -253,10 +252,15 @@ impl<'a> Converter<'a> {
                     "str.++" => self.mngr.concat(args),
                     "str.len" if args.len() == 1 => self.mngr.str_len(args.pop().unwrap()),
                     "str.substr" if args.len() == 3 => {
-                        return Err(AstError::Unsupported("str.substr".to_string()))
+                        let len = args.pop().unwrap();
+                        let idx = args.pop().unwrap();
+                        let s = args.pop().unwrap();
+                        self.mngr.substr(s, idx, len)
                     }
                     "str.at" if args.len() == 2 => {
-                        return Err(AstError::Unsupported("str.at".to_string()))
+                        let idx = args.pop().unwrap();
+                        let s = args.pop().unwrap();
+                        self.mngr.at(s, idx)
                     }
                     "str.prefixof" if args.len() == 2 => {
                         let right = args.pop().unwrap();
@@ -276,7 +280,14 @@ impl<'a> Converter<'a> {
                     "str.indexof" if args.len() == 3 => {
                         return Err(AstError::Unsupported("str.indexof".to_string()))
                     }
-
+                    "str.to_int" if args.len() == 1 => {
+                        let arg = args.pop().unwrap();
+                        self.mngr.str_to_int(arg)
+                    }
+                    "str.from_int" if args.len() == 1 => {
+                        let arg = args.pop().unwrap();
+                        self.mngr.str_from_int(arg)
+                    }
                     "str.replace" if args.len() == 3 => {
                         let to = args.pop().unwrap();
                         let from = args.pop().unwrap();
