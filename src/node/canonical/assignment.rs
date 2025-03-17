@@ -311,15 +311,30 @@ impl Assignment {
             }
             NodeKind::SubStr => {
                 let s = self.inst_string_term(&term.children()[0])?;
-                let start = self.inst_int_term(&term.children()[1])? as usize;
-                let len = self.inst_int_term(&term.children()[2])? as usize;
-                let substr = s.chars().skip(start).take(len).collect();
+
+                let start = self.inst_int_term(&term.children()[1])? as i64;
+
+                let len = self.inst_int_term(&term.children()[2])? as i64;
+
+                let substr = if 0 <= start && start <= s.chars().count() as i64 && 0 <= len {
+                    let start = start as usize;
+                    let len = len as usize;
+                    s.chars().skip(start).take(len).collect()
+                } else {
+                    String::new()
+                };
 
                 Some(substr)
             }
             NodeKind::At => {
                 let s = self.inst_string_term(&term.children()[0])?;
-                let i = self.inst_int_term(&term.children()[1])? as usize;
+                let i = self.inst_int_term(&term.children()[1])?;
+
+                if i < 0 {
+                    return Some(String::new());
+                }
+                let i = i as usize;
+
                 match s.chars().nth(i).map(|c| c.to_string()) {
                     Some(c) => Some(c),
                     None => Some(String::new()),
