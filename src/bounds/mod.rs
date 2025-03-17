@@ -6,14 +6,16 @@ use std::{fmt::Display, rc::Rc};
 
 use indexmap::{IndexMap, IndexSet};
 pub use linear::LinearRefiner;
+
 use regular::RegularBoundsInferer;
+use smallvec::smallvec;
 
 use crate::{
     interval::BoundValue,
     node::{
         canonical::{
-            ArithOperator, AtomKind, LinearArithTerm, LinearConstraint, Literal, RegularConstraint,
-            WordEquation,
+            ArithOperator, AtomKind, LinearArithTerm, LinearConstraint, LinearSummand, Literal,
+            RegularConstraint, VariableTerm, WordEquation,
         },
         NodeManager, Sorted, Variable,
     },
@@ -230,10 +232,12 @@ impl BoundInferer {
                 self.reg.add_reg(rfac.of().clone(), re, pol, mngr);
             }
             AtomKind::Linear(lc) => {
-                if pol {
-                    self.add_linear_constraint(lc)
+                let lc = if pol { lc.clone() } else { lc.negate() };
+
+                if let Some(as_reg) = lc_to_reg(&lc, mngr) {
+                    self.add_reg(&as_reg, true, mngr);
                 } else {
-                    self.lin.add_linear(lc.negate());
+                    self.add_linear_constraint(&lc)
                 }
             }
         }
@@ -315,6 +319,63 @@ impl BoundInferer {
             }
         }
     }
+}
+
+fn lc_to_reg(lc: &LinearConstraint, mngr: &mut NodeManager) -> Option<RegularConstraint> {
+    if lc.lhs().len() == 1 {
+        match lc.lhs().iter().next().unwrap() {
+            LinearSummand::Mult(VariableTerm::Len(x), s) => {
+                // This is a constraint of the form `s|x| # rhs`, we can rewrite this as a regular constraint
+                let (r, op, s) = match (lc.rhs() >= 0, *s >= 0) {
+                    (true, true) => (lc.rhs() as u32, lc.operator(), *s as u32),
+                    (false, false) if lc.operator() != ArithOperator::Eq => {
+                        (-lc.rhs() as u32, lc.operator().flip(), -*s as u32)
+                    }
+                    (false, false) if lc.operator() != ArithOperator::Eq => {
+                        (-lc.rhs() as u32, lc.operator(), -*s as u32)
+                    }
+                    _ => return None,
+                };
+                let builder = mngr.re_builder();
+                let re = match op {
+                    ArithOperator::Eq => {
+                        if r % s == 0 {
+                            builder.pow(builder.any_char(), r / s)
+                        } else {
+                            builder.none()
+                        }
+                    }
+                    ArithOperator::Ineq => return None,
+                    ArithOperator::Leq => {
+                        let u = r / s;
+                        builder.loop_(builder.any_char(), 0, u)
+                    }
+                    ArithOperator::Less => {
+                        let u = r / s;
+                        if r % s == 0 {
+                            builder.loop_(builder.any_char(), 0, u - 1)
+                        } else {
+                            builder.loop_(builder.any_char(), 0, u)
+                        }
+                    }
+                    ArithOperator::Geq => {
+                        let l = r.div_ceil(s);
+                        let lower = builder.pow(builder.any_char(), l);
+                        builder.concat(smallvec![lower, builder.all()])
+                    }
+                    ArithOperator::Greater => {
+                        let l = r.div_ceil(s);
+                        let lower = builder.pow(builder.any_char(), l + 1);
+                        builder.concat(smallvec![lower, builder.all()])
+                    }
+                };
+                println!("Rewriting {} to {}", lc, re);
+                return Some(RegularConstraint::new(x.clone(), re));
+            }
+            _ => (),
+        }
+    }
+    None
 }
 
 pub trait InferringStrategy: Default + Clone {
