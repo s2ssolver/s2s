@@ -24,7 +24,7 @@ use crate::domain::{Domain, VarDomain};
 /// - Adding/Subtracting a constant value to the bounds.
 /// - Setting the bounds to the next/previous square number.
 /// - Doubling the bounds.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BoundStep {
     /// Adds or substracts a a constant offset.
     /// For lower bounds the offset is subtracted, for upper bounds it is added.
@@ -32,12 +32,17 @@ pub enum BoundStep {
     ConstantOffset(usize),
 
     /// Expands the bounds to the next/previous perfect square.
-    #[default]
     NextSquare,
 
     /// Doubles the size of the interval.
     /// This is done by subtracting half of the interval length from the lower bound and adding the same to the upper bound.
     Double,
+}
+
+impl Default for BoundStep {
+    fn default() -> Self {
+        BoundStep::ConstantOffset(20)
+    }
 }
 
 impl BoundStep {
@@ -336,7 +341,7 @@ impl BoundRefiner {
 
         let dnf = Self::build_dnf(&present_lits, fm);
         log::info!("DNF has {} cubes", dnf.len());
-        log::debug!(
+        log::trace!(
             "DNF: \n{}",
             dnf.iter()
                 .map(|c| format!(
@@ -357,11 +362,12 @@ impl BoundRefiner {
             if self.conflict_cubes.iter().any(|c| c.0.is_subset(&cube.0)) {
                 continue;
             }
-            log::debug!("Bounds for cube [{}]:", cube.0.iter().join(","));
+
             if let Some(b) = self.cube_bounds.get(&cube) {
                 alternatives.push(b.clone());
                 continue;
             } else {
+                log::debug!("Computing bounds for cube [{}]:", cube.0.iter().join(","));
                 let mut inferer = BoundInferer::default();
 
                 for l in &cube.0 {

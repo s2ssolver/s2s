@@ -1,8 +1,4 @@
-use std::rc::Rc;
-
-use indexmap::IndexSet;
-
-use crate::node::{NodeKind, Sorted, Variable};
+use crate::node::{NodeKind, Sorted};
 
 use super::*;
 
@@ -11,87 +7,12 @@ use super::*;
 /// - -(i1, i2, ..., in) -> i1 - i2 - ... - in
 /// - *(i1, i2, ..., in) -> i1 * i2 * ... * in
 pub fn fold_constant_ints(node: &Node, mngr: &mut NodeManager) -> Option<Node> {
-    if node.sort().is_int() {
-        // Fold constant terms
-        match node.kind() {
-            NodeKind::Add => {
-                let mut sum = 0;
-                let mut folded = 0;
-                let mut new_children = Vec::new();
-                for child in node.children() {
-                    match child.kind() {
-                        NodeKind::Int(i) => {
-                            sum += i;
-                            folded += 1;
-                        }
-                        _ => {
-                            new_children.push(child.clone());
-                        }
-                    }
-                }
-                if folded > 1 {
-                    let sum_node = mngr.const_int(sum);
-                    new_children.push(sum_node);
-                    Some(mngr.add(new_children))
-                } else {
-                    None
-                }
-            }
-            NodeKind::Sub => {
-                let mut sum = 0;
-                let mut folded = 0;
-                let mut new_children = Vec::new();
-                for child in node.children() {
-                    match child.kind() {
-                        NodeKind::Int(i) => {
-                            sum -= i;
-                            folded += 1;
-                        }
-                        _ => {
-                            new_children.push(child.clone());
-                        }
-                    }
-                }
-                if folded > 1 {
-                    let sum_node = mngr.const_int(sum);
-                    new_children.push(sum_node);
-                    Some(mngr.sub(new_children))
-                } else {
-                    None
-                }
-            }
-            NodeKind::Mul => {
-                let mut prod = 1;
-                let mut folded = 0;
-                let mut new_children = Vec::new();
-                for child in node.children() {
-                    match child.kind() {
-                        NodeKind::Int(i) => {
-                            prod *= i;
-                            folded += 1;
-                        }
-                        _ => {
-                            new_children.push(child.clone());
-                        }
-                    }
-                }
-                if folded > 1 {
-                    if prod == 0 {
-                        Some(mngr.const_int(0))
-                    } else {
-                        let prod_node = mngr.const_int(prod);
-                        new_children.push(prod_node);
-                        Some(mngr.mul(new_children))
-                    }
-                } else {
-                    None
-                }
-            }
-            _ => None,
-        }
-    } else {
-        None
+    if node.is_const() {
+        return None; // already a fully simplified constant
     }
+
+    let as_i = is_const_int(node)?;
+    Some(mngr.const_int(as_i))
 }
 
 /// Folds:
@@ -218,6 +139,26 @@ pub fn int_equality_trivial(node: &Node, mngr: &mut NodeManager) -> Option<Node>
     None
 }
 
+/// Simplifies expressions of the form `not(t1 # t2)` where `#` is a comparison operator.
+///
+/// - `not(t1 < t2)` -> `t1 >= t2`
+/// - `not(t1 <= t2)` -> `t1 > t2`
+/// - `not(t1 > t2)` -> `t1 <= t2`
+/// - `not(t1 >= t2)` -> `t1 < t2`
+pub fn not_comparison(node: &Node, mngr: &mut NodeManager) -> Option<Node> {
+    if let NodeKind::Not = *node.kind() {
+        let child = node.children().first().unwrap();
+        match child.kind() {
+            NodeKind::Lt => return Some(mngr.create_node(NodeKind::Ge, child.children().to_vec())),
+            NodeKind::Le => return Some(mngr.create_node(NodeKind::Gt, child.children().to_vec())),
+            NodeKind::Gt => return Some(mngr.create_node(NodeKind::Le, child.children().to_vec())),
+            NodeKind::Ge => return Some(mngr.create_node(NodeKind::Lt, child.children().to_vec())),
+            _ => (),
+        }
+    }
+    None
+}
+
 /// Reduces expressions of the form `len(s)` with `s` a constant string to the length of the string.
 pub fn const_string_length(node: &Node, mngr: &mut NodeManager) -> Option<Node> {
     if *node.kind() == NodeKind::Length {
@@ -258,134 +199,248 @@ pub fn string_length_addition(node: &Node, mngr: &mut NodeManager) -> Option<Nod
 }
 
 /// Checks if a linear (in)-equality requires that a string length is less than zero and simplifies it to false if so.
-pub fn length_positive(node: &Node, mngr: &mut NodeManager) -> Option<Node> {
-    /// If the term is a sum of positively scaled string lengths, return the set of variables.
-    /// Otherwise, returns None
-    fn all_pos_len(node: &Node) -> Option<IndexSet<Rc<Variable>>> {
-        match node.kind() {
-            NodeKind::Mul if node.children().len() == 2 => {
-                let (lhs, rhs) = (
-                    node.children().first().unwrap(),
-                    node.children().last().unwrap(),
-                );
-                match (lhs.kind(), rhs.kind()) {
-                    (NodeKind::Int(i), NodeKind::Length) if *i > 0 => {
-                        if let NodeKind::Variable(v) = rhs.kind() {
-                            let mut vars = IndexSet::new();
-                            vars.insert(v.clone());
-                            Some(vars)
-                        } else {
-                            None
-                        }
-                    }
-                    (NodeKind::Length, NodeKind::Int(i)) if *i > 0 => {
-                        if let NodeKind::Variable(v) = lhs.kind() {
-                            let mut vars = IndexSet::new();
-                            vars.insert(v.clone());
-                            Some(vars)
-                        } else {
-                            None
-                        }
-                    }
-                    _ => None,
-                }
-            }
-            NodeKind::Add => {
-                let mut vars = IndexSet::new();
-                for c in node.children() {
-                    if let NodeKind::Mul = c.kind() {
-                        vars.extend(all_pos_len(c)?)
-                    } else {
-                        return None;
-                    }
-                }
-                Some(vars)
-            }
-            NodeKind::Length => {
-                if let NodeKind::Variable(v) = node.children().first().unwrap().kind() {
-                    let mut vars = IndexSet::new();
-                    vars.insert(v.clone());
-                    Some(vars)
-                } else {
-                    None
-                }
-            }
-            _ => None,
-        }
-    }
-
+pub fn length_trivial(node: &Node, mngr: &mut NodeManager) -> Option<Node> {
     match node.kind() {
-        NodeKind::Eq => {
-            debug_assert!(node.children().len() == 2);
+        NodeKind::Eq | NodeKind::Lt | NodeKind::Le | NodeKind::Gt | NodeKind::Ge => {
             let lhs = node.children().first().unwrap();
             let rhs = node.children().last().unwrap();
-            if lhs.sort().is_int() && rhs.sort().is_int() {
-                match (lhs.kind(), rhs.kind()) {
-                    (_, NodeKind::Int(i)) if *i < 0 => {
-                        if all_pos_len(lhs).is_some() {
-                            return Some(mngr.ffalse());
-                        }
+
+            let (ts, kind, mut c) = if let Some(c) = is_const_int(rhs) {
+                (linearlize_term(lhs)?, node.kind().clone(), c)
+            } else if let Some(c) = is_const_int(lhs) {
+                // flip the operator
+                match node.kind() {
+                    NodeKind::Lt => (linearlize_term(rhs)?, NodeKind::Gt, c),
+                    NodeKind::Le => (linearlize_term(rhs)?, NodeKind::Ge, c),
+                    NodeKind::Gt => (linearlize_term(rhs)?, NodeKind::Lt, c),
+                    NodeKind::Ge => (linearlize_term(rhs)?, NodeKind::Le, c),
+                    _ => return None,
+                }
+            } else {
+                return None;
+            };
+            c += ts.constant;
+
+            if ts.coeffs.iter().all(|(n, _)| *n.kind() == NodeKind::Length) {
+                // all coefficients are positive
+                let coeffs_positive = ts.coeffs.iter().all(|(_, v)| *v >= 0);
+
+                match kind {
+                    NodeKind::Eq if ts.coeffs.len() == 1 && c == 0 => {
+                        // that string term needs to be epsilon
+                        let (var, _) = ts.coeffs.iter().next().unwrap();
+                        debug_assert!(*var.kind() == NodeKind::Length);
+                        let ch = var.children().first().unwrap();
+                        let epsi = mngr.const_str("");
+                        return Some(mngr.eq(ch.clone(), epsi));
                     }
-                    (NodeKind::Int(i), _) if *i < 0 => {
-                        if all_pos_len(rhs).is_some() {
-                            return Some(mngr.ffalse());
-                        }
+                    NodeKind::Eq if c < 0 && coeffs_positive => {
+                        return Some(mngr.ffalse());
+                    }
+                    NodeKind::Lt if c <= 0 && coeffs_positive => {
+                        return Some(mngr.ffalse());
+                    }
+                    NodeKind::Le if c < 0 && coeffs_positive => {
+                        return Some(mngr.ffalse());
+                    }
+                    NodeKind::Gt if c < 0 && coeffs_positive => {
+                        return Some(mngr.ttrue());
+                    }
+                    NodeKind::Ge if c <= 0 && coeffs_positive => {
+                        return Some(mngr.ttrue());
                     }
                     _ => (),
-                }
-            }
-        }
-        NodeKind::Lt => {
-            debug_assert!(node.children().len() == 2);
-            let lhs = node.children().first().unwrap();
-            let rhs = node.children().last().unwrap();
-            if let NodeKind::Int(i) = rhs.kind() {
-                if *i <= 0 {
-                    if all_pos_len(lhs).is_some() {
-                        return Some(mngr.ffalse());
-                    }
-                }
-            }
-        }
-        NodeKind::Le => {
-            debug_assert!(node.children().len() == 2);
-            let lhs = node.children().first().unwrap();
-            let rhs = node.children().last().unwrap();
-            if let NodeKind::Int(i) = rhs.kind() {
-                if *i < 0 {
-                    if all_pos_len(lhs).is_some() {
-                        return Some(mngr.ffalse());
-                    }
-                }
-            }
-        }
-        NodeKind::Gt => {
-            // 0 > lengths
-            debug_assert!(node.children().len() == 2);
-            let lhs = node.children().first().unwrap();
-            let rhs = node.children().last().unwrap();
-            if let NodeKind::Int(i) = lhs.kind() {
-                if 0 >= *i {
-                    if all_pos_len(rhs).is_some() {
-                        return Some(mngr.ffalse());
-                    }
-                }
-            }
-        }
-        NodeKind::Ge => {
-            // -1 >= lengths
-            debug_assert!(node.children().len() == 2);
-            let lhs = node.children().first().unwrap();
-            let rhs = node.children().last().unwrap();
-            if let NodeKind::Int(i) = lhs.kind() {
-                if 0 > *i {
-                    if all_pos_len(rhs).is_some() {
-                        return Some(mngr.ffalse());
-                    }
                 }
             }
         }
         _ => (),
     }
     return None;
+}
+
+pub fn normalize_ineq(node: &Node, mngr: &mut NodeManager) -> Option<Node> {
+    match node.kind() {
+        NodeKind::Eq | NodeKind::Lt | NodeKind::Le | NodeKind::Gt | NodeKind::Ge
+            if node.children()[0].sort().is_int() && node.children()[1].sort().is_int() =>
+        {
+            let lin_lhs = linearlize_term(&node.children()[0])?;
+            let lin_rhs = linearlize_term(&node.children()[1])?;
+
+            // move all terms to the left
+            let mut new_lhs = IndexMap::new();
+            for (k, v) in lin_lhs.coeffs {
+                *new_lhs.entry(k).or_insert(0) += v;
+            }
+            for (k, v) in lin_rhs.coeffs {
+                *new_lhs.entry(k).or_insert(0) -= v;
+            }
+            let new_constant = lin_rhs.constant - lin_lhs.constant;
+
+            let mut new_children = Vec::new();
+            for (k, v) in new_lhs {
+                if v == 0 {
+                    continue;
+                }
+                let v_node = mngr.const_int(v);
+                if v == 1 {
+                    new_children.push(k);
+                } else {
+                    let mul = mngr.mul(vec![v_node, k.clone()]);
+                    new_children.push(mul);
+                }
+            }
+            let lhs = mngr.add(new_children);
+            let rhs = mngr.const_int(new_constant);
+            let new_node = mngr.create_node(node.kind().clone(), vec![lhs, rhs]);
+            if new_node == *node {
+                None
+            } else {
+                Some(new_node)
+            }
+        }
+        _ => None,
+    }
+}
+
+struct LinTerm {
+    /// The coefficients.
+    coeffs: IndexMap<Node, i64>,
+    /// The constant term.
+    constant: i64,
+}
+
+/// Transforms a linear (in)-equality into normal form.
+/// In normal form, the term has the form `c1*x1 + c2*x2 + ... + cn*xn + c`, where `c1, c2, ..., cn` are the coefficients, `c` is the constant term, and `x1, x2, ..., xn` are atomic integer terms.
+fn linearlize_term(node: &Node) -> Option<LinTerm> {
+    let mut coeffs = IndexMap::new();
+    let mut constant = 0;
+    match node.kind() {
+        NodeKind::Add => {
+            for c in node.children() {
+                let lt = linearlize_term(c)?;
+                for (k, v) in lt.coeffs {
+                    *coeffs.entry(k).or_insert(0) += v;
+                }
+                constant += lt.constant;
+            }
+        }
+        NodeKind::Sub => {
+            let mut iter = node.children().iter();
+            let first = linearlize_term(iter.next().unwrap())?;
+            for (k, v) in first.coeffs {
+                *coeffs.entry(k).or_insert(0) += v;
+            }
+            constant += first.constant;
+            for c in iter {
+                let lt = linearlize_term(c)?;
+                for (k, v) in lt.coeffs {
+                    *coeffs.entry(k).or_insert(0) -= v;
+                }
+                constant -= lt.constant;
+            }
+        }
+        NodeKind::Neg => {
+            let lt = linearlize_term(node.children().first().unwrap())?;
+            for (k, v) in lt.coeffs {
+                *coeffs.entry(k).or_insert(0) -= v;
+            }
+            constant -= lt.constant;
+        }
+        NodeKind::Mul => {
+            let mut iter = node.children().iter();
+            let mut left = linearlize_term(iter.next().unwrap())?;
+            for c in iter {
+                let right = linearlize_term(c)?;
+                match (&left.coeffs.is_empty(), right.coeffs.is_empty()) {
+                    (true, true) => {
+                        left.constant = left.constant * right.constant;
+                    }
+                    (true, false) => {
+                        let c = left.constant;
+                        left = right;
+                        // distribute the constant
+                        left.constant *= c;
+                        for (_, v) in left.coeffs.iter_mut() {
+                            *v *= c
+                        }
+                    }
+                    (false, true) => {
+                        let c = right.constant;
+                        // distribute the constant
+                        for (_, v) in left.coeffs.iter_mut() {
+                            *v *= c;
+                        }
+                        left.constant *= c;
+                    }
+                    (false, false) => {
+                        return None;
+                    }
+                }
+            }
+            coeffs = left.coeffs;
+            constant = left.constant;
+        }
+        _ if node.sort().is_int() => {
+            if let Some(i) = is_const_int(node) {
+                constant = i;
+            } else {
+                *coeffs.entry(node.clone()).or_insert(0) += 1;
+            }
+        }
+        _ => return None,
+    }
+    Some(LinTerm { coeffs, constant })
+}
+
+/// Return the constant integer value of a node if it is a constant integer.
+/// Otherwise, return None.
+fn is_const_int(node: &Node) -> Option<i64> {
+    match node.kind() {
+        NodeKind::Int(i) => Some(*i),
+        NodeKind::Neg => {
+            let i = is_const_int(node.children().first().unwrap())?;
+            Some(-i)
+        }
+        NodeKind::Add => {
+            let mut sum = 0;
+            for c in node.children() {
+                sum += is_const_int(c)?;
+            }
+            Some(sum)
+        }
+        NodeKind::Mul => {
+            let mut prod = 1;
+            let mut is_const = true;
+
+            for c in node.children() {
+                match is_const_int(c) {
+                    Some(0) => return Some(0),
+                    Some(c) => prod *= c,
+                    None => {
+                        is_const = false;
+                    }
+                }
+            }
+
+            if is_const {
+                Some(prod)
+            } else {
+                None
+            }
+        }
+        NodeKind::Sub => {
+            let mut iter = node.children().iter();
+            let first = is_const_int(iter.next().unwrap())?;
+            let sum: i64 = iter.map(|c| -is_const_int(c).unwrap()).sum();
+            Some(first + sum)
+        }
+        NodeKind::Length => {
+            let child = node.children().first().unwrap();
+            match child.kind() {
+                NodeKind::String(s) => Some(s.chars().count() as i64),
+                _ => None,
+            }
+        }
+        _ => None,
+    }
 }

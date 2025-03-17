@@ -4,6 +4,7 @@ mod factors;
 mod int;
 mod regex;
 mod replace;
+mod str_int;
 mod substr;
 mod weq;
 
@@ -41,6 +42,8 @@ pub enum RewriteRules {
     StrLenToAdd,
     ConstStrLen,
     LengthPositive,
+    NormalizeLinearIneq,
+    NotComparison,
 
     /* Word Equation Nodes */
     WeqStripLcp,
@@ -65,6 +68,10 @@ pub enum RewriteRules {
     ReplaceInEpsilon,
     ReplaceEpsilon,
     ReplaceSelf,
+
+    /* Str Int Conversion */
+    ToIntConstant,
+    FromIntConstant,
 }
 
 impl RewriteRules {
@@ -79,8 +86,6 @@ impl RewriteRules {
             RewriteRules::BoolNotConst => boolean::not_const(node, mngr),
             RewriteRules::BoolNotDouble => boolean::not_double_negation(node),
             RewriteRules::EqualityTrivial => boolean::equality_trivial(node, mngr),
-            RewriteRules::IteBoolean => ite::ite_bool(node, mngr),
-            RewriteRules::ItePull => ite::ite_pull(node, mngr),
             RewriteRules::InReConstLhs => regex::inre_constant_lhs(node, mngr),
             RewriteRules::InReTrivial => regex::inre_trivial(node, mngr),
             RewriteRules::InReEquation => regex::inre_equation(node, mngr),
@@ -92,9 +97,11 @@ impl RewriteRules {
             RewriteRules::IntLessTrivial => int::int_less_trivial(node, mngr),
             RewriteRules::IntGreaterTrivial => int::int_greater_trivial(node, mngr),
             RewriteRules::IntEqTrivial => int::int_equality_trivial(node, mngr),
+            RewriteRules::NotComparison => int::not_comparison(node, mngr),
             RewriteRules::IntDistributeNeg => int::distribute_neg(node, mngr),
+            RewriteRules::NormalizeLinearIneq => int::normalize_ineq(node, mngr),
             RewriteRules::StrLenToAdd => int::string_length_addition(node, mngr),
-            RewriteRules::LengthPositive => int::length_positive(node, mngr),
+            RewriteRules::LengthPositive => int::length_trivial(node, mngr),
             RewriteRules::WeqStripLcp => weq::strip_lcp(node, mngr),
             RewriteRules::WeqStripLcs => weq::strip_lcs(node, mngr),
             RewriteRules::WeqLengthReasoning => weq::length_reasoning(node, mngr),
@@ -111,6 +118,8 @@ impl RewriteRules {
             RewriteRules::ReplaceInEpsilon => replace::replace_in_epsilon(node, mngr),
             RewriteRules::ReplaceEpsilon => replace::replace_epsilon(node, mngr),
             RewriteRules::ReplaceSelf => replace::replace_self(node, mngr),
+            RewriteRules::ToIntConstant => str_int::to_int_constant(node, mngr),
+            RewriteRules::FromIntConstant => str_int::from_int_constant(node, mngr),
         }
     }
 }
@@ -122,7 +131,6 @@ pub struct Rewriter {
 
 impl Rewriter {
     pub fn rewrite(&mut self, node: &Node, max_passes: usize, mngr: &mut NodeManager) -> Node {
-        let node = pull_ites(node, mngr);
         let mut current = node.clone();
         for _ in 0..max_passes {
             let rw = self.pass(&current, mngr);
@@ -159,10 +167,8 @@ impl Rewriter {
             if let Some(result) = rule.apply(&new_node, mngr) {
                 log::debug!("({:?}): {} -> {}", rule, new_node, result);
                 new_node = result;
-                break;
             }
         }
-
         self.rewrite_cache.insert(node.clone(), new_node.clone());
         new_node
     }
@@ -178,8 +184,6 @@ impl Default for Rewriter {
 }
 
 const REWRITE: &'static [RewriteRules] = &[
-    RewriteRules::ItePull,    // Must be first
-    RewriteRules::IteBoolean, // Must be second
     RewriteRules::BoolAndConst,
     RewriteRules::BoolAndIdem,
     RewriteRules::BoolAndComp,
@@ -196,6 +200,8 @@ const REWRITE: &'static [RewriteRules] = &[
     RewriteRules::InReConstSuffix,
     RewriteRules::InRePullComp,
     RewriteRules::ConstStrLen,
+    RewriteRules::NotComparison,
+    RewriteRules::NormalizeLinearIneq,
     RewriteRules::IntDistributeNeg,
     RewriteRules::IntFoldConst,
     RewriteRules::IntLessTrivial,
@@ -219,4 +225,6 @@ const REWRITE: &'static [RewriteRules] = &[
     RewriteRules::ReplaceEpsilon,
     RewriteRules::ReplaceInEpsilon,
     RewriteRules::ReplaceSelf,
+    RewriteRules::ToIntConstant,
+    RewriteRules::FromIntConstant,
 ];
