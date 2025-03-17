@@ -2,6 +2,7 @@ mod canonicalize;
 mod complements;
 mod compress;
 mod elim;
+mod ite;
 mod rewrite;
 mod simp;
 
@@ -25,7 +26,13 @@ impl Preprocessor {
         passes: usize,
         mngr: &mut NodeManager,
     ) -> Result<Node, NodeError> {
-        let simped = self.simplify(&nnf, passes, mngr);
+        // first we need to get rid of the ITEs
+        let mut ite_handler = ite::ITEHandler::default();
+        let ite_elim = ite_handler.elim_ite(nnf, mngr);
+        // Convert to NNF
+        let new_root = to_nnf(&ite_elim, mngr);
+
+        let simped = self.simplify(&new_root, passes, mngr);
         log::debug!("Simplified:\n{}", simped);
         Ok(simped)
     }

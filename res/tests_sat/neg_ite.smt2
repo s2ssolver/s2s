@@ -1,0 +1,5 @@
+(set-logic QF_SLIA)
+(declare-fun e () String)
+(assert (not (= 0 (ite (<= (str.len e) 0) 1 0))))
+(check-sat)
+(get-model)

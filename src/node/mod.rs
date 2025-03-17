@@ -514,7 +514,10 @@ impl Sorted for OwnedNode {
                 if lhs_sort == rhs_sort && !rhs_sort.is_bool() {
                     Sort::Bool
                 } else {
-                    unreachable!("Equality between different sorts ({lhs_sort}, {rhs_sort})",)
+                    unreachable!(
+                        "Equality between different sorts ({lhs_sort}, {rhs_sort}): {}",
+                        self
+                    )
                 }
             }
 
