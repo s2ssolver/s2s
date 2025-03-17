@@ -2,7 +2,6 @@
 mod boolean;
 mod factors;
 mod int;
-mod ite;
 mod regex;
 mod replace;
 mod substr;
@@ -24,10 +23,6 @@ pub enum RewriteRules {
     BoolNotConst,
     BoolNotDouble,
     EqualityTrivial,
-
-    /* ITE */
-    IteBoolean,
-    ItePull,
 
     /* INRE */
     InReConstLhs,
@@ -225,15 +220,3 @@ const REWRITE: &'static [RewriteRules] = &[
     RewriteRules::ReplaceInEpsilon,
     RewriteRules::ReplaceSelf,
 ];
-
-/// Pulls all ITE expressions that return non-boolean values to a Boolean level.
-/// Meaning, if node contains a non-Boolean predicate P (..., ITE c t e, ...), then this will ''pull'' the ITE expression one level higher: ITE c (P ..., t, ...) (P ..., e, ...)
-pub fn pull_ites(node: &Node, mngr: &mut NodeManager) -> Node {
-    let ch_normed = node.children().iter().map(|c| pull_ites(c, mngr)).collect();
-    let new_node = mngr.create_node(node.kind().clone(), ch_normed);
-    if let Some(rew) = ite::ite_pull(&new_node, mngr) {
-        rew
-    } else {
-        new_node
-    }
-}

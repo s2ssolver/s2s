@@ -37,18 +37,21 @@ impl ITEHandler {
             .collect::<Vec<_>>();
 
         // If the node is an ITE, rewrite it
-        if *node.kind() == NodeKind::Ite {
-            if let Some(rw) = self.pure_boolean_ite(node, mngr) {
+        let new_node = mngr.create_node(node.kind().clone(), ch_rw);
+        let rw = if *new_node.kind() == NodeKind::Ite {
+            if let Some(rw) = self.pure_boolean_ite(&new_node, mngr) {
                 rw
             } else {
                 // define with a new variable
-                let tmpv = self.define_ite(node, mngr);
+                let tmpv = self.define_ite(&new_node, mngr);
                 mngr.var(tmpv.clone())
-            }
+            };
+            let tmpv = self.define_ite(&new_node, mngr);
+            mngr.var(tmpv.clone())
         } else {
-            let new_node = mngr.create_node(node.kind().clone(), ch_rw);
             new_node
-        }
+        };
+        rw
     }
 
     /// Defines an ITE node `ITE(c, t, e)` as a new variable `V = ITE(c, t, e)` and returns `V`.
@@ -101,8 +104,14 @@ impl ITEHandler {
 
             let v = mngr.var(v);
 
-            let eq_then = mngr.eq(v.clone(), ite_then);
-            let eq_else = mngr.eq(v.clone(), ite_else);
+            let (eq_then, eq_else) = if v.sort().is_bool() {
+                (
+                    mngr.equiv(v.clone(), ite_then),
+                    mngr.equiv(v.clone(), ite_else),
+                )
+            } else {
+                (mngr.eq(v.clone(), ite_then), mngr.eq(v.clone(), ite_else))
+            };
 
             let ltf = mngr.imp(ite_cond.clone(), eq_then);
             let not_ite_cond = mngr.not(ite_cond);

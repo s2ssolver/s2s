@@ -147,7 +147,7 @@ pub fn build_abstraction(node: &Node) -> Result<Abstraction, NodeError> {
             }
             _ => {
                 // this is an unsupported atom: we need to add a Boolean var which does not define a canonical literal
-                debug_assert!(fm.is_atomic());
+                assert!(fm.is_atomic(), "Unsupported node: {}", fm);
                 let v = if let Some(v) = undefs.get(fm) {
                     *v
                 } else {
