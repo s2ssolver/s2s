@@ -340,13 +340,13 @@ impl Assignment {
                     None => Some(String::new()),
                 }
             }
-            NodeKind::ToInt => {
-                let s = self.inst_string_term(&term.children()[0])?;
-                s.parse().ok() // TODO: Double check if this is correct
-            }
             NodeKind::FromInt => {
                 let i = self.inst_int_term(&term.children()[0])?;
-                Some(i.to_string()) // TODO: Double check if this is correct
+                if i < 0 {
+                    return Some(String::new());
+                } else {
+                    Some(i.to_string()) // TODO: Double check if this is correct
+                }
             }
             _ => None,
         };
@@ -385,6 +385,14 @@ impl Assignment {
             NodeKind::Length => {
                 let s = self.inst_string_term(&term.children()[0])?;
                 Some(s.chars().count() as i64)
+            }
+            NodeKind::ToInt => {
+                let s = self.inst_string_term(&term.children()[0])?;
+                // convet to positive int base 10, or -1 if not possible
+                match u64::from_str_radix(&s, 10) {
+                    Ok(i) => Some(i as i64),
+                    Err(_) => Some(-1),
+                }
             }
             _ => None,
         }
