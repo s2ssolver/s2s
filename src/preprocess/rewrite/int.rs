@@ -431,8 +431,12 @@ fn is_const_int(node: &Node) -> Option<i64> {
         NodeKind::Sub => {
             let mut iter = node.children().iter();
             let first = is_const_int(iter.next().unwrap())?;
-            let sum: i64 = iter.map(|c| -is_const_int(c).unwrap()).sum();
-            Some(first + sum)
+            let mut sub_sum = 0;
+            for c in iter {
+                let next = is_const_int(c)?;
+                sub_sum += next;
+            }
+            Some(first - sub_sum)
         }
         NodeKind::Length => {
             let child = node.children().first().unwrap();
