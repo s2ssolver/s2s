@@ -72,6 +72,7 @@ pub enum RewriteRules {
     /* Str Int Conversion */
     ToIntConstant,
     FromIntConstant,
+    VarToIntEqConst,
 }
 
 impl RewriteRules {
@@ -120,6 +121,7 @@ impl RewriteRules {
             RewriteRules::ReplaceSelf => replace::replace_self(node, mngr),
             RewriteRules::ToIntConstant => str_int::to_int_constant(node, mngr),
             RewriteRules::FromIntConstant => str_int::from_int_constant(node, mngr),
+            RewriteRules::VarToIntEqConst => str_int::var_eq_constant_to_int(node, mngr),
         }
     }
 }
@@ -227,4 +229,5 @@ const REWRITE: &'static [RewriteRules] = &[
     RewriteRules::ReplaceSelf,
     RewriteRules::ToIntConstant,
     RewriteRules::FromIntConstant,
+    RewriteRules::VarToIntEqConst,
 ];

@@ -1,0 +1,5 @@
+(set-logic QF_S)
+(declare-const x String)
+(assert (= 1 (str.to_int x)))
+(assert (not (= x "1")))
+(check-sat)
