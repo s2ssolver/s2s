@@ -3,9 +3,8 @@ use std::time::Instant;
 
 use crate::{
     domain::Domain,
-    encode::EncodingResult,
     node::{
-        canonical::{AssignedValue, Assignment, AtomKind, Literal},
+        canonical::{Assignment, AtomKind, Literal},
         Sort, VarSubstitution,
     },
 };
@@ -88,6 +87,8 @@ pub(crate) struct Solver {
     next_bounds: Domain,
 
     refiner: BoundRefiner,
+
+    frozen_bounds: bool,
 }
 
 impl Solver {
@@ -111,6 +112,7 @@ impl Solver {
             defs: IndexMap::new(),
             encoder: DefintionEncoder::new(alphabet),
             next_bounds: init_bounds,
+            frozen_bounds: false,
         }
     }
 
@@ -123,6 +125,13 @@ impl Solver {
             );
         }
         self.defs.insert(def.defining(), def.clone());
+    }
+
+    /// Freezes the bounds. After this call, the bounds will not be refined anymore.
+    /// Instead, every call to `solve` will use the the same bounds as the last call (or the initial bounds, if no call to `solve` has been made yet).
+    /// Therefore, the call to `solve` will always return the same result, which is either SAT, or UNKNOWN.
+    pub fn freeze_bounds(&mut self) {
+        self.frozen_bounds = true;
     }
 
     /// Solve the formula with the current bounds.
@@ -170,6 +179,10 @@ impl Solver {
                 }
 
                 Some(false) => {
+                    if self.frozen_bounds {
+                        // Don't refine bounds if they are frozen, return UNKNOWN
+                        return Ok(SolverAnswer::Unknown);
+                    }
                     log::info!("Unsat");
                     let failed = self.encoder.get_failed_literals(&self.cadical);
                     log::info!("{} Failed literal(s)", failed.len());

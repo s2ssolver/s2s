@@ -180,28 +180,47 @@ impl Assignment {
     /// Specifically, returns false if the truth value of the formula can not be evaluated in case the assignment is partial.
     /// The formula is expected to be in canonical form.
     /// If it is not or if the formula contains unsupported constructs, the result is always false.
-    pub fn satisfies(&self, formula: &Node) -> bool {
+    pub fn satisfies(&self, formula: &Node) -> Option<bool> {
         match formula.kind() {
-            NodeKind::And => formula.children().iter().all(|f| self.satisfies(f)),
-            NodeKind::Or => formula.children().iter().any(|f| self.satisfies(f)),
-            NodeKind::Literal(lit) => self.satisfies_lit(lit),
-            NodeKind::Bool(t) => *t,
-            NodeKind::Variable(v) if v.sort().is_bool() => {
-                self.get_bool(v.as_ref()).map_or(false, |value| value)
+            NodeKind::And => {
+                for c in formula.children() {
+                    if !self.satisfies(c)? {
+                        return Some(false);
+                    }
+                }
+                Some(true)
             }
+            NodeKind::Or => {
+                let mut none = false;
+                for c in formula.children() {
+                    match self.satisfies(c) {
+                        Some(true) => return Some(true),
+                        Some(false) => (),
+                        None => none = true,
+                    }
+                }
+                if none {
+                    None
+                } else {
+                    Some(false)
+                }
+            }
+            NodeKind::Literal(lit) => self.satisfies_lit(lit),
+            NodeKind::Bool(t) => Some(*t),
+            NodeKind::Variable(v) if v.sort().is_bool() => self.get_bool(v.as_ref()),
             NodeKind::Imp => {
-                let lhs = self.satisfies(&formula.children()[0]);
-                let rhs = self.satisfies(&formula.children()[1]);
-                !lhs || rhs
+                let lhs = self.satisfies(&formula.children()[0])?;
+                let rhs = self.satisfies(&formula.children()[1])?;
+                Some(!lhs || rhs)
             }
             NodeKind::Equiv => {
-                let lhs = self.satisfies(&formula.children()[0]);
-                let rhs = self.satisfies(&formula.children()[1]);
-                lhs == rhs
+                let lhs = self.satisfies(&formula.children()[0])?;
+                let rhs = self.satisfies(&formula.children()[1])?;
+                Some(lhs == rhs)
             }
-            NodeKind::Not => !self.satisfies(&formula.children()[0]),
+            NodeKind::Not => Some(!self.satisfies(&formula.children()[0])?),
             NodeKind::Ite => {
-                let cond = self.satisfies(&formula.children()[0]);
+                let cond = self.satisfies(&formula.children()[0])?;
                 if cond {
                     self.satisfies(&formula.children()[1])
                 } else {
@@ -213,70 +232,52 @@ impl Assignment {
                 let rhs = &formula.children()[1];
                 match (lhs.sort(), rhs.sort()) {
                     (Sort::String, Sort::String) => {
-                        let lhs = self.inst_string_term(lhs);
-                        let rhs = self.inst_string_term(rhs);
-                        match (lhs, rhs) {
-                            (Some(lhs), Some(rhs)) => lhs == rhs,
-                            _ => false,
-                        }
+                        let lhs = self.inst_string_term(lhs)?;
+                        let rhs = self.inst_string_term(rhs)?;
+                        Some(lhs == rhs)
                     }
                     (Sort::Int, Sort::Int) => {
-                        let lhs = self.inst_int_term(lhs);
-                        let rhs = self.inst_int_term(rhs);
-                        match (lhs, rhs) {
-                            (Some(lhs), Some(rhs)) => lhs == rhs,
-                            _ => false,
-                        }
+                        let lhs = self.inst_int_term(lhs)?;
+                        let rhs = self.inst_int_term(rhs)?;
+                        Some(lhs == rhs)
                     }
                     _ => unreachable!("Unexpected formula: {}", formula),
                 }
             }
             NodeKind::PrefixOf => {
-                let lhs = self.inst_string_term(&formula.children()[0]);
-                let rhs = self.inst_string_term(&formula.children()[1]);
-
-                match (lhs, rhs) {
-                    (Some(prefix), Some(of)) => of.starts_with(&prefix),
-                    _ => false,
-                }
+                let prefix = self.inst_string_term(&formula.children()[0])?;
+                let of = self.inst_string_term(&formula.children()[1])?;
+                Some(of.starts_with(&prefix))
             }
             NodeKind::SuffixOf => {
-                let suffix = self.inst_string_term(&formula.children()[0]);
-                let of = self.inst_string_term(&formula.children()[1]);
-                match (suffix, of) {
-                    (Some(suffix), Some(of)) => of.ends_with(&suffix),
-                    _ => false,
-                }
+                let suffix = self.inst_string_term(&formula.children()[0])?;
+                let of = self.inst_string_term(&formula.children()[1])?;
+                Some(of.ends_with(&suffix))
             }
             NodeKind::Contains => {
-                let hay = self.inst_string_term(&formula.children()[0]);
-                let needle = self.inst_string_term(&formula.children()[1]);
-                match (hay, needle) {
-                    (Some(hay), Some(needle)) => hay.contains(&needle),
-                    _ => false,
-                }
+                let hay = self.inst_string_term(&formula.children()[0])?;
+                let needle = self.inst_string_term(&formula.children()[1])?;
+                Some(hay.contains(&needle))
             }
             NodeKind::InRe => {
-                let lhs = self.inst_string_term(&formula.children()[0]);
+                let lhs = self.inst_string_term(&formula.children()[0])?;
                 if let NodeKind::Regex(re) = &formula.children()[1].kind() {
-                    re.accepts(&lhs.unwrap().into())
+                    Some(re.accepts(&lhs.into()))
                 } else {
-                    panic!("Unexpected formula: {}", formula)
+                    unreachable!("Unexpected formula: {}", formula)
                 }
             }
             NodeKind::Lt | NodeKind::Le | NodeKind::Gt | NodeKind::Ge => {
-                let lhs = self.inst_int_term(&formula.children()[0]);
-                let rhs = self.inst_int_term(&formula.children()[1]);
-                match (lhs, rhs) {
-                    (Some(lhs), Some(rhs)) => match formula.kind() {
-                        NodeKind::Lt => lhs < rhs,
-                        NodeKind::Le => lhs <= rhs,
-                        NodeKind::Gt => lhs > rhs,
-                        NodeKind::Ge => lhs >= rhs,
-                        _ => unreachable!(),
-                    },
-                    _ => false,
-                }
+                let lhs = self.inst_int_term(&formula.children()[0])?;
+                let rhs = self.inst_int_term(&formula.children()[1])?;
+                let r = match formula.kind() {
+                    NodeKind::Lt => lhs < rhs,
+                    NodeKind::Le => lhs <= rhs,
+                    NodeKind::Gt => lhs > rhs,
+                    NodeKind::Ge => lhs >= rhs,
+                    _ => unreachable!(),
+                };
+                Some(r)
             }
 
             _ => unreachable!("Unexpected formula: {}", formula),
@@ -284,7 +285,7 @@ impl Assignment {
     }
 
     fn inst_string_term(&self, term: &Node) -> Option<String> {
-        match term.kind() {
+        let t = match term.kind() {
             NodeKind::String(s) => Some(s.clone()),
             NodeKind::Variable(v) => self.get_str(v.as_ref()).cloned(),
             NodeKind::Concat => {
@@ -319,7 +320,10 @@ impl Assignment {
             NodeKind::At => {
                 let s = self.inst_string_term(&term.children()[0])?;
                 let i = self.inst_int_term(&term.children()[1])? as usize;
-                s.chars().nth(i).map(|c| c.to_string())
+                match s.chars().nth(i).map(|c| c.to_string()) {
+                    Some(c) => Some(c),
+                    None => Some(String::new()),
+                }
             }
             NodeKind::ToInt => {
                 let s = self.inst_string_term(&term.children()[0])?;
@@ -330,7 +334,8 @@ impl Assignment {
                 Some(i.to_string()) // TODO: Double check if this is correct
             }
             _ => None,
-        }
+        };
+        t
     }
 
     fn inst_int_term(&self, term: &Node) -> Option<i64> {
@@ -370,14 +375,14 @@ impl Assignment {
         }
     }
 
-    pub fn satisfies_lit(&self, literal: &Literal) -> bool {
-        let s_atom = self.satisfies_atom(literal.atom());
-        s_atom == literal.polarity()
+    pub fn satisfies_lit(&self, literal: &Literal) -> Option<bool> {
+        let s_atom = self.satisfies_atom(literal.atom())?;
+        Some(s_atom == literal.polarity())
     }
 
-    pub fn satisfies_atom(&self, atom: &Atom) -> bool {
+    pub fn satisfies_atom(&self, atom: &Atom) -> Option<bool> {
         match atom.kind() {
-            AtomKind::Boolvar(v) => self.get_bool(v.as_ref()).map_or(false, |value| value),
+            AtomKind::Boolvar(v) => self.get_bool(v.as_ref()),
             AtomKind::WordEquation(we) => self.satisfies_word_equation(we),
             AtomKind::InRe(inre) => self.satisfies_inre(inre),
             AtomKind::FactorConstraint(fc) => self.satisfies_factor_constraint(fc),
@@ -385,61 +390,52 @@ impl Assignment {
         }
     }
 
-    pub fn satisfies_word_equation(&self, eq: &WordEquation) -> bool {
+    pub fn satisfies_word_equation(&self, eq: &WordEquation) -> Option<bool> {
         match eq {
-            WordEquation::ConstantEquality(l, r) => l == r,
+            WordEquation::ConstantEquality(l, r) => Some(l == r),
             WordEquation::VarEquality(l, r) => {
-                match (self.get_str(l.as_ref()), self.get_str(r.as_ref())) {
-                    (Some(l), Some(r)) => l == r,
-                    _ => false,
-                }
+                Some(self.get_str(l.as_ref())? == self.get_str(r.as_ref())?)
             }
-            WordEquation::VarAssignment(l, r) => match self.get_str(l.as_ref()) {
-                Some(value) => value == r,
-                None => false,
-            },
-            WordEquation::General(l, r) => match (self.apply_pattern(l), self.apply_pattern(r)) {
-                (Some(l), Some(r)) => l == r,
-                _ => false,
-            },
+            WordEquation::VarAssignment(l, r) => {
+                let l = self.get_str(l.as_ref())?;
+                Some(l == r)
+            }
+            WordEquation::General(l, r) => {
+                let l = self.apply_pattern(l)?;
+                let r = self.apply_pattern(r)?;
+                Some(l == r)
+            }
         }
     }
 
-    pub fn satisfies_inre(&self, inre: &RegularConstraint) -> bool {
-        if let Some(value) = self.get_str(inre.lhs().as_ref()) {
-            inre.re().accepts(&value.clone().into())
-        } else {
-            false
-        }
+    pub fn satisfies_inre(&self, inre: &RegularConstraint) -> Option<bool> {
+        let lhs = self.get_str(inre.lhs().as_ref())?.clone();
+        Some(inre.re().accepts(&lhs.into()))
     }
 
-    pub fn satisfies_factor_constraint(&self, fc: &RegularFactorConstraint) -> bool {
-        if let Some(value) = self.get_str(fc.of().as_ref()) {
-            let rhs = fc.rhs();
-            match fc.typ() {
-                FactorConstraintType::Prefix => value.starts_with(rhs),
-                FactorConstraintType::Suffix => value.ends_with(rhs),
-                FactorConstraintType::Contains => value.contains(rhs),
-            }
-        } else {
-            false
-        }
+    pub fn satisfies_factor_constraint(&self, fc: &RegularFactorConstraint) -> Option<bool> {
+        let value = self.get_str(fc.of().as_ref())?;
+        let rhs = fc.rhs();
+        let r = match fc.typ() {
+            FactorConstraintType::Prefix => value.starts_with(rhs),
+            FactorConstraintType::Suffix => value.ends_with(rhs),
+            FactorConstraintType::Contains => value.contains(rhs),
+        };
+        Some(r)
     }
 
-    pub fn satisfies_arith_constraint(&self, lc: &LinearConstraint) -> bool {
-        let lhs_value = self.apply_arith_term(lc.lhs());
-        if let Some(lhs_value) = lhs_value {
-            match lc.operator() {
-                ArithOperator::Eq => lhs_value == lc.rhs(),
-                ArithOperator::Ineq => lhs_value != lc.rhs(),
-                ArithOperator::Leq => lhs_value <= lc.rhs(),
-                ArithOperator::Less => lhs_value < lc.rhs(),
-                ArithOperator::Geq => lhs_value >= lc.rhs(),
-                ArithOperator::Greater => lhs_value > lc.rhs(),
-            }
-        } else {
-            false
-        }
+    pub fn satisfies_arith_constraint(&self, lc: &LinearConstraint) -> Option<bool> {
+        let lhs_value = self.apply_arith_term(lc.lhs())?;
+
+        let r = match lc.operator() {
+            ArithOperator::Eq => lhs_value == lc.rhs(),
+            ArithOperator::Ineq => lhs_value != lc.rhs(),
+            ArithOperator::Leq => lhs_value <= lc.rhs(),
+            ArithOperator::Less => lhs_value < lc.rhs(),
+            ArithOperator::Geq => lhs_value >= lc.rhs(),
+            ArithOperator::Greater => lhs_value > lc.rhs(),
+        };
+        Some(r)
     }
 
     fn apply_pattern(&self, pattern: &Pattern) -> Option<String> {

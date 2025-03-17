@@ -183,7 +183,7 @@ mod tests {
         match solve_with_bounds(eq, bounds) {
             Some(sol) => {
                 assert!(
-                    sol.satisfies_word_equation(eq),
+                    sol.satisfies_word_equation(eq).unwrap(),
                     "Returned substitution\n\t{}\nis not a solution for\n\t{}",
                     sol,
                     eq

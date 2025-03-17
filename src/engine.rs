@@ -221,8 +221,14 @@ impl Engine {
                         log::info!("Model does not satisfy the formula");
                         let next = self.pick_defs(&fm, &h, &defs);
                         if next.is_empty() {
-                            // In the future, this should block the current assignment and continue
-                            log::info!("No more definitions to add. Blocking current assignment.");
+                            // In the future, this should block the current assignment and continue to search for a new model
+                            // But we freeze the bounds to the current ones and return if no model can be found after max_blocking attemps
+                            if blocked == 0 {
+                                log::info!(
+                                    "No more definitions to add. Trying to find a new model."
+                                );
+                                solver.freeze_bounds();
+                            }
                             solver.block(&h);
                             blocked += 1;
                             if blocked > self.options.max_blocking {
@@ -431,8 +437,11 @@ impl Engine {
     }
 
     /// Check if the assignment is a solution for the formula.
+    /// Returns true if the assignment satisfies the formula.
+    /// Returns false if the assignment does not satisfy the formula.
+    /// Also returns false if the assignment is is incomplete, i.e., if it does not assign a value to all variables.
     fn check_assignment(&self, fm: &Node, assign: &Assignment) -> bool {
-        assign.satisfies(fm)
+        assign.satisfies(fm).unwrap_or(false)
     }
 }
 
