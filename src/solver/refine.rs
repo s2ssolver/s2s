@@ -3,7 +3,7 @@
 use core::panic;
 use std::hash::Hash;
 
-use indexmap::{IndexMap, IndexSet};
+use indexmap::{indexset, IndexMap, IndexSet};
 use itertools::Itertools;
 
 use crate::{
@@ -184,7 +184,10 @@ impl BoundRefiner {
         mngr: &mut NodeManager,
     ) -> BoundRefinement {
         // Find the small-model bounds of any combination of the literal
-        let smp_bounds = match self.small_mode_bounds_dnf(literals, fm, mngr) {
+        let present_lits: IndexSet<Literal> =
+            IndexSet::from_iter(literals.iter().map(|d| d.defined().clone()));
+
+        let smp_bounds = match self.small_mode_bounds_dnf(present_lits, fm, mngr) {
             Some(b) => b,
             None => return BoundRefinement::SmallModelReached, // No satisfying assignment
         };
@@ -331,13 +334,11 @@ impl BoundRefiner {
 
     fn small_mode_bounds_dnf(
         &mut self,
-        defs: &[LitDefinition],
+        present_lits: IndexSet<Literal>,
         fm: &Node,
         mngr: &mut NodeManager,
     ) -> Option<Bounds> {
         // build the dnf of fm but only with the the given literals
-        let present_lits: IndexSet<Literal> =
-            IndexSet::from_iter(defs.iter().map(|d| d.defined().clone()));
 
         let dnf = Self::build_dnf(&present_lits, fm);
         log::info!("DNF has {} cubes", dnf.len());
@@ -387,14 +388,14 @@ impl BoundRefiner {
         Self::max_smp_of(alternatives)
     }
 
-    fn build_dnf(literals: &IndexSet<Literal>, fm: &Node) -> Vec<Cube> {
+    fn build_dnf(literals: &IndexSet<Literal>, fm: &Node) -> IndexSet<Cube> {
         match fm.kind() {
             NodeKind::And => {
-                let mut dnf = vec![Cube(IndexSet::new())];
+                let mut dnf = indexset![Cube(IndexSet::new())];
                 for child in fm.children() {
                     let child_dnf = Self::build_dnf(literals, child);
                     // build the cross product
-                    let mut new_dnf = Vec::new();
+                    let mut new_dnf = IndexSet::new();
                     for cube in dnf.into_iter() {
                         for ccube in child_dnf.iter() {
                             let mut new_cube = cube.clone();
@@ -408,7 +409,7 @@ impl BoundRefiner {
                                 new_cube.0.insert(l.clone());
                             }
                             if !conflict {
-                                new_dnf.push(new_cube);
+                                new_dnf.insert(new_cube);
                             }
                         }
                     }
@@ -417,7 +418,7 @@ impl BoundRefiner {
                 dnf
             }
             NodeKind::Or => {
-                let mut dnf = Vec::new();
+                let mut dnf = IndexSet::new();
                 for child in fm.children() {
                     let child_dnf = Self::build_dnf(literals, child);
                     dnf.extend(child_dnf);
@@ -430,10 +431,10 @@ impl BoundRefiner {
                 } else {
                     IndexSet::new()
                 };
-                vec![Cube(c)]
+                indexset![Cube(c)]
             }
-            NodeKind::Bool(true) => vec![Cube(IndexSet::new())],
-            NodeKind::Bool(false) => Vec::new(),
+            NodeKind::Bool(true) => indexset![Cube(IndexSet::new())],
+            NodeKind::Bool(false) => indexset![],
             _ => panic!("Unexpected node kind: {:?}({})", fm.kind(), fm),
         }
     }
