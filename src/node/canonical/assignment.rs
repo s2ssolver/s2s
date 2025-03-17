@@ -362,6 +362,10 @@ impl Assignment {
                 let child = &term.children()[0];
                 Some(-self.inst_int_term(child)?)
             }
+            NodeKind::Length => {
+                let s = self.inst_string_term(&term.children()[0])?;
+                Some(s.chars().count() as i64)
+            }
             _ => None,
         }
     }
@@ -492,7 +496,7 @@ impl From<VarSubstitution> for Assignment {
 impl Display for AssignedValue {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::String(value) => write!(f, "{}", value),
+            Self::String(value) => write!(f, "{}", value.escape_default()),
             Self::Int(value) => write!(f, "{}", value),
             Self::Bool(value) => write!(f, "{}", value),
         }
