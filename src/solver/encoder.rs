@@ -12,7 +12,7 @@ use crate::{
     },
     node::{
         canonical::{AssignedValue, Assignment, Literal},
-        NodeManager, VarSubstitution,
+        NodeManager,
     },
     sat::{nlit, plit, pvar, PLit, PVar},
 };
@@ -177,13 +177,14 @@ impl DefintionEncoder {
                     for (i, c) in w.chars().enumerate() {
                         if let Some(x) = self.domain_encoder.encoding().string().get_sub(var, i, c)
                         {
-                            clause.push(x);
+                            clause.push(nlit(x));
                         } else {
                             // Trivially Cannot be this word because either its outside alphabet or the word is too long
                             // So we can just break
                             break;
                         }
                     }
+                    res.add_clause(clause);
                 }
                 AssignedValue::Int(i) => {
                     if let Some(x) = self.domain_encoder.encoding().int().get(var, *i) {
