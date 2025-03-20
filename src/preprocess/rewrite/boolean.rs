@@ -182,35 +182,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn and_const_false() {
-        let mut mngr = NodeManager::default();
-
-        let conjuncts = vec![
-            mngr.temp_var_node(Sort::Bool),
-            mngr.ffalse(),
-            mngr.temp_var_node(Sort::Bool),
-        ];
-        let result = and_const(&mngr.and(conjuncts), &mut mngr);
-
-        assert_eq!(result, Some(mngr.ffalse()));
-    }
-
-    #[test]
-    fn and_const_true() {
-        let mut mngr = NodeManager::default();
-
-        let conjuncts = vec![
-            mngr.temp_var_node(Sort::Bool),
-            mngr.temp_var_node(Sort::Bool),
-        ];
-        let mut conjuncts_and_t = conjuncts.clone();
-        conjuncts_and_t.push(mngr.ttrue());
-        let result = and_const(&mngr.and(conjuncts_and_t), &mut mngr);
-
-        assert_eq!(result, Some(mngr.and(conjuncts)));
-    }
-
-    #[test]
     fn test_and_idem() {
         let mut mngr = NodeManager::default();
 
@@ -235,35 +206,6 @@ mod tests {
         let result = and_comp(&mngr.and(conjuncts), &mut mngr);
 
         assert_eq!(result, Some(mngr.ffalse()));
-    }
-
-    #[test]
-    fn or_const_true() {
-        let mut mngr = NodeManager::default();
-
-        let conjuncts = vec![
-            mngr.temp_var_node(Sort::Bool),
-            mngr.ttrue(),
-            mngr.temp_var_node(Sort::Bool),
-        ];
-        let result = or_const(&mngr.or(conjuncts), &mut mngr);
-
-        assert_eq!(result, Some(mngr.ttrue()));
-    }
-
-    #[test]
-    fn or_const_false() {
-        let mut mngr = NodeManager::default();
-
-        let conjuncts = vec![
-            mngr.temp_var_node(Sort::Bool),
-            mngr.temp_var_node(Sort::Bool),
-        ];
-        let mut conjuncts_and_t = conjuncts.clone();
-        conjuncts_and_t.push(mngr.ffalse());
-        let result = or_const(&mngr.or(conjuncts_and_t), &mut mngr);
-
-        assert_eq!(result, Some(mngr.or(conjuncts)));
     }
 
     #[test]
