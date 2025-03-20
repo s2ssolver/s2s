@@ -35,6 +35,9 @@ pub struct NodeManager {
     variables: IndexMap<String, Rc<Variable>>,
 
     nfas: IndexMap<Regex, Rc<NFA>>,
+
+    /// If false, will perform no optimizations
+    optimize: bool,
 }
 
 impl NodeManager {
@@ -179,6 +182,12 @@ impl NodeManager {
         res
     }
 
+    /// Set the optimization flag
+    #[cfg(test)]
+    pub(crate) fn set_optimize(&mut self, optimize: bool) {
+        self.optimize = optimize;
+    }
+
     /// Delete all nodes with reference count of 1
     fn gc(&mut self) {
         let mut to_remove = Vec::new();
@@ -290,31 +299,71 @@ impl NodeManager {
 
     /// Boolean conjunction
     pub fn and(&mut self, rs: Vec<Node>) -> Node {
-        if rs.is_empty() {
-            return self.ttrue();
-        } else if rs.len() == 1 {
-            return rs[0].clone();
+        // Do minor simplifications and flatten the conjunction
+
+        let mut cleaned = Vec::with_capacity(rs.len());
+        if self.optimize {
+            for r in rs {
+                if let NodeKind::Bool(false) = r.kind() {
+                    return self.ffalse();
+                } else if let NodeKind::And = r.kind() {
+                    cleaned.extend(r.children().to_vec())
+                } else if let NodeKind::Bool(true) = r.kind() {
+                    continue;
+                } else {
+                    cleaned.push(r)
+                }
+            }
         } else {
-            self.intern_node(NodeKind::And, rs)
+            cleaned = rs;
+        }
+
+        match cleaned.len() {
+            0 => self.ttrue(),
+            1 => cleaned[0].clone(),
+            _ => self.intern_node(NodeKind::And, cleaned),
         }
     }
 
     /// Boolean disjunction
     pub fn or(&mut self, rs: Vec<Node>) -> Node {
-        match rs.len() {
+        // Do minor simplifications and flatten the disjunction
+        let mut cleaned = Vec::with_capacity(rs.len());
+
+        if self.optimize {
+            for r in rs {
+                if let NodeKind::Bool(false) = r.kind() {
+                    continue;
+                } else if let NodeKind::Or = r.kind() {
+                    cleaned.extend(r.children().to_vec())
+                } else if let NodeKind::Bool(true) = r.kind() {
+                    return self.ttrue();
+                } else {
+                    cleaned.push(r)
+                }
+            }
+        } else {
+            cleaned = rs;
+        }
+
+        match cleaned.len() {
             0 => self.ffalse(),
-            1 => rs[0].clone(),
-            _ => self.intern_node(NodeKind::Or, rs),
+            1 => cleaned[0].clone(),
+            _ => self.intern_node(NodeKind::Or, cleaned),
         }
     }
 
     /// Boolean negation
     pub fn not(&mut self, r: Node) -> Node {
-        if let Some(b) = r.as_bool_const() {
-            self.intern_node(NodeKind::Bool(!b), vec![])
-        } else if *r.kind() == NodeKind::Not {
-            // double negation
-            r.children().first().unwrap().clone()
+        if self.optimize {
+            if let Some(b) = r.as_bool_const() {
+                self.intern_node(NodeKind::Bool(!b), vec![])
+            } else if *r.kind() == NodeKind::Not {
+                // double negation
+                r.children().first().unwrap().clone()
+            } else {
+                self.intern_node(NodeKind::Not, vec![r])
+            }
         } else {
             self.intern_node(NodeKind::Not, vec![r])
         }
@@ -322,6 +371,15 @@ impl NodeManager {
 
     /// Boolean implication
     pub fn imp(&mut self, l: Node, r: Node) -> Node {
+        if self.optimize {
+            if let Some(b) = l.as_bool_const() {
+                if b {
+                    return r;
+                } else {
+                    return self.ttrue();
+                }
+            }
+        }
         self.intern_node(NodeKind::Imp, vec![l, r])
     }
 
@@ -338,6 +396,9 @@ impl NodeManager {
 
     /// Equality
     pub fn eq(&mut self, l: Node, r: Node) -> Node {
+        if l == r && self.optimize {
+            return self.ttrue();
+        }
         self.intern_node(NodeKind::Eq, vec![l, r])
     }
 

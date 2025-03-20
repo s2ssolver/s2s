@@ -53,7 +53,11 @@ pub fn and_comp(node: &Node, mngr: &mut NodeManager) -> Option<Node> {
     if *node.kind() == NodeKind::And {
         let mut children = IndexSet::with_capacity(node.children().len());
         for c in node.children() {
-            if children.contains(&mngr.not(c.clone())) {
+            let negated = match c.kind() {
+                NodeKind::Not => c.children().first().unwrap().clone(),
+                _ => mngr.not(c.clone()),
+            };
+            if children.contains(&negated) {
                 return Some(mngr.ffalse());
             }
             children.insert(c.clone());
@@ -111,7 +115,11 @@ pub fn or_comp(node: &Node, mngr: &mut NodeManager) -> Option<Node> {
     if *node.kind() == NodeKind::Or {
         let mut children = IndexSet::with_capacity(node.children().len());
         for c in node.children() {
-            if children.contains(&mngr.not(c.clone())) {
+            let negated = match c.kind() {
+                NodeKind::Not => c.children().first().unwrap().clone(),
+                _ => mngr.not(c.clone()),
+            };
+            if children.contains(&negated) {
                 return Some(mngr.ttrue());
             }
             children.insert(c.clone());
@@ -225,12 +233,13 @@ mod tests {
     #[test]
     fn test_or_comp() {
         let mut mngr = NodeManager::default();
-
+        mngr.set_optimize(false);
         let v = mngr.temp_var_node(Sort::Bool);
         let vv = mngr.temp_var_node(Sort::Bool);
 
-        let conjuncts = vec![v.clone(), mngr.not(v.clone()), vv.clone()];
-        let result = or_comp(&mngr.or(conjuncts), &mut mngr);
+        let disjuncts = vec![v.clone(), mngr.not(v.clone()), vv.clone()];
+        let disjuction = mngr.or(disjuncts);
+        let result = or_comp(&disjuction, &mut mngr);
 
         assert_eq!(result, Some(mngr.ttrue()));
     }

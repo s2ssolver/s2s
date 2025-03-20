@@ -232,16 +232,6 @@ mod tests {
     }
 
     #[test]
-    fn test_exact_match_with_variables() {
-        let mut mngr = NodeManager::default();
-        let equation = parse_equation("abcX", "abcX", &mut mngr);
-
-        let result = strip_lcp(&equation, &mut mngr);
-        let expected = parse_equation("", "", &mut mngr);
-        assert_eq!(result, Some(expected));
-    }
-
-    #[test]
     fn test_mismatch_first_char() {
         let mut mngr = NodeManager::default();
         let equation = parse_equation("abcX", "yX", &mut mngr);

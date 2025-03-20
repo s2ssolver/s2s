@@ -212,6 +212,7 @@ mod tests {
     #[test]
     fn empty_eq() {
         let mut mngr = NodeManager::default();
+        mngr.set_optimize(false);
         let eq = parse_simple_equation("", "", &mut mngr);
         assert_sat(&eq, &[1])
     }
@@ -219,6 +220,7 @@ mod tests {
     #[test]
     fn const_equality_sat() {
         let mut mngr = NodeManager::default();
+        mngr.set_optimize(false);
         let eq = parse_simple_equation("foo", "foo", &mut mngr);
         assert_sat(&eq, &[1]);
     }
