@@ -6,7 +6,6 @@ const DEFAULT_SIMPLIFY: bool = true;
 const DEFAULT_PREPROCESS_PASSES: usize = 20;
 const DEFAULT_CHECK_MODEL: bool = false;
 const DEFAULT_UNSAT_ON_MAX_BOUND: bool = false;
-const DEFAULT_SMT25: bool = false;
 const DEFAULT_MAX_BLOCKING: usize = 100;
 
 #[derive(Debug, Clone)]
@@ -27,9 +26,6 @@ pub struct SolverOptions {
 
     /// The maximum number of blocking assignments the over-approximation before returning `unknown`.
     pub max_blocking: usize,
-
-    /// Whether or not parse SMT-LIB 2.5 syntax.
-    pub smt25: bool,
 }
 impl Default for SolverOptions {
     fn default() -> Self {
@@ -45,7 +41,6 @@ impl Default for SolverOptions {
             init_upper_bound: 2,
             max_blocking: DEFAULT_MAX_BLOCKING,
             print_preprocessed: false,
-            smt25: DEFAULT_SMT25,
         }
     }
 }

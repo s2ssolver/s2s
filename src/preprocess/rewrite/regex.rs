@@ -1,7 +1,7 @@
-use regulaer::re::{deriv::Deriver, ReOp};
+use smtlib_str::re::{deriv::DerivativeBuilder, ReOp};
 
 use crate::node::{
-    utils::{reverse, Symbol, PatternIterator},
+    utils::{reverse, PatternIterator, Symbol},
     Node, NodeKind, NodeManager,
 };
 
@@ -61,7 +61,7 @@ pub fn inre_equation(node: &Node, mngr: &mut NodeManager) -> Option<Node> {
             if let Some(w) = re.is_constant() {
                 //rewrite as equality lhs = w
                 let lhs = node.children()[0].clone();
-                let rhs = mngr.const_string(w.iter().collect());
+                let rhs = mngr.const_string(w);
                 return Some(mngr.eq(lhs, rhs));
             }
         }
@@ -83,7 +83,7 @@ pub fn inre_strip_prefix(node: &Node, mngr: &mut NodeManager) -> Option<Node> {
             _ => return None,
         };
         let mut iter = PatternIterator::new(&node.children()[0]);
-        let mut deriver = Deriver::default();
+        let mut deriver = DerivativeBuilder::default();
         while let Some(Symbol::Const(c)) = iter.peek() {
             rewritten = true;
             regex = deriver.deriv(&regex, c, mngr.re_builder());

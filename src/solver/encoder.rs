@@ -1,4 +1,4 @@
-use std::{ops::Neg, time::Instant};
+use std::{ops::Neg, rc::Rc, time::Instant};
 
 use cadical::Solver;
 use indexmap::{IndexMap, IndexSet};
@@ -66,7 +66,7 @@ pub struct DefintionEncoder {
 }
 
 impl DefintionEncoder {
-    pub fn new(alphabet: Alphabet) -> Self {
+    pub fn new(alphabet: Rc<Alphabet>) -> Self {
         Self {
             probes: IndexMap::new(),
             encoders: IndexMap::new(),
@@ -174,8 +174,8 @@ impl DefintionEncoder {
             match val {
                 AssignedValue::String(w) => {
                     let mut clause = Vec::with_capacity(w.len());
-                    for (i, c) in w.chars().enumerate() {
-                        if let Some(x) = self.domain_encoder.encoding().string().get_sub(var, i, c)
+                    for (i, c) in w.iter().enumerate() {
+                        if let Some(x) = self.domain_encoder.encoding().string().get_sub(var, i, *c)
                         {
                             clause.push(nlit(x));
                         } else {

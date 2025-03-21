@@ -64,7 +64,7 @@ impl ZeroLengthEpsilon {
         if collect_vars(lhs, false, &mut vars) && !vars.is_empty() {
             // set all variables to epsilon
             let mut subs = VarSubstitution::default();
-            let epsi = mngr.const_str("");
+            let epsi = mngr.empty_string();
             for v in vars {
                 subs.add(v, epsi.clone());
             }

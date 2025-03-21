@@ -159,6 +159,10 @@ impl LiteralEncoder for WordInEquationEncoder {
 
 #[cfg(test)]
 mod tests {
+    use std::rc::Rc;
+
+    use smtlib_str::alphabet::CharRange;
+
     use crate::{
         alphabet::Alphabet,
         domain::Domain,
@@ -176,8 +180,9 @@ mod tests {
     use super::WordInEquationEncoder;
 
     fn solve_with_bounds(eq: &WordEquation, bounds: &[usize]) -> Option<Assignment> {
-        let alphabet: Alphabet =
-            Alphabet::from_iter(eq.constants().iter().copied().chain('a'..='z'));
+        let mut alphabet: Alphabet = Alphabet::from_iter(eq.constants().iter().copied());
+        alphabet.insert(CharRange::new('a', 'z'));
+        let alphabet = Rc::new(alphabet);
         let mut domain = DomainEncoder::new(alphabet);
 
         let mut cadical: cadical::Solver = cadical::Solver::default();

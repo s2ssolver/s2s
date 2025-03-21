@@ -2,7 +2,7 @@
 
 use std::{collections::HashMap, rc::Rc};
 
-use regulaer::re::Regex;
+use smtlib_str::{re::Regex, sampling::sample_nfa};
 
 use crate::node::{NodeKind, Variable};
 
@@ -51,7 +51,7 @@ impl IndependentVariableAssignment {
                         } else if s.is_empty() {
                             mngr.const_str("a")
                         } else {
-                            mngr.const_str("")
+                            mngr.empty_string()
                         };
                         subs.add(v.clone(), rhs);
                         Some(subs)
@@ -93,10 +93,10 @@ impl IndependentVariableAssignment {
                 };
                 let nfa = mngr.get_nfa(&regex);
 
-                let rhs = match nfa.sample() {
+                let rhs = match sample_nfa(&nfa, 1000) {
                     Some(w) => w,
                     None => {
-                        log::warn!("Could not sample from\n{}", nfa.dot().unwrap());
+                        log::warn!("Could not sample from\n{}", nfa.dot());
                         return Some(subs); // short circuit here
                     }
                 };
@@ -108,9 +108,7 @@ impl IndependentVariableAssignment {
                     rhs
                 );
 
-                let rhs_str = rhs.iter().collect::<String>();
-                debug_assert!(rhs_str.len() == rhs.len());
-                let rhs = mngr.const_string(rhs_str);
+                let rhs = mngr.const_string(rhs);
                 subs.add(v.clone(), rhs);
                 return Some(subs);
             }
@@ -169,15 +167,12 @@ impl IndependentVariableAssignment {
                         if self.independent(v) {
                             if polarity {
                                 let mut subs = VarSubstitution::default();
-                                let rhs = mngr.const_str(asstr);
+                                let rhs = mngr.const_string(asstr.clone());
                                 subs.add(v.clone(), rhs);
                                 return Some(Simplification::new(subs, None));
                             } else {
                                 // abort here to not decent into the children
-                                return Some(Simplification::new(
-                                    VarSubstitution::default(),
-                                    None,
-                                ));
+                                return Some(Simplification::new(VarSubstitution::default(), None));
                             }
                         }
                     }

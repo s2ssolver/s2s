@@ -1,5 +1,5 @@
-use regulaer::re::Regex;
 use smallvec::smallvec;
+use smtlib_str::re::Regex;
 
 use crate::node::{Node, NodeKind, NodeManager};
 
@@ -10,7 +10,7 @@ pub fn to_int_constant(node: &Node, mngr: &mut NodeManager) -> Option<Node> {
             if s.is_empty() {
                 return Some(mngr.const_int(-1));
             }
-            let i = match i64::from_str_radix(s, 10) {
+            let i = match i64::from_str_radix(&s.to_string(), 10) {
                 Ok(i) => i,
                 Err(_) => -1,
             };
@@ -27,7 +27,7 @@ pub fn from_int_constant(node: &Node, mngr: &mut NodeManager) -> Option<Node> {
             if i >= 0 {
                 return Some(mngr.const_str(&i.to_string()));
             } else {
-                return Some(mngr.const_str(""));
+                return Some(mngr.empty_string());
             }
         }
     }
@@ -112,11 +112,11 @@ pub fn var_eq_constant_to_int(node: &Node, mngr: &mut NodeManager) -> Option<Nod
 /// Converts an integer to a regular expression that matches the string representation of the integer prefixed by an arbitrary number of zeros.
 /// For example, `int_to_re(4)` returns the regular expression `0*4`.
 fn int_to_re(i: u64, mngr: &mut NodeManager) -> Regex {
-    let zero = mngr.re_builder().word("0".into());
+    let zero = mngr.re_builder().to_re("0".into());
     let zero_star = mngr.re_builder().star(zero);
 
     let as_str = i.to_string();
-    let as_str_re = mngr.re_builder().word(as_str.into());
+    let as_str_re = mngr.re_builder().to_re(as_str.into());
     // 0*as_str
     mngr.re_builder().concat(smallvec![zero_star, as_str_re])
 }

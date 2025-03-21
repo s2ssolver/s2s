@@ -110,9 +110,9 @@ impl ToSmt for NodeKind {
         match self {
             NodeKind::Bool(true) => "true".to_string(),
             NodeKind::Bool(false) => "false".to_string(),
-            NodeKind::String(s) => format!("\"{}\"", escape_smt_string(s)),
+            NodeKind::String(s) => format!("\"{}\"", s),
             NodeKind::Int(i) => i.to_string(),
-            NodeKind::Regex(regex) => regulaer::parse::to_smt(regex),
+            NodeKind::Regex(regex) => format!("{}", regex),
             NodeKind::Variable(rc) => escapce_smt_identifier_name(rc.name()),
             NodeKind::Or => "or".to_string(),
             NodeKind::And => "and".to_string(),
@@ -143,19 +143,6 @@ impl ToSmt for NodeKind {
             NodeKind::Literal(_) => unreachable!(),
         }
     }
-}
-
-const SMT_MAX_CHAR: u32 = 0x2FFFF;
-fn escape_smt_string(s: &str) -> String {
-    s.chars()
-        .map(|c| {
-            if c as u32 > SMT_MAX_CHAR {
-                c.escape_unicode().to_string()
-            } else {
-                c.to_string()
-            }
-        })
-        .collect()
 }
 
 fn escapce_smt_identifier_name(name: &str) -> String {

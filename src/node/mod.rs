@@ -16,7 +16,7 @@ pub mod utils;
 use canonical::Literal;
 use indexmap::IndexSet;
 pub use manager::NodeManager;
-use regulaer::re::Regex;
+use smtlib_str::{re::Regex, SmtString};
 pub use subs::VarSubstitution;
 
 pub type Id = usize;
@@ -118,7 +118,7 @@ pub enum NodeKind {
     /// Constant Boolean
     Bool(bool),
     /// Constant String
-    String(String),
+    String(SmtString),
     /// Constant integer
     Int(i64),
     /// Regular expression (using the regulaer crate)
@@ -405,7 +405,7 @@ impl OwnedNode {
         }
     }
 
-    pub fn as_str_const(&self) -> Option<&str> {
+    pub fn as_str_const(&self) -> Option<&SmtString> {
         if let NodeKind::String(s) = self.kind() {
             Some(s)
         } else {
@@ -572,7 +572,7 @@ impl Display for NodeKind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             NodeKind::Bool(b) => write!(f, "{}", b),
-            NodeKind::String(s) => write!(f, "\"{}\"", s.escape_default()),
+            NodeKind::String(s) => write!(f, "\"{}\"", s),
             NodeKind::Int(i) => write!(f, "{}", i),
             NodeKind::Regex(regex) => write!(f, "{}", regex),
             NodeKind::Variable(v) => write!(f, "{}", v),

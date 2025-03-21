@@ -3,6 +3,8 @@
 
 use std::{cmp::Ordering, rc::Rc};
 
+use smtlib_str::SmtString;
+
 use crate::{
     domain::Domain,
     encode::{domain::DomainEncoding, EncodingError, EncodingResult, LiteralEncoder, LAMBDA},
@@ -12,13 +14,13 @@ use crate::{
 
 pub struct AssignmentEncoder {
     lhs: Rc<Variable>,
-    rhs: Vec<char>,
+    rhs: SmtString,
     last_bound: Option<usize>,
     sign: bool,
 }
 
 impl AssignmentEncoder {
-    pub fn new(lhs: Rc<Variable>, rhs: Vec<char>, sign: bool) -> Self {
+    pub fn new(lhs: Rc<Variable>, rhs: SmtString, sign: bool) -> Self {
         Self {
             lhs,
             rhs,

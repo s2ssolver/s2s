@@ -167,7 +167,7 @@ pub fn const_string_length(node: &Node, mngr: &mut NodeManager) -> Option<Node> 
 
         match child.kind() {
             NodeKind::String(s) => {
-                let len = s.chars().count() as i64;
+                let len = s.len() as i64;
                 Some(mngr.const_int(len))
             }
             _ => None,
@@ -231,7 +231,7 @@ pub fn length_trivial(node: &Node, mngr: &mut NodeManager) -> Option<Node> {
                         let (var, _) = ts.coeffs.iter().next().unwrap();
                         debug_assert!(*var.kind() == NodeKind::Length);
                         let ch = var.children().first().unwrap();
-                        let epsi = mngr.const_str("");
+                        let epsi = mngr.empty_string();
                         return Some(mngr.eq(ch.clone(), epsi));
                     }
                     NodeKind::Eq if c < 0 && coeffs_positive => {
@@ -441,7 +441,7 @@ fn is_const_int(node: &Node) -> Option<i64> {
         NodeKind::Length => {
             let child = node.children().first().unwrap();
             match child.kind() {
-                NodeKind::String(s) => Some(s.chars().count() as i64),
+                NodeKind::String(s) => Some(s.len() as i64),
                 _ => None,
             }
         }

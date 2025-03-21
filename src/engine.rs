@@ -1,7 +1,7 @@
 use std::time::Instant;
 
 use indexmap::IndexSet;
-use regulaer::re::{ReOp, Regex};
+use smtlib_str::re::{ReOp, Regex};
 
 use crate::{
     abstraction::{build_abstraction, LitDefinition},
@@ -380,8 +380,6 @@ impl Engine {
                 AtomKind::InRe(inre) if lit.polarity() => {
                     let re = inre.re();
                     if let Some(s) = re_smallest(re) {
-                        // |x| >= s
-
                         let lc = LinearConstraint::new(
                             LinearArithTerm::from_var(inre.lhs().clone()),
                             ArithOperator::Geq,
@@ -390,7 +388,6 @@ impl Engine {
                         refiner.add_linear(lc);
                     }
                     if let Some(s) = re_longest(re) {
-                        // |x| <= s
                         let lc = LinearConstraint::new(
                             LinearArithTerm::from_var(inre.lhs().clone()),
                             ArithOperator::Leq,
@@ -507,8 +504,8 @@ fn re_longest(re: &Regex) -> Option<usize> {
                 Some(max as usize)
             }
         }
-        ReOp::Star(_) => None,
-        ReOp::Opt(r) | ReOp::Plus(r) => re_longest(r),
+        ReOp::Star(_) | ReOp::Plus(_) => None,
+        ReOp::Opt(r) => re_longest(r),
         ReOp::Pow(_, 0) | ReOp::Loop(_, _, 0) => Some(0),
         ReOp::Pow(r, p) => re_longest(r).map(|s| s * (*p as usize)),
         ReOp::Loop(r, l, u) if l <= u => re_longest(r).map(|s| s * (*u as usize)),

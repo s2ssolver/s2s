@@ -1,3 +1,5 @@
+use smtlib_str::SmtChar;
+
 use crate::node::{
     utils::{reverse, PatternIterator, Symbol},
     NodeKind, Sorted,
@@ -42,7 +44,7 @@ impl SimpRule for LevisWeq {
 
 fn levis_step(lhs: &Node, rhs: &Node, mngr: &mut NodeManager) -> Option<VarSubstitution> {
     /// Helper function to check if we have "a\beta = Y\alpha" or "Y\alpha = a\beta" and Y cannot be set to the empty string
-    fn not_empty(constant: char, pattern: &mut PatternIterator) -> bool {
+    fn not_empty(constant: SmtChar, pattern: &mut PatternIterator) -> bool {
         let scnd = pattern.next();
         match scnd {
             Some(Symbol::Const(c)) => c != constant,
@@ -57,14 +59,14 @@ fn levis_step(lhs: &Node, rhs: &Node, mngr: &mut NodeManager) -> Option<VarSubst
     match (lhs.next(), rhs.next()) {
         /* One side is constant, the other variable */
         (Some(Symbol::Const(c)), Some(Symbol::Variable(v))) if not_empty(c, &mut rhs) => {
-            let prefix = mngr.const_str(&c.to_string());
+            let prefix = mngr.const_string(c.into());
             let v_node = mngr.var(v.clone());
             let subs = mngr.concat(vec![prefix, v_node.clone()]);
             substitution.add(v, subs);
             Some(substitution)
         }
         (Some(Symbol::Variable(v)), Some(Symbol::Const(c))) if not_empty(c, &mut lhs) => {
-            let prefix = mngr.const_str(&c.to_string());
+            let prefix = mngr.const_string(c.into());
             let v_node = mngr.var(v.clone());
             let subs = mngr.concat(vec![prefix, v_node.clone()]);
             substitution.add(v.clone(), subs);
@@ -90,10 +92,8 @@ mod tests {
         assert!(res.is_some());
         let res = res.unwrap();
 
-        println!("eq {}", eq);
-        println!("{}", res.substitution());
         let got = res.substitution().apply(&eq, &mut mngr);
-        println!("got {}", got);
+
         let expected = parse_equation("bYaX", "bX", &mut mngr);
         assert_eq!(got, expected, "\nExpected: {}, \nGot: {}", expected, got);
     }
@@ -108,10 +108,7 @@ mod tests {
         assert!(res.is_some());
         let res = res.unwrap();
 
-        println!("eq {}", eq);
-        println!("{}", res.substitution());
         let got = res.substitution().apply(&eq, &mut mngr);
-        println!("got {}", got);
         let expected = parse_equation("bX", "bYaX", &mut mngr);
         assert_eq!(got, expected, "\nExpected: {}, \nGot: {}", expected, got);
     }

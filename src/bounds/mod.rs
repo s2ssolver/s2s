@@ -272,18 +272,21 @@ impl BoundInferer {
                         self.conflict = true;
                         return None;
                     } else {
-                        if let Some(max) = nfa.longest() {
+                        if let Some(max) = nfa.longest_path() {
                             // This is none if the nfa contains cycles
                             // Add "|v| <= max" to the bounds
                             let lhs = LinearArithTerm::from_var(v.clone());
                             let lc = LinearConstraint::new(lhs, ArithOperator::Leq, max as i64);
                             self.lin.add_linear(lc);
                         }
-                        if let Some(min) = nfa.shortest() {
+                        if let Some(min) = nfa.shortest_path() {
                             // Add "|v| >= max" to the bounds
                             let lhs = LinearArithTerm::from_var(v.clone());
                             let lc = LinearConstraint::new(lhs, ArithOperator::Geq, min as i64);
                             self.lin.add_linear(lc);
+                        } else {
+                            // The automaton is empty, there is no solution
+                            self.conflict = true;
                         }
                     }
                 }
@@ -369,7 +372,6 @@ fn lc_to_reg(lc: &LinearConstraint, mngr: &mut NodeManager) -> Option<RegularCon
                         builder.concat(smallvec![lower, builder.all()])
                     }
                 };
-                println!("Rewriting {} to {}", lc, re);
                 return Some(RegularConstraint::new(x.clone(), re));
             }
             _ => (),

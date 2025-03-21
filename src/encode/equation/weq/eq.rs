@@ -106,6 +106,8 @@ impl LiteralEncoder for WordEquationEncoder {
 
 #[cfg(test)]
 mod tests {
+    use std::rc::Rc;
+
     use crate::{
         alphabet::Alphabet,
         domain::Domain,
@@ -124,6 +126,7 @@ mod tests {
 
     fn solve_with_bounds(eq: &WordEquation, bounds: &[usize]) -> Option<Assignment> {
         let alphabet: Alphabet = Alphabet::from_iter(eq.constants().iter().copied());
+        let alphabet = Rc::new(alphabet);
         let mut domain = DomainEncoder::new(alphabet);
 
         let mut cadical: cadical::Solver = cadical::Solver::default();

@@ -5,7 +5,8 @@ use std::{
 };
 
 use indexmap::IndexSet;
-use regulaer::re::Regex;
+use smtlib_str::re::Regex;
+use smtlib_str::{SmtChar, SmtString};
 
 use crate::node::{NodeManager, Sort, Sorted, Variable};
 use smallvec::smallvec;
@@ -14,7 +15,7 @@ use smallvec::smallvec;
 #[derive(Clone, Debug, PartialEq, Hash, Eq)]
 pub enum Symbol {
     /// A constant character
-    Constant(char),
+    Constant(SmtChar),
     /// A variable
     Variable(Rc<Variable>),
 }
@@ -44,7 +45,7 @@ impl Symbol {
 impl Display for Symbol {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            Symbol::Constant(c) => write!(f, "{}", c.escape_default()),
+            Symbol::Constant(c) => write!(f, "{}", c),
             Symbol::Variable(v) => write!(f, "{}", v),
         }
     }
@@ -68,10 +69,10 @@ impl Pattern {
     }
 
     /// Creates a new pattern from a constant word, given as a string.
-    pub fn constant(word: &str) -> Self {
+    pub fn constant(word: SmtString) -> Self {
         let mut symbols = vec![];
-        for c in word.chars() {
-            symbols.push(Symbol::Constant(c));
+        for c in word.iter() {
+            symbols.push(Symbol::Constant(*c));
         }
         Self::new(symbols)
     }
@@ -90,7 +91,7 @@ impl Pattern {
     }
 
     /// Returns the alphabet of the pattern, i.e. the set of constant characters that occur in the pattern.
-    pub fn constants(&self) -> IndexSet<char> {
+    pub fn constants(&self) -> IndexSet<SmtChar> {
         let mut alphabet = IndexSet::new();
         for symbol in &self.symbols {
             if let Symbol::Constant(c) = symbol {
@@ -192,7 +193,7 @@ impl Pattern {
 
     pub fn push_word(&mut self, word: &str) -> &mut Self {
         for c in word.chars() {
-            self.push(Symbol::Constant(c));
+            self.push(Symbol::Constant(c.into()));
         }
         self
     }
@@ -237,8 +238,8 @@ impl Pattern {
 
     /// Returns the pattern as a constant word, if it is a constant word.
     /// Returns `None` if the pattern contains any variables.
-    pub fn as_constant(&self) -> Option<String> {
-        let mut res = String::new();
+    pub fn as_constant(&self) -> Option<SmtString> {
+        let mut res = SmtString::empty();
         for symbol in &self.symbols {
             match symbol {
                 Symbol::Constant(c) => res.push(*c),
@@ -249,8 +250,8 @@ impl Pattern {
     }
 
     /// Returns the (longest) prefix of the pattern that is constant.
-    pub fn constant_prefix(&self) -> String {
-        let mut res = String::new();
+    pub fn constant_prefix(&self) -> SmtString {
+        let mut res = SmtString::empty();
         for symbol in &self.symbols {
             match symbol {
                 Symbol::Constant(c) => res.push(*c),
@@ -261,15 +262,15 @@ impl Pattern {
     }
 
     /// Returns the (longest) suffix of the pattern that is constant.
-    pub fn constant_suffix(&self) -> String {
-        let mut res = String::new();
+    pub fn constant_suffix(&self) -> SmtString {
+        let mut res = SmtString::empty();
         for symbol in self.symbols.iter().rev() {
             match symbol {
                 Symbol::Constant(c) => res.push(*c),
                 _ => break,
             }
         }
-        res.chars().rev().collect()
+        res.reversed()
     }
 
     /// Returns true iff the pattern contains at least one constant word
@@ -356,7 +357,10 @@ impl From<Vec<Symbol>> for Pattern {
 
 impl FromIterator<char> for Pattern {
     fn from_iter<T: IntoIterator<Item = char>>(iter: T) -> Self {
-        let symbols = iter.into_iter().map(Symbol::Constant).collect();
+        let symbols = iter
+            .into_iter()
+            .map(|c| Symbol::Constant(c.into()))
+            .collect();
         Self::new(symbols)
     }
 }
@@ -372,16 +376,12 @@ impl IntoIterator for Pattern {
 
 impl Display for Pattern {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        let mut word = String::new();
+        let mut word = SmtString::empty();
         let mut first = true;
         for symbol in &self.symbols {
             match symbol {
                 Symbol::Constant(c) => {
-                    if c.is_ascii() && !c.is_ascii_control() {
-                        word.push(*c);
-                    } else {
-                        word.push_str(c.escape_unicode().to_string().as_str())
-                    }
+                    word.push(*c);
                 }
                 Symbol::Variable(variable) => {
                     if !word.is_empty() {
@@ -413,9 +413,9 @@ impl Display for Pattern {
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub enum WordEquation {
-    ConstantEquality(String, String),
+    ConstantEquality(SmtString, SmtString),
     VarEquality(Rc<Variable>, Rc<Variable>),
-    VarAssignment(Rc<Variable>, String),
+    VarAssignment(Rc<Variable>, SmtString),
     General(Pattern, Pattern),
 }
 
@@ -448,11 +448,11 @@ impl WordEquation {
         } else if lhs.is_variable() && rhs.is_constant() {
             // Left side variable and right side constants => Assignment
             let lhs = lhs.as_variable().unwrap();
-            let rhs = rhs.as_constant().unwrap().chars().collect();
+            let rhs = rhs.as_constant().unwrap();
             WordEquation::VarAssignment(lhs, rhs)
         } else if lhs.is_constant() && rhs.is_variable() {
             // Symmetric case
-            let lhs = lhs.as_constant().unwrap().chars().collect();
+            let lhs = lhs.as_constant().unwrap();
             let rhs = rhs.as_variable().unwrap();
             WordEquation::VarAssignment(rhs, lhs)
         } else {
@@ -464,7 +464,7 @@ impl WordEquation {
     /// Returns the left-hand side of the word equation.
     pub fn lhs(&self) -> Pattern {
         match self {
-            WordEquation::ConstantEquality(lhs, _) => Pattern::constant(lhs),
+            WordEquation::ConstantEquality(lhs, _) => Pattern::constant(lhs.clone()),
             WordEquation::VarEquality(lhs, _) | WordEquation::VarAssignment(lhs, _) => {
                 Pattern::variable(lhs.clone())
             }
@@ -476,7 +476,7 @@ impl WordEquation {
     pub fn rhs(&self) -> Pattern {
         match self {
             WordEquation::ConstantEquality(_, rhs) | WordEquation::VarAssignment(_, rhs) => {
-                Pattern::constant(rhs)
+                Pattern::constant(rhs.clone())
             }
             WordEquation::VarEquality(_, rhs) => Pattern::variable(rhs.clone()),
             WordEquation::General(_, rhs) => rhs.clone(),
@@ -491,7 +491,7 @@ impl WordEquation {
     }
 
     /// Returns the set of constants that occur in the word equation.
-    pub fn constants(&self) -> IndexSet<char> {
+    pub fn constants(&self) -> IndexSet<SmtChar> {
         let mut consts = self.lhs().constants();
         consts.extend(self.rhs().constants());
         consts
@@ -550,24 +550,24 @@ pub enum FactorConstraintType {
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub struct RegularFactorConstraint {
     of: Rc<Variable>,
-    rhs: String,
+    rhs: SmtString,
     typ: FactorConstraintType,
 }
 impl RegularFactorConstraint {
     /// Creates a new prefix of constraint from two patterns.
-    fn new(lhs: Rc<Variable>, rhs: String, typ: FactorConstraintType) -> Self {
+    fn new(lhs: Rc<Variable>, rhs: SmtString, typ: FactorConstraintType) -> Self {
         Self { of: lhs, rhs, typ }
     }
 
-    pub fn prefix(lhs: Rc<Variable>, rhs: String) -> Self {
+    pub fn prefix(lhs: Rc<Variable>, rhs: SmtString) -> Self {
         Self::new(lhs, rhs, FactorConstraintType::Prefix)
     }
 
-    pub fn suffix(lhs: Rc<Variable>, rhs: String) -> Self {
+    pub fn suffix(lhs: Rc<Variable>, rhs: SmtString) -> Self {
         Self::new(lhs, rhs, FactorConstraintType::Suffix)
     }
 
-    pub fn contains(lhs: Rc<Variable>, rhs: String) -> Self {
+    pub fn contains(lhs: Rc<Variable>, rhs: SmtString) -> Self {
         Self::new(lhs, rhs, FactorConstraintType::Contains)
     }
 
@@ -577,7 +577,7 @@ impl RegularFactorConstraint {
     }
 
     /// Returns the pattern of the prefix of constraint.
-    pub fn rhs(&self) -> &String {
+    pub fn rhs(&self) -> &SmtString {
         &self.rhs
     }
 
@@ -587,7 +587,7 @@ impl RegularFactorConstraint {
 
     pub fn as_regex(&self, mngr: &mut NodeManager) -> Regex {
         let all = mngr.re_builder().all();
-        let w = mngr.re_builder().word(self.rhs.clone().into());
+        let w = mngr.re_builder().to_re(self.rhs.clone());
         match self.typ {
             FactorConstraintType::Prefix => mngr.re_builder().concat(smallvec![w, all]),
             FactorConstraintType::Suffix => mngr.re_builder().concat(smallvec![all, w]),

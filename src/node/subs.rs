@@ -89,7 +89,7 @@ impl VarSubstitution {
             } else if let Some(false) = value.as_bool() {
                 mngr.ffalse()
             } else if let Some(str) = value.as_string() {
-                mngr.const_str(str)
+                mngr.const_string(str.clone())
             } else if let Some(int) = value.as_int() {
                 mngr.const_int(int)
             } else {

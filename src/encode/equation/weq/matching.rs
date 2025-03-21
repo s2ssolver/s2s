@@ -1,6 +1,7 @@
 use std::{fmt::Display, rc::Rc};
 
 use indexmap::IndexMap;
+use smtlib_str::SmtString;
 
 use crate::{
     domain::Domain,
@@ -23,14 +24,14 @@ enum PatternSegment {
     /// A string variable
     Variable(Rc<Variable>),
     /// A string constant
-    Word(Vec<char>),
+    Word(SmtString),
 }
 
 impl Display for PatternSegment {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             PatternSegment::Variable(v) => write!(f, "{}", v),
-            PatternSegment::Word(w) => write!(f, "{}", w.iter().collect::<String>()),
+            PatternSegment::Word(w) => write!(f, "{}", w),
         }
     }
 }
@@ -45,7 +46,7 @@ impl SegmentedPattern {
     /// Creates a new segmented pattern from the given pattern.
     fn new(pattern: Pattern) -> Self {
         let mut segments = Vec::new();
-        let mut w = vec![];
+        let mut w = SmtString::empty();
         for pos in pattern.symbols() {
             match pos {
                 Symbol::Constant(c) => {
@@ -53,8 +54,8 @@ impl SegmentedPattern {
                 }
                 Symbol::Variable(v) => {
                     if !w.is_empty() {
-                        segments.push(PatternSegment::Word(w));
-                        w = vec![]
+                        segments.push(PatternSegment::Word(w.clone()));
+                        w.clear();
                     }
                     segments.push(PatternSegment::Variable(v.clone()));
                 }
@@ -64,7 +65,7 @@ impl SegmentedPattern {
             segments.push(PatternSegment::Word(w));
         }
         if segments.is_empty() {
-            segments.push(PatternSegment::Word(vec![]));
+            segments.push(PatternSegment::Word(SmtString::empty()));
         }
         Self { segments }
     }
@@ -268,11 +269,11 @@ impl PatternMatchingEncoder {
     fn encode_match_const(
         &self,
         i: usize,
-        w: &[char],
+        w: &SmtString,
         word: &WordEncoding,
         res: &mut EncodingResult,
     ) {
-        debug_assert_eq!(*self.pattern.get(i), PatternSegment::Word(w.to_vec()));
+        debug_assert_eq!(*self.pattern.get(i), PatternSegment::Word(w.clone()));
 
         // We need to consider all start positions from (last length) - (|w| + const_after(i)) to the end of the word
         // subtracting (|w| + const_after(i)) is required because these position where unusable in the last iteration, as they would exceed the word length (and were disabled by assumptions)

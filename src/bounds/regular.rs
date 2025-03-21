@@ -1,7 +1,11 @@
 use std::rc::Rc;
 
 use indexmap::{IndexMap, IndexSet};
-use regulaer::{automaton::NFA, re::Regex};
+use smtlib_str::{
+    automata::{inter::intersect, NFA},
+    re::Regex,
+    SmtString,
+};
 
 use crate::{
     interval::Interval,
@@ -51,7 +55,7 @@ impl RegularBoundsInferer {
             // TODO: Cache intersection, they are likely to be used in other inferrence steps too.
             match self.intersections.entry(var) {
                 indexmap::map::Entry::Occupied(o) => {
-                    let mut inter = o.get().intersect(&nfa).unwrap();
+                    let inter = intersect(o.get(), nfa.as_ref()).trim();
                     inter.trim();
                     if inter.is_empty() {
                         self.conflict = true;
@@ -68,12 +72,12 @@ impl RegularBoundsInferer {
     pub fn add_const_eq(
         &mut self,
         var: Rc<Variable>,
-        word: String,
+        word: SmtString,
         pol: bool,
         mngr: &mut NodeManager,
     ) {
         let builder = mngr.re_builder();
-        let re = builder.word(word.into());
+        let re = builder.to_re(word.into());
         self.add_reg(var, re, pol, mngr);
     }
 
@@ -185,8 +189,9 @@ impl InferringStrategy for RegularBoundsInferer {
                 self.conflict = true;
                 return None;
             }
+
             let upper = nfa.num_states().saturating_sub(1);
-            let lower = nfa.shortest().unwrap_or(0);
+            let lower = nfa.shortest_path().unwrap_or(0);
             // TODO: use shortest path to find lower bound.
             bounds.set(v.clone(), Interval::new(lower, upper));
         }
@@ -247,7 +252,7 @@ mod tests {
     fn test_infer_single_re_finite() {
         let mut mngr = NodeManager::default();
         let rebuilder = mngr.re_builder();
-        let re = regulaer::parse::parse_rust("^aa$", rebuilder, true).unwrap();
+        let re = rebuilder.to_re("aa".into());
         let v = mngr.temp_var(Sort::String);
 
         let mut inferer = RegularBoundsInferer::default();
@@ -261,7 +266,9 @@ mod tests {
     fn test_infer_single_re_star() {
         let mut mngr = NodeManager::default();
         let rebuilder = mngr.re_builder();
-        let re = regulaer::parse::parse_rust("^(aa)*$", rebuilder, true).unwrap();
+        let aa = rebuilder.to_re("aa".into());
+        let re = rebuilder.star(aa);
+
         let v = mngr.temp_var(Sort::String);
 
         let mut inferer = RegularBoundsInferer::default();
@@ -275,8 +282,12 @@ mod tests {
     fn test_infer_intersection() {
         let mut mngr = NodeManager::default();
         let rebuilder = mngr.re_builder();
-        let re1 = regulaer::parse::parse_rust("^(aa)*$", rebuilder, true).unwrap();
-        let re2 = regulaer::parse::parse_rust("^(aaa)*$", rebuilder, true).unwrap();
+
+        let aa = rebuilder.to_re("aa".into());
+        let re1 = rebuilder.star(aa.clone());
+        let aaa = rebuilder.to_re("aaa".into());
+        let re2 = rebuilder.star(aaa.clone());
+
         let v = mngr.temp_var(Sort::String);
 
         let mut inferer = RegularBoundsInferer::default();
@@ -292,11 +303,15 @@ mod tests {
     fn test_infer_intersection_comp() {
         let mut mngr = NodeManager::default();
         let rebuilder = mngr.re_builder();
-        let re1 = regulaer::parse::parse_rust("^(aaa)*$", rebuilder, true).unwrap();
-        let re2 = regulaer::parse::parse_rust("^aaa$", rebuilder, true).unwrap();
+
+        let re2 = rebuilder.to_re("aaa".into());
+        let re1 = rebuilder.star(re2.clone());
+
         let v = mngr.temp_var(Sort::String);
 
         let mut inferer = RegularBoundsInferer::default();
+        // aaa^* but not aaa
+
         inferer.add_reg(v.clone(), re1, true, &mut mngr);
         inferer.add_reg(v.clone(), re2, false, &mut mngr);
 
@@ -310,8 +325,8 @@ mod tests {
         // (aaa)* and not(aaa) and not epsilon ==> smallest is aaaaaa, upper bound is 6
         let mut mngr = NodeManager::default();
         let rebuilder = mngr.re_builder();
-        let re1 = regulaer::parse::parse_rust("^(aaa)*$", rebuilder, true).unwrap();
-        let re2 = regulaer::parse::parse_rust("^aaa$", rebuilder, true).unwrap();
+        let re2 = rebuilder.to_re("aaa".into());
+        let re1 = rebuilder.star(re2.clone());
         let epsi = rebuilder.epsilon();
         let v = mngr.temp_var(Sort::String);
 
@@ -328,8 +343,11 @@ mod tests {
     fn test_infer_intersection_empty() {
         let mut mngr = NodeManager::default();
         let rebuilder = mngr.re_builder();
-        let re1 = regulaer::parse::parse_rust("^aaaa$", rebuilder, true).unwrap();
-        let re2 = regulaer::parse::parse_rust("^(aa)*$", rebuilder, true).unwrap();
+
+        let re1 = rebuilder.to_re("aaaa".into());
+        let aa = rebuilder.to_re("aa".into());
+        let re2 = rebuilder.star(aa.clone());
+
         let v = mngr.temp_var(Sort::String);
 
         let mut inferer = RegularBoundsInferer::default();

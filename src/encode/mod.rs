@@ -29,9 +29,12 @@ mod re;
 mod linear;
 
 use indexmap::IndexSet;
+use smtlib_str::SmtChar;
 
 /// The character used to represent unused positions
-const LAMBDA: char = char::REPLACEMENT_CHARACTER;
+/// We use the maximum character allowed by the SMT-LIB standard
+/// TODO: This is unsound if this character is used in the input.
+const LAMBDA: SmtChar = SmtChar::MAX;
 
 pub enum EncodingResult {
     /// The CNF encoding of the problem

@@ -3,6 +3,7 @@
 use std::{fmt::Display, rc::Rc};
 
 use indexmap::IndexMap;
+use smtlib_str::SmtString;
 
 use crate::node::{Node, NodeKind, Sort, Sorted, VarSubstitution, Variable};
 
@@ -16,13 +17,13 @@ use super::{
 /// Based on the sort of the variable, the value can be a string, an integer, or a boolean.
 #[derive(Debug, Clone)]
 pub enum AssignedValue {
-    String(String),
+    String(SmtString),
     Int(i64),
     Bool(bool),
 }
 
 impl AssignedValue {
-    pub fn as_string(&self) -> Option<&String> {
+    pub fn as_string(&self) -> Option<&SmtString> {
         match self {
             Self::String(value) => Some(value),
             _ => None,
@@ -44,8 +45,8 @@ impl AssignedValue {
     }
 }
 
-impl From<String> for AssignedValue {
-    fn from(value: String) -> Self {
+impl From<SmtString> for AssignedValue {
+    fn from(value: SmtString) -> Self {
         Self::String(value)
     }
 }
@@ -74,7 +75,7 @@ impl From<bool> for AssignedValue {
     }
 }
 
-impl From<AssignedValue> for String {
+impl From<AssignedValue> for SmtString {
     fn from(val: AssignedValue) -> Self {
         val.as_string().expect("Value is not a string").clone()
     }
@@ -134,7 +135,7 @@ impl Assignment {
     }
 
     /// Returns the value of a variable in the assignment.
-    pub fn get_str(&self, variable: &Variable) -> Option<&String> {
+    pub fn get_str(&self, variable: &Variable) -> Option<&SmtString> {
         self.values.get(variable).and_then(|value| match value {
             AssignedValue::String(value) => Some(value),
             _ => None,
@@ -284,14 +285,14 @@ impl Assignment {
         }
     }
 
-    fn inst_string_term(&self, term: &Node) -> Option<String> {
+    fn inst_string_term(&self, term: &Node) -> Option<SmtString> {
         let t = match term.kind() {
             NodeKind::String(s) => Some(s.clone()),
             NodeKind::Variable(v) => self.get_str(v.as_ref()).cloned(),
             NodeKind::Concat => {
-                let mut result = String::new();
+                let mut result = SmtString::empty();
                 for child in term.children() {
-                    result.push_str(&self.inst_string_term(child)?);
+                    result.append(&self.inst_string_term(child)?);
                 }
                 Some(result)
             }
@@ -299,14 +300,14 @@ impl Assignment {
                 let mut result = self.inst_string_term(&term.children()[0])?;
                 let from = self.inst_string_term(&term.children()[1])?;
                 let to = self.inst_string_term(&term.children()[2])?;
-                result = result.replacen(&from, &to, 1);
+                result = result.replace(&from, &to);
                 Some(result)
             }
             NodeKind::ReplaceAll => {
                 let mut result = self.inst_string_term(&term.children()[0])?;
                 let from = self.inst_string_term(&term.children()[1])?;
                 let to = self.inst_string_term(&term.children()[2])?;
-                result = result.replace(&from, &to);
+                result = result.replace_all(&from, &to);
                 Some(result)
             }
             NodeKind::SubStr => {
@@ -316,12 +317,12 @@ impl Assignment {
 
                 let len = self.inst_int_term(&term.children()[2])? as i64;
 
-                let substr = if 0 <= start && start <= s.chars().count() as i64 && 0 <= len {
+                let substr = if 0 <= start && start <= s.len() as i64 && 0 <= len {
                     let start = start as usize;
                     let len = len as usize;
-                    s.chars().skip(start).take(len).collect()
+                    s.drop(start).take(len)
                 } else {
-                    String::new()
+                    SmtString::empty()
                 };
 
                 Some(substr)
@@ -331,21 +332,21 @@ impl Assignment {
                 let i = self.inst_int_term(&term.children()[1])?;
 
                 if i < 0 {
-                    return Some(String::new());
+                    return Some(SmtString::empty());
                 }
                 let i = i as usize;
 
-                match s.chars().nth(i).map(|c| c.to_string()) {
-                    Some(c) => Some(c),
-                    None => Some(String::new()),
+                match s.nth(i) {
+                    Some(c) => Some(SmtString::from(c)),
+                    None => Some(SmtString::empty()),
                 }
             }
             NodeKind::FromInt => {
                 let i = self.inst_int_term(&term.children()[0])?;
                 if i < 0 {
-                    return Some(String::new());
+                    return Some(SmtString::empty());
                 } else {
-                    Some(i.to_string()) // TODO: Double check if this is correct
+                    Some(i.to_string().into()) // TODO: Double check if this is correct
                 }
             }
             _ => None,
@@ -384,12 +385,13 @@ impl Assignment {
             }
             NodeKind::Length => {
                 let s = self.inst_string_term(&term.children()[0])?;
-                Some(s.chars().count() as i64)
+                Some(s.len() as i64)
             }
             NodeKind::ToInt => {
                 let s = self.inst_string_term(&term.children()[0])?;
                 // convet to positive int base 10, or -1 if not possible
-                match u64::from_str_radix(&s, 10) {
+                // todo: double check if the conversion is correct
+                match u64::from_str_radix(&s.to_string(), 10) {
                     Ok(i) => Some(i as i64),
                     Err(_) => Some(-1),
                 }
@@ -461,12 +463,12 @@ impl Assignment {
         Some(r)
     }
 
-    fn apply_pattern(&self, pattern: &Pattern) -> Option<String> {
-        let mut result = String::new();
+    fn apply_pattern(&self, pattern: &Pattern) -> Option<SmtString> {
+        let mut result = SmtString::empty();
         for sym in pattern.symbols() {
             match sym {
                 Symbol::Constant(c) => result.push(*c),
-                Symbol::Variable(rc) => result.push_str(self.get_str(rc.as_ref())?),
+                Symbol::Variable(rc) => result.append(self.get_str(rc.as_ref())?),
             }
         }
         Some(result)
@@ -479,9 +481,7 @@ impl Assignment {
                 LinearSummand::Mult(v, s) => {
                     let value = match v {
                         VariableTerm::Int(vv) => self.get_int(vv.as_ref()),
-                        VariableTerm::Len(vv) => {
-                            self.get_str(vv.as_ref()).map(|s| s.chars().count() as i64)
-                        }
+                        VariableTerm::Len(vv) => self.get_str(vv.as_ref()).map(|s| s.len() as i64),
                     };
                     if let Some(value) = value {
                         res += value * s;
@@ -515,7 +515,7 @@ impl From<VarSubstitution> for Assignment {
 impl Display for AssignedValue {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::String(value) => write!(f, "{}", value.escape_default()),
+            Self::String(value) => write!(f, "{}", value),
             Self::Int(value) => write!(f, "{}", value),
             Self::Bool(value) => write!(f, "{}", value),
         }

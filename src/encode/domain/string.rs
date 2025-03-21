@@ -2,6 +2,7 @@ use std::{collections::HashMap, rc::Rc};
 
 use indexmap::IndexMap;
 use itertools::Itertools;
+use smtlib_str::{SmtChar, SmtString};
 
 use crate::{
     alphabet::Alphabet,
@@ -18,7 +19,7 @@ use super::DomainEncoding;
 
 #[derive(Clone, Debug)]
 pub struct StringDomain {
-    substitutions: HashMap<(Rc<Variable>, usize, char), PVar>,
+    substitutions: HashMap<(Rc<Variable>, usize, SmtChar), PVar>,
     lengths: IndexMap<(Variable, usize), PVar>,
 }
 
@@ -30,7 +31,9 @@ impl StringDomain {
         }
     }
 
-    pub fn iter_substitutions(&self) -> impl Iterator<Item = (&Rc<Variable>, usize, char, &PVar)> {
+    pub fn iter_substitutions(
+        &self,
+    ) -> impl Iterator<Item = (&Rc<Variable>, usize, SmtChar, &PVar)> {
         self.substitutions
             .iter()
             .map(|((var, pos, chr), v)| (var, *pos, *chr, v))
@@ -41,7 +44,7 @@ impl StringDomain {
         self.lengths.iter().map(|((var, len), v)| (var, *len, v))
     }
 
-    pub fn get_sub(&self, var: &Rc<Variable>, pos: usize, chr: char) -> Option<PVar> {
+    pub fn get_sub(&self, var: &Rc<Variable>, pos: usize, chr: SmtChar) -> Option<PVar> {
         assert!(
             var.sort() == Sort::String,
             "Variable {} is not a string",
@@ -62,7 +65,7 @@ impl StringDomain {
     }
 
     #[allow(dead_code)]
-    pub(super) fn get_sub_lit(&self, var: &Rc<Variable>, pos: usize, chr: char) -> Option<PLit> {
+    pub(super) fn get_sub_lit(&self, var: &Rc<Variable>, pos: usize, chr: SmtChar) -> Option<PLit> {
         self.get_sub(var, pos, chr).map(plit)
     }
 
@@ -70,7 +73,7 @@ impl StringDomain {
         &mut self,
         var: &Rc<Variable>,
         pos: usize,
-        chr: char,
+        chr: SmtChar,
         v: PVar,
     ) {
         assert!(
@@ -94,7 +97,7 @@ impl StringDomain {
     }
 
     pub(crate) fn get_model(&self, solver: &cadical::Solver, bounds: &Domain) -> Assignment {
-        let mut subs: HashMap<Rc<Variable>, Vec<Option<char>>> = HashMap::new();
+        let mut subs: HashMap<Rc<Variable>, Vec<Option<SmtChar>>> = HashMap::new();
         // initialize substitutions
         let vars = self.iter_substitutions().map(|(var, _, _, _)| var).unique();
         for var in vars {
@@ -121,7 +124,7 @@ impl StringDomain {
         }
         let mut model = Assignment::default();
         for (var, sub) in subs.into_iter() {
-            let mut s: Vec<char> = vec![];
+            let mut s: Vec<SmtChar> = vec![];
             for c in sub.iter() {
                 match c {
                     Some(LAMBDA) => {}
@@ -129,7 +132,7 @@ impl StringDomain {
                     None => panic!("No substitution for {} at position {}", var, s.len()),
                 }
             }
-            let s = s.into_iter().collect::<String>();
+            let s = s.into_iter().collect::<SmtString>();
             model.assign(var, s);
         }
         model
@@ -138,13 +141,13 @@ impl StringDomain {
 
 pub(super) struct StringDomainEncoder {
     last_dom: Option<Domain>,
-    alphabet: Alphabet,
+    alphabet: Rc<Alphabet>,
     /// Maps each variable to an Incremental exact-one encoder that is used to encode the variable's length.
     var_len_eo_encoders: IndexMap<Rc<Variable>, IncrementalEO>,
 }
 
 impl StringDomainEncoder {
-    pub fn new(alphabet: Alphabet) -> Self {
+    pub fn new(alphabet: Rc<Alphabet>) -> Self {
         Self {
             alphabet,
             last_dom: None,
@@ -301,8 +304,11 @@ impl StringDomainEncoder {
 #[cfg(test)]
 mod tests {
 
+    use std::rc::Rc;
+
     use quickcheck::TestResult;
     use quickcheck_macros::quickcheck;
+    use smtlib_str::alphabet::CharRange;
 
     use crate::{
         alphabet::Alphabet,
@@ -319,7 +325,8 @@ mod tests {
         let mut mngr = NodeManager::default();
         let var = mngr.temp_var(Sort::String);
 
-        let alphabet = Alphabet::from_iter(vec!['a', 'b', 'c', LAMBDA]);
+        let alphabet = Alphabet::from_iter(vec!['a'.into(), 'b'.into(), 'c'.into(), LAMBDA]);
+        let alphabet = Rc::new(alphabet);
 
         let mut encoder = StringDomainEncoder::new(alphabet.clone());
         let mb = 10;
@@ -348,7 +355,8 @@ mod tests {
         let mut mngr = NodeManager::default();
         let var = mngr.temp_var(Sort::String);
 
-        let alphabet = Alphabet::from_iter(vec!['a', 'b', 'c', LAMBDA]);
+        let alphabet = Alphabet::from_iter(vec!['a'.into(), 'b'.into(), 'c'.into(), LAMBDA]);
+        let alphabet = Rc::new(alphabet);
 
         let mut encoder = StringDomainEncoder::new(alphabet.clone());
         let mut bounds = Domain::default();
@@ -376,7 +384,9 @@ mod tests {
         let mut mngr = NodeManager::default();
         let var = mngr.temp_var(Sort::String);
 
-        let alphabet = Alphabet::from_iter(vec!['a', 'b', 'c', 'd']);
+        let mut alphabet = Alphabet::empty();
+        alphabet.insert(CharRange::new('a', 'd'));
+        let alphabet = Rc::new(alphabet);
 
         let mut encoder = StringDomainEncoder::new(alphabet.clone());
 
@@ -399,7 +409,7 @@ mod tests {
             "No substitution found (length is {})",
             len
         );
-        let sub: String = subs.get(&var).cloned().unwrap().into();
+        let sub = subs.get(&var).and_then(|v| v.as_string()).unwrap();
         assert!(sub.len() == len as usize, "Substitution is too long");
         TestResult::passed()
     }

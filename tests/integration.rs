@@ -9,7 +9,7 @@ fn test_sat(smt: &str) {
     let smt = std::io::BufReader::new(std::fs::File::open(file).unwrap());
     let mut mngr = NodeManager::default();
     let options = SolverOptions::default();
-    let script = parse_script(smt, &options, &mut mngr).unwrap();
+    let script = parse_script(smt, &mut mngr).unwrap();
     let mut interpreter = Interpreter::new(options, &mut mngr);
 
     for a in script.iter_asserts() {
@@ -28,7 +28,7 @@ fn test_unsat(smt: &str) {
     let smt = std::io::BufReader::new(std::fs::File::open(file).unwrap());
     let mut mngr = NodeManager::default();
     let options = SolverOptions::default();
-    let script = parse_script(smt, &options, &mut mngr).unwrap();
+    let script = parse_script(smt, &mut mngr).unwrap();
     let mut interpreter = Interpreter::new(options, &mut mngr);
 
     for a in script.iter_asserts() {

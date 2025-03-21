@@ -1,16 +1,17 @@
 use itertools::Itertools;
-use regulaer::{
-    alph::{Alphabet, CharPartitioning, CharRange},
+use smtlib_str::{
+    alphabet::{Alphabet, AlphabetPartition, CharRange},
     re::{ReBuilder, ReOp, Regex},
+    SmtChar,
 };
 
 use crate::node::{Node, NodeKind, NodeManager};
 
-use super::complements::ReCompRemoveer;
+use super::complements::ReCompRemover;
 
 #[derive(Default)]
 pub struct RangeCompressor {
-    comp_folder: ReCompRemoveer,
+    comp_folder: ReCompRemover,
 }
 
 impl RangeCompressor {
@@ -69,7 +70,7 @@ impl RangeCompressor {
     pub fn compress_ranges(
         &self,
         node: &Node,
-        partitioning: &CharPartitioning,
+        partitioning: &AlphabetPartition,
         mngr: &mut NodeManager,
     ) -> Node {
         match node.kind() {
@@ -93,16 +94,13 @@ impl RangeCompressor {
     fn compress_re_ranges(
         &self,
         re: &Regex,
-        partitioning: &CharPartitioning,
+        partitioning: &AlphabetPartition,
         builder: &mut ReBuilder,
     ) -> Regex {
         match re.op() {
             ReOp::Range(r) => {
                 let reps = self.find_representative_range(r, partitioning);
-                let as_res = reps
-                    .iter()
-                    .map(|r| builder.range(r.start(), r.end()))
-                    .collect();
+                let as_res = reps.iter().map(|r| builder.range(*r)).collect();
                 builder.union(as_res)
             }
             ReOp::Concat(rs) | ReOp::Union(rs) | ReOp::Inter(rs) => {
@@ -153,7 +151,7 @@ impl RangeCompressor {
     fn find_representative_range(
         &self,
         range: &CharRange,
-        partitioning: &CharPartitioning,
+        partitioning: &AlphabetPartition,
     ) -> Vec<CharRange> {
         let mut iter = partitioning.iter().peekable();
         // Advance iterator until start matches
@@ -176,17 +174,16 @@ impl RangeCompressor {
         for rep in reps {
             alph.insert_char(rep);
         }
-        alph.canonicalize();
-        alph.iter_ranges().cloned().collect_vec()
+        alph.iter_ranges().collect_vec()
     }
 
-    fn partition_alphabet(&self, node: &Node) -> CharPartitioning {
+    fn partition_alphabet(&self, node: &Node) -> AlphabetPartition {
         match node.kind() {
-            NodeKind::String(s) => self.word_to_partitioning(s.chars()),
+            NodeKind::String(s) => self.word_to_partitioning(s.iter().copied()),
             NodeKind::Regex(regex) => self.partition_re_alphabet(regex),
             NodeKind::Literal(_) => unreachable!(),
             _ => {
-                let mut res = CharPartitioning::default();
+                let mut res = AlphabetPartition::default();
                 for c in node.children() {
                     res = res.refine(&self.partition_alphabet(c));
                 }
@@ -195,11 +192,11 @@ impl RangeCompressor {
         }
     }
 
-    fn partition_re_alphabet(&self, re: &Regex) -> CharPartitioning {
+    fn partition_re_alphabet(&self, re: &Regex) -> AlphabetPartition {
         match re.op() {
-            ReOp::Literal(word) => self.word_to_partitioning(word.iter()),
+            ReOp::Literal(word) => self.word_to_partitioning(word.iter().copied()),
             ReOp::Concat(rs) | ReOp::Union(rs) | ReOp::Inter(rs) => {
-                let mut res = CharPartitioning::default();
+                let mut res = AlphabetPartition::default();
                 for r in rs {
                     res = res.refine(&self.partition_re_alphabet(r));
                 }
@@ -207,7 +204,7 @@ impl RangeCompressor {
                 res
             }
             ReOp::Range(r) => {
-                let mut res = CharPartitioning::default();
+                let mut res = AlphabetPartition::default();
                 res.insert_unchecked(*r);
                 res
             }
@@ -222,12 +219,12 @@ impl RangeCompressor {
             | ReOp::Comp(r)
             | ReOp::Pow(r, _)
             | ReOp::Loop(r, _, _) => self.partition_re_alphabet(r),
-            _ => CharPartitioning::default(),
+            _ => AlphabetPartition::default(),
         }
     }
 
-    fn word_to_partitioning(&self, word: impl Iterator<Item = char>) -> CharPartitioning {
-        let mut res = CharPartitioning::default();
+    fn word_to_partitioning(&self, word: impl Iterator<Item = SmtChar>) -> AlphabetPartition {
+        let mut res = AlphabetPartition::default();
         for c in word.unique() {
             res.insert_unchecked(CharRange::singleton(c));
         }
@@ -239,7 +236,8 @@ impl RangeCompressor {
 mod test {
     use itertools::Itertools;
     use quickcheck_macros::quickcheck;
-    use regulaer::{alph::CharRange, parse::parse_rust};
+    use smallvec::smallvec;
+    use smtlib_str::{alphabet::CharRange, SmtChar};
 
     use crate::{
         node::{
@@ -277,8 +275,8 @@ mod test {
     }
 
     #[quickcheck]
-    fn word_to_partitioning(chars: Vec<char>) {
-        let word = chars.into_iter().filter(|c| c.is_alphanumeric());
+    fn word_to_partitioning(chars: Vec<SmtChar>) {
+        let word = chars.into_iter();
 
         let compressor = RangeCompressor::default();
         let partitioning = compressor.word_to_partitioning(word.clone());
@@ -295,9 +293,11 @@ mod test {
         let mut mngr = NodeManager::default();
 
         // Can't do overlapping ranges because the builder will unify them
-        let re = parse_rust(r#"[a-c]|[e-f]|[h-z]"#, mngr.re_builder(), true).unwrap();
-
-        println!("Parsed: {}", re);
+        let re_builder = mngr.re_builder();
+        let a_to_c = re_builder.range(CharRange::new('a', 'c'));
+        let e_to_f = re_builder.range(CharRange::new('e', 'f'));
+        let h_to_z = re_builder.range(CharRange::new('h', 'z'));
+        let re = re_builder.union(smallvec![a_to_c, e_to_f, h_to_z]);
 
         let compressor = RangeCompressor::default();
         let partitioning = compressor.partition_re_alphabet(&re);
@@ -316,9 +316,12 @@ mod test {
         let mut mngr = NodeManager::default();
 
         // Can't do overlapping ranges because the builder will unify them
-        let re = parse_rust(r#"[a-z][e-x]a[h-z]"#, mngr.re_builder(), true).unwrap();
-
-        println!("Parsed: {}", re);
+        let re_builder = mngr.re_builder();
+        let a_to_z = re_builder.range(CharRange::new('a', 'z'));
+        let e_to_x = re_builder.range(CharRange::new('e', 'x'));
+        let h_to_z = re_builder.range(CharRange::new('h', 'z'));
+        let a = re_builder.to_re("a".into());
+        let re = re_builder.concat(smallvec![a_to_z, e_to_x, a, h_to_z]);
 
         let compressor = RangeCompressor::default();
         let partitioning = compressor.partition_re_alphabet(&re);
