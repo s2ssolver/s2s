@@ -270,23 +270,28 @@ mod test {
         let mut comp = ReCompRemover::default();
         let mut builder = ReBuilder::default();
 
-        match comp
+        if let ReOp::Opt(opts) = comp
             .comp_range(CharRange::new(l as char, u as char), &mut builder)
             .op()
         {
-            ReOp::Union(items) => {
-                assert_eq!(items[0], builder.range_from_to(0 as char, (l - 1) as char));
-                assert_eq!(
-                    items[1],
-                    builder.range_from_to((u + 1) as char, SmtChar::MAX)
-                );
+            match opts.op() {
+                ReOp::Union(items) => {
+                    assert_eq!(items[0], builder.range_from_to(0 as char, (l - 1) as char));
+                    assert_eq!(
+                        items[1],
+                        builder.range_from_to((u + 1) as char, SmtChar::MAX)
+                    );
+                }
+                ReOp::Range(r) => {
+                    assert_eq!(l, 0);
+                    assert_eq!(r.start(), (u as u32 + 1).into());
+                }
+                x => panic!("Unexpected {}", x),
             }
-            ReOp::Range(r) => {
-                assert_eq!(l, 0);
-                assert_eq!(r.start(), (u as u32 + 1).into());
-            }
-            _ => unreachable!(),
+        } else {
+            unreachable!()
         }
+
         TestResult::passed()
     }
 
