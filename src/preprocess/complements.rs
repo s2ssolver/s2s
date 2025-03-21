@@ -246,7 +246,7 @@ mod test {
 
         match comp.comp_char('a'.into(), &mut builder, true).op() {
             ReOp::Union(items) => {
-                assert_eq!(items[0], builder.range_from_to(0, (('a' as u8) - 1) as u32));
+                assert_eq!(items[0], builder.range_from_to(0, (b'a' - 1) as u32));
                 assert_eq!(items[1], builder.range_from_to('b', SmtChar::MAX));
             }
             _ => unreachable!(),

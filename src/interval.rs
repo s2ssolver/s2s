@@ -283,6 +283,14 @@ impl Display for Interval {
     }
 }
 
+impl Arbitrary for Interval {
+    fn arbitrary(g: &mut quickcheck::Gen) -> Self {
+        let v1 = isize::arbitrary(g);
+        let v2 = isize::arbitrary(g);
+        Interval::new(v1.min(v2), v1.max(v2))
+    }
+}
+
 #[cfg(test)]
 mod tests {
 
@@ -385,13 +393,5 @@ mod tests {
         let with_lower = i.with_lower(l.into());
         assert_eq!(with_lower.lower(), l.into());
         assert_eq!(with_lower.upper(), i.upper());
-    }
-}
-
-impl Arbitrary for Interval {
-    fn arbitrary(g: &mut quickcheck::Gen) -> Self {
-        let v1 = isize::arbitrary(g);
-        let v2 = isize::arbitrary(g);
-        Interval::new(v1.min(v2), v1.max(v2))
     }
 }

@@ -116,7 +116,7 @@ pub fn length_reasoning(node: &Node, mngr: &mut NodeManager) -> Option<Node> {
         // Check if the equation is trivially unsatisfiable
 
         // Parity condition
-        if r % 2 != 0 && coeffs.values().all(|&c| (c.abs() as u64) % 2 == 0) {
+        if r % 2 != 0 && coeffs.values().all(|&c| (c.unsigned_abs() as u64) % 2 == 0) {
             return Some(mngr.ffalse());
         }
 

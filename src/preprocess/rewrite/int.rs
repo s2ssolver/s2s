@@ -34,15 +34,12 @@ pub fn int_less_trivial(node: &Node, mngr: &mut NodeManager) -> Option<Node> {
             return Some(mngr.ffalse());
         }
 
-        match (lhs.kind(), rhs.kind()) {
-            (NodeKind::Int(i1), NodeKind::Int(i2)) => {
-                if i1 < i2 {
-                    return Some(mngr.ttrue());
-                } else {
-                    return Some(mngr.ffalse());
-                }
+        if let (NodeKind::Int(i1), NodeKind::Int(i2)) = (lhs.kind(), rhs.kind()) {
+            if i1 < i2 {
+                return Some(mngr.ttrue());
+            } else {
+                return Some(mngr.ffalse());
             }
-            _ => (),
         }
     }
     if *node.kind() == NodeKind::Le {
@@ -55,15 +52,12 @@ pub fn int_less_trivial(node: &Node, mngr: &mut NodeManager) -> Option<Node> {
             return Some(mngr.ttrue());
         }
 
-        match (lhs.kind(), rhs.kind()) {
-            (NodeKind::Int(i1), NodeKind::Int(i2)) => {
-                if i1 <= i2 {
-                    return Some(mngr.ttrue());
-                } else {
-                    return Some(mngr.ffalse());
-                }
+        if let (NodeKind::Int(i1), NodeKind::Int(i2)) = (lhs.kind(), rhs.kind()) {
+            if i1 <= i2 {
+                return Some(mngr.ttrue());
+            } else {
+                return Some(mngr.ffalse());
             }
-            _ => (),
         }
     }
     None
@@ -125,15 +119,12 @@ pub fn int_equality_trivial(node: &Node, mngr: &mut NodeManager) -> Option<Node>
             return Some(mngr.ttrue());
         }
 
-        match (lhs.kind(), rhs.kind()) {
-            (NodeKind::Int(i1), NodeKind::Int(i2)) => {
-                if i1 == i2 {
-                    return Some(mngr.ttrue());
-                } else {
-                    return Some(mngr.ffalse());
-                }
+        if let (NodeKind::Int(i1), NodeKind::Int(i2)) = (lhs.kind(), rhs.kind()) {
+            if i1 == i2 {
+                return Some(mngr.ttrue());
+            } else {
+                return Some(mngr.ffalse());
             }
-            _ => (),
         }
     }
     None
@@ -255,7 +246,7 @@ pub fn length_trivial(node: &Node, mngr: &mut NodeManager) -> Option<Node> {
         }
         _ => (),
     }
-    return None;
+    None
 }
 
 pub fn normalize_ineq(node: &Node, mngr: &mut NodeManager) -> Option<Node> {
@@ -353,7 +344,7 @@ fn linearlize_term(node: &Node) -> Option<LinTerm> {
                 let right = linearlize_term(c)?;
                 match (&left.coeffs.is_empty(), right.coeffs.is_empty()) {
                     (true, true) => {
-                        left.constant = left.constant * right.constant;
+                        left.constant *= right.constant;
                     }
                     (true, false) => {
                         let c = left.constant;

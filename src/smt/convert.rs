@@ -321,7 +321,7 @@ impl<'a> Converter<'a> {
                         // Must be a string constant
                         match arg.kind() {
                             NodeKind::String(s) => {
-                                let re = self.mngr.re_builder().to_re(s.clone().into());
+                                let re = self.mngr.re_builder().to_re(s.clone());
                                 self.mngr.create_node(NodeKind::Regex(re), vec![])
                             }
                             _ => return Err(AstError::Unsupported("str.to_re".to_string())),

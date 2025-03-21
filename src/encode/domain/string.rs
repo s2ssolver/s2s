@@ -293,7 +293,7 @@ impl StringDomainEncoder {
         match self.last_dom.as_ref() {
             Some(last_dom) => last_dom
                 .get_string(var)
-                .expect(format!("Unbounded string variable: {:?}", var).as_str())
+                .unwrap_or_else(|| panic!("Unbounded string variable: {:?}", var))
                 .upper_finite()
                 .map(|i| i as usize),
             None => None,

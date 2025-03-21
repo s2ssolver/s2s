@@ -263,7 +263,7 @@ impl Assignment {
             NodeKind::InRe => {
                 let lhs = self.inst_string_term(&formula.children()[0])?;
                 if let NodeKind::Regex(re) = &formula.children()[1].kind() {
-                    Some(re.accepts(&lhs.into()))
+                    Some(re.accepts(&lhs))
                 } else {
                     unreachable!("Unexpected formula: {}", formula)
                 }
@@ -313,9 +313,9 @@ impl Assignment {
             NodeKind::SubStr => {
                 let s = self.inst_string_term(&term.children()[0])?;
 
-                let start = self.inst_int_term(&term.children()[1])? as i64;
+                let start = self.inst_int_term(&term.children()[1])?;
 
-                let len = self.inst_int_term(&term.children()[2])? as i64;
+                let len = self.inst_int_term(&term.children()[2])?;
 
                 let substr = if 0 <= start && start <= s.len() as i64 && 0 <= len {
                     let start = start as usize;
@@ -391,7 +391,7 @@ impl Assignment {
                 let s = self.inst_string_term(&term.children()[0])?;
                 // convet to positive int base 10, or -1 if not possible
                 // todo: double check if the conversion is correct
-                match u64::from_str_radix(&s.to_string(), 10) {
+                match s.to_string().parse::<u64>() {
                     Ok(i) => Some(i as i64),
                     Err(_) => Some(-1),
                 }
@@ -435,7 +435,7 @@ impl Assignment {
 
     pub fn satisfies_inre(&self, inre: &RegularConstraint) -> Option<bool> {
         let lhs = self.get_str(inre.lhs().as_ref())?.clone();
-        Some(inre.re().accepts(&lhs.into()))
+        Some(inre.re().accepts(&lhs))
     }
 
     pub fn satisfies_factor_constraint(&self, fc: &RegularFactorConstraint) -> Option<bool> {

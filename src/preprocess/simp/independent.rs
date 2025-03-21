@@ -29,7 +29,7 @@ impl IndependentVariableAssignment {
     }
 
     fn independent(&self, v: &Rc<Variable>) -> bool {
-        self.vcount.get(v).map_or(false, |&c| c == 1)
+        self.vcount.get(v).is_some_and(|&c| c == 1)
     }
 
     fn try_reduce_eq(

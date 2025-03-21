@@ -38,7 +38,8 @@ impl ITEHandler {
 
         // If the node is an ITE, rewrite it
         let new_node = mngr.create_node(node.kind().clone(), ch_rw);
-        let rw = if *new_node.kind() == NodeKind::Ite {
+        
+        if *new_node.kind() == NodeKind::Ite {
             if let Some(rw) = self.pure_boolean_ite(&new_node, mngr) {
                 rw
             } else {
@@ -50,8 +51,7 @@ impl ITEHandler {
             mngr.var(tmpv.clone())
         } else {
             new_node
-        };
-        rw
+        }
     }
 
     /// Defines an ITE node `ITE(c, t, e)` as a new variable `V = ITE(c, t, e)` and returns `V`.
@@ -82,7 +82,7 @@ impl ITEHandler {
             ite_then.sort(),
             ite_else.sort()
         );
-        let sort = ite_then.sort().clone();
+        let sort = ite_then.sort();
 
         let v = mngr.temp_var(sort);
         self.defs.insert(node.clone(), v.clone());

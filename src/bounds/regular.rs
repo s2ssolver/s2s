@@ -77,7 +77,7 @@ impl RegularBoundsInferer {
         mngr: &mut NodeManager,
     ) {
         let builder = mngr.re_builder();
-        let re = builder.to_re(word.into());
+        let re = builder.to_re(word);
         self.add_reg(var, re, pol, mngr);
     }
 

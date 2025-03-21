@@ -130,7 +130,7 @@ impl<'a> PatternIterator<'a> {
     }
 }
 
-impl<'a> Iterator for PatternIterator<'a> {
+impl Iterator for PatternIterator<'_> {
     type Item = Symbol;
 
     fn next(&mut self) -> Option<Self::Item> {

@@ -17,6 +17,7 @@ use crate::{
     alphabet::Alphabet, domain::Domain, encode::EncodingResult, node::canonical::Assignment,
 };
 
+/// Propositional encoding of the domains of all variables.
 #[derive(Clone, Debug)]
 pub struct DomainEncoding {
     /// The encoding of the substitutions
@@ -32,8 +33,6 @@ pub struct DomainEncoding {
     /// The bounds of the integer variables
     pub(super) dom: Domain,
 }
-
-/// Propositional encoding of the domains of all variables.
 
 impl DomainEncoding {
     pub fn new(alphabet: Rc<Alphabet>, bounds: Domain) -> Self {

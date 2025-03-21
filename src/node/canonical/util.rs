@@ -4,9 +4,12 @@ use super::Literal;
 
 /// Partitions the literals into classes based on variable dependencies.
 /// Two literals are in the same class if
+///
 /// - they share a variable, or
 /// - they is a chain of literals that share variables between them.
+///
 /// In other words, each class is the reflexive transitive closure of the relation "share a variable".
+#[allow(clippy::mutable_key_type)]
 pub fn partition_by_vars(lits: &[Literal]) -> Vec<Vec<Literal>> {
     // Build a graph where each literal is a vertex and there is an edge between two literals if they share a variable
 

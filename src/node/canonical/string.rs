@@ -411,6 +411,7 @@ impl Display for Pattern {
     }
 }
 
+/// Represents a word equation, i.e. an equation between two patterns.
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub enum WordEquation {
     ConstantEquality(SmtString, SmtString),
@@ -429,9 +430,6 @@ impl Display for WordEquation {
         }
     }
 }
-
-/// Represents a word equation, i.e. an equation between two patterns.
-// TODO: Make enum for various types (constant, assignment, variable, general)
 
 impl WordEquation {
     /// Creates a new word equation from two patterns.

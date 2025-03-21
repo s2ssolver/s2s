@@ -135,8 +135,8 @@ fn addition_chars_lits(lits: &[Literal]) -> usize {
     // here are some minimal example
     // - x != y /\ |x| = |y| (needs at least 2 characters, satisifed because we are regular and have two string vars)
     // - xx != yy /\ |xx| = |yy| (needs at least 2 characters, because we concatenation and an inequality)
-    let res = if contains_lc { res.max(1) } else { res };
-    res
+    
+    if contains_lc { res.max(1) } else { res }
 }
 
 #[cfg(test)]

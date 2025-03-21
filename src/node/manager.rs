@@ -415,7 +415,7 @@ impl NodeManager {
     /// This panics if `s` is not valid in SMT-LIB.
     pub fn const_str(&mut self, s: &str) -> Node {
         let s = SmtString::parse(s);
-        self.const_string(s.into())
+        self.const_string(s)
     }
 
     /// Reutns the empty string
@@ -446,7 +446,7 @@ impl NodeManager {
         let mut const_str = SmtString::empty();
         for node in flattened {
             if let Some(s) = node.as_str_const() {
-                const_str.append(&s);
+                const_str.append(s);
             } else {
                 if !const_str.is_empty() {
                     folded.push(self.const_string(const_str.clone()));
@@ -609,7 +609,7 @@ impl NodeManager {
 
     pub fn atom(&mut self, kind: AtomKind) -> Rc<Atom> {
         if let Some(atom) = self.atom_registry.get(&kind) {
-            return atom.clone();
+            atom.clone()
         } else {
             let id = self.next_id;
             self.next_id += 1;

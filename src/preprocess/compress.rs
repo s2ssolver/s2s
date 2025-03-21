@@ -19,8 +19,8 @@ impl RangeCompressor {
         // Try to get rid of complements first
         let node = self.rewrite_complements(node, mngr, true);
         let partioning = self.partition_alphabet(&node);
-        let compressed = self.compress_ranges(&node, &partioning, mngr);
-        compressed
+        
+        self.compress_ranges(&node, &partioning, mngr)
     }
 
     /// Tries to remove the complements in regular constraints.
@@ -80,7 +80,7 @@ impl RangeCompressor {
             }
             // Cannot compress negated regular constraints, so we return the node as is
             // Since the formula is in NNF, this check is sufficient
-            NodeKind::Not => return node.clone(),
+            NodeKind::Not => node.clone(),
             _ => {
                 let mut new_children = Vec::with_capacity(node.children().len());
                 for c in node.children() {

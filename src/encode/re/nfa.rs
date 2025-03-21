@@ -120,13 +120,13 @@ impl NFAEncoder {
                         TransitionType::NotRange(range) => {
                             // Follow transition if we read a character **NOT** in the given range
                             for c in range.iter() {
-                                let sub_var = dom.string().get_sub(&self.var, l, c).expect(
-                                    format!(
-                                        "Substitution h({})[{}] = '{}' not found",
-                                        self.var, l, c
-                                    )
-                                    .as_str(),
-                                );
+                                let sub_var =
+                                    dom.string().get_sub(&self.var, l, c).unwrap_or_else(|| {
+                                        panic!(
+                                            "Substitution h({})[{}] = '{}' not found",
+                                            self.var, l, c
+                                        )
+                                    });
                                 // reach_var /\ sub_var => reach_next
                                 let clause = vec![nlit(reach_var), plit(sub_var), plit(reach_next)];
                                 res.add_clause(clause);
@@ -468,15 +468,13 @@ mod test {
 
     use super::*;
 
-    use crate::{
-        alphabet::Alphabet, encode::domain::DomainEncoder, interval::Interval, node::Sort,
-    };
+    use crate::{encode::domain::DomainEncoder, interval::Interval, node::Sort};
 
     fn solve_with_bounds(re: Regex, pol: bool, ubounds: &[usize]) -> Option<bool> {
         let mut mngr = NodeManager::default();
         let var = mngr.temp_var(Sort::String);
 
-        let alph = Alphabet::from(re.alphabet().as_ref().clone());
+        let alph = re.alphabet().as_ref().clone();
         let alph = Rc::new(alph);
 
         let nfa = mngr.get_nfa(&re);
@@ -507,7 +505,7 @@ mod test {
                         let var_model = _model.get(&var).unwrap().as_string().unwrap();
                         encoder.print_debug(&solver, dom_encoder.encoding());
                         assert!(
-                            re.accepts(&var_model.clone().into()),
+                            re.accepts(&var_model.clone()),
                             "Model `{}` does not match regex `{}`",
                             var_model,
                             re

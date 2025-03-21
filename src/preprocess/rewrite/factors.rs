@@ -99,7 +99,7 @@ pub fn factor_of_empty_string(node: &Node, mngr: &mut NodeManager) -> Option<Nod
 }
 
 fn find_subvec<T: PartialEq>(mut haystack: &[T], needle: &[T]) -> bool {
-    if needle.len() == 0 {
+    if needle.is_empty() {
         return true;
     }
     while !haystack.is_empty() {

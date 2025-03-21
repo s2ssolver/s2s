@@ -17,8 +17,8 @@ use std::{collections::HashMap, rc::Rc};
 
 pub fn canonicalize(node: &Node, mngr: &mut NodeManager) -> Node {
     let mut canonicalizer = Canonicalizer::default();
-    let c = canonicalizer.canonicalize(node, mngr);
-    c
+
+    canonicalizer.canonicalize(node, mngr)
 }
 
 #[derive(Default)]
@@ -57,8 +57,7 @@ impl Canonicalizer {
         //        let formula = Formula::new(FormulaKind::And(complete), node.clone());
         //        Ok(formula)
 
-        let croot = mngr.and(complete);
-        croot
+        mngr.and(complete)
     }
 
     /// Brings all literals into canonical form.
@@ -324,8 +323,10 @@ impl Canonicalizer {
 
     /// Canocalizes nodes of the form (concat t1 ... tn). The result is a new node (concat r1 ... rm)
     /// where each ri is a einther a (string) variable or a constant. Does the following:
+    ///
     /// - If any of node ti is not a variable or a constant, ti is replaced by a new variable ri and the identity ti = ri is stored.
     /// - If ti is a concatenation, it is recursively canonicalized and flattened.
+    ///
     /// Returns a Pattern representing the canonical form of the concatenation.
     fn canonicalize_concat(&mut self, node: Node, mngr: &mut NodeManager) -> Option<Pattern> {
         if let Some(p) = self.patterns.get(&node) {

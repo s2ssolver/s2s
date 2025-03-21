@@ -10,10 +10,7 @@ pub fn to_int_constant(node: &Node, mngr: &mut NodeManager) -> Option<Node> {
             if s.is_empty() {
                 return Some(mngr.const_int(-1));
             }
-            let i = match i64::from_str_radix(&s.to_string(), 10) {
-                Ok(i) => i,
-                Err(_) => -1,
-            };
+            let i = s.to_string().parse::<i64>().unwrap_or(-1);
             return Some(mngr.const_int(i));
         }
     }

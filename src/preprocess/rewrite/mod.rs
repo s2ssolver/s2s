@@ -179,13 +179,13 @@ impl Rewriter {
 impl Default for Rewriter {
     fn default() -> Self {
         Rewriter {
-            rules: REWRITE.iter().copied().collect(),
+            rules: REWRITE.to_vec(),
             rewrite_cache: IndexMap::new(),
         }
     }
 }
 
-const REWRITE: &'static [RewriteRules] = &[
+const REWRITE: &[RewriteRules] = &[
     RewriteRules::BoolAndConst,
     RewriteRules::BoolAndIdem,
     RewriteRules::BoolAndComp,
