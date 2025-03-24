@@ -1,6 +1,6 @@
 use std::{fmt::Display, rc::Rc};
 
-use smtlib_str::{SmtChar, SmtString};
+use smt_str::{SmtChar, SmtString};
 
 use crate::node::{Node, NodeKind, NodeManager, Sorted, Variable};
 

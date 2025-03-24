@@ -1,5 +1,5 @@
 use smallvec::smallvec;
-use smtlib_str::re::Regex;
+use smt_str::re::Regex;
 
 use crate::node::{Node, NodeKind, NodeManager};
 

@@ -16,7 +16,7 @@ pub mod utils;
 use canonical::Literal;
 use indexmap::IndexSet;
 pub use manager::NodeManager;
-use smtlib_str::{re::Regex, SmtString};
+use smt_str::{re::Regex, SmtString};
 pub use subs::VarSubstitution;
 
 pub type Id = usize;

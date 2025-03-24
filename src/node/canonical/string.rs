@@ -5,8 +5,8 @@ use std::{
 };
 
 use indexmap::IndexSet;
-use smtlib_str::re::Regex;
-use smtlib_str::{SmtChar, SmtString};
+use smt_str::re::Regex;
+use smt_str::{SmtChar, SmtString};
 
 use crate::node::{NodeManager, Sort, Sorted, Variable};
 use smallvec::smallvec;

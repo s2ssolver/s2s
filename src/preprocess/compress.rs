@@ -1,5 +1,5 @@
 use itertools::Itertools;
-use smtlib_str::{
+use smt_str::{
     alphabet::{Alphabet, AlphabetPartition, CharRange},
     re::{ReBuilder, ReOp, Regex},
     SmtChar,
@@ -237,7 +237,7 @@ mod test {
     use itertools::Itertools;
     use quickcheck_macros::quickcheck;
     use smallvec::smallvec;
-    use smtlib_str::{alphabet::CharRange, SmtChar};
+    use smt_str::{alphabet::CharRange, SmtChar};
 
     use crate::{
         node::{

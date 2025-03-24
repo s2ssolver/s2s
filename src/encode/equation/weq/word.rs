@@ -1,5 +1,5 @@
 use indexmap::IndexMap;
-use smtlib_str::SmtChar;
+use smt_str::SmtChar;
 
 use crate::{
     alphabet::Alphabet,

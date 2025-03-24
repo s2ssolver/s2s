@@ -2,7 +2,7 @@
 
 use std::{collections::HashMap, rc::Rc};
 
-use smtlib_str::{re::Regex, sampling::sample_nfa};
+use smt_str::{re::Regex, sampling::sample_nfa};
 
 use crate::node::{NodeKind, Variable};
 

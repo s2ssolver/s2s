@@ -8,7 +8,7 @@
 use std::rc::Rc;
 
 use indexmap::{IndexMap, IndexSet};
-use smtlib_str::automata::{StateId, StateNotFound, TransitionType, NFA};
+use smt_str::automata::{StateId, StateNotFound, TransitionType, NFA};
 
 use crate::{
     domain::Domain,
@@ -462,7 +462,7 @@ fn precompute_delta_inv(
 #[cfg(test)]
 mod test {
     use cadical::Solver;
-    use smtlib_str::re::Regex;
+    use smt_str::re::Regex;
 
     use smallvec::smallvec;
 

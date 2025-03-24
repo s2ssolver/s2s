@@ -1,7 +1,7 @@
 use std::time::Instant;
 
 use indexmap::IndexSet;
-use smtlib_str::re::{ReOp, Regex};
+use smt_str::re::{ReOp, Regex};
 
 use crate::{
     abstraction::{build_abstraction, LitDefinition},

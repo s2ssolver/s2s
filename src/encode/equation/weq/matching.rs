@@ -1,7 +1,7 @@
 use std::{fmt::Display, rc::Rc};
 
 use indexmap::IndexMap;
-use smtlib_str::SmtString;
+use smt_str::SmtString;
 
 use crate::{
     domain::Domain,

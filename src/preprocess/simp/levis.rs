@@ -1,4 +1,4 @@
-use smtlib_str::SmtChar;
+use smt_str::SmtChar;
 
 use crate::node::{
     utils::{reverse, PatternIterator, Symbol},

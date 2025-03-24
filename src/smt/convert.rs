@@ -13,8 +13,8 @@ use num_traits::cast::ToPrimitive;
 use smallvec::smallvec;
 use smt2parser::concrete as smt;
 use smt2parser::visitors::Index;
-use smtlib_str::alphabet::CharRange;
-use smtlib_str::SmtString;
+use smt_str::alphabet::CharRange;
+use smt_str::SmtString;
 
 use super::{AstError, Command};
 
@@ -523,7 +523,7 @@ impl<'a> Converter<'a> {
 mod tests {
 
     use smt2parser::concrete::SyntaxBuilder;
-    use smtlib_str::SmtString;
+    use smt_str::SmtString;
 
     use crate::{node::NodeManager, smt::Script};
 

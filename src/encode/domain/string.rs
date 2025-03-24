@@ -2,7 +2,7 @@ use std::{collections::HashMap, rc::Rc};
 
 use indexmap::IndexMap;
 use itertools::Itertools;
-use smtlib_str::{SmtChar, SmtString};
+use smt_str::{SmtChar, SmtString};
 
 use crate::{
     alphabet::Alphabet,
@@ -308,7 +308,7 @@ mod tests {
 
     use quickcheck::TestResult;
     use quickcheck_macros::quickcheck;
-    use smtlib_str::alphabet::CharRange;
+    use smt_str::alphabet::CharRange;
 
     use crate::{
         alphabet::Alphabet,

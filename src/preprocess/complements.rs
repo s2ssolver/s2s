@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use indexmap::IndexMap;
-use smtlib_str::{
+use smt_str::{
     alphabet::CharRange,
     re::{ReBuilder, ReOp, Regex},
     SmtChar, SmtString,
@@ -230,7 +230,7 @@ impl ReCompRemover {
 mod test {
     use quickcheck::TestResult;
     use quickcheck_macros::quickcheck;
-    use smtlib_str::{
+    use smt_str::{
         alphabet::CharRange,
         re::{ReBuilder, ReOp},
         SmtChar, SmtString,

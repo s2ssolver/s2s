@@ -1,7 +1,7 @@
 use std::rc::Rc;
 
 use indexmap::{IndexMap, IndexSet};
-use smtlib_str::{
+use smt_str::{
     automata::{inter::intersect, NFA},
     re::Regex,
     SmtString,

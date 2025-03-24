@@ -1,14 +1,14 @@
 use std::rc::Rc;
 
 use indexmap::IndexSet;
-use smtlib_str::SmtChar;
+use smt_str::SmtChar;
 
 use crate::node::{
     canonical::{util::partition_by_vars, AtomKind, Literal},
     get_literals, Node, Sorted,
 };
 
-pub use smtlib_str::alphabet::Alphabet;
+pub use smt_str::alphabet::Alphabet;
 
 /// Infers the alphabet needed to solve the formula.
 /// Returns an [Alphabet] that is large enough such that if the formula is satisfiable
@@ -135,8 +135,12 @@ fn addition_chars_lits(lits: &[Literal]) -> usize {
     // here are some minimal example
     // - x != y /\ |x| = |y| (needs at least 2 characters, satisifed because we are regular and have two string vars)
     // - xx != yy /\ |xx| = |yy| (needs at least 2 characters, because we concatenation and an inequality)
-    
-    if contains_lc { res.max(1) } else { res }
+
+    if contains_lc {
+        res.max(1)
+    } else {
+        res
+    }
 }
 
 #[cfg(test)]

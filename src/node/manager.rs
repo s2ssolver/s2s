@@ -2,7 +2,7 @@ use std::{rc::Rc, time::Instant};
 
 use indexmap::IndexMap;
 
-use smtlib_str::{
+use smt_str::{
     automata::{compile, NFA},
     re::Regex,
     SmtString,
@@ -24,7 +24,7 @@ pub struct NodeManager {
     next_id: usize,
 
     /// Regular expression builder
-    re_builder: smtlib_str::re::ReBuilder,
+    re_builder: smt_str::re::ReBuilder,
 
     /// Registry of nodes
     node_registry: IndexMap<NodeKey, Node>,
@@ -208,7 +208,7 @@ impl NodeManager {
 
     /* Regex */
 
-    pub fn re_builder(&mut self) -> &mut smtlib_str::re::ReBuilder {
+    pub fn re_builder(&mut self) -> &mut smt_str::re::ReBuilder {
         &mut self.re_builder
     }
 

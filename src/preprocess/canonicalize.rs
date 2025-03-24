@@ -11,7 +11,7 @@ use crate::node::{
 
 use indexmap::IndexMap;
 
-use smtlib_str::re::{ReOp, Regex};
+use smt_str::re::{ReOp, Regex};
 
 use std::{collections::HashMap, rc::Rc};
 

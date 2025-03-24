@@ -1,4 +1,4 @@
-use smtlib_str::re::{deriv::DerivativeBuilder, ReOp};
+use smt_str::re::{deriv::DerivativeBuilder, ReOp};
 
 use crate::node::{
     utils::{reverse, PatternIterator, Symbol},

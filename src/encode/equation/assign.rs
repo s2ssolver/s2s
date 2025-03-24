@@ -3,7 +3,7 @@
 
 use std::{cmp::Ordering, rc::Rc};
 
-use smtlib_str::SmtString;
+use smt_str::SmtString;
 
 use crate::{
     domain::Domain,

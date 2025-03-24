@@ -29,7 +29,7 @@ mod re;
 mod linear;
 
 use indexmap::IndexSet;
-use smtlib_str::SmtChar;
+use smt_str::SmtChar;
 
 /// The character used to represent unused positions
 /// We use the maximum character allowed by the SMT-LIB standard

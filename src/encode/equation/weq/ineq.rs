@@ -161,7 +161,7 @@ impl LiteralEncoder for WordInEquationEncoder {
 mod tests {
     use std::rc::Rc;
 
-    use smtlib_str::alphabet::CharRange;
+    use smt_str::alphabet::CharRange;
 
     use crate::{
         alphabet::Alphabet,
