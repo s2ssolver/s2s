@@ -34,7 +34,7 @@ pub fn replace_in_epsilon(node: &Node, mngr: &mut NodeManager) -> Option<Node> {
                         if y.is_empty() {
                             return Some(to);
                         } else {
-                            return Some(mngr.const_str(""));
+                            return Some(mngr.empty_string());
                         }
                     }
                 }

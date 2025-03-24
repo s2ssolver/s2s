@@ -1,10 +1,11 @@
 use std::{rc::Rc, time::Instant};
 
 use indexmap::IndexMap;
-use regulaer::{
-    automaton::NFA,
-    compiler::{Compiler, Thompson},
+
+use smt_str::{
+    automata::{compile, NFA},
     re::Regex,
+    SmtString,
 };
 
 use super::{
@@ -23,7 +24,7 @@ pub struct NodeManager {
     next_id: usize,
 
     /// Regular expression builder
-    re_builder: regulaer::re::ReBuilder,
+    re_builder: smt_str::re::ReBuilder,
 
     /// Registry of nodes
     node_registry: IndexMap<NodeKey, Node>,
@@ -207,7 +208,7 @@ impl NodeManager {
 
     /* Regex */
 
-    pub fn re_builder(&mut self) -> &mut regulaer::re::ReBuilder {
+    pub fn re_builder(&mut self) -> &mut smt_str::re::ReBuilder {
         &mut self.re_builder
     }
 
@@ -219,11 +220,7 @@ impl NodeManager {
             nfa.clone()
         } else {
             let builder = self.re_builder();
-
-            let mut nfa = Thompson::default()
-                .compile(regex, builder)
-                .map(|nfa| nfa.remove_epsilons().expect("Failed to compile regex"))
-                .expect("Failed to compile regex");
+            let nfa = compile(regex, builder).eliminate_epsilon();
 
             nfa.trim();
 
@@ -232,10 +229,13 @@ impl NodeManager {
             nfa
         };
         log::debug!(
-            "Compiled NFA ({:?}) (size: {})",
+            "Compiled NFA ({:?}) ({} states)",
             t.elapsed(),
-            nfa.num_states() + nfa.num_transitions()
+            nfa.num_states()
         );
+
+        log::info!("NFA for {}\n{}", regex, nfa.dot());
+
         nfa
     }
     /* Variables */
@@ -405,14 +405,22 @@ impl NodeManager {
     /* String Functions */
 
     /// A string constant
-    pub fn const_string(&mut self, s: String) -> Node {
+    pub fn const_string(&mut self, s: SmtString) -> Node {
         self.intern_node(NodeKind::String(s), vec![])
     }
 
     /// A string constant, given a string slice.
-    /// This is a convenience function that converts the slice to a `String`.
+    /// This is a convenience function that converts the &str slice to a `SmtString`.
+    /// The constant string is parse into a `SmtString` and then interned.
+    /// This panics if `s` is not valid in SMT-LIB.
     pub fn const_str(&mut self, s: &str) -> Node {
-        self.const_string(s.to_string())
+        let s = SmtString::parse(s);
+        self.const_string(s)
+    }
+
+    /// Reutns the empty string
+    pub fn empty_string(&mut self) -> Node {
+        self.const_string(SmtString::empty())
     }
 
     pub fn const_regex(&mut self, r: Regex) -> Node {
@@ -435,20 +443,20 @@ impl NodeManager {
 
         // Perform concatenation on constants
         let mut folded = Vec::new();
-        let mut const_str = String::new();
+        let mut const_str = SmtString::empty();
         for node in flattened {
             if let Some(s) = node.as_str_const() {
-                const_str.push_str(&s);
+                const_str.append(s);
             } else {
                 if !const_str.is_empty() {
-                    folded.push(self.const_str(&const_str));
+                    folded.push(self.const_string(const_str.clone()));
                     const_str.clear();
                 }
                 folded.push(node.clone());
             }
         }
         if !const_str.is_empty() {
-            folded.push(self.const_str(&const_str));
+            folded.push(self.const_string(const_str));
         }
 
         if folded.is_empty() {
@@ -461,6 +469,10 @@ impl NodeManager {
     }
 
     pub fn str_len(&mut self, s: Node) -> Node {
+        if let Some(s) = s.as_str_const() {
+            let len = s.len();
+            return self.const_int(len as i64);
+        }
         self.intern_node(NodeKind::Length, vec![s])
     }
 
@@ -597,7 +609,7 @@ impl NodeManager {
 
     pub fn atom(&mut self, kind: AtomKind) -> Rc<Atom> {
         if let Some(atom) = self.atom_registry.get(&kind) {
-            return atom.clone();
+            atom.clone()
         } else {
             let id = self.next_id;
             self.next_id += 1;

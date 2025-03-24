@@ -22,11 +22,9 @@ pub fn get_encoder(equation: &WordEquation, pol: bool) -> Box<dyn LiteralEncoder
             panic!("Constant equations cannot be encoded: {}", equation)
         }
         WordEquation::VarEquality(lhs, rhs) => Box::new(VareqEncoder::new(lhs, rhs, pol)),
-        WordEquation::VarAssignment(lhs, rhs) => Box::new(AssignmentEncoder::new(
-            lhs.clone(),
-            rhs.chars().collect(),
-            pol,
-        )),
+        WordEquation::VarAssignment(lhs, rhs) => {
+            Box::new(AssignmentEncoder::new(lhs.clone(), rhs.clone(), pol))
+        }
         WordEquation::General(_, _) => {
             if pol {
                 Box::new(WordEquationEncoder::new(equation.clone()))

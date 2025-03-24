@@ -45,19 +45,13 @@ pub fn solve_smt(smt: impl BufRead, options: SolverOptions) -> Result<(), Error>
 
     let t = Instant::now();
     // Parse the input problem
-    let script = parse_script(smt, &options, &mut mngr)?;
+    let script = parse_script(smt, &mut mngr)?;
     log::info!("Parsed in {:?}", t.elapsed());
 
     let mut interpreter = Interpreter::new(options, &mut mngr);
     interpreter.run(&script)
 }
 
-pub fn parse_script(
-    smt: impl BufRead,
-    options: &SolverOptions,
-    mngr: &mut NodeManager,
-) -> Result<Script, Error> {
-    //let parser = ScriptBuilder::new(mngr);
-    //Ok(parser.parse_script(smt)?)
-    smt::parse_script(smt, options.smt25, mngr).map_err(Into::into)
+pub fn parse_script(smt: impl BufRead, mngr: &mut NodeManager) -> Result<Script, Error> {
+    smt::parse_script(smt, mngr).map_err(Into::into)
 }

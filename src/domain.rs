@@ -58,7 +58,7 @@ impl Domain {
     /// The previous bound of the variable, if it was present in the bounds.
     /// Otherwise, returns `None`.
     fn set(&mut self, var: Rc<Variable>, dom: VarDomain) -> Option<VarDomain> {
-        self.domains.insert(var, dom.into())
+        self.domains.insert(var, dom)
     }
 
     pub fn set_string(&mut self, var: Rc<Variable>, interval: Interval) -> Option<VarDomain> {
@@ -144,39 +144,6 @@ impl Domain {
     pub fn is_empty(&self) -> bool {
         self.domains.is_empty()
     }
-
-    /// Intersects two `Bounds` instances and returns a new `Bounds` with the intersection.
-    ///
-    /// The intersection only includes variables that exist in both `Bounds`.
-    /// For each variable, the intersection of the corresponding intervals is computed.
-    ///
-    /// # Arguments
-    ///
-    /// * `other` - The other `Bounds` to intersect with.
-    ///
-    /// # Returns
-    ///
-    /// A new `Bounds` containing the intersections of the intervals for common variables.
-    // #[cfg(test)]
-    // pub fn intersect(&self, other: &Self) -> Self {
-    //     let mut intersection_map = IndexMap::new();
-
-    //     for (var, dom) in &self.domains {
-    //         if let Some(other) = other.get(var) {
-    //             match (dom, other) {
-    //                 (VarDomain::Int(dom), VarDomain::Int(other)) => {
-    //                     let intersected_interval = dom.intersect(other);
-    //                     intersection_map.insert(var.clone(), intersected_interval.into());
-    //                 }
-    //                 _ => {}
-    //             }
-    //         }
-    //     }
-
-    //     Self {
-    //         domains: intersection_map,
-    //     }
-    // }
 
     /// Returns an iterator over the string variables and their length bounds.
     pub fn iter_string(&self) -> impl Iterator<Item = (&Rc<Variable>, &Interval)> {

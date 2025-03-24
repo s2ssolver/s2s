@@ -1,4 +1,5 @@
 use indexmap::IndexMap;
+use smt_str::SmtChar;
 
 use crate::{
     alphabet::Alphabet,
@@ -10,7 +11,7 @@ use crate::{
 pub struct WordEncoding {
     alphabet: Alphabet,
     length: usize,
-    encoding: IndexMap<(usize, char), PVar>,
+    encoding: IndexMap<(usize, SmtChar), PVar>,
 }
 
 impl WordEncoding {
@@ -66,7 +67,7 @@ impl WordEncoding {
     /// Returns the Boolean variable representing the presence of a symbol at a given position.
     /// The returned Boolean variable is true if and only if the word at the given position is the given symbol.
     /// Panics if the encoding for the given position and symbol does not exist.
-    pub fn at(&self, len: usize, symbol: char) -> PVar {
+    pub fn at(&self, len: usize, symbol: SmtChar) -> PVar {
         self.encoding
             .get(&(len, symbol))
             .copied()

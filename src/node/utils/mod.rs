@@ -9,7 +9,7 @@ use super::{Node, NodeKind, NodeManager};
 pub fn reverse(node: &Node, mngr: &mut NodeManager) -> Node {
     match node.kind() {
         NodeKind::String(s) => {
-            let revd: String = s.chars().rev().collect();
+            let revd = s.reversed();
             debug_assert_eq!(revd.len(), s.len());
             mngr.const_string(revd)
         }

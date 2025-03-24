@@ -34,15 +34,12 @@ pub fn int_less_trivial(node: &Node, mngr: &mut NodeManager) -> Option<Node> {
             return Some(mngr.ffalse());
         }
 
-        match (lhs.kind(), rhs.kind()) {
-            (NodeKind::Int(i1), NodeKind::Int(i2)) => {
-                if i1 < i2 {
-                    return Some(mngr.ttrue());
-                } else {
-                    return Some(mngr.ffalse());
-                }
+        if let (NodeKind::Int(i1), NodeKind::Int(i2)) = (lhs.kind(), rhs.kind()) {
+            if i1 < i2 {
+                return Some(mngr.ttrue());
+            } else {
+                return Some(mngr.ffalse());
             }
-            _ => (),
         }
     }
     if *node.kind() == NodeKind::Le {
@@ -55,15 +52,12 @@ pub fn int_less_trivial(node: &Node, mngr: &mut NodeManager) -> Option<Node> {
             return Some(mngr.ttrue());
         }
 
-        match (lhs.kind(), rhs.kind()) {
-            (NodeKind::Int(i1), NodeKind::Int(i2)) => {
-                if i1 <= i2 {
-                    return Some(mngr.ttrue());
-                } else {
-                    return Some(mngr.ffalse());
-                }
+        if let (NodeKind::Int(i1), NodeKind::Int(i2)) = (lhs.kind(), rhs.kind()) {
+            if i1 <= i2 {
+                return Some(mngr.ttrue());
+            } else {
+                return Some(mngr.ffalse());
             }
-            _ => (),
         }
     }
     None
@@ -125,15 +119,12 @@ pub fn int_equality_trivial(node: &Node, mngr: &mut NodeManager) -> Option<Node>
             return Some(mngr.ttrue());
         }
 
-        match (lhs.kind(), rhs.kind()) {
-            (NodeKind::Int(i1), NodeKind::Int(i2)) => {
-                if i1 == i2 {
-                    return Some(mngr.ttrue());
-                } else {
-                    return Some(mngr.ffalse());
-                }
+        if let (NodeKind::Int(i1), NodeKind::Int(i2)) = (lhs.kind(), rhs.kind()) {
+            if i1 == i2 {
+                return Some(mngr.ttrue());
+            } else {
+                return Some(mngr.ffalse());
             }
-            _ => (),
         }
     }
     None
@@ -167,7 +158,7 @@ pub fn const_string_length(node: &Node, mngr: &mut NodeManager) -> Option<Node> 
 
         match child.kind() {
             NodeKind::String(s) => {
-                let len = s.chars().count() as i64;
+                let len = s.len() as i64;
                 Some(mngr.const_int(len))
             }
             _ => None,
@@ -231,7 +222,7 @@ pub fn length_trivial(node: &Node, mngr: &mut NodeManager) -> Option<Node> {
                         let (var, _) = ts.coeffs.iter().next().unwrap();
                         debug_assert!(*var.kind() == NodeKind::Length);
                         let ch = var.children().first().unwrap();
-                        let epsi = mngr.const_str("");
+                        let epsi = mngr.empty_string();
                         return Some(mngr.eq(ch.clone(), epsi));
                     }
                     NodeKind::Eq if c < 0 && coeffs_positive => {
@@ -255,7 +246,7 @@ pub fn length_trivial(node: &Node, mngr: &mut NodeManager) -> Option<Node> {
         }
         _ => (),
     }
-    return None;
+    None
 }
 
 pub fn normalize_ineq(node: &Node, mngr: &mut NodeManager) -> Option<Node> {
@@ -353,7 +344,7 @@ fn linearlize_term(node: &Node) -> Option<LinTerm> {
                 let right = linearlize_term(c)?;
                 match (&left.coeffs.is_empty(), right.coeffs.is_empty()) {
                     (true, true) => {
-                        left.constant = left.constant * right.constant;
+                        left.constant *= right.constant;
                     }
                     (true, false) => {
                         let c = left.constant;
@@ -441,7 +432,7 @@ fn is_const_int(node: &Node) -> Option<i64> {
         NodeKind::Length => {
             let child = node.children().first().unwrap();
             match child.kind() {
-                NodeKind::String(s) => Some(s.chars().count() as i64),
+                NodeKind::String(s) => Some(s.len() as i64),
                 _ => None,
             }
         }

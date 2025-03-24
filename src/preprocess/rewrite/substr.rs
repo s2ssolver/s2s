@@ -11,8 +11,8 @@ pub fn substr_const(node: &Node, mngr: &mut NodeManager) -> Option<Node> {
                 if let NodeKind::Int(l) = l.kind() {
                     let s = *s as usize;
                     let l = *l as usize;
-                    let substr = w.chars().skip(s).take(l).collect::<String>();
-                    return Some(mngr.const_str(&substr));
+                    let substr = w.drop(s).take(l);
+                    return Some(mngr.const_string(substr));
                 }
             }
         }
@@ -30,9 +30,9 @@ pub fn at_const(node: &Node, mngr: &mut NodeManager) -> Option<Node> {
             if let NodeKind::Int(s) = s.kind() {
                 let s = *s as usize;
 
-                match w.chars().nth(s) {
-                    Some(at) => return Some(mngr.const_str(&at.to_string())),
-                    None => return Some(mngr.const_str("")),
+                match w.nth(s) {
+                    Some(at) => return Some(mngr.const_string(at.into())),
+                    None => return Some(mngr.empty_string()),
                 }
             }
         }
@@ -46,7 +46,7 @@ pub fn substr_negative(node: &Node, mngr: &mut NodeManager) -> Option<Node> {
         let l = &node.children()[2];
         if let NodeKind::Int(l) = l.kind() {
             if *l <= 0 {
-                return Some(mngr.const_str(""));
+                return Some(mngr.empty_string());
             }
         }
     }
@@ -59,7 +59,7 @@ pub fn at_negative(node: &Node, mngr: &mut NodeManager) -> Option<Node> {
         let s = &node.children()[1];
         if let NodeKind::Int(s) = s.kind() {
             if *s < 0 {
-                return Some(mngr.const_str(""));
+                return Some(mngr.empty_string());
             }
         }
     }

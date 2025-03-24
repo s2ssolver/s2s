@@ -1,72 +1,26 @@
-use std::{
-    fmt::{self, Display, Formatter},
-    rc::Rc,
-};
+use std::rc::Rc;
 
 use indexmap::IndexSet;
+use smt_str::SmtChar;
 
 use crate::node::{
     canonical::{util::partition_by_vars, AtomKind, Literal},
     get_literals, Node, Sorted,
 };
 
-use regulaer::alph::Alphabet as InnerAlphabet;
-
-/// A wrapper around the regular crate's alphabet
-#[derive(Debug, Clone, Default)]
-pub struct Alphabet {
-    inner: Rc<InnerAlphabet>,
-    size: usize,
-}
-
-impl Alphabet {
-    fn new(inner: Rc<InnerAlphabet>) -> Self {
-        let size = inner.iter_chars().count();
-        Alphabet { inner, size }
-    }
-    /// Returns an iterator over the characters in the alphabet
-    pub fn iter(&self) -> impl Iterator<Item = char> + '_ {
-        self.inner.iter_chars()
-    }
-
-    /// Returns the number of characters in the alphabet
-    pub fn len(&self) -> usize {
-        self.size
-    }
-}
-
-impl FromIterator<char> for Alphabet {
-    fn from_iter<T: IntoIterator<Item = char>>(iter: T) -> Self {
-        let mut alph = InnerAlphabet::default();
-        for c in iter {
-            alph.insert_char(c);
-        }
-        Alphabet::new(Rc::new(alph))
-    }
-}
-impl From<InnerAlphabet> for Alphabet {
-    fn from(alph: InnerAlphabet) -> Self {
-        Alphabet::new(Rc::new(alph))
-    }
-}
-
-impl Display for Alphabet {
-    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        write!(f, "{}", self.inner)
-    }
-}
+pub use smt_str::alphabet::Alphabet;
 
 /// Infers the alphabet needed to solve the formula.
 /// Returns an [Alphabet] that is large enough such that if the formula is satisfiable
 /// in any super-alphabet of the inferred alphabet, then it is satisfiable in the inferred alphabet.
 /// The formula must be in normal form.
-pub fn infer(fm: &Node) -> Alphabet {
+pub fn infer(fm: &Node) -> Rc<Alphabet> {
     let mut inferred_alphabet = alphabet_of(fm);
     let complement_alphabet = inferred_alphabet.complement();
     let num_additional_chars = additional_chars(fm);
 
     complement_alphabet
-        .iter_chars()
+        .iter()
         .take(num_additional_chars)
         .for_each(|c| {
             inferred_alphabet.insert_char(c);
@@ -81,34 +35,29 @@ pub fn infer(fm: &Node) -> Alphabet {
         inferred_alphabet.insert_char('a');
     }
 
-    inferred_alphabet.canonicalize();
-
-    Alphabet::new(Rc::new(inferred_alphabet))
+    Rc::new(inferred_alphabet)
 }
 
-const SMT_MAX_CHAR: u32 = 0x2FFFF;
 /// Returns the alphabet of constants in the formula.
 /// The alphabet is not canonicalized.
-fn alphabet_of(fm: &Node) -> InnerAlphabet {
-    let mut alph = InnerAlphabet::default();
+fn alphabet_of(fm: &Node) -> Alphabet {
+    let mut alph = Alphabet::default();
     for l in get_literals(fm) {
         for c in constants_of(&l) {
-            if c as u32 <= SMT_MAX_CHAR {
-                alph.insert_char(c);
-            }
+            alph.insert_char(c);
         }
     }
 
     alph
 }
 
-fn constants_of(lit: &Literal) -> IndexSet<char> {
+fn constants_of(lit: &Literal) -> IndexSet<SmtChar> {
     let atom = lit.atom();
     match atom.kind() {
         AtomKind::Boolvar(_) => IndexSet::new(),
         AtomKind::WordEquation(weq) => weq.constants(),
-        AtomKind::InRe(inre) => inre.re().alphabet().iter_chars().collect(),
-        AtomKind::FactorConstraint(rfc) => rfc.rhs().chars().collect(),
+        AtomKind::InRe(inre) => inre.re().alphabet().iter().collect(),
+        AtomKind::FactorConstraint(rfc) => rfc.rhs().iter().copied().collect(),
         AtomKind::Linear(_) => IndexSet::new(),
     }
 }
@@ -186,8 +135,12 @@ fn addition_chars_lits(lits: &[Literal]) -> usize {
     // here are some minimal example
     // - x != y /\ |x| = |y| (needs at least 2 characters, satisifed because we are regular and have two string vars)
     // - xx != yy /\ |xx| = |yy| (needs at least 2 characters, because we concatenation and an inequality)
-    let res = if contains_lc { res.max(1) } else { res };
-    res
+
+    if contains_lc {
+        res.max(1)
+    } else {
+        res
+    }
 }
 
 #[cfg(test)]
@@ -211,7 +164,7 @@ mod tests {
             .new_var(var.to_string(), Sort::String)
             .map(|v| mngr.var(v))
             .unwrap();
-        let re = mngr.re_builder().word("foo".into());
+        let re = mngr.re_builder().to_re("foo".into());
         let re = mngr.const_regex(re);
         let inre = mngr.in_re(x, re);
         to_lit(&inre, mngr)

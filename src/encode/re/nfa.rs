@@ -8,17 +8,13 @@
 use std::rc::Rc;
 
 use indexmap::{IndexMap, IndexSet};
-use regulaer::{
-    alph::CharRange,
-    automaton::{AutomatonError, State, StateId, TransitionType, NFA},
-};
+use smt_str::automata::{StateId, StateNotFound, TransitionType, NFA};
 
 use crate::{
     domain::Domain,
     encode::{domain::DomainEncoding, EncodingError, EncodingResult, LiteralEncoder, LAMBDA},
     node::{canonical::RegularConstraint, NodeManager, Variable},
     sat::{nlit, plit, pvar, PVar},
-    smt::smt_max_char,
 };
 
 /// An encoder for regular constraints using automata.
@@ -88,10 +84,10 @@ impl NFAEncoder {
             for state in self.nfa.states() {
                 let reach_var = self.reach_vars[&(state, l)];
 
-                for transition in self.nfa.get_state(state)?.transitions() {
+                for transition in self.nfa.transitions_from(state)? {
                     let reach_next = self.reach_vars[&(transition.get_dest(), l + 1)];
                     match transition.get_type() {
-                        TransitionType::Range(range) if range_any(range) => {
+                        TransitionType::Range(range) if range.is_full() => {
                             // Follow transition if we do not read lambda
                             let lambda_sub_var =
                                 dom.string().get_sub(&self.var, l, LAMBDA).unwrap();
@@ -102,11 +98,8 @@ impl NFAEncoder {
                             res.add_clause(clause);
                         }
                         TransitionType::Range(range) => {
-                            let s = range.start();
-                            let e = range.end();
-
                             // Follow transition if we read a character in the given range
-                            for c in s..=e {
+                            for c in range.iter() {
                                 let sub_var = match dom.string().get_sub(&self.var, l, c) {
                                     Some(v) => v,
                                     None => {
@@ -114,8 +107,8 @@ impl NFAEncoder {
                                             "Substitution h({})[{}] = '{}' not found\n{}",
                                             self.var,
                                             l,
-                                            c.escape_debug(),
-                                            self.nfa.dot().unwrap()
+                                            c,
+                                            self.nfa.dot()
                                         )
                                     }
                                 };
@@ -125,20 +118,15 @@ impl NFAEncoder {
                             }
                         }
                         TransitionType::NotRange(range) => {
-                            let s = range.start();
-                            let e = range.end();
-
                             // Follow transition if we read a character **NOT** in the given range
-                            for c in s..=e {
-                                let sub_var = dom.string().get_sub(&self.var, l, c).expect(
-                                    format!(
-                                        "Substitution h({})[{}] = '{}' not found",
-                                        self.var,
-                                        l,
-                                        c.escape_debug()
-                                    )
-                                    .as_str(),
-                                );
+                            for c in range.iter() {
+                                let sub_var =
+                                    dom.string().get_sub(&self.var, l, c).unwrap_or_else(|| {
+                                        panic!(
+                                            "Substitution h({})[{}] = '{}' not found",
+                                            self.var, l, c
+                                        )
+                                    });
                                 // reach_var /\ sub_var => reach_next
                                 let clause = vec![nlit(reach_var), plit(sub_var), plit(reach_next)];
                                 res.add_clause(clause);
@@ -180,7 +168,7 @@ impl NFAEncoder {
                     let def_var = pvar();
                     alo_clause.push(plit(def_var));
                     match trans {
-                        TransitionType::Range(range) if range_any(range) => {
+                        TransitionType::Range(range) if range.is_full() => {
                             // Is predecessor if we do not read lambda
                             let sub_var = dom.string().get_sub(&self.var, l - 1, LAMBDA).unwrap();
                             // reach_prev /\ -sub_var
@@ -196,14 +184,12 @@ impl NFAEncoder {
                         }
                         TransitionType::Range(range) => {
                             // Is predecessor if we read a character in the given range
-                            let s = range.start();
-                            let e = range.end();
 
                             // reach_prev /\ (sub_var_1 \/ ... \/ sub_var_n)
                             res.add_clause(vec![nlit(def_var), plit(reach_prev)]);
 
                             let mut range_clause = vec![nlit(def_var)];
-                            for c in s..=e {
+                            for c in range.iter() {
                                 let sub_var = dom.string().get_sub(&self.var, l - 1, c).unwrap();
                                 range_clause.push(plit(sub_var));
                             }
@@ -219,14 +205,12 @@ impl NFAEncoder {
                         }
                         TransitionType::NotRange(range) => {
                             // Is predecessor if we read a character in the given range
-                            let s = range.start();
-                            let e = range.end();
 
                             // reach_prev /\ (-sub_var_1 \/ ... \/ -sub_var_n)
                             res.add_clause(vec![nlit(def_var), plit(reach_prev)]);
 
                             let mut range_clause = vec![nlit(def_var)];
-                            for c in s..=e {
+                            for c in range.iter() {
                                 let sub_var = dom.string().get_sub(&self.var, l - 1, c).unwrap();
                                 range_clause.push(nlit(sub_var));
                             }
@@ -268,7 +252,7 @@ impl NFAEncoder {
 
         let mut clause = vec![nlit(selector)];
         for qf in self.nfa.finals() {
-            let reach_var = self.reach_vars[&(*qf, bound)];
+            let reach_var = self.reach_vars[&(qf, bound)];
             clause.push(plit(reach_var));
         }
         res.add_clause(clause);
@@ -280,7 +264,7 @@ impl NFAEncoder {
         let selector = self.bound_selector.unwrap();
 
         for qf in self.nfa.finals() {
-            let reach_var = self.reach_vars[&(*qf, bound)];
+            let reach_var = self.reach_vars[&(qf, bound)];
             res.add_clause(vec![nlit(selector), nlit(reach_var)]);
         }
 
@@ -430,8 +414,8 @@ impl NFAEncoder {
     }
 }
 
-impl From<AutomatonError> for EncodingError {
-    fn from(err: AutomatonError) -> Self {
+impl From<StateNotFound> for EncodingError {
+    fn from(err: StateNotFound) -> Self {
         EncodingError::new(&err.to_string())
     }
 }
@@ -448,15 +432,9 @@ pub fn build_inre_encoder(
     Ok(encoder)
 }
 
-/* Some auxiliary functions */
-
-fn range_any(r: &CharRange) -> bool {
-    r.start() as u32 == 0 && r.end() >= smt_max_char()
-}
-
 fn precompute_delta_inv(
     nfa: &Rc<NFA>,
-) -> Result<IndexMap<StateId, Vec<(StateId, TransitionType)>>, AutomatonError> {
+) -> Result<IndexMap<StateId, Vec<(StateId, TransitionType)>>, StateNotFound> {
     let mut delta_inv = IndexMap::new();
 
     // Do one DFS
@@ -466,7 +444,7 @@ fn precompute_delta_inv(
         visited.insert(initial);
 
         while let Some(state) = stack.pop() {
-            for transition in nfa.get_state(state)?.transitions() {
+            for transition in nfa.transitions_from(state)? {
                 let dest = transition.get_dest();
                 let entry = delta_inv.entry(dest).or_insert_with(Vec::new);
 
@@ -484,21 +462,20 @@ fn precompute_delta_inv(
 #[cfg(test)]
 mod test {
     use cadical::Solver;
-    use regulaer::re::Regex;
+    use smt_str::re::Regex;
 
     use smallvec::smallvec;
 
     use super::*;
 
-    use crate::{
-        alphabet::Alphabet, encode::domain::DomainEncoder, interval::Interval, node::Sort,
-    };
+    use crate::{encode::domain::DomainEncoder, interval::Interval, node::Sort};
 
     fn solve_with_bounds(re: Regex, pol: bool, ubounds: &[usize]) -> Option<bool> {
         let mut mngr = NodeManager::default();
         let var = mngr.temp_var(Sort::String);
 
-        let alph = Alphabet::from(re.alphabet().as_ref().clone());
+        let alph = re.alphabet().as_ref().clone();
+        let alph = Rc::new(alph);
 
         let nfa = mngr.get_nfa(&re);
 
@@ -528,7 +505,7 @@ mod test {
                         let var_model = _model.get(&var).unwrap().as_string().unwrap();
                         encoder.print_debug(&solver, dom_encoder.encoding());
                         assert!(
-                            re.accepts(&var_model.clone().into()),
+                            re.accepts(&var_model.clone()),
                             "Model `{}` does not match regex `{}`",
                             var_model,
                             re
@@ -565,7 +542,7 @@ mod test {
     fn var_in_const_no_concat() {
         let mut mngr = NodeManager::default();
 
-        let re = mngr.re_builder().word("foo".into());
+        let re = mngr.re_builder().to_re("foo".into());
 
         assert_eq!(solve_with_bounds(re, true, &[7]), Some(true));
     }
@@ -576,7 +553,7 @@ mod test {
 
         let builder = mngr.re_builder();
 
-        let args = smallvec![builder.word("foo".into()), builder.word("bar".into())];
+        let args = smallvec![builder.to_re("foo".into()), builder.to_re("bar".into())];
         let re = builder.concat(args);
 
         assert_eq!(solve_with_bounds(re, true, &[10]), Some(true));

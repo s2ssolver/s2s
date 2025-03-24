@@ -4,6 +4,8 @@ mod bool;
 mod int;
 mod string;
 
+use std::rc::Rc;
+
 use bool::{BoolDomain, BoolEncoder};
 
 pub use int::IntDomain;
@@ -15,6 +17,7 @@ use crate::{
     alphabet::Alphabet, domain::Domain, encode::EncodingResult, node::canonical::Assignment,
 };
 
+/// Propositional encoding of the domains of all variables.
 #[derive(Clone, Debug)]
 pub struct DomainEncoding {
     /// The encoding of the substitutions
@@ -25,16 +28,14 @@ pub struct DomainEncoding {
     bool: BoolDomain,
 
     /// The alphabet used for the substitutions
-    alphabet: Alphabet,
+    alphabet: Rc<Alphabet>,
 
     /// The bounds of the integer variables
     pub(super) dom: Domain,
 }
 
-/// Propositional encoding of the domains of all variables.
-
 impl DomainEncoding {
-    pub fn new(alphabet: Alphabet, bounds: Domain) -> Self {
+    pub fn new(alphabet: Rc<Alphabet>, bounds: Domain) -> Self {
         Self {
             string: StringDomain::new(),
             int: IntDomain::default(),
@@ -83,7 +84,7 @@ pub struct DomainEncoder {
 }
 
 impl DomainEncoder {
-    pub fn new(alphabet: Alphabet) -> Self {
+    pub fn new(alphabet: Rc<Alphabet>) -> Self {
         Self {
             strings: StringDomainEncoder::new(alphabet),
             integers: IntegerEncoder::new(),
@@ -95,7 +96,7 @@ impl DomainEncoder {
     /// Encodes the domain of all variables for which bounds are given.
     pub fn encode(&mut self, dom: &Domain) -> EncodingResult {
         let mut encoding = self.encoding.take().unwrap_or(DomainEncoding::new(
-            self.strings.alphabet().clone(),
+            Rc::new(self.strings.alphabet().clone()),
             dom.clone(),
         ));
 

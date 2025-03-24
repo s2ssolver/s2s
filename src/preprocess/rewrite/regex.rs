@@ -1,7 +1,7 @@
-use regulaer::re::{deriv::Deriver, ReOp};
+use smt_str::re::{deriv::DerivativeBuilder, ReOp};
 
 use crate::node::{
-    utils::{reverse, Symbol, PatternIterator},
+    utils::{reverse, PatternIterator, Symbol},
     Node, NodeKind, NodeManager,
 };
 
@@ -14,7 +14,7 @@ pub fn inre_constant_lhs(node: &Node, mngr: &mut NodeManager) -> Option<Node> {
         let lhs = &node.children()[0];
         if let NodeKind::String(s) = lhs.kind() {
             if let NodeKind::Regex(re) = node.children()[1].kind() {
-                if re.accepts(&s.clone().into()) {
+                if re.accepts(&s.clone()) {
                     Some(mngr.ttrue())
                 } else {
                     Some(mngr.ffalse())
@@ -61,7 +61,7 @@ pub fn inre_equation(node: &Node, mngr: &mut NodeManager) -> Option<Node> {
             if let Some(w) = re.is_constant() {
                 //rewrite as equality lhs = w
                 let lhs = node.children()[0].clone();
-                let rhs = mngr.const_string(w.iter().collect());
+                let rhs = mngr.const_string(w);
                 return Some(mngr.eq(lhs, rhs));
             }
         }
@@ -71,8 +71,10 @@ pub fn inre_equation(node: &Node, mngr: &mut NodeManager) -> Option<Node> {
 
 /// Removes constants prefixes from patterns in regular constraints.
 /// Let $\alpha$ be a pattern and $w$ be a constant word.
+///
 /// - Regular constraints of the form $w\alpha \in R$ are replaced with $\alpha \in (w^{-1})R$
 /// - Regular constraints of the for $\alpha w \in R$ are replaced with $\alpha \in rev((w^{-1})rev(R))$
+///
 /// where $(w^{-1})R$ is the regular derivative of $R$ w.r.t. $w$ and $rev(R)$ is the reverse of $R$.
 pub fn inre_strip_prefix(node: &Node, mngr: &mut NodeManager) -> Option<Node> {
     if *node.kind() == NodeKind::InRe {
@@ -83,7 +85,7 @@ pub fn inre_strip_prefix(node: &Node, mngr: &mut NodeManager) -> Option<Node> {
             _ => return None,
         };
         let mut iter = PatternIterator::new(&node.children()[0]);
-        let mut deriver = Deriver::default();
+        let mut deriver = DerivativeBuilder::default();
         while let Some(Symbol::Const(c)) = iter.peek() {
             rewritten = true;
             regex = deriver.deriv(&regex, c, mngr.re_builder());

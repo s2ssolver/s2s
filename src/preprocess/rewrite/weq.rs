@@ -1,5 +1,6 @@
 use indexmap::IndexMap;
 use num_integer::Integer;
+use smt_str::SmtChar;
 
 use crate::node::{
     utils::{reverse, PatternIterator, Symbol},
@@ -115,7 +116,7 @@ pub fn length_reasoning(node: &Node, mngr: &mut NodeManager) -> Option<Node> {
         // Check if the equation is trivially unsatisfiable
 
         // Parity condition
-        if r % 2 != 0 && coeffs.values().all(|&c| (c.abs() as u64) % 2 == 0) {
+        if r % 2 != 0 && coeffs.values().all(|&c| (c.unsigned_abs() as u64) % 2 == 0) {
             return Some(mngr.ffalse());
         }
 
@@ -158,9 +159,9 @@ fn is_empty_string(node: &Node) -> bool {
 
 /// If the node is a pattern starting with a constant character, return that character.
 /// Otherwise, return `None`.
-fn first_char(node: &Node) -> Option<char> {
+fn first_char(node: &Node) -> Option<SmtChar> {
     match node.kind() {
-        NodeKind::String(s) => s.chars().next(),
+        NodeKind::String(s) => s.first(),
         NodeKind::Concat => {
             let first_child = node.children().first()?;
             first_char(first_child)
@@ -171,9 +172,9 @@ fn first_char(node: &Node) -> Option<char> {
 
 /// If the node is a pattern ending with a constant character, return that character.
 /// Otherwise, return `None`.
-fn last_char(node: &Node) -> Option<char> {
+fn last_char(node: &Node) -> Option<SmtChar> {
     match node.kind() {
-        NodeKind::String(s) => s.chars().last(),
+        NodeKind::String(s) => s.last(),
         NodeKind::Concat => {
             let first_child = node.children().last()?;
             last_char(first_child)

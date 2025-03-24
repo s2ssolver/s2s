@@ -170,12 +170,10 @@ pub fn equality_trivial(node: &Node, mngr: &mut NodeManager) -> Option<Node> {
         let rhs = node.children().last().unwrap();
         if lhs == rhs {
             Some(mngr.ttrue())
+        } else if lhs.is_const() && rhs.is_const() {
+            Some(mngr.ffalse())
         } else {
-            if lhs.is_const() && rhs.is_const() {
-                Some(mngr.ffalse())
-            } else {
-                None
-            }
+            None
         }
     } else {
         None

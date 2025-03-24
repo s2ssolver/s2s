@@ -13,22 +13,20 @@ use num_traits::cast::ToPrimitive;
 use smallvec::smallvec;
 use smt2parser::concrete as smt;
 use smt2parser::visitors::Index;
-
-use super::escape::parse_smtlib_string;
+use smt_str::alphabet::CharRange;
+use smt_str::SmtString;
 
 use super::{AstError, Command};
 
 pub struct Converter<'a> {
-    smt25: bool,
     mngr: &'a mut NodeManager,
 
     let_bindings: Vec<(smt::Symbol, smt::Term)>,
 }
 
 impl<'a> Converter<'a> {
-    pub fn new(smt25: bool, mngr: &'a mut NodeManager) -> Self {
+    pub fn new(mngr: &'a mut NodeManager) -> Self {
         Self {
-            smt25,
             mngr,
             let_bindings: vec![],
         }
@@ -148,8 +146,8 @@ impl<'a> Converter<'a> {
                 Ok(self.mngr.const_int(conv as i64))
             }
             smt::Constant::String(s) => {
-                let s = parse_smtlib_string(s, self.smt25);
-                Ok(self.mngr.const_string(s?))
+                let parsed = SmtString::parse(s);
+                Ok(self.mngr.const_string(parsed))
             }
             smt::Constant::Decimal(_)
             | smt::Constant::Hexadecimal(_)
@@ -195,7 +193,7 @@ impl<'a> Converter<'a> {
                             Ok(self.mngr.create_node(NodeKind::Regex(re), vec![]))
                         }
                         "re.allchar" => {
-                            let re = self.mngr.re_builder().any_char();
+                            let re = self.mngr.re_builder().allchar();
                             Ok(self.mngr.create_node(NodeKind::Regex(re), vec![]))
                         }
                         _ => Err(AstError::Undeclared(symbol.0.clone())),
@@ -306,14 +304,8 @@ impl<'a> Converter<'a> {
                     "str.to_int" if args.len() == 1 => {
                         return Err(AstError::Unsupported("str.to_int".to_string()))
                     }
-                    "str.to.int" if args.len() == 1 && self.smt25 => {
-                        return Err(AstError::Unsupported("str.to.int".to_string()))
-                    }
                     "str.from_int" if args.len() == 1 => {
                         return Err(AstError::Unsupported("str.from_int".to_string()))
-                    }
-                    "str.from.int" if args.len() == 1 && self.smt25 => {
-                        return Err(AstError::Unsupported("str.from.int".to_string()))
                     }
                     // String regex
                     "str.in_re" if args.len() == 2 => {
@@ -329,18 +321,7 @@ impl<'a> Converter<'a> {
                         // Must be a string constant
                         match arg.kind() {
                             NodeKind::String(s) => {
-                                let re = self.mngr.re_builder().word(s.clone().into());
-                                self.mngr.create_node(NodeKind::Regex(re), vec![])
-                            }
-                            _ => return Err(AstError::Unsupported("str.to_re".to_string())),
-                        }
-                    }
-                    "str.to.re" if args.len() == 1 && self.smt25 => {
-                        let arg = args.pop().unwrap();
-                        // Must be a string constant
-                        match arg.kind() {
-                            NodeKind::String(s) => {
-                                let re = self.mngr.re_builder().word(s.clone().into());
+                                let re = self.mngr.re_builder().to_re(s.clone());
                                 self.mngr.create_node(NodeKind::Regex(re), vec![])
                             }
                             _ => return Err(AstError::Unsupported("str.to_re".to_string())),
@@ -352,11 +333,11 @@ impl<'a> Converter<'a> {
                         if let (NodeKind::String(left), NodeKind::String(right)) =
                             (left.kind(), right.kind())
                         {
-                            let re = if left.chars().count() == 1 && right.chars().count() == 1 {
-                                self.mngr.re_builder().range(
-                                    left.chars().next().unwrap(),
-                                    right.chars().next().unwrap(),
-                                )
+                            let re = if left.len() == 1 && right.len() == 1 {
+                                let l = left[0];
+                                let r = right[0];
+                                let range = CharRange::new(l, r);
+                                self.mngr.re_builder().range(range)
                             } else {
                                 self.mngr.re_builder().none()
                             };
@@ -542,6 +523,7 @@ impl<'a> Converter<'a> {
 mod tests {
 
     use smt2parser::concrete::SyntaxBuilder;
+    use smt_str::SmtString;
 
     use crate::{node::NodeManager, smt::Script};
 
@@ -550,7 +532,7 @@ mod tests {
     fn convert_term(term: &str, mngr: &mut NodeManager) -> Node {
         let script = format!("(assert {})", term);
         let cmds = smt2parser::CommandStream::new(script.as_bytes(), SyntaxBuilder, None);
-        let mut converter = Converter::new(false, mngr);
+        let mut converter = Converter::new(mngr);
         let mut script = Script::default();
         for cmd in cmds {
             script.push(converter.convert(cmd.unwrap()).unwrap());
@@ -583,7 +565,7 @@ mod tests {
     fn parse_re_allchar() {
         let mut mngr = NodeManager::default();
         let term = convert_term(r#"re.allchar"#, &mut mngr);
-        let allchar = mngr.re_builder().any_char();
+        let allchar = mngr.re_builder().allchar();
         assert_eq!(term, mngr.create_node(NodeKind::Regex(allchar), vec![]));
     }
 
@@ -591,7 +573,7 @@ mod tests {
     fn parse_re_plus() {
         let mut mngr = NodeManager::default();
         let term = convert_term(r#"(re.+ (str.to_re "a"))"#, &mut mngr);
-        let str_a = mngr.re_builder().word("a".into());
+        let str_a = mngr.re_builder().to_re("a".into());
         let plus = mngr.re_builder().plus(str_a);
         assert_eq!(term, mngr.create_node(NodeKind::Regex(plus), vec![]));
     }
@@ -600,7 +582,7 @@ mod tests {
     fn parse_re_comp() {
         let mut mngr = NodeManager::default();
         let term = convert_term(r#"(re.comp (str.to_re "a"))"#, &mut mngr);
-        let str_a = mngr.re_builder().word("a".into());
+        let str_a = mngr.re_builder().to_re("a".into());
         let comp = mngr.re_builder().comp(str_a);
         let expected = mngr.create_node(NodeKind::Regex(comp), vec![]);
         assert_eq!(term, expected, "\nExpected: {}\nGot: {}", expected, term);
@@ -610,7 +592,7 @@ mod tests {
     fn parse_re_loop() {
         let mut mngr = NodeManager::default();
         let term = convert_term(r#"((_ re.loop 1 2) (str.to_re "a"))"#, &mut mngr);
-        let str_a = mngr.re_builder().word("a".into());
+        let str_a = mngr.re_builder().to_re("a".into());
         let loop_ = mngr.re_builder().loop_(str_a, 1, 2);
         assert_eq!(term, mngr.create_node(NodeKind::Regex(loop_), vec![]));
     }
@@ -619,7 +601,7 @@ mod tests {
     fn parse_re_pow() {
         let mut mngr = NodeManager::default();
         let term = convert_term(r#"((_ re.^ 2) (str.to_re "a"))"#, &mut mngr);
-        let str_a = mngr.re_builder().word("a".into());
+        let str_a = mngr.re_builder().to_re("a".into());
         let pow = mngr.re_builder().pow(str_a, 2);
         assert_eq!(term, mngr.create_node(NodeKind::Regex(pow), vec![]));
     }
@@ -631,7 +613,7 @@ mod tests {
         let term = convert_term(r#"(let ((y "")) (= x y))"#, &mut mngr);
 
         let vx = mngr.var(x);
-        let epsi = mngr.const_string("".to_string());
+        let epsi = mngr.const_string(SmtString::empty());
         let expected = mngr.eq(vx, epsi);
         assert_eq!(term, expected);
     }

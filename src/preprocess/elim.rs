@@ -28,7 +28,7 @@ impl EliminateEntailed {
             let kind = node.kind().clone();
             let children = node
                 .children()
-                .into_iter()
+                .iter()
                 .map(|child| self.apply_node(child.clone(), entailed, mngr))
                 .collect();
             mngr.create_node(kind, children)

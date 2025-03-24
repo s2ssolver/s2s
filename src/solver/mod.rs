@@ -1,5 +1,5 @@
 use core::panic;
-use std::time::Instant;
+use std::{rc::Rc, time::Instant};
 
 use crate::{
     domain::Domain,
@@ -95,7 +95,7 @@ impl Solver {
     pub fn new(
         options: SolverOptions,
         skeleton: PFormula,
-        alphabet: Alphabet,
+        alphabet: Rc<Alphabet>,
         init_bounds: Domain,
     ) -> Self {
         let mut sat_solver = cadical::Solver::default();

@@ -50,21 +50,21 @@ impl ZeroLengthEpsilon {
                     true
                 }
                 NodeKind::Int(i) => *i >= 0, // if we find a negative integer, we can't apply the rule
-                NodeKind::Sub => return false,
+                NodeKind::Sub => false,
                 NodeKind::Variable(v) => {
                     debug_assert!(!in_len);
                     debug_assert!(v.sort().is_int());
                     // if we find a variable that is not of sort string, we can't apply the rule
-                    return false;
+                    false
                 }
-                _ => return false,
+                _ => false,
             }
         }
         let mut vars = HashSet::new();
         if collect_vars(lhs, false, &mut vars) && !vars.is_empty() {
             // set all variables to epsilon
             let mut subs = VarSubstitution::default();
-            let epsi = mngr.const_str("");
+            let epsi = mngr.empty_string();
             for v in vars {
                 subs.add(v, epsi.clone());
             }

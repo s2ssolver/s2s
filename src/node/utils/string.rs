@@ -1,11 +1,13 @@
 use std::{fmt::Display, rc::Rc};
 
+use smt_str::{SmtChar, SmtString};
+
 use crate::node::{Node, NodeKind, NodeManager, Sorted, Variable};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Symbol {
     /// A constant character
-    Const(char),
+    Const(SmtChar),
     /// A variable symbol
     Variable(Rc<Variable>),
     /// Something else
@@ -50,10 +52,7 @@ impl<'a> PatternIterator<'a> {
 
     pub fn peek(&self) -> Option<Symbol> {
         match self.node.kind() {
-            NodeKind::String(s) => {
-                let mut chars = s.chars();
-                chars.nth(self.index).map(Symbol::Const)
-            }
+            NodeKind::String(s) => s.nth(self.index).map(Symbol::Const),
             NodeKind::Variable(v) if v.sort().is_string() => {
                 // Return the variable symbol and move to the next child
                 if self.index > 0 {
@@ -96,13 +95,13 @@ impl<'a> PatternIterator<'a> {
         match self.node.kind() {
             NodeKind::String(s) => {
                 // Process constant characters within the string
-                let ch = s.chars().skip(self.index).collect::<String>();
+                let ch = s.drop(self.index);
                 Some(mngr.const_string(ch))
             }
             NodeKind::Variable(v) if v.sort().is_string() => {
                 // Return the variable symbol and move to the next child
                 if self.index > 0 {
-                    Some(mngr.const_str(""))
+                    Some(mngr.empty_string())
                 } else {
                     Some(mngr.var(v.clone()))
                 }
@@ -131,7 +130,7 @@ impl<'a> PatternIterator<'a> {
     }
 }
 
-impl<'a> Iterator for PatternIterator<'a> {
+impl Iterator for PatternIterator<'_> {
     type Item = Symbol;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -148,7 +147,7 @@ impl<'a> Iterator for PatternIterator<'a> {
             NodeKind::String(s) => {
                 // Process constant characters within the string
                 if self.index < s.len() {
-                    let ch = s.chars().nth(self.index)?;
+                    let ch = s.nth(self.index)?;
                     self.index += 1;
                     Some(Symbol::Const(ch))
                 } else {
@@ -178,21 +177,21 @@ impl<'a> Iterator for PatternIterator<'a> {
 /// If the `node` is a concatenation of strings and variables, it accumulates
 /// the constant prefix until encountering a variable or non-string term.
 /// Otherwise, returns `None`.
-pub fn const_prefix(node: &Node) -> Option<String> {
+pub fn const_prefix(node: &Node) -> Option<SmtString> {
     match node.kind() {
         NodeKind::String(s) => Some(s.clone()), // Directly a constant string
-        NodeKind::Variable(v) if v.sort().is_string() => Some("".to_string()), // Empty prefix for a variable
+        NodeKind::Variable(v) if v.sort().is_string() => Some(SmtString::empty()), // Empty prefix for a variable
         NodeKind::Concat => {
-            let mut prefix = String::new();
+            let mut prefix = SmtString::empty();
             // Accumulate the prefix from each child until a variable or non-string is encountered
             for child in node.children() {
                 match child.kind() {
-                    NodeKind::String(s) => prefix.push_str(s),
+                    NodeKind::String(s) => prefix.append(s),
                     NodeKind::Variable(v) if v.sort().is_string() => break, // Stop on first variable
                     NodeKind::Concat => {
                         // Recursively accumulate the prefix from nested concatenations
                         let nested_prefix = const_prefix(child)?;
-                        prefix.push_str(&nested_prefix);
+                        prefix.append(&nested_prefix);
                     }
                     _ => return Some(prefix), // Stop on first non-string/non-variable term
                 }
@@ -207,10 +206,10 @@ pub fn const_prefix(node: &Node) -> Option<String> {
 /// If the `node` is a concatenation of strings and variables, it accumulates
 /// the constant suffix until encountering a variable or non-string term.
 /// Otherwise, returns `None`.
-pub fn const_suffix(node: &Node) -> Option<String> {
+pub fn const_suffix(node: &Node) -> Option<SmtString> {
     match node.kind() {
         NodeKind::String(s) => Some(s.clone()), // Directly a constant string
-        NodeKind::Variable(v) if v.sort().is_string() => Some("".to_string()), // Empty suffix for a variable
+        NodeKind::Variable(v) if v.sort().is_string() => Some(SmtString::empty()), // Empty suffix for a variable
         NodeKind::Concat => {
             let mut suffix_parts = Vec::new();
 
@@ -250,7 +249,7 @@ mod tests {
 
         // Test with a simple constant string
         let node = mngr.const_str("foo");
-        assert_eq!(const_prefix(&node), Some("foo".to_string()));
+        assert_eq!(const_prefix(&node), Some("foo".into()));
     }
 
     #[test]
@@ -262,7 +261,7 @@ mod tests {
         let string_bar = mngr.const_str("bar");
         let node = mngr.concat(vec![string_foo, string_bar]);
 
-        assert_eq!(const_prefix(&node), Some("foobar".to_string()));
+        assert_eq!(const_prefix(&node), Some("foobar".into()));
     }
 
     #[test]
@@ -276,7 +275,7 @@ mod tests {
         let node = mngr.concat(vec![string_foo, var_x.clone()]);
 
         // Prefix should stop at variable
-        assert_eq!(const_prefix(&node), Some("foo".to_string()));
+        assert_eq!(const_prefix(&node), Some("foo".into()));
     }
 
     #[test]
@@ -295,7 +294,7 @@ mod tests {
         let node = mngr.concat(vec![string_abc, inner_concat]);
 
         // Expect "abcdef" as the longest prefix, stopping at the variable
-        assert_eq!(const_prefix(&node), Some("abcdef".to_string()));
+        assert_eq!(const_prefix(&node), Some("abcdef".into()));
     }
 
     #[test]
@@ -313,7 +312,7 @@ mod tests {
 
         // Empty concatenation
         let node = mngr.concat(vec![]);
-        assert_eq!(const_prefix(&node), Some("".to_string())); // Empty concat should return an empty prefix
+        assert_eq!(const_prefix(&node), Some("".into())); // Empty concat should return an empty prefix
     }
 
     #[test]
@@ -322,7 +321,7 @@ mod tests {
 
         // Test with a simple constant string
         let node = mngr.const_str("foo");
-        assert_eq!(const_suffix(&node), Some("foo".to_string()));
+        assert_eq!(const_suffix(&node), Some("foo".into()));
     }
 
     #[test]
@@ -334,7 +333,7 @@ mod tests {
         let string_bar = mngr.const_str("bar");
         let node = mngr.concat(vec![string_foo, string_bar]);
 
-        assert_eq!(const_suffix(&node), Some("foobar".to_string()));
+        assert_eq!(const_suffix(&node), Some("foobar".into()));
     }
 
     #[test]
@@ -348,7 +347,7 @@ mod tests {
         let node = mngr.concat(vec![var_x.clone(), string_foo]);
 
         // Suffix should stop at variable
-        assert_eq!(const_suffix(&node), Some("foo".to_string()));
+        assert_eq!(const_suffix(&node), Some("foo".into()));
     }
 
     #[test]
@@ -367,7 +366,7 @@ mod tests {
         let node = mngr.concat(vec![inner_concat, string_def]);
 
         // Expect "defabc" as the longest suffix, stopping at the variable
-        assert_eq!(const_suffix(&node), Some("abcdef".to_string()));
+        assert_eq!(const_suffix(&node), Some("abcdef".into()));
     }
 
     #[test]
@@ -385,7 +384,7 @@ mod tests {
 
         // Empty concatenation
         let node = mngr.concat(vec![]);
-        assert_eq!(const_suffix(&node), Some("".to_string())); // Empty concat should return an empty suffix
+        assert_eq!(const_suffix(&node), Some("".into())); // Empty concat should return an empty suffix
     }
 
     #[test]
@@ -394,11 +393,11 @@ mod tests {
         let node = mngr.const_str("abcde");
         let mut iter = PatternIterator::new(&node);
 
-        assert_eq!(iter.next(), Some(Symbol::Const('a')));
-        assert_eq!(iter.next(), Some(Symbol::Const('b')));
-        assert_eq!(iter.next(), Some(Symbol::Const('c')));
-        assert_eq!(iter.next(), Some(Symbol::Const('d')));
-        assert_eq!(iter.next(), Some(Symbol::Const('e')));
+        assert_eq!(iter.next(), Some(Symbol::Const('a'.into())));
+        assert_eq!(iter.next(), Some(Symbol::Const('b'.into())));
+        assert_eq!(iter.next(), Some(Symbol::Const('c'.into())));
+        assert_eq!(iter.next(), Some(Symbol::Const('d'.into())));
+        assert_eq!(iter.next(), Some(Symbol::Const('e'.into())));
         assert_eq!(iter.next(), None);
     }
 
@@ -424,11 +423,11 @@ mod tests {
         let node = mngr.concat(vec![string_hello, var_x.clone()]);
         let mut iter = PatternIterator::new(&node);
 
-        assert_eq!(iter.next(), Some(Symbol::Const('a')));
-        assert_eq!(iter.next(), Some(Symbol::Const('b')));
-        assert_eq!(iter.next(), Some(Symbol::Const('c')));
-        assert_eq!(iter.next(), Some(Symbol::Const('d')));
-        assert_eq!(iter.next(), Some(Symbol::Const('e')));
+        assert_eq!(iter.next(), Some(Symbol::Const('a'.into())));
+        assert_eq!(iter.next(), Some(Symbol::Const('b'.into())));
+        assert_eq!(iter.next(), Some(Symbol::Const('c'.into())));
+        assert_eq!(iter.next(), Some(Symbol::Const('d'.into())));
+        assert_eq!(iter.next(), Some(Symbol::Const('e'.into())));
         assert_eq!(iter.next(), Some(Symbol::Variable(x.clone())));
         assert_eq!(iter.next(), None);
     }
@@ -447,12 +446,12 @@ mod tests {
         let node = mngr.concat(vec![string_foo, inner_concat]);
         let mut iter = PatternIterator::new(&node);
 
-        assert_eq!(iter.next(), Some(Symbol::Const('f')));
-        assert_eq!(iter.next(), Some(Symbol::Const('o')));
-        assert_eq!(iter.next(), Some(Symbol::Const('o')));
-        assert_eq!(iter.next(), Some(Symbol::Const('b')));
-        assert_eq!(iter.next(), Some(Symbol::Const('a')));
-        assert_eq!(iter.next(), Some(Symbol::Const('r')));
+        assert_eq!(iter.next(), Some(Symbol::Const('f'.into())));
+        assert_eq!(iter.next(), Some(Symbol::Const('o'.into())));
+        assert_eq!(iter.next(), Some(Symbol::Const('o'.into())));
+        assert_eq!(iter.next(), Some(Symbol::Const('b'.into())));
+        assert_eq!(iter.next(), Some(Symbol::Const('a'.into())));
+        assert_eq!(iter.next(), Some(Symbol::Const('r'.into())));
         assert_eq!(iter.next(), Some(Symbol::Variable(x.clone())));
         assert_eq!(iter.next(), None);
     }
@@ -478,7 +477,7 @@ mod tests {
         iter.next();
         iter.next();
         let new_node = iter.to_node(&mut mngr).unwrap();
-        assert_eq!(new_node, mngr.const_str(""));
+        assert_eq!(new_node, mngr.empty_string());
     }
 
     #[test]
@@ -494,7 +493,7 @@ mod tests {
         let mut iter = PatternIterator::new(&var_x);
         iter.next();
         let new_node = iter.to_node(&mut mngr).unwrap();
-        assert_eq!(new_node, mngr.const_str(""));
+        assert_eq!(new_node, mngr.empty_string());
     }
 
     #[test]
@@ -530,7 +529,7 @@ mod tests {
         }
         let new_node = iter.to_node(&mut mngr).unwrap();
 
-        let expected = mngr.const_str("");
+        let expected = mngr.empty_string();
         assert_eq!(new_node, expected,);
     }
 }

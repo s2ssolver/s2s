@@ -345,13 +345,10 @@ impl BoundRefiner {
         log::trace!(
             "DNF: \n{}",
             dnf.iter()
-                .map(|c| format!(
-                    "{}",
-                    c.0.iter()
+                .map(|c| c.0.iter()
                         .map(|l| l.to_string())
                         .collect::<Vec<_>>()
-                        .join(",")
-                ))
+                        .join(",").to_string())
                 .collect::<Vec<_>>()
                 .join("\n")
         );

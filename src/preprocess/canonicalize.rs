@@ -11,14 +11,14 @@ use crate::node::{
 
 use indexmap::IndexMap;
 
-use regulaer::re::Regex;
+use smt_str::re::{ReOp, Regex};
 
 use std::{collections::HashMap, rc::Rc};
 
 pub fn canonicalize(node: &Node, mngr: &mut NodeManager) -> Node {
     let mut canonicalizer = Canonicalizer::default();
-    let c = canonicalizer.canonicalize(node, mngr);
-    c
+
+    canonicalizer.canonicalize(node, mngr)
 }
 
 #[derive(Default)]
@@ -57,8 +57,7 @@ impl Canonicalizer {
         //        let formula = Formula::new(FormulaKind::And(complete), node.clone());
         //        Ok(formula)
 
-        let croot = mngr.and(complete);
-        croot
+        mngr.and(complete)
     }
 
     /// Brings all literals into canonical form.
@@ -200,27 +199,17 @@ impl Canonicalizer {
         // - Contains intersection of complement
         fn aux(re: &Regex, in_inter: bool, in_comp: bool) -> bool {
             match re.op() {
-                regulaer::re::ReOp::Literal(_) | regulaer::re::ReOp::Range(_) => true,
+                ReOp::Literal(_) | ReOp::Range(_) => true,
                 _ if in_comp => false,
-                regulaer::re::ReOp::None | regulaer::re::ReOp::Any | regulaer::re::ReOp::All => {
-                    true
-                }
-                regulaer::re::ReOp::Concat(rs) | regulaer::re::ReOp::Union(rs) => {
-                    rs.iter().all(|r| aux(r, in_inter, in_comp))
-                }
-                regulaer::re::ReOp::Inter(rs) => rs.iter().all(|r| aux(r, true, in_comp)),
-                regulaer::re::ReOp::Star(r)
-                | regulaer::re::ReOp::Plus(r)
-                | regulaer::re::ReOp::Opt(r) => aux(r, in_inter, in_comp),
-                regulaer::re::ReOp::Diff(_, _) if in_inter => false,
-                regulaer::re::ReOp::Diff(r1, r2) => {
-                    aux(r1, in_inter, in_comp) && aux(r2, in_inter, true)
-                }
-                regulaer::re::ReOp::Comp(_) if in_inter => false,
-                regulaer::re::ReOp::Comp(r) => aux(r, in_inter, true),
-                regulaer::re::ReOp::Pow(r, _) | regulaer::re::ReOp::Loop(r, _, _) => {
-                    aux(r, in_inter, in_comp)
-                }
+                ReOp::None | ReOp::Any | ReOp::All => true,
+                ReOp::Concat(rs) | ReOp::Union(rs) => rs.iter().all(|r| aux(r, in_inter, in_comp)),
+                ReOp::Inter(rs) => rs.iter().all(|r| aux(r, true, in_comp)),
+                ReOp::Star(r) | ReOp::Plus(r) | ReOp::Opt(r) => aux(r, in_inter, in_comp),
+                ReOp::Diff(_, _) if in_inter => false,
+                ReOp::Diff(r1, r2) => aux(r1, in_inter, in_comp) && aux(r2, in_inter, true),
+                ReOp::Comp(_) if in_inter => false,
+                ReOp::Comp(r) => aux(r, in_inter, true),
+                ReOp::Pow(r, _) | ReOp::Loop(r, _, _) => aux(r, in_inter, in_comp),
             }
         }
         aux(re, false, false)
@@ -245,7 +234,7 @@ impl Canonicalizer {
             Some(
                 mngr.atom(AtomKind::FactorConstraint(RegularFactorConstraint::prefix(
                     v,
-                    constprefix.to_string(),
+                    constprefix.clone(),
                 ))),
             )
         } else {
@@ -275,7 +264,7 @@ impl Canonicalizer {
             Some(
                 mngr.atom(AtomKind::FactorConstraint(RegularFactorConstraint::suffix(
                     v,
-                    s.to_string(),
+                    s.clone(),
                 ))),
             )
         } else {
@@ -305,7 +294,7 @@ impl Canonicalizer {
                 self.define_with_var(&container, mngr)
             };
             Some(mngr.atom(AtomKind::FactorConstraint(
-                RegularFactorConstraint::contains(v, s.to_string()),
+                RegularFactorConstraint::contains(v, s.clone()),
             )))
         } else {
             // Otherwise, rewrite as a word equation: There exists some t, u such that  r = t ++ s ++ u
@@ -334,8 +323,10 @@ impl Canonicalizer {
 
     /// Canocalizes nodes of the form (concat t1 ... tn). The result is a new node (concat r1 ... rm)
     /// where each ri is a einther a (string) variable or a constant. Does the following:
+    ///
     /// - If any of node ti is not a variable or a constant, ti is replaced by a new variable ri and the identity ti = ri is stored.
     /// - If ti is a concatenation, it is recursively canonicalized and flattened.
+    ///
     /// Returns a Pattern representing the canonical form of the concatenation.
     fn canonicalize_concat(&mut self, node: Node, mngr: &mut NodeManager) -> Option<Pattern> {
         if let Some(p) = self.patterns.get(&node) {
@@ -349,7 +340,7 @@ impl Canonicalizer {
         if let Some(v) = node.as_variable() {
             Some(Pattern::variable(v.clone()))
         } else if let Some(s) = node.as_str_const() {
-            Some(Pattern::constant(s))
+            Some(Pattern::constant(s.clone()))
         } else if *node.kind() == NodeKind::Concat {
             let mut rec = Pattern::empty();
             for c in node.children() {
@@ -498,7 +489,7 @@ impl Canonicalizer {
         let child = node.children().first().unwrap();
         match child.kind() {
             NodeKind::String(s) => {
-                let len = s.chars().count().try_into().unwrap();
+                let len = s.len() as i64;
                 Some(LinearArithTerm::from_const(len))
             }
             NodeKind::Variable(v) => {
