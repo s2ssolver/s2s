@@ -51,7 +51,7 @@ impl ReCompRemover {
                     ReOp::None => builder.all(),
                     ReOp::All => builder.none(),
                     ReOp::Any => {
-                        let anyplus = builder.plus(builder.any_char());
+                        let anyplus = builder.plus(builder.allchar());
                         builder.union(smallvec![builder.epsilon(), anyplus])
                     }
                     ReOp::Union(rs) => self.comp_union(rs.to_vec(), builder, fold_ranges)?,
@@ -162,7 +162,7 @@ impl ReCompRemover {
     }
 
     fn comp_empty_word(&self, builder: &mut ReBuilder) -> Regex {
-        builder.plus(builder.any_char())
+        builder.plus(builder.allchar())
     }
 
     fn comp_word(&mut self, w: SmtString, builder: &mut ReBuilder, fold_ranges: bool) -> Regex {
@@ -214,7 +214,7 @@ impl ReCompRemover {
             return re.clone();
         }
         if r.is_empty() {
-            return builder.any_char();
+            return builder.allchar();
         }
         let diff_r = CharRange::all().subtract(&r);
         let diff_r = diff_r.into_iter().map(|r| builder.range(r)).collect();
@@ -319,6 +319,6 @@ mod test {
         let mut builder = ReBuilder::default();
         let w = SmtString::empty();
         let r = comp.comp_word(w, &mut builder, true);
-        assert_eq!(r, builder.plus(builder.any_char()));
+        assert_eq!(r, builder.plus(builder.allchar()));
     }
 }

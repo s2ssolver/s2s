@@ -1,6 +1,6 @@
 use itertools::Itertools;
 use smt_str::{
-    alphabet::{Alphabet, AlphabetPartition, CharRange},
+    alphabet::{partition::AlphabetPartition, Alphabet, CharRange},
     re::{ReBuilder, ReOp, Regex},
     SmtChar,
 };
@@ -19,7 +19,7 @@ impl RangeCompressor {
         // Try to get rid of complements first
         let node = self.rewrite_complements(node, mngr, true);
         let partioning = self.partition_alphabet(&node);
-        
+
         self.compress_ranges(&node, &partioning, mngr)
     }
 

@@ -342,7 +342,7 @@ fn lc_to_reg(lc: &LinearConstraint, mngr: &mut NodeManager) -> Option<RegularCon
             let re = match op {
                 ArithOperator::Eq => {
                     if r % s == 0 {
-                        builder.pow(builder.any_char(), r / s)
+                        builder.pow(builder.allchar(), r / s)
                     } else {
                         builder.none()
                     }
@@ -350,24 +350,24 @@ fn lc_to_reg(lc: &LinearConstraint, mngr: &mut NodeManager) -> Option<RegularCon
                 ArithOperator::Ineq => return None,
                 ArithOperator::Leq => {
                     let u = r / s;
-                    builder.loop_(builder.any_char(), 0, u)
+                    builder.loop_(builder.allchar(), 0, u)
                 }
                 ArithOperator::Less => {
                     let u = r / s;
                     if r % s == 0 {
-                        builder.loop_(builder.any_char(), 0, u - 1)
+                        builder.loop_(builder.allchar(), 0, u - 1)
                     } else {
-                        builder.loop_(builder.any_char(), 0, u)
+                        builder.loop_(builder.allchar(), 0, u)
                     }
                 }
                 ArithOperator::Geq => {
                     let l = r.div_ceil(s);
-                    let lower = builder.pow(builder.any_char(), l);
+                    let lower = builder.pow(builder.allchar(), l);
                     builder.concat(smallvec![lower, builder.all()])
                 }
                 ArithOperator::Greater => {
                     let l = r.div_ceil(s);
-                    let lower = builder.pow(builder.any_char(), l + 1);
+                    let lower = builder.pow(builder.allchar(), l + 1);
                     builder.concat(smallvec![lower, builder.all()])
                 }
             };

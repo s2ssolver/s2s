@@ -175,7 +175,7 @@ impl NFAEncoder {
                             res.add_clause(vec![nlit(def_var), plit(reach_prev)]);
                             res.add_clause(vec![nlit(def_var), nlit(sub_var)]);
                         }
-                        TransitionType::Range(range) if range.size() == 1 => {
+                        TransitionType::Range(range) if range.len() == 1 => {
                             // Is predecessor if we read the given character
                             let c = range.start();
                             let sub_var = dom.string().get_sub(&self.var, l - 1, c).unwrap();
@@ -196,7 +196,7 @@ impl NFAEncoder {
 
                             res.add_clause(range_clause);
                         }
-                        TransitionType::NotRange(range) if range.size() == 1 => {
+                        TransitionType::NotRange(range) if range.len() == 1 => {
                             // Is predecessor if we **NOT** read the given character
                             let c = range.start();
                             let sub_var = dom.string().get_sub(&self.var, l - 1, c).unwrap();

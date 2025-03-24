@@ -193,7 +193,7 @@ impl<'a> Converter<'a> {
                             Ok(self.mngr.create_node(NodeKind::Regex(re), vec![]))
                         }
                         "re.allchar" => {
-                            let re = self.mngr.re_builder().any_char();
+                            let re = self.mngr.re_builder().allchar();
                             Ok(self.mngr.create_node(NodeKind::Regex(re), vec![]))
                         }
                         _ => Err(AstError::Undeclared(symbol.0.clone())),
@@ -565,7 +565,7 @@ mod tests {
     fn parse_re_allchar() {
         let mut mngr = NodeManager::default();
         let term = convert_term(r#"re.allchar"#, &mut mngr);
-        let allchar = mngr.re_builder().any_char();
+        let allchar = mngr.re_builder().allchar();
         assert_eq!(term, mngr.create_node(NodeKind::Regex(allchar), vec![]));
     }
 
