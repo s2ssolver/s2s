@@ -76,8 +76,9 @@ impl LinearRefiner {
 
         let mut changed = true;
         let mut refined = bounds.clone();
-
-        while changed {
+        let mut round = 0;
+        while changed && round < 100 {
+            round += 1;
             changed = false;
             for linear in &self.linears {
                 if let Some(new_bounds) = self.refinement_step(&refined, linear) {
