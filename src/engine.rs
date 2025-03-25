@@ -1,5 +1,3 @@
-use std::time::Instant;
-
 use indexmap::IndexSet;
 use smt_str::re::{ReOp, Regex};
 
@@ -19,7 +17,7 @@ use crate::{
         smt::to_script,
         Node, NodeKind, NodeManager, Sort, Sorted, VarSubstitution,
     },
-    preprocess::{canonicalize, compress_ranges, Preprocessor},
+    preprocess::{canonicalize, Preprocessor},
     solver::Solver,
     SolverAnswer, SolverOptions,
 };
@@ -107,31 +105,20 @@ impl Engine {
 
         let mut preprocessor = Preprocessor::default();
 
-        let simped = if self.options.simplify {
-            preprocessor.apply(&nnf, self.options.preprocess_extra_passes, mngr)?
-        } else {
-            nnf
-        };
+        let preprocessed = preprocessor.apply(&nnf, &self.options, mngr)?;
 
         // These are the substitutions applied by the preprocessor
         // We need to store them and re-apply them to the model of the preprocessed formula, to get the model of the original formula
         let prepr_subst = preprocessor.applied_substitutions().clone();
 
-        // Compress the char ranges
-        let t = Instant::now();
-        let compressed = compress_ranges(&simped, mngr);
-
-        log::debug!("Compressed formula in {:?}", t.elapsed());
-        log::debug!("Compressed formula: {}", compressed);
-
         // If the 'print_preprocessed' option is set, print the preprocessed formula
         if self.options.print_preprocessed {
-            println!("{}", to_script(&compressed));
+            println!("{}", to_script(&preprocessed));
         }
 
         // Canonicalize.
         // This brings the formula into a normal that the solver understands.
-        let canonical = canonicalize(&compressed, mngr);
+        let canonical = canonicalize(&preprocessed, mngr);
         log::debug!("Canonicalized formula: {}", canonical);
 
         Ok((canonical, prepr_subst))

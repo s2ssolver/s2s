@@ -2,15 +2,15 @@
 
 use std::{collections::HashMap, rc::Rc};
 
-use smt_str::{re::Regex, sampling::sample_nfa};
+use smt_str::{re::Regex, sampling::sample_regex};
 
 use crate::node::{NodeKind, Variable};
 
 use super::*;
 
 /// Finds variables that occur only once in the formula and replaces them with a constant, based on the literal they occur in.
-#[derive(Clone, Default)]
-pub struct IndependentVariableAssignment {
+#[derive(Clone, Default, Debug)]
+pub(super) struct IndependentVariableAssignment {
     vcount: HashMap<Rc<Variable>, usize>,
 }
 
@@ -85,28 +85,25 @@ impl IndependentVariableAssignment {
         match lhs.kind() {
             NodeKind::Variable(v) if self.independent(v) => {
                 let mut subs = VarSubstitution::default();
-                // TODO: CHECK IF a empty in lang and return accordingly
-                let regex = if pol {
-                    regex.clone()
-                } else {
-                    mngr.re_builder().comp(regex.clone())
-                };
-                let nfa = mngr.get_nfa(&regex);
 
-                let rhs = match sample_nfa(&nfa, 1000) {
+                let rhs = match sample_regex(regex, mngr.re_builder(), 100, !pol) {
                     Some(w) => w,
                     None => {
-                        log::warn!("Could not sample from\n{}", nfa.dot());
+                        log::warn!("Could not sample from\n{}", regex);
                         return Some(subs); // short circuit here
                     }
                 };
 
-                debug_assert!(
-                    regex.accepts(&rhs),
-                    "Regex: {} does not accept '{}'",
-                    regex,
-                    rhs
-                );
+                if pol {
+                    debug_assert!(
+                        regex.accepts(&rhs),
+                        "Regex: {} does not accept '{}'",
+                        regex,
+                        rhs
+                    );
+                } else {
+                    debug_assert!(!regex.accepts(&rhs), "Regex: {} accepts '{}'", regex, rhs);
+                }
 
                 let rhs = mngr.const_string(rhs);
                 subs.add(v.clone(), rhs);
@@ -118,7 +115,12 @@ impl IndependentVariableAssignment {
         None
     }
 
-    fn apply(&self, atom: &Node, polarity: bool, mngr: &mut NodeManager) -> Option<Simplification> {
+    fn apply(
+        &self,
+        atom: &Node,
+        polarity: bool,
+        mngr: &mut NodeManager,
+    ) -> Option<VarSubstitution> {
         debug_assert!(atom.is_atomic(), "{} is not an atomic formula", atom);
         match atom.kind() {
             NodeKind::Variable(v) => {
@@ -129,14 +131,14 @@ impl IndependentVariableAssignment {
                     } else {
                         subs.add(v.clone(), mngr.ffalse());
                     }
-                    return Some(Simplification::new(subs, None));
+                    return Some(subs);
                 }
             }
             NodeKind::Eq => {
                 let lhs = atom.children().first().unwrap();
                 let rhs = atom.children().last().unwrap();
                 if let Some(subs) = self.try_reduce_eq(lhs, rhs, polarity, mngr) {
-                    return Some(Simplification::new(subs, None));
+                    return Some(subs);
                 }
             }
             NodeKind::InRe => {
@@ -144,7 +146,7 @@ impl IndependentVariableAssignment {
                 let rhs = atom.children().last().unwrap();
                 if let NodeKind::Regex(re) = rhs.kind() {
                     if let Some(subs) = self.try_reduce_reg_membership(lhs, re, polarity, mngr) {
-                        return Some(Simplification::new(subs, None));
+                        return Some(subs);
                     }
                 } else {
                     unreachable!("Membership atom with non-regex rhs");
@@ -169,10 +171,10 @@ impl IndependentVariableAssignment {
                                 let mut subs = VarSubstitution::default();
                                 let rhs = mngr.const_string(asstr.clone());
                                 subs.add(v.clone(), rhs);
-                                return Some(Simplification::new(subs, None));
+                                return Some(subs);
                             } else {
                                 // abort here to not decent into the children
-                                return Some(Simplification::new(VarSubstitution::default(), None));
+                                return Some(VarSubstitution::default());
                             }
                         }
                     }
@@ -184,27 +186,22 @@ impl IndependentVariableAssignment {
     }
 }
 
-impl SimpRule for IndependentVariableAssignment {
-    fn apply(&self, node: &Node, _: bool, mngr: &mut NodeManager) -> Option<Simplification> {
+impl EntailmentRule for IndependentVariableAssignment {
+    fn apply(&self, node: &Node, mngr: &mut NodeManager) -> Option<VarSubstitution> {
         if node.is_literal() {
-            match node.kind() {
+            return match node.kind() {
                 NodeKind::Not => {
                     let child = node.children().first().unwrap();
                     self.apply(child, false, mngr)
                 }
                 _ => self.apply(node, true, mngr),
-            }
-        } else {
-            None
+            };
         }
+        None
     }
 
-    fn init(&mut self, root: &Node) {
+    fn init(&mut self, root: &Node, _: &mut NodeManager) {
         self.vcount.clear();
         Self::count_variables(root, &mut self.vcount);
-    }
-
-    fn name(&self) -> &str {
-        "IndependentVariableAssignment"
     }
 }

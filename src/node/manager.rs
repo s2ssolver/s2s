@@ -222,8 +222,11 @@ impl NodeManager {
             let builder = self.re_builder();
             let mut nfa = compile(regex, builder).eliminate_epsilon();
 
-            nfa.trim();
-
+            // Should be trim by construction, but just in case.
+            // If the regex is trim, then this is a no-op anyway (returns the automaton directly).
+            nfa = nfa.trim();
+            // May help with performance, but not strictly necessary.
+            nfa.compress_ranges();
             let nfa = Rc::new(nfa);
             self.nfas.insert(regex.clone(), nfa.clone());
             nfa

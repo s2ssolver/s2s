@@ -14,7 +14,7 @@ use super::{canonical::Assignment, Node, NodeKind, NodeManager, Variable};
 /// Applying the substitution to node `n` is equivalent to applying the substitution to all children of `n` and then creating a new node with the same kind as `n` and the substituted children.
 /// This is ensured by the `add` function, which essentially only allows composing the substitution with other substitutions that are also consistent.
 /// Substitutions might be ciclic, but they are always guaranteed to terminate.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct VarSubstitution {
     map: HashMap<Rc<Variable>, Node>,
 }
@@ -38,6 +38,12 @@ impl VarSubstitution {
         self.insert(key, value);
     }
 
+    /// Get the value for the given key.
+    /// Returns `None` if the key is not in the substitution map.
+    pub fn get(&self, key: &Rc<Variable>) -> Option<&Node> {
+        self.map.get(key)
+    }
+
     // Returns the composition of this substitution with another substitution.
     /// This has the same effect as applying this substitution first, and then applying the other substitution to the result.
     /// Applies the other substitution to all values in this substitution.
@@ -57,6 +63,24 @@ impl VarSubstitution {
         }
 
         subst
+    }
+
+    /// Check if the substitution is the identity substitution.
+    /// The identity substitution maps every variable to itself.
+    pub fn is_identity(&self) -> bool {
+        self.map.iter().all(|(k, v)| {
+            if let NodeKind::Variable(v2) = v.kind() {
+                k == v2
+            } else {
+                false
+            }
+        })
+    }
+
+    /// Check if the substitution is empty.
+    /// An empty substitution does not map any variable to a value.
+    pub fn is_empty(&self) -> bool {
+        self.map.is_empty()
     }
 
     /// Apply the substitution to the given node.
@@ -112,7 +136,7 @@ impl VarSubstitution {
 impl Display for VarSubstitution {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         for (key, value) in self.map.iter() {
-            writeln!(f, "{} -> {}", key, value)?;
+            write!(f, "{} -> {}; ", key, value)?;
         }
         Ok(())
     }

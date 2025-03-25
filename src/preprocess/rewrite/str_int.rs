@@ -1,34 +1,45 @@
 use smallvec::smallvec;
 use smt_str::re::Regex;
 
+use super::*;
 use crate::node::{Node, NodeKind, NodeManager};
 
-pub fn to_int_constant(node: &Node, mngr: &mut NodeManager) -> Option<Node> {
-    if let NodeKind::ToInt = *node.kind() {
-        let ch = node.children().first().unwrap();
-        if let Some(s) = ch.as_str_const() {
-            if s.is_empty() {
-                return Some(mngr.const_int(-1));
+/// Folds `to_int(s)` where `s` is a constant string to an integer constant.
+#[derive(Debug, Clone, Copy)]
+pub(super) struct ToIntConstant;
+impl EquivalenceRule for ToIntConstant {
+    fn apply(&self, node: &Node, mngr: &mut NodeManager) -> Option<Node> {
+        if let NodeKind::ToInt = *node.kind() {
+            let ch = node.children().first().unwrap();
+            if let Some(s) = ch.as_str_const() {
+                if s.is_empty() {
+                    return Some(mngr.const_int(-1));
+                }
+                let i = s.to_string().parse::<i64>().unwrap_or(-1);
+                return Some(mngr.const_int(i));
             }
-            let i = s.to_string().parse::<i64>().unwrap_or(-1);
-            return Some(mngr.const_int(i));
         }
+        None
     }
-    None
 }
 
-pub fn from_int_constant(node: &Node, mngr: &mut NodeManager) -> Option<Node> {
-    if let NodeKind::FromInt = *node.kind() {
-        let ch = node.children().first().unwrap();
-        if let Some(i) = ch.as_int_const() {
-            if i >= 0 {
-                return Some(mngr.const_str(&i.to_string()));
-            } else {
-                return Some(mngr.empty_string());
+/// Folds `from_int(i)` where `i` is a constant integer to a string constant.
+#[derive(Debug, Clone, Copy)]
+pub(super) struct FromIntConstant;
+impl EquivalenceRule for FromIntConstant {
+    fn apply(&self, node: &Node, mngr: &mut NodeManager) -> Option<Node> {
+        if let NodeKind::FromInt = *node.kind() {
+            let ch = node.children().first().unwrap();
+            if let Some(i) = ch.as_int_const() {
+                if i >= 0 {
+                    return Some(mngr.const_str(&i.to_string()));
+                } else {
+                    return Some(mngr.empty_string());
+                }
             }
         }
+        None
     }
-    None
 }
 
 /// Finds `q*(str.to_int x) = c` where
@@ -40,70 +51,78 @@ pub fn from_int_constant(node: &Node, mngr: &mut NodeManager) -> Option<Node> {
 ///
 /// - `x in R` where `R is the regular expression that matches the string represenation of `c/p` prefixed by an arbitrary number of zeros, if `p | c`
 /// - `false` otherwise
-pub fn var_eq_constant_to_int(node: &Node, mngr: &mut NodeManager) -> Option<Node> {
-    if let NodeKind::Eq = *node.kind() {
-        let lhs = node.children().first().unwrap();
-        let rhs = node.children().last().unwrap();
-        let (s, v, r) = match (lhs.kind(), rhs.kind()) {
-            (NodeKind::Mul, NodeKind::Int(i)) => {
-                let mul_lhs = &lhs.children()[0];
-                let mul_rhs = &lhs.children()[1];
-                let (v, s) = match (mul_lhs.kind(), mul_rhs.kind()) {
-                    (NodeKind::ToInt, NodeKind::Int(s)) => {
-                        if let NodeKind::Variable(v) = mul_lhs.children().first().unwrap().kind() {
-                            (v, s)
-                        } else {
-                            return None;
+#[derive(Debug, Clone, Copy)]
+pub(super) struct VarEqConstantToInt;
+impl EquivalenceRule for VarEqConstantToInt {
+    fn apply(&self, node: &Node, mngr: &mut NodeManager) -> Option<Node> {
+        if let NodeKind::Eq = *node.kind() {
+            let lhs = node.children().first().unwrap();
+            let rhs = node.children().last().unwrap();
+            let (s, v, r) = match (lhs.kind(), rhs.kind()) {
+                (NodeKind::Mul, NodeKind::Int(i)) => {
+                    let mul_lhs = &lhs.children()[0];
+                    let mul_rhs = &lhs.children()[1];
+                    let (v, s) = match (mul_lhs.kind(), mul_rhs.kind()) {
+                        (NodeKind::ToInt, NodeKind::Int(s)) => {
+                            if let NodeKind::Variable(v) =
+                                mul_lhs.children().first().unwrap().kind()
+                            {
+                                (v, s)
+                            } else {
+                                return None;
+                            }
                         }
-                    }
-                    (NodeKind::Int(s), NodeKind::ToInt) => {
-                        if let NodeKind::Variable(v) = mul_rhs.children().first().unwrap().kind() {
-                            (v, s)
-                        } else {
-                            return None;
+                        (NodeKind::Int(s), NodeKind::ToInt) => {
+                            if let NodeKind::Variable(v) =
+                                mul_rhs.children().first().unwrap().kind()
+                            {
+                                (v, s)
+                            } else {
+                                return None;
+                            }
                         }
+                        _ => return None,
+                    };
+                    (*s, v.clone(), *i)
+                }
+                (NodeKind::ToInt, NodeKind::Int(s)) => {
+                    if let NodeKind::Variable(v) = lhs.children().first().unwrap().kind() {
+                        (1, v.clone(), *s)
+                    } else {
+                        return None;
                     }
-                    _ => return None,
-                };
-                (*s, v.clone(), *i)
-            }
-            (NodeKind::ToInt, NodeKind::Int(s)) => {
-                if let NodeKind::Variable(v) = lhs.children().first().unwrap().kind() {
-                    (1, v.clone(), *s)
-                } else {
-                    return None;
                 }
-            }
-            (NodeKind::Int(s), NodeKind::ToInt) => {
-                if let NodeKind::Variable(v) = rhs.children().first().unwrap().kind() {
-                    (1, v.clone(), *s)
-                } else {
-                    return None;
+                (NodeKind::Int(s), NodeKind::ToInt) => {
+                    if let NodeKind::Variable(v) = rhs.children().first().unwrap().kind() {
+                        (1, v.clone(), *s)
+                    } else {
+                        return None;
+                    }
                 }
+                _ => return None,
+            };
+
+            let rhs = r / s;
+            if rhs < 0 {
+                return None;
             }
-            _ => return None,
-        };
 
-        let rhs = r / s;
-        if rhs < 0 {
-            return None;
+            // if it evenly divides, create the regex, otherwise return false
+            if r % s == 0 {
+                let re = int_to_re(rhs as u64, mngr);
+
+                // cast to node
+                let re = mngr.const_regex(re);
+
+                let vnode = mngr.var(v);
+
+                return Some(mngr.in_re(vnode, re));
+            } else {
+                return Some(mngr.ffalse());
+            }
         }
-
-        // if it evenly divides, create the regex, otherwise return false
-        if r % s == 0 {
-            let re = int_to_re(rhs as u64, mngr);
-
-            // cast to node
-            let re = mngr.const_regex(re);
-
-            let vnode = mngr.var(v);
-
-            return Some(mngr.in_re(vnode, re));
-        } else {
-            return Some(mngr.ffalse());
-        }
+        None
     }
-    None
 }
 
 /// Converts an integer to a regular expression that matches the string representation of the integer prefixed by an arbitrary number of zeros.
@@ -120,9 +139,12 @@ fn int_to_re(i: u64, mngr: &mut NodeManager) -> Regex {
 
 #[cfg(test)]
 mod tests {
-    use crate::node::{NodeManager, Sort};
+    use crate::{
+        node::{NodeManager, Sort},
+        preprocess::rewrite::{str_int::VarEqConstantToInt, EquivalenceRule},
+    };
 
-    use super::{int_to_re, var_eq_constant_to_int};
+    use super::int_to_re;
 
     #[test]
     fn test_var_to_int_eq_constant() {
@@ -140,7 +162,7 @@ mod tests {
         let re = mngr.const_regex(re);
         let expected = mngr.in_re(x_node, re);
 
-        let got = var_eq_constant_to_int(&eq, &mut mngr);
+        let got = VarEqConstantToInt.apply(&eq, &mut mngr);
         assert_eq!(got, Some(expected));
     }
 
@@ -162,7 +184,7 @@ mod tests {
         let re = mngr.const_regex(re);
         let expected = mngr.in_re(x_node, re);
 
-        let got = var_eq_constant_to_int(&eq, &mut mngr);
+        let got = VarEqConstantToInt.apply(&eq, &mut mngr);
         assert_eq!(got, Some(expected));
     }
 
@@ -184,7 +206,7 @@ mod tests {
         let re = mngr.const_regex(re);
         let expected = mngr.in_re(x_node, re);
 
-        let got = var_eq_constant_to_int(&eq, &mut mngr);
+        let got = VarEqConstantToInt.apply(&eq, &mut mngr);
         assert_eq!(got, Some(expected));
     }
 
@@ -202,7 +224,7 @@ mod tests {
 
         let eq = mngr.eq(scaled, four.clone());
 
-        let got = var_eq_constant_to_int(&eq, &mut mngr);
+        let got = VarEqConstantToInt.apply(&eq, &mut mngr);
         assert_eq!(got, Some(mngr.ffalse()));
     }
 
@@ -219,8 +241,7 @@ mod tests {
         let four = mngr.const_int(5);
 
         let eq = mngr.eq(scaled, four.clone());
-
-        let got = var_eq_constant_to_int(&eq, &mut mngr);
+        let got = VarEqConstantToInt.apply(&eq, &mut mngr);
         assert_eq!(got, None);
     }
 
@@ -238,7 +259,7 @@ mod tests {
 
         let eq = mngr.eq(scaled, four.clone());
 
-        let got = var_eq_constant_to_int(&eq, &mut mngr);
+        let got = VarEqConstantToInt.apply(&eq, &mut mngr);
         assert_eq!(got, None);
     }
 }

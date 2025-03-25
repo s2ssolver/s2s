@@ -9,18 +9,18 @@ use super::*;
 /// Applies levi's rule to simplify word equations.
 /// If the node is a word equation of the form "a\beta = Y\alpha" or "Y\alpha = a\beta" and Y cannot be set to the empty string without violating the equation,
 /// then the rule infers that Y must start with 'a', i.e., will return the substitution "Y -> aY".
-#[derive(Clone, Default)]
-pub struct LevisWeq;
+#[derive(Clone, Default, Debug)]
+pub(super) struct LevisRule;
 
-impl SimpRule for LevisWeq {
-    fn apply(&self, node: &Node, entailed: bool, mngr: &mut NodeManager) -> Option<Simplification> {
-        if entailed && *node.kind() == NodeKind::Eq {
+impl EntailmentRule for LevisRule {
+    fn apply(&self, node: &Node, mngr: &mut NodeManager) -> Option<VarSubstitution> {
+        if *node.kind() == NodeKind::Eq {
             debug_assert!(node.children().len() == 2);
             let lhs = node.children().first().unwrap();
             let rhs = node.children().last().unwrap();
             if lhs.sort().is_string() && rhs.sort().is_string() {
                 if let Some(subs) = levis_step(lhs, rhs, mngr) {
-                    return Some(Simplification::new(subs, None));
+                    return Some(subs);
                 } else {
                     let lhs_rev = reverse(lhs, mngr);
                     let rhs_rev = reverse(rhs, mngr);
@@ -29,16 +29,12 @@ impl SimpRule for LevisWeq {
                         for (_, s) in subs.iter_mut() {
                             *s = reverse(s, mngr);
                         }
-                        return Some(Simplification::new(subs, None));
+                        return Some(subs);
                     }
                 }
             }
         }
         None
-    }
-
-    fn name(&self) -> &str {
-        "LevisLemma"
     }
 }
 
@@ -87,15 +83,16 @@ mod tests {
         let mut mngr = NodeManager::default();
         // Y must start with 'b'
         let eq = parse_equation("YaX", "bX", &mut mngr);
-        let res = LevisWeq.apply(&eq, true, &mut mngr);
+        let res = LevisRule.apply(&eq, &mut mngr);
 
-        assert!(res.is_some());
-        let res = res.unwrap();
-
-        let got = res.substitution().apply(&eq, &mut mngr);
-
-        let expected = parse_equation("bYaX", "bX", &mut mngr);
-        assert_eq!(got, expected, "\nExpected: {}, \nGot: {}", expected, got);
+        match res {
+            Some(got) => {
+                let got = got.apply(&eq, &mut mngr);
+                let expected = parse_equation("bYaX", "bX", &mut mngr);
+                assert_eq!(got, expected, "\nExpected: {}, \nGot: {}", expected, got);
+            }
+            _ => unreachable!(),
+        }
     }
 
     #[test]
@@ -103,14 +100,16 @@ mod tests {
         let mut mngr = NodeManager::default();
         // Y must start with 'b'
         let eq = parse_equation("bX", "YaX", &mut mngr);
-        let res = LevisWeq.apply(&eq, true, &mut mngr);
+        let res = LevisRule.apply(&eq, &mut mngr);
 
-        assert!(res.is_some());
-        let res = res.unwrap();
-
-        let got = res.substitution().apply(&eq, &mut mngr);
-        let expected = parse_equation("bX", "bYaX", &mut mngr);
-        assert_eq!(got, expected, "\nExpected: {}, \nGot: {}", expected, got);
+        match res {
+            Some(got) => {
+                let got = got.apply(&eq, &mut mngr);
+                let expected = parse_equation("bX", "bYaX", &mut mngr);
+                assert_eq!(got, expected, "\nExpected: {}, \nGot: {}", expected, got);
+            }
+            _ => unreachable!(),
+        }
     }
 
     #[test]
@@ -118,9 +117,9 @@ mod tests {
         let mut mngr = NodeManager::default();
         // Y could start with 'b' or be empty
         let eq = parse_equation("YaX", "aX", &mut mngr);
-        let res = LevisWeq.apply(&eq, true, &mut mngr);
+        let res = LevisRule.apply(&eq, &mut mngr);
 
-        assert!(res.is_none());
+        assert!(matches!(res, None));
     }
 
     #[test]
@@ -128,8 +127,8 @@ mod tests {
         let mut mngr = NodeManager::default();
         // Y could start with 'b' or be empty
         let eq = parse_equation("aX", "YaX", &mut mngr);
-        let res = LevisWeq.apply(&eq, true, &mut mngr);
+        let res = LevisRule.apply(&eq, &mut mngr);
 
-        assert!(res.is_none());
+        assert!(matches!(res, None));
     }
 }
