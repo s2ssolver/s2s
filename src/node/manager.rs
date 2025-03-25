@@ -220,7 +220,7 @@ impl NodeManager {
             nfa.clone()
         } else {
             let builder = self.re_builder();
-            let nfa = compile(regex, builder).eliminate_epsilon();
+            let mut nfa = compile(regex, builder).eliminate_epsilon();
 
             nfa.trim();
 
