@@ -1043,9 +1043,9 @@ checksum = "7fcf8323ef1faaee30a44a340193b1ac6814fd9b7b4e88e9d4519a3e4abe1cfd"
 
 [[package]]
 name = "smt-str"
-version = "0.1.0"
+version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0761034368620c53b39959ea229cf6fc5acae76699caaf33bd4e1903cb3bc97e"
+checksum = "009300a686ac7b366a3abd0570446fa8ef9418986124c1c1a19e64a6cc36d3b1"
 dependencies = [
  "bit-set",
  "dot",
