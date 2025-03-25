@@ -234,8 +234,6 @@ impl NodeManager {
             nfa.num_states()
         );
 
-        log::info!("NFA for {}\n{}", regex, nfa.dot());
-
         nfa
     }
     /* Variables */
