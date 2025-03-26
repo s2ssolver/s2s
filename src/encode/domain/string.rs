@@ -255,7 +255,8 @@ impl StringDomainEncoder {
                 len_choices.push(choice);
                 // Deactive this lenght if it is less than the lower bound
                 if len < lower {
-                    res.add_clause(vec![nlit(choice)]);
+                    //res.add_clause(vec![nlit(choice)]);
+                    res.add_assumption(nlit(choice));
                 }
                 encoding.string.insert_lenght(str_var.as_ref(), len, choice);
 
