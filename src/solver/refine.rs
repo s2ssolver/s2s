@@ -9,7 +9,7 @@ use itertools::Itertools;
 use crate::{
     abstraction::LitDefinition,
     interval::{BoundValue, Interval},
-    node::{canonical::Literal, get_entailed_literals, Node, NodeKind, NodeManager},
+    node::{canonical::Literal, get_entailed_literals, Node, NodeKind, NodeManager, Sorted},
     sat::{Cnf, PLit},
 };
 
@@ -192,6 +192,8 @@ impl BoundRefiner {
             None => return BoundRefinement::SmallModelReached, // No satisfying assignment
         };
 
+        log::debug!("Small model bounds: {}", smp_bounds);
+
         let mut small_model_reached = true;
         let mut bounds = bounds.clone();
 
@@ -205,18 +207,32 @@ impl BoundRefiner {
             if let Some(current_dom) = bounds.get(&v) {
                 match current_dom {
                     VarDomain::Int(current_bounds) | VarDomain::String(current_bounds) => {
-                        let increased = step.apply(current_bounds);
-                        let clamped =
-                            increased.intersect(smp_bounds.get(&v).unwrap_or_else(|| {
-                                if current_dom.is_int() {
-                                    Interval::unbounded()
-                                } else {
-                                    Interval::bounded_below(0)
-                                }
-                            }));
+                        let mut increased = step.apply(current_bounds);
+
+                        let smp_bound = smp_bounds.get(&v);
+
+                        // Upper bounds must be at least the lower bound of the small model bounds
+                        if let Some(smp_lower) = smp_bound.map(|b| b.lower()) {
+                            if increased.upper() < smp_lower {
+                                increased = increased.with_upper(smp_lower);
+                            }
+                        }
+                        // Upper bound must be at most the upper bound of the small model bounds
+                        if let Some(smp_upper) = smp_bound.map(|b| b.upper()) {
+                            if increased.upper() > smp_upper {
+                                increased = increased.with_upper(smp_upper);
+                            }
+                        }
+                        if v.sort().is_string() {
+                            // Lower bounds must be at least 0
+                            if increased.lower() < BoundValue::Num(0) {
+                                increased = increased.with_lower(BoundValue::Num(0));
+                            }
+                        }
+
                         // Ensure we don't shrink the upper bounds or increase the lower bounds
-                        let new_lower = clamped.lower().min(current_bounds.lower());
-                        let new_upper = clamped.upper().max(current_bounds.upper());
+                        let new_lower = increased.lower().min(current_bounds.lower());
+                        let new_upper = increased.upper().max(current_bounds.upper());
                         let new_bounds = Interval::new(new_lower, new_upper);
                         if new_bounds != current_bounds {
                             // changed
@@ -345,10 +361,13 @@ impl BoundRefiner {
         log::trace!(
             "DNF: \n{}",
             dnf.iter()
-                .map(|c| c.0.iter()
-                        .map(|l| l.to_string())
-                        .collect::<Vec<_>>()
-                        .join(",").to_string())
+                .map(|c| c
+                    .0
+                    .iter()
+                    .map(|l| l.to_string())
+                    .collect::<Vec<_>>()
+                    .join(",")
+                    .to_string())
                 .collect::<Vec<_>>()
                 .join("\n")
         );
