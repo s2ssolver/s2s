@@ -333,7 +333,7 @@ fn lc_to_reg(lc: &LinearConstraint, mngr: &mut NodeManager) -> Option<RegularCon
                 (false, false) if lc.operator() != ArithOperator::Eq => {
                     (-lc.rhs() as u32, lc.operator().flip(), -*s as u32)
                 }
-                (false, false) if lc.operator() != ArithOperator::Eq => {
+                (false, false) if lc.operator() == ArithOperator::Eq => {
                     (-lc.rhs() as u32, lc.operator(), -*s as u32)
                 }
                 _ => return None,
