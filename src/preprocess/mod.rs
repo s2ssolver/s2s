@@ -53,8 +53,6 @@ impl Preprocessor {
     }
 
     fn simplify(&mut self, root: &Node, passes: usize, mngr: &mut NodeManager) -> Node {
-        let mut rewriter = Rewriter::default();
-
         let mut result = root.clone();
 
         let mut last_size = root.size();
@@ -71,7 +69,7 @@ impl Preprocessor {
             }
             last_size = result.size();
             let mut applied = false;
-
+            let mut rewriter = Rewriter::default();
             // Rewrite passes are cheaper than simplification passes, so we do them first and with a higher limit
             let new_node = rewriter.rewrite(&result, passes, mngr);
             if new_node != result {
@@ -82,11 +80,11 @@ impl Preprocessor {
             if !applied {
                 break;
             }
+            for sub in rewriter.get_applied_subs() {
+                self.subs = std::mem::take(&mut self.subs).compose(sub.clone(), mngr);
+            }
         }
 
-        for sub in rewriter.get_applied_subs() {
-            self.subs = std::mem::take(&mut self.subs).compose(sub.clone(), mngr);
-        }
         result
     }
 
