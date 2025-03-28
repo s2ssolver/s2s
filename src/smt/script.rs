@@ -111,7 +111,13 @@ impl ToSmt for NodeKind {
             NodeKind::Bool(true) => "true".to_string(),
             NodeKind::Bool(false) => "false".to_string(),
             NodeKind::String(s) => format!("\"{}\"", s),
-            NodeKind::Int(i) => i.to_string(),
+            NodeKind::Int(i) => {
+                if *i >= 0 {
+                    i.to_string()
+                } else {
+                    format!("(- {})", -i)
+                }
+            }
             NodeKind::Regex(regex) => format!("{}", regex),
             NodeKind::Variable(rc) => escapce_smt_identifier_name(rc.name()),
             NodeKind::Or => "or".to_string(),
