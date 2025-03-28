@@ -18,7 +18,6 @@ use super::{error::NodeError, Node, NodeKind, OwnedNode};
 /// The type we use for hash-consing nodes
 type NodeKey = (NodeKind, Vec<Node>);
 
-#[derive(Default)]
 pub struct NodeManager {
     /// Counter for unique identifiers
     next_id: usize,
