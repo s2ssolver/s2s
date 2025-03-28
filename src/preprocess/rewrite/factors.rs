@@ -1,3 +1,4 @@
+use indexmap::IndexSet;
 use itertools::Itertools;
 
 use crate::node::{
@@ -11,7 +12,7 @@ use super::EquivalenceRule;
 #[derive(Debug, Clone, Copy)]
 pub(super) struct TrivialPrefixof;
 impl EquivalenceRule for TrivialPrefixof {
-    fn apply(&self, node: &Node, mngr: &mut NodeManager) -> Option<Node> {
+    fn apply(&self, node: &Node, _: &IndexSet<Node>, mngr: &mut NodeManager) -> Option<Node> {
         if *node.kind() == NodeKind::PrefixOf {
             debug_assert!(node.children().len() == 2);
             let lhs = &node.children()[0];
@@ -46,14 +47,19 @@ impl EquivalenceRule for TrivialPrefixof {
 #[derive(Debug, Clone, Copy)]
 pub(super) struct TrivialSuffixof;
 impl EquivalenceRule for TrivialSuffixof {
-    fn apply(&self, node: &Node, mngr: &mut NodeManager) -> Option<Node> {
+    fn apply(
+        &self,
+        node: &Node,
+        asserted: &IndexSet<Node>,
+        mngr: &mut NodeManager,
+    ) -> Option<Node> {
         if *node.kind() == NodeKind::SuffixOf {
             let lhs = &node.children()[0];
             let rhs = &node.children()[1];
             let r_lhs = reverse(lhs, mngr);
             let r_rhs = reverse(rhs, mngr);
             let prefixof = &mngr.prefix_of(r_lhs, r_rhs);
-            return TrivialPrefixof.apply(prefixof, mngr);
+            return TrivialPrefixof.apply(prefixof, asserted, mngr);
         }
         None
     }
@@ -65,7 +71,7 @@ impl EquivalenceRule for TrivialSuffixof {
 #[derive(Debug, Clone, Copy)]
 pub(super) struct TrivialContains;
 impl EquivalenceRule for TrivialContains {
-    fn apply(&self, node: &Node, mngr: &mut NodeManager) -> Option<Node> {
+    fn apply(&self, node: &Node, _: &IndexSet<Node>, mngr: &mut NodeManager) -> Option<Node> {
         if *node.kind() == NodeKind::Contains {
             let haystack = &node.children()[0];
             let needle = &node.children()[1];
@@ -100,7 +106,7 @@ impl EquivalenceRule for TrivialContains {
 #[derive(Debug, Clone, Copy)]
 pub(super) struct FactorOfEmptyString;
 impl EquivalenceRule for FactorOfEmptyString {
-    fn apply(&self, node: &Node, mngr: &mut NodeManager) -> Option<Node> {
+    fn apply(&self, node: &Node, _: &IndexSet<Node>, mngr: &mut NodeManager) -> Option<Node> {
         if *node.kind() == NodeKind::PrefixOf || *node.kind() == NodeKind::SuffixOf {
             let lhs = &node.children()[0];
             let rhs = &node.children()[1];

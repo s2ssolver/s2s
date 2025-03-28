@@ -8,28 +8,35 @@ pub mod levis;
 mod regex;
 mod replace;
 mod str_int;
+mod strlen;
 mod substr;
 mod weq;
 
 use std::fmt::Debug;
 
-use indexmap::IndexMap;
+use indexmap::{IndexMap, IndexSet};
 
-use crate::node::{Node, NodeKind, NodeManager, VarSubstitution};
+use crate::node::{self, Node, NodeKind, NodeManager, VarSubstitution};
 
 /// A rewrite rule that can be applied to a node.
 trait EquivalenceRule: Debug {
     /// Apply the rewrite rule to the given node.
     /// Returns a [RewriteResult] indicating the result of the rewrite.
     /// If the rules does not apply, it should return [None].
-    fn apply(&self, node: &Node, mngr: &mut NodeManager) -> Option<Node>;
+    fn apply(&self, node: &Node, asserted: &IndexSet<Node>, mngr: &mut NodeManager)
+        -> Option<Node>;
 }
 
 trait EntailmentRule: Debug {
     /// Apply the rewrite rule to the given node.
     /// Returns a [RewriteResult] indicating the result of the rewrite.
     /// If the rules does not apply, it should return [None].
-    fn apply(&self, node: &Node, mngr: &mut NodeManager) -> Option<VarSubstitution>;
+    fn apply(
+        &self,
+        node: &Node,
+        asserted: &IndexSet<Node>,
+        mngr: &mut NodeManager,
+    ) -> Option<VarSubstitution>;
 
     /// Initialize the rule with the given node manager and root node.
     /// The root node is the entry point for the entailed rules, and not necessarily the root of the AST.
@@ -47,8 +54,6 @@ pub struct Rewriter {
 
 impl Rewriter {
     pub fn rewrite(&mut self, node: &Node, max_passes: usize, mngr: &mut NodeManager) -> Node {
-        // Check if we have already rewritten this node
-
         self.applied_subs.clear();
         let mut current = node.clone();
         for _ in 0..max_passes {
@@ -77,7 +82,10 @@ impl Rewriter {
     fn pass(&mut self, node: &Node, mngr: &mut NodeManager) -> Option<Node> {
         // Apply equivalence rules
         let mut applied = false;
-        let mut new_node = match self.pass_equivalence(node, mngr) {
+
+        let mut asserted = node::get_entailed(node);
+
+        let mut new_node = match self.pass_equivalence(node, &mut asserted, mngr) {
             Some(rw) => {
                 applied = true;
                 rw
@@ -86,7 +94,7 @@ impl Rewriter {
         };
 
         // Apply entailment rules
-        match self.pass_entailment(&new_node, mngr) {
+        match self.pass_entailment(&new_node, &asserted, mngr) {
             Some(rw) => {
                 applied = true;
                 new_node = rw;
@@ -101,7 +109,12 @@ impl Rewriter {
         }
     }
 
-    fn pass_equivalence(&mut self, node: &Node, mngr: &mut NodeManager) -> Option<Node> {
+    fn pass_equivalence(
+        &mut self,
+        node: &Node,
+        asserted: &mut IndexSet<Node>,
+        mngr: &mut NodeManager,
+    ) -> Option<Node> {
         if let Some(rw) = self.rewrite_cache.get(node) {
             return Some(rw.clone());
         }
@@ -109,10 +122,14 @@ impl Rewriter {
         // Apply to children
         let mut applied_children = Vec::with_capacity(node.children().len());
         let mut applied = false;
+
+        let asserted_context = node::get_entailed(node);
+        let mut asserted_for_children = asserted.union(&asserted_context).cloned().collect();
+
         for child in node.children() {
-            match self.pass_equivalence(child, mngr) {
+            match self.pass_equivalence(child, &mut asserted_for_children, mngr) {
                 Some(new_child) => {
-                    applied_children.push(new_child);
+                    applied_children.push(new_child.clone());
                     applied = true;
                 }
                 None => applied_children.push(child.clone()),
@@ -127,9 +144,15 @@ impl Rewriter {
         };
 
         for rule in self.equiv_rules.iter() {
-            if let Some(rw) = rule.apply(&new_node, mngr) {
+            if let Some(rw) = rule.apply(&new_node, asserted, mngr) {
                 log::debug!("({:?}) {} ==> {}", rule, new_node, rw);
+                // if the node is in the asserted set, we also add the new node
+                if asserted.contains(node) {
+                    asserted.remove(node);
+                    asserted.insert(rw.clone());
+                }
                 new_node = rw;
+
                 applied = true;
             }
         }
@@ -142,14 +165,20 @@ impl Rewriter {
         }
     }
 
-    fn pass_entailment(&mut self, node: &Node, mngr: &mut NodeManager) -> Option<Node> {
+    fn pass_entailment(
+        &mut self,
+        node: &Node,
+        asserted: &IndexSet<Node>,
+        mngr: &mut NodeManager,
+    ) -> Option<Node> {
         fn find_subs(
             rules: &mut [Box<dyn EntailmentRule>],
             node: &Node,
+            asserted: &IndexSet<Node>,
             mngr: &mut NodeManager,
         ) -> Option<VarSubstitution> {
             for rule in rules.iter_mut() {
-                if let Some(sub) = rule.apply(node, mngr) {
+                if let Some(sub) = rule.apply(node, asserted, mngr) {
                     if !sub.is_identity() && !sub.is_empty() {
                         log::debug!("({:?}) inferred {}", rule, sub);
 
@@ -160,7 +189,7 @@ impl Rewriter {
 
             if *node.kind() == NodeKind::And {
                 for child in node.children() {
-                    if let Some(sub) = find_subs(rules, child, mngr) {
+                    if let Some(sub) = find_subs(rules, child, asserted, mngr) {
                         return Some(sub);
                     }
                 }
@@ -174,13 +203,13 @@ impl Rewriter {
         for rule in self.entail_rules.iter_mut() {
             rule.init(node, mngr);
         }
-        while let Some(sub) = find_subs(&mut self.entail_rules, &new_node, mngr) {
+        while let Some(sub) = find_subs(&mut self.entail_rules, &new_node, asserted, mngr) {
             new_node = sub.apply(&new_node, mngr);
             self.applied_subs.push(sub);
             applied = true;
             // reinitialize the rules with the new node
             for rule in self.entail_rules.iter_mut() {
-                rule.init(node, mngr);
+                rule.init(&new_node, mngr);
             }
         }
 
@@ -220,11 +249,15 @@ impl Default for Rewriter {
         equiv_rules.push(Box::new(int::GreaterTrivial));
         equiv_rules.push(Box::new(int::EqualityTrivial));
         equiv_rules.push(Box::new(int::DistributeNeg));
-        equiv_rules.push(Box::new(int::StringLengthAddition));
-        equiv_rules.push(Box::new(int::ConstStringLength));
-        equiv_rules.push(Box::new(int::LengthTrivial));
         equiv_rules.push(Box::new(int::NormalizeIneq));
         equiv_rules.push(Box::new(int::NotComparison));
+        equiv_rules.push(Box::new(int::IntForwardReasoning));
+
+        equiv_rules.push(Box::new(strlen::StringLengthAddition));
+        equiv_rules.push(Box::new(strlen::ConstStringLength));
+        equiv_rules.push(Box::new(strlen::LengthTrivial));
+        // Hurts forward reasoning
+        //equiv_rules.push(Box::new(strlen::LengthToReg));
 
         equiv_rules.push(Box::new(weq::ConstMismatch));
         equiv_rules.push(Box::new(weq::StripLCP));

@@ -1,5 +1,7 @@
 //! Rules that simplify the formula by replacing entailed literals with their values.
 
+use indexmap::IndexSet;
+
 use crate::node::{Node, NodeKind, NodeManager, Sorted, VarSubstitution};
 
 use super::EntailmentRule;
@@ -9,7 +11,12 @@ use super::EntailmentRule;
 pub(super) struct EntailedBooleanVars;
 
 impl EntailmentRule for EntailedBooleanVars {
-    fn apply(&self, node: &Node, mngr: &mut NodeManager) -> Option<VarSubstitution> {
+    fn apply(
+        &self,
+        node: &Node,
+        _: &IndexSet<Node>,
+        mngr: &mut NodeManager,
+    ) -> Option<VarSubstitution> {
         if let NodeKind::Variable(v) = node.kind() {
             if v.sort().is_bool() {
                 let mut subs = VarSubstitution::default();
@@ -38,7 +45,12 @@ impl EntailmentRule for EntailedBooleanVars {
 pub(super) struct EntailedAssigments;
 
 impl EntailmentRule for EntailedAssigments {
-    fn apply(&self, node: &Node, _: &mut NodeManager) -> Option<VarSubstitution> {
+    fn apply(
+        &self,
+        node: &Node,
+        _: &IndexSet<Node>,
+        _: &mut NodeManager,
+    ) -> Option<VarSubstitution> {
         if let NodeKind::Eq = *node.kind() {
             debug_assert!(node.children().len() == 2);
             let lhs = node.children().first().unwrap();

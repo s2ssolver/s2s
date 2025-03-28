@@ -275,6 +275,11 @@ impl Interval {
     pub fn with_lower(&self, lower: BoundValue) -> Self {
         Self::new(lower, self.upper)
     }
+
+    /// Checks if the interval is a subset of another interval.
+    pub fn is_subset(&self, right: Interval) -> bool {
+        self.lower >= right.lower && self.upper <= right.upper
+    }
 }
 
 impl Display for Interval {

@@ -20,12 +20,6 @@ pub enum VarDomain {
     Bool,
 }
 
-impl VarDomain {
-    pub fn is_int(&self) -> bool {
-        matches!(self, VarDomain::Int(_))
-    }
-}
-
 impl Display for VarDomain {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {

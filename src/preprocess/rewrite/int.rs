@@ -1,17 +1,17 @@
 use std::{collections::HashSet, fmt::Display, rc::Rc};
 
-use crate::node::{NodeKind, Sorted, Variable};
+use crate::{interval::Interval, node::{NodeKind, Sorted, Variable}};
 
 use super::*;
 
-/// Fold constant integer terms. If i1, i2, ..., in are integer constants, then:
+/// Fold constant integer ter1ms. If i1, i2, ..., in are integer constants, then:
 /// - +(i1, i2, ..., in) -> i1 + i2 + ... + in
 /// - -(i1, i2, ..., in) -> i1 - i2 - ... - in
 /// - *(i1, i2, ..., in) -> i1 * i2 * ... * in
 #[derive(Debug, Clone, Copy)]
 pub(super) struct FoldConstantInts;
 impl EquivalenceRule for FoldConstantInts {
-    fn apply(&self, node: &Node, mngr: &mut NodeManager) -> Option<Node> {
+    fn apply(&self, node: &Node, _: &IndexSet<Node>, mngr: &mut NodeManager) -> Option<Node> {
         if node.is_const() {
             return None; // already a fully simplified constant
         }
@@ -34,7 +34,7 @@ impl EquivalenceRule for FoldConstantInts {
 #[derive(Debug, Clone, Copy)]
 pub(super) struct LessTrivial;
 impl EquivalenceRule for LessTrivial {
-    fn apply(&self, node: &Node, mngr: &mut NodeManager) -> Option<Node> {
+    fn apply(&self, node: &Node, _: &IndexSet<Node>, mngr: &mut NodeManager) -> Option<Node> {
         if *node.kind() == NodeKind::Lt {
             // strictly less
             debug_assert!(node.children().len() == 2);
@@ -80,7 +80,7 @@ impl EquivalenceRule for LessTrivial {
 #[derive(Debug, Clone, Copy)]
 pub(super) struct DistributeNeg;
 impl EquivalenceRule for DistributeNeg {
-    fn apply(&self, node: &Node, mngr: &mut NodeManager) -> Option<Node> {
+    fn apply(&self, node: &Node, _: &IndexSet<Node>, mngr: &mut NodeManager) -> Option<Node> {
         if *node.kind() == NodeKind::Neg {
             debug_assert!(node.children().len() == 1);
             let child = node.children().first().unwrap();
@@ -104,7 +104,12 @@ impl EquivalenceRule for DistributeNeg {
 #[derive(Debug, Clone, Copy)]
 pub(super) struct GreaterTrivial;
 impl EquivalenceRule for GreaterTrivial {
-    fn apply(&self, node: &Node, mngr: &mut NodeManager) -> Option<Node> {
+    fn apply(
+        &self,
+        node: &Node,
+        asserted: &IndexSet<Node>,
+        mngr: &mut NodeManager,
+    ) -> Option<Node> {
         if *node.kind() == NodeKind::Gt || *node.kind() == NodeKind::Ge {
             debug_assert!(node.children().len() == 2);
 
@@ -121,7 +126,7 @@ impl EquivalenceRule for GreaterTrivial {
             };
             let swapped = mngr.create_node(swapped_op, vec![rhs.clone(), lhs.clone()]);
 
-            return LessTrivial.apply(&swapped, mngr);
+            return LessTrivial.apply(&swapped, asserted, mngr);
         }
 
         None
@@ -132,7 +137,7 @@ impl EquivalenceRule for GreaterTrivial {
 #[derive(Debug, Clone, Copy)]
 pub(super) struct EqualityTrivial;
 impl EquivalenceRule for EqualityTrivial {
-    fn apply(&self, node: &Node, mngr: &mut NodeManager) -> Option<Node> {
+    fn apply(&self, node: &Node, _: &IndexSet<Node>, mngr: &mut NodeManager) -> Option<Node> {
         if *node.kind() == NodeKind::Eq {
             debug_assert!(node.children().len() == 2);
             let lhs = node.children().first().unwrap();
@@ -163,7 +168,7 @@ impl EquivalenceRule for EqualityTrivial {
 #[derive(Debug, Clone, Copy)]
 pub(super) struct NotComparison;
 impl EquivalenceRule for NotComparison {
-    fn apply(&self, node: &Node, mngr: &mut NodeManager) -> Option<Node> {
+    fn apply(&self, node: &Node, _: &IndexSet<Node>, mngr: &mut NodeManager) -> Option<Node> {
         if let NodeKind::Not = *node.kind() {
             let child = node.children().first().unwrap();
             match child.kind() {
@@ -186,138 +191,41 @@ impl EquivalenceRule for NotComparison {
     }
 }
 
-/// Reduces expressions of the form `len(s)` with `s` a constant string to the length of the string.
-#[derive(Debug, Clone, Copy)]
-pub(super) struct ConstStringLength;
-impl EquivalenceRule for ConstStringLength {
-    fn apply(&self, node: &Node, mngr: &mut NodeManager) -> Option<Node> {
-        if *node.kind() == NodeKind::Length {
-            debug_assert!(node.children().len() == 1);
-            let child = node.children().first().unwrap();
-
-            match child.kind() {
-                NodeKind::String(s) => {
-                    let len = s.len() as i64;
-                    return Some(mngr.const_int(len));
-                }
-                _ => (),
-            }
-        }
-        None
-    }
-}
-
-/// Simplifies expressions of the form `len(concat(s1, s2, ..., sn))` to `len(s1) + len(s2) + ... + len(sn)`.
-#[derive(Debug, Clone, Copy)]
-pub(super) struct StringLengthAddition;
-impl EquivalenceRule for StringLengthAddition {
-    fn apply(&self, node: &Node, mngr: &mut NodeManager) -> Option<Node> {
-        if *node.kind() == NodeKind::Length {
-            debug_assert!(node.children().len() == 1);
-            let child = node.children().first().unwrap();
-
-            match child.kind() {
-                NodeKind::Concat => {
-                    let mut sum = Vec::with_capacity(child.children().len());
-                    for c in child.children() {
-                        sum.push(mngr.str_len(c.clone()));
-                    }
-                    return Some(mngr.add(sum));
-                }
-                _ => (),
-            }
-        }
-        None
-    }
-}
-
-/// Checks if a linear (in)-equality requires that a string length is less than zero and simplifies it to false if so.
-#[derive(Debug, Clone, Copy)]
-pub(super) struct LengthTrivial;
-impl EquivalenceRule for LengthTrivial {
-    fn apply(&self, node: &Node, mngr: &mut NodeManager) -> Option<Node> {
-        match node.kind() {
-            NodeKind::Eq | NodeKind::Lt | NodeKind::Le | NodeKind::Gt | NodeKind::Ge => {
-                let lhs = node.children().first().unwrap();
-                let rhs = node.children().last().unwrap();
-
-                let (ts, kind, mut c) = if let Some(c) = is_const_int(rhs) {
-                    let lin = match linearlize_term(lhs) {
-                        Some(l) => l,
-                        None => return None,
-                    };
-                    (lin, node.kind().clone(), c)
-                } else if let Some(c) = is_const_int(lhs) {
-                    // flip the operator
-                    let linearlized = match linearlize_term(rhs) {
-                        Some(l) => l,
-                        None => return None,
-                    };
-                    match node.kind() {
-                        NodeKind::Lt => (linearlized, NodeKind::Gt, c),
-                        NodeKind::Le => (linearlized, NodeKind::Ge, c),
-                        NodeKind::Gt => (linearlized, NodeKind::Lt, c),
-                        NodeKind::Ge => (linearlized, NodeKind::Le, c),
-                        _ => return None,
-                    }
-                } else {
-                    return None;
-                };
-
-                c -= ts.constant;
-
-                if ts.coeffs.iter().all(|(n, _)| *n.kind() == NodeKind::Length) {
-                    // all coefficients are positive
-                    let coeffs_positive = ts.coeffs.iter().all(|(_, v)| *v >= 0);
-
-                    match kind {
-                        NodeKind::Eq if ts.coeffs.len() == 1 && c == 0 => {
-                            // that string term needs to be epsilon
-                            let (var, _) = ts.coeffs.iter().next().unwrap();
-                            debug_assert!(*var.kind() == NodeKind::Length);
-                            let ch = var.children().first().unwrap();
-                            let epsi = mngr.empty_string();
-                            return Some(mngr.eq(ch.clone(), epsi));
-                        }
-                        NodeKind::Eq if c < 0 && coeffs_positive => {
-                            return Some(mngr.ffalse());
-                        }
-                        NodeKind::Lt if c <= 0 && coeffs_positive => {
-                            return Some(mngr.ffalse());
-                        }
-                        NodeKind::Le if c < 0 && coeffs_positive => {
-                            return Some(mngr.ffalse());
-                        }
-                        NodeKind::Gt if c < 0 && coeffs_positive => {
-                            return Some(mngr.ttrue());
-                        }
-                        NodeKind::Ge if c <= 0 && coeffs_positive => {
-                            return Some(mngr.ttrue());
-                        }
-                        _ => (),
-                    }
-                }
-            }
-            _ => (),
-        }
-        None
-    }
-}
-
 /// Normalizes linear (in)-equalities.
 /// This rule transforms an (in)-equality into the form `c1*x1 + c2*x2 + ... + cn*xn + c`, where `c1, c2, ..., cn` are the coefficients, `c` is the constant term, and `x1, x2, ..., xn` are atomic integer terms.
 #[derive(Debug, Clone, Copy)]
 pub(super) struct NormalizeIneq;
 impl EquivalenceRule for NormalizeIneq {
-    fn apply(&self, node: &Node, mngr: &mut NodeManager) -> Option<Node> {
-        if let Some(new_node) = normalize_ineq(node, mngr) {
-            Some(new_node)
+    fn apply(&self, node: &Node, _: &IndexSet<Node>, mngr: &mut NodeManager) -> Option<Node> {
+        if let Some((lhs, op, rhs)) = normalize_ineq(node) {
+            let mut new_children = Vec::new();
+            for (k, v) in lhs.coeffs {
+                if v == 0 {
+                    continue;
+                }
+                let v_node = mngr.const_int(v);
+                if v == 1 {
+                    new_children.push(k);
+                } else {
+                    let mul = mngr.mul(vec![v_node, k.clone()]);
+                    new_children.push(mul);
+                }
+            }
+            let lhs = mngr.add(new_children);
+            let rhs = mngr.const_int(rhs);
+            let new_node = mngr.create_node(op, vec![lhs, rhs]);
+            if new_node == *node {
+                None
+            } else {
+                Some(new_node)
+            }
         } else {
             None
         }
     }
 }
-fn normalize_ineq(node: &Node, mngr: &mut NodeManager) -> Option<Node> {
+
+pub fn normalize_ineq(node: &Node) -> Option<(LinTerm, NodeKind, i64)> {
     match node.kind() {
         NodeKind::Eq | NodeKind::Lt | NodeKind::Le | NodeKind::Gt | NodeKind::Ge
             if node.children()[0].sort().is_int() && node.children()[1].sort().is_int() =>
@@ -335,37 +243,47 @@ fn normalize_ineq(node: &Node, mngr: &mut NodeManager) -> Option<Node> {
             }
             let new_constant = lin_rhs.constant - lin_lhs.constant;
 
-            let mut new_children = Vec::new();
-            for (k, v) in new_lhs {
-                if v == 0 {
-                    continue;
+            if new_constant < 0 {
+                //Multiply both sides by -1
+                for (_, v) in new_lhs.iter_mut() {
+                    *v *= -1;
                 }
-                let v_node = mngr.const_int(v);
-                if v == 1 {
-                    new_children.push(k);
-                } else {
-                    let mul = mngr.mul(vec![v_node, k.clone()]);
-                    new_children.push(mul);
-                }
-            }
-            let lhs = mngr.add(new_children);
-            let rhs = mngr.const_int(new_constant);
-            let new_node = mngr.create_node(node.kind().clone(), vec![lhs, rhs]);
-            if new_node == *node {
-                None
+                return Some((
+                    LinTerm {
+                        coeffs: new_lhs,
+                        constant: 0,
+                    },
+                    match node.kind() {
+                        NodeKind::Eq => NodeKind::Eq,
+                        NodeKind::Lt => NodeKind::Gt,
+                        NodeKind::Le => NodeKind::Ge,
+                        NodeKind::Gt => NodeKind::Lt,
+                        NodeKind::Ge => NodeKind::Le,
+                        _ => unreachable!(),
+                    },
+                    -new_constant,
+                ));
             } else {
-                Some(new_node)
+                return Some((
+                    LinTerm {
+                        coeffs: new_lhs,
+                        constant: 0,
+                    },
+                    node.kind().clone(),
+                    new_constant,
+                ));
             }
         }
         _ => None,
     }
 }
 
-struct LinTerm {
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LinTerm {
     /// The coefficients.
-    coeffs: IndexMap<Node, i64>,
+    pub coeffs: IndexMap<Node, i64>,
     /// The constant term.
-    constant: i64,
+    pub constant: i64,
 }
 
 impl Display for LinTerm {
@@ -390,7 +308,7 @@ impl Display for LinTerm {
 
 /// Transforms a linear (in)-equality into normal form.
 /// In normal form, the term has the form `c1*x1 + c2*x2 + ... + cn*xn + c`, where `c1, c2, ..., cn` are the coefficients, `c` is the constant term, and `x1, x2, ..., xn` are atomic integer terms.
-fn linearlize_term(node: &Node) -> Option<LinTerm> {
+pub fn linearlize_term(node: &Node) -> Option<LinTerm> {
     let mut coeffs = IndexMap::new();
     let mut constant = 0;
     match node.kind() {
@@ -473,7 +391,7 @@ fn linearlize_term(node: &Node) -> Option<LinTerm> {
 
 /// Return the constant integer value of a node if it is a constant integer.
 /// Otherwise, return None.
-fn is_const_int(node: &Node) -> Option<i64> {
+pub fn is_const_int(node: &Node) -> Option<i64> {
     match node.kind() {
         NodeKind::Int(i) => Some(*i),
         NodeKind::Neg => {
@@ -600,7 +518,12 @@ impl ZeroLengthEpsilon {
 }
 
 impl EntailmentRule for ZeroLengthEpsilon {
-    fn apply(&self, node: &Node, mngr: &mut NodeManager) -> Option<VarSubstitution> {
+    fn apply(
+        &self,
+        node: &Node,
+        _: &IndexSet<Node>,
+        mngr: &mut NodeManager,
+    ) -> Option<VarSubstitution> {
         match node.kind() {
             NodeKind::Eq => {
                 debug_assert!(node.children().len() == 2);
@@ -634,6 +557,85 @@ impl EntailmentRule for ZeroLengthEpsilon {
             }
             _ => (),
         }
+        None
+    }
+}
+
+/// Compares a node to the asserted nodes and simplifies the node if possible.
+#[derive(Debug, Clone, Copy)]
+pub(super) struct IntForwardReasoning;
+
+impl IntForwardReasoning {
+    fn apply(fact: &Node, other: &Node, mngr: &mut NodeManager) -> Option<Node> {
+        let (lhs_fact, op_fact, rhs_fact) = normalize_ineq(fact)?;
+        let (l2, op2, r2) = normalize_ineq(other)?;
+        // We check if they are
+        // - conflicting: `fact` and `other` cannot be true at the same time. In that case, we return false.
+        // - valid: `fact` implies `other`. In that case, we return true.
+        // - otherwise, we return None.
+
+        /// Compores two inequalities of the form:
+        /// - `LHS op1 r1`
+        /// - `LHS op2 r2`
+        /// If they are conflicting, it returns false.
+        /// If the the first implies the second, it returns true.
+        /// Otherwise, it returns None.
+        fn compare(op_fact: &NodeKind, r_fact: i64, op2: &NodeKind, r2: i64) -> Option<bool> {
+            fn to_interval(op: &NodeKind, r: i64) -> Interval {
+                match op {
+                    NodeKind::Lt => Interval::bounded_above(r - 1),
+                    NodeKind::Le => Interval::bounded_above(r),
+                    NodeKind::Eq => Interval::new(r, r),
+                    NodeKind::Ge => Interval::bounded_below(r),
+                    NodeKind::Gt => Interval::bounded_below(r + 1),
+                    _ => unreachable!(),
+                }
+            }
+
+            let left = to_interval(op_fact, r_fact);
+            let right = to_interval(op2, r2);
+
+            if left.intersect(right).is_empty() {
+                Some(false)
+            } else if left.is_subset(right) {
+                // The asserted condition is more restrictive than the fact
+
+                Some(true)
+            } else {
+                None
+            }
+        }
+
+        if lhs_fact == l2 {
+            if compare(&op_fact, rhs_fact, &op2, r2)? {
+                return Some(mngr.ttrue());
+            } else {
+                return Some(mngr.ffalse());
+            }
+        }
+
+        None
+    }
+}
+
+impl EquivalenceRule for IntForwardReasoning {
+    fn apply(
+        &self,
+        node: &Node,
+        asserted: &IndexSet<Node>,
+        mngr: &mut NodeManager,
+    ) -> Option<Node> {
+        match node.kind() {
+            NodeKind::Lt | NodeKind::Le | NodeKind::Gt | NodeKind::Ge | NodeKind::Eq => {
+                for fact in asserted.iter().filter(|a| *a != node) {
+                    if let Some(equiv) = IntForwardReasoning::apply(fact, node, mngr) {
+                        return Some(equiv);
+                    }
+                }
+            }
+            _ => (),
+        }
+
         None
     }
 }

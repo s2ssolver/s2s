@@ -13,7 +13,7 @@ use super::*;
 #[derive(Debug, Clone, Copy)]
 pub(super) struct InReConstantLhs;
 impl EquivalenceRule for InReConstantLhs {
-    fn apply(&self, node: &Node, mngr: &mut NodeManager) -> Option<Node> {
+    fn apply(&self, node: &Node, _: &IndexSet<Node>, mngr: &mut NodeManager) -> Option<Node> {
         if *node.kind() == NodeKind::InRe {
             debug_assert!(node.children().len() == 2);
             let lhs = &node.children()[0];
@@ -37,7 +37,7 @@ impl EquivalenceRule for InReConstantLhs {
 #[derive(Debug, Clone, Copy)]
 pub(super) struct InReTrivial;
 impl EquivalenceRule for InReTrivial {
-    fn apply(&self, node: &Node, mngr: &mut NodeManager) -> Option<Node> {
+    fn apply(&self, node: &Node, _: &IndexSet<Node>, mngr: &mut NodeManager) -> Option<Node> {
         if *node.kind() == NodeKind::InRe {
             debug_assert!(node.children().len() == 2);
             let re = &node.children()[1];
@@ -61,7 +61,7 @@ impl EquivalenceRule for InReTrivial {
 #[derive(Debug, Clone, Copy)]
 pub(super) struct InReEquation;
 impl EquivalenceRule for InReEquation {
-    fn apply(&self, node: &Node, mngr: &mut NodeManager) -> Option<Node> {
+    fn apply(&self, node: &Node, _: &IndexSet<Node>, mngr: &mut NodeManager) -> Option<Node> {
         if *node.kind() == NodeKind::InRe {
             debug_assert!(node.children().len() == 2);
             let re = &node.children()[1];
@@ -88,7 +88,7 @@ impl EquivalenceRule for InReEquation {
 #[derive(Debug, Clone, Copy)]
 pub(super) struct InReStripPrefix;
 impl EquivalenceRule for InReStripPrefix {
-    fn apply(&self, node: &Node, mngr: &mut NodeManager) -> Option<Node> {
+    fn apply(&self, node: &Node, _: &IndexSet<Node>, mngr: &mut NodeManager) -> Option<Node> {
         if *node.kind() == NodeKind::InRe {
             debug_assert!(node.children().len() == 2);
             let mut rewritten = false;
@@ -122,11 +122,16 @@ impl EquivalenceRule for InReStripPrefix {
 #[derive(Debug, Clone, Copy)]
 pub(super) struct InReStripSuffix;
 impl EquivalenceRule for InReStripSuffix {
-    fn apply(&self, node: &Node, mngr: &mut NodeManager) -> Option<Node> {
+    fn apply(
+        &self,
+        node: &Node,
+        asserted: &IndexSet<Node>,
+        mngr: &mut NodeManager,
+    ) -> Option<Node> {
         if *node.kind() == NodeKind::InRe {
             debug_assert!(node.children().len() == 2);
             let revd = reverse_in_re(node, mngr);
-            if let Some(new_node) = InReStripPrefix.apply(&revd, mngr) {
+            if let Some(new_node) = InReStripPrefix.apply(&revd, asserted, mngr) {
                 let new_node = reverse_in_re(&new_node, mngr);
                 return Some(new_node);
             }
@@ -153,7 +158,7 @@ fn reverse_in_re(node: &Node, mngr: &mut NodeManager) -> Node {
 #[derive(Debug, Clone, Copy)]
 pub(super) struct InRePullComp;
 impl EquivalenceRule for InRePullComp {
-    fn apply(&self, node: &Node, mngr: &mut NodeManager) -> Option<Node> {
+    fn apply(&self, node: &Node, _: &IndexSet<Node>, mngr: &mut NodeManager) -> Option<Node> {
         if *node.kind() == NodeKind::InRe {
             debug_assert!(node.children().len() == 2);
             let lhs = &node.children()[0];
@@ -183,7 +188,12 @@ impl EquivalenceRule for InRePullComp {
 pub(super) struct ConstantPrefixSuffix;
 
 impl EntailmentRule for ConstantPrefixSuffix {
-    fn apply(&self, node: &Node, mngr: &mut NodeManager) -> Option<VarSubstitution> {
+    fn apply(
+        &self,
+        node: &Node,
+        _: &IndexSet<Node>,
+        mngr: &mut NodeManager,
+    ) -> Option<VarSubstitution> {
         if node.is_atomic() && *node.kind() == NodeKind::InRe {
             debug_assert!(node.children().len() == 2);
             let lhs = &node.children()[0];

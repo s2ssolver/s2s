@@ -187,7 +187,12 @@ impl IndependentVariableAssignment {
 }
 
 impl EntailmentRule for IndependentVariableAssignment {
-    fn apply(&self, node: &Node, mngr: &mut NodeManager) -> Option<VarSubstitution> {
+    fn apply(
+        &self,
+        node: &Node,
+        _: &IndexSet<Node>,
+        mngr: &mut NodeManager,
+    ) -> Option<VarSubstitution> {
         if node.is_literal() {
             return match node.kind() {
                 NodeKind::Not => {

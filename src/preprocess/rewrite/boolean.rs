@@ -13,10 +13,20 @@ use super::EquivalenceRule;
 /// Fold a conjunction of nodes:
 /// -  (A /\ false) to false
 /// -  (A /\ true) to A
+///
+/// Also returns false if the set of asserted nodes contains a false node.
 #[derive(Debug, Clone, Copy)]
 pub(super) struct AndConst;
 impl EquivalenceRule for AndConst {
-    fn apply(&self, node: &Node, mngr: &mut NodeManager) -> Option<Node> {
+    fn apply(
+        &self,
+        node: &Node,
+        asserted: &IndexSet<Node>,
+        mngr: &mut NodeManager,
+    ) -> Option<Node> {
+        if asserted.contains(&mngr.ffalse()) {
+            return Some(mngr.ffalse());
+        }
         if *node.kind() == NodeKind::And {
             let mut new_children = Vec::with_capacity(node.children().len());
             for c in node.children() {
@@ -42,7 +52,7 @@ impl EquivalenceRule for AndConst {
 #[derive(Debug, Clone, Copy)]
 pub(super) struct AndIdem;
 impl EquivalenceRule for AndIdem {
-    fn apply(&self, node: &Node, mngr: &mut NodeManager) -> Option<Node> {
+    fn apply(&self, node: &Node, _: &IndexSet<Node>, mngr: &mut NodeManager) -> Option<Node> {
         if *node.kind() == NodeKind::And {
             let mut new_children = IndexSet::with_capacity(node.children().len());
             for c in node.children() {
@@ -59,10 +69,16 @@ impl EquivalenceRule for AndIdem {
 }
 
 /// Folds: (A /\ -A) to false
+/// Also returns false if the set of asserted nodes contains a negated node.
 #[derive(Debug, Clone, Copy)]
 pub(super) struct AndComp;
 impl EquivalenceRule for AndComp {
-    fn apply(&self, node: &Node, mngr: &mut NodeManager) -> Option<Node> {
+    fn apply(
+        &self,
+        node: &Node,
+        asserted: &IndexSet<Node>,
+        mngr: &mut NodeManager,
+    ) -> Option<Node> {
         if *node.kind() == NodeKind::And {
             let mut children = IndexSet::with_capacity(node.children().len());
             for c in node.children() {
@@ -70,7 +86,7 @@ impl EquivalenceRule for AndComp {
                     NodeKind::Not => c.children().first().unwrap().clone(),
                     _ => mngr.not(c.clone()),
                 };
-                if children.contains(&negated) {
+                if children.contains(&negated) || asserted.contains(&negated) {
                     return Some(mngr.ffalse());
                 }
                 children.insert(c.clone());
@@ -86,7 +102,7 @@ impl EquivalenceRule for AndComp {
 #[derive(Debug, Clone, Copy)]
 pub(super) struct AndAssocFlatten;
 impl EquivalenceRule for AndAssocFlatten {
-    fn apply(&self, node: &Node, mngr: &mut NodeManager) -> Option<Node> {
+    fn apply(&self, node: &Node, _: &IndexSet<Node>, mngr: &mut NodeManager) -> Option<Node> {
         if *node.kind() == NodeKind::And {
             let mut children = IndexSet::with_capacity(node.children().len());
             for c in node.children() {
@@ -112,7 +128,7 @@ impl EquivalenceRule for AndAssocFlatten {
 #[derive(Debug, Clone, Copy)]
 pub(super) struct OrConst;
 impl EquivalenceRule for OrConst {
-    fn apply(&self, node: &Node, mngr: &mut NodeManager) -> Option<Node> {
+    fn apply(&self, node: &Node, _: &IndexSet<Node>, mngr: &mut NodeManager) -> Option<Node> {
         if *node.kind() == NodeKind::Or {
             let mut new_children = Vec::with_capacity(node.children().len());
             for c in node.children() {
@@ -138,7 +154,7 @@ impl EquivalenceRule for OrConst {
 #[derive(Debug, Clone, Copy)]
 pub(super) struct OrIdem;
 impl EquivalenceRule for OrIdem {
-    fn apply(&self, node: &Node, mngr: &mut NodeManager) -> Option<Node> {
+    fn apply(&self, node: &Node, _: &IndexSet<Node>, mngr: &mut NodeManager) -> Option<Node> {
         if *node.kind() == NodeKind::Or {
             let mut new_children = IndexSet::with_capacity(node.children().len());
             for c in node.children() {
@@ -158,7 +174,7 @@ impl EquivalenceRule for OrIdem {
 #[derive(Debug, Clone, Copy)]
 pub(super) struct OrComp;
 impl EquivalenceRule for OrComp {
-    fn apply(&self, node: &Node, mngr: &mut NodeManager) -> Option<Node> {
+    fn apply(&self, node: &Node, _: &IndexSet<Node>, mngr: &mut NodeManager) -> Option<Node> {
         if *node.kind() == NodeKind::Or {
             let mut children = IndexSet::with_capacity(node.children().len());
             for c in node.children() {
@@ -180,7 +196,7 @@ impl EquivalenceRule for OrComp {
 #[derive(Debug, Clone, Copy)]
 pub(super) struct OrAssocFlatten;
 impl EquivalenceRule for OrAssocFlatten {
-    fn apply(&self, node: &Node, mngr: &mut NodeManager) -> Option<Node> {
+    fn apply(&self, node: &Node, _: &IndexSet<Node>, mngr: &mut NodeManager) -> Option<Node> {
         if *node.kind() == NodeKind::Or {
             let mut children = IndexSet::with_capacity(node.children().len());
             for c in node.children() {
@@ -204,7 +220,7 @@ impl EquivalenceRule for OrAssocFlatten {
 #[derive(Debug, Clone, Copy)]
 pub(super) struct NotDoubleNegation;
 impl EquivalenceRule for NotDoubleNegation {
-    fn apply(&self, node: &Node, _: &mut NodeManager) -> Option<Node> {
+    fn apply(&self, node: &Node, _: &IndexSet<Node>, _: &mut NodeManager) -> Option<Node> {
         if let NodeKind::Not = node.kind() {
             debug_assert!(node.children().len() == 1);
             if let Some(child) = node.children().first() {
@@ -222,7 +238,7 @@ impl EquivalenceRule for NotDoubleNegation {
 #[derive(Debug, Clone, Copy)]
 pub(super) struct NotConst;
 impl EquivalenceRule for NotConst {
-    fn apply(&self, node: &Node, mngr: &mut NodeManager) -> Option<Node> {
+    fn apply(&self, node: &Node, _: &IndexSet<Node>, mngr: &mut NodeManager) -> Option<Node> {
         if let NodeKind::Not = node.kind() {
             debug_assert!(node.children().len() == 1);
             let ch = node.children().first().unwrap();
@@ -242,7 +258,7 @@ impl EquivalenceRule for NotConst {
 #[derive(Debug, Clone, Copy)]
 pub(super) struct EqualityTrivial;
 impl EquivalenceRule for EqualityTrivial {
-    fn apply(&self, node: &Node, mngr: &mut NodeManager) -> Option<Node> {
+    fn apply(&self, node: &Node, _: &IndexSet<Node>, mngr: &mut NodeManager) -> Option<Node> {
         if let NodeKind::Eq = node.kind() {
             debug_assert!(node.children().len() == 2);
             let lhs = node.children().first().unwrap();
@@ -272,7 +288,7 @@ mod tests {
         let vv = mngr.temp_var_node(Sort::Bool);
 
         let conjuncts = vec![v.clone(), vv.clone(), v.clone()];
-        let result = AndIdem.apply(&mngr.and(conjuncts), &mut mngr);
+        let result = AndIdem.apply(&mngr.and(conjuncts), &IndexSet::new(), &mut mngr);
         let expected = mngr.and(vec![v.clone(), vv.clone()]);
 
         assert_eq!(result, Some(expected));
@@ -286,7 +302,7 @@ mod tests {
         let vv = mngr.temp_var_node(Sort::Bool);
 
         let conjuncts = vec![v.clone(), mngr.not(v.clone()), vv.clone()];
-        let result = AndComp.apply(&mngr.and(conjuncts), &mut mngr);
+        let result = AndComp.apply(&mngr.and(conjuncts), &IndexSet::new(), &mut mngr);
 
         assert_eq!(result, Some(mngr.ffalse()));
     }
@@ -299,7 +315,7 @@ mod tests {
         let vv = mngr.temp_var_node(Sort::Bool);
 
         let conjuncts = vec![v.clone(), vv.clone(), v.clone()];
-        let result = OrIdem.apply(&mngr.or(conjuncts), &mut mngr);
+        let result = OrIdem.apply(&mngr.or(conjuncts), &IndexSet::new(), &mut mngr);
         let expected = mngr.or(vec![v.clone(), vv.clone()]);
 
         assert_eq!(result, Some(expected));
@@ -314,7 +330,7 @@ mod tests {
 
         let disjuncts = vec![v.clone(), mngr.not(v.clone()), vv.clone()];
         let disjuction = mngr.or(disjuncts);
-        let result = OrComp.apply(&disjuction, &mut mngr);
+        let result = OrComp.apply(&disjuction, &IndexSet::new(), &mut mngr);
 
         assert_eq!(result, Some(mngr.ttrue()));
     }
@@ -329,7 +345,7 @@ mod tests {
         // Calling mngr.not again would directly return the child of the `Not` node, so we bypass the optimization in the Manager
         let not_not_v = mngr.intern_node(NodeKind::Not, vec![not_v]);
 
-        let result = NotDoubleNegation.apply(&not_not_v, &mut mngr);
+        let result = NotDoubleNegation.apply(&not_not_v, &IndexSet::new(), &mut mngr);
 
         assert_eq!(result, Some(v));
     }
@@ -340,7 +356,7 @@ mod tests {
 
         let t = mngr.ttrue();
         let not_true = mngr.intern_node(NodeKind::Not, vec![t]);
-        let result = NotConst.apply(&not_true, &mut mngr);
+        let result = NotConst.apply(&not_true, &IndexSet::new(), &mut mngr);
 
         // Expect the result to be `false`
         assert_eq!(result, Some(mngr.ffalse()));
@@ -352,7 +368,7 @@ mod tests {
 
         let f = mngr.ffalse();
         let not_false = mngr.intern_node(NodeKind::Not, vec![f]);
-        let result = NotConst.apply(&not_false, &mut mngr);
+        let result = NotConst.apply(&not_false, &IndexSet::new(), &mut mngr);
 
         // Expect the result to be `true`
         assert_eq!(result, Some(mngr.ttrue()));
