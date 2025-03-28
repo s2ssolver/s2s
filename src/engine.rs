@@ -388,20 +388,21 @@ impl Engine {
             }
         }
 
-        let init_bounds = refiner.infer()?;
+        let approx_bounds = refiner.infer()?;
         // Clamp all bounds and add Booleans to the domain
         let mut domain = Domain::default();
         for v in fm.variables() {
             match v.sort() {
                 Sort::Int | Sort::String => {
-                    let lower = init_bounds
+                    let lower = approx_bounds
                         .get(&v)
                         .and_then(|b| b.lower_finite())
                         .unwrap_or(0);
-                    let upper = init_bounds
+                    let upper = approx_bounds
                         .get(&v)
                         .and_then(|b| b.upper_finite())
                         .unwrap_or(self.options.init_upper_bound)
+                        .min(self.options.init_upper_bound) // at most init_upper_bound
                         .max(lower) // at least lower
                         .max(1); // at least 1
                     let interval = Interval::new(lower, upper);
