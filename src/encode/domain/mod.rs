@@ -10,6 +10,7 @@ use bool::{BoolDomain, BoolEncoder};
 
 pub use int::IntDomain;
 use int::IntegerEncoder;
+use rustsat_cadical::CaDiCaL;
 pub use string::StringDomain;
 use string::StringDomainEncoder;
 
@@ -61,7 +62,7 @@ impl DomainEncoding {
         &self.alphabet
     }
 
-    pub fn get_model(&self, solver: &cadical::Solver) -> Assignment {
+    pub fn get_model(&self, solver: &CaDiCaL) -> Assignment {
         let mut model = self.string.get_model(solver, &self.dom);
         let overwrite = model.extend(&self.int.get_model(solver));
         assert!(overwrite == 0);

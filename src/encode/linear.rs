@@ -1,6 +1,7 @@
 use std::{collections::VecDeque, rc::Rc};
 
 use indexmap::IndexMap;
+use rustsat::types::Clause;
 
 use crate::{
     domain::Domain,
@@ -128,11 +129,11 @@ impl LiteralEncoder for MddEncoder {
                                 .or_default()
                                 .entry(new_value)
                                 .or_insert_with(pvar);
-                            res.add_clause(vec![
+                            res.add_clause(Clause::from([
                                 nlit(node_var),
                                 nlit(len_assign_var),
                                 plit(child_pvar),
-                            ]);
+                            ]));
 
                             queue.push_back((level + 1, new_value, child_pvar));
                         } else {
@@ -180,7 +181,11 @@ impl LiteralEncoder for MddEncoder {
                                     }
                                 }
                             };
-                            res.add_clause(vec![nlit(node_var), nlit(len_assign_var), plit(node)]);
+                            res.add_clause(Clause::from([
+                                nlit(node_var),
+                                nlit(len_assign_var),
+                                plit(node),
+                            ]));
                         }
                     }
                 }
@@ -190,8 +195,8 @@ impl LiteralEncoder for MddEncoder {
             }
         }
         if self.round == 1 {
-            res.add_clause(vec![plit(self.mdd_root)]);
-            res.add_clause(vec![nlit(self.mdd_false)]);
+            res.add_clause(Clause::from([plit(self.mdd_root)]));
+            res.add_clause([nlit(self.mdd_false)].into());
         }
 
         self.last_bounds = Some(dom.clone());

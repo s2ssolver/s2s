@@ -1,5 +1,7 @@
 use std::rc::Rc;
 
+use rustsat::instances::Cnf;
+
 use crate::{
     domain::Domain,
     node::{Sorted, Variable},
@@ -46,7 +48,9 @@ impl LiteralEncoder for BoolVarEncoder {
             let v = dom.bool().get(&self.var).unwrap();
             let lit = if self.pol { plit(v) } else { nlit(v) };
             self.encoded = true;
-            Ok(EncodingResult::cnf(vec![vec![lit]]))
+            let mut cnf = Cnf::new();
+            cnf.add_unit(lit);
+            Ok(EncodingResult::cnf(cnf))
         }
     }
 }

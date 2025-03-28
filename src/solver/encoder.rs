@@ -1,8 +1,5 @@
 use std::{ops::Neg, rc::Rc, time::Instant};
 
-use cadical::Solver;
-use indexmap::{IndexMap, IndexSet};
-
 use crate::{
     abstraction::LitDefinition,
     alphabet::Alphabet,
@@ -14,8 +11,12 @@ use crate::{
         canonical::{AssignedValue, Assignment, Literal},
         NodeManager,
     },
-    sat::{nlit, plit, pvar, PLit, PVar},
+    sat::{nlit, plit, pvar, PVar},
 };
+use indexmap::{IndexMap, IndexSet};
+use rustsat::{clause, types::Lit};
+use rustsat::{solvers::SolveIncremental, types::Clause};
+use rustsat_cadical::CaDiCaL;
 
 use crate::domain::Domain;
 
@@ -27,7 +28,7 @@ struct FailedProbe {
     // The probe variable for the literal, which is added to all clauses in negated form and assumed to be true.
     probe: PVar,
     // The assumptions that were used to encode the literal.
-    assumptions: IndexSet<PLit>,
+    assumptions: IndexSet<Lit>,
 }
 impl Default for FailedProbe {
     fn default() -> Self {
@@ -39,7 +40,7 @@ impl Default for FailedProbe {
 }
 impl FailedProbe {
     /// Sets the assumptions introduced by the encoding of the literal.
-    pub fn set_assumptions(&mut self, assumptions: IndexSet<PLit>) {
+    pub fn set_assumptions(&mut self, assumptions: IndexSet<Lit>) {
         self.assumptions = assumptions;
     }
 
@@ -48,7 +49,7 @@ impl FailedProbe {
     }
 
     /// Returns an iterator over all probes. If one of the probes failed, the literal is part of the unsat core.
-    pub fn iter(&self) -> impl IntoIterator<Item = PLit> + '_ {
+    pub fn iter(&self) -> impl IntoIterator<Item = Lit> + '_ {
         self.assumptions
             .iter()
             .copied()
@@ -115,7 +116,7 @@ impl DefintionEncoder {
 
         // Add -def var to every clause
         encoding.iter_clauses_mut().for_each(|cl| {
-            cl.push(defining.neg());
+            cl.add(defining.neg());
         });
 
         let probe = self.probes.entry(def.clone()).or_default();
@@ -125,7 +126,7 @@ impl DefintionEncoder {
         // Add -probe to every clause
         encoding
             .iter_clauses_mut()
-            .for_each(|cl| cl.push(nlit(pvar)));
+            .for_each(|cl| cl.add(nlit(pvar)));
         // assert all probes
         encoding.add_assumption(plit(pvar));
         Ok(encoding)
@@ -145,25 +146,18 @@ impl DefintionEncoder {
     }
 
     /// Returns the failed literals.
-    pub fn get_failed_literals(&self, solver: &Solver) -> Vec<LitDefinition> {
+    pub fn get_failed_literals(&self, solver: &mut CaDiCaL) -> Vec<LitDefinition> {
         let mut failed = Vec::new();
+        let core = solver.core().unwrap();
         for (lit, probes) in self.probes.iter() {
             for probe in probes.iter() {
-                if solver.failed(probe) {
+                if core.contains(&-probe) {
                     failed.push(lit.clone());
                     break;
                 }
             }
         }
         failed
-    }
-
-    #[allow(dead_code)]
-    pub(crate) fn print_debug(&self, solver: &Solver) {
-        for (l, enc) in self.encoders.iter() {
-            println!("Debug: {}", l);
-            enc.print_debug(solver, self.domain_encoder.encoding());
-        }
     }
 
     /// Blocks the assignment of the given substitution.
@@ -173,11 +167,11 @@ impl DefintionEncoder {
         for (var, val) in asn.iter() {
             match val {
                 AssignedValue::String(w) => {
-                    let mut clause = Vec::with_capacity(w.len());
+                    let mut clause = Clause::with_capacity(w.len());
                     for (i, c) in w.iter().enumerate() {
                         if let Some(x) = self.domain_encoder.encoding().string().get_sub(var, i, *c)
                         {
-                            clause.push(nlit(x));
+                            clause.add(nlit(x));
                         } else {
                             // Trivially Cannot be this word because either its outside alphabet or the word is too long
                             // So we can just break
@@ -188,17 +182,17 @@ impl DefintionEncoder {
                 }
                 AssignedValue::Int(i) => {
                     if let Some(x) = self.domain_encoder.encoding().int().get(var, *i) {
-                        res.add_clause(vec![nlit(x)]);
+                        res.add_clause(clause![nlit(x)]);
                     }
                 }
                 AssignedValue::Bool(b) => {
                     if let Some(x) = self.domain_encoder.encoding().bool().get(var) {
                         if *b {
                             // must not be true
-                            res.add_clause(vec![nlit(x)]);
+                            res.add_clause(clause![nlit(x)]);
                         } else {
                             // must not be false
-                            res.add_clause(vec![plit(x)]);
+                            res.add_clause(clause![plit(x)]);
                         }
                     }
                 }
@@ -208,7 +202,7 @@ impl DefintionEncoder {
     }
 
     /// Returns the model of the current assignment.
-    pub fn get_model(&self, solver: &Solver) -> Assignment {
+    pub fn get_model(&self, solver: &CaDiCaL) -> Assignment {
         self.domain_encoder.encoding().get_model(solver)
     }
 }

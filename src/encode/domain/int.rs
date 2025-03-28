@@ -1,6 +1,7 @@
 use std::rc::Rc;
 
 use indexmap::IndexMap;
+use rustsat_cadical::CaDiCaL;
 
 use super::DomainEncoding;
 
@@ -12,6 +13,7 @@ use crate::{
     node::{canonical::Assignment, Sort, Sorted, Variable},
     sat::pvar,
 };
+use rustsat::solvers::Solve;
 
 #[derive(Clone, Debug, Default)]
 pub struct IntDomain {
@@ -47,13 +49,11 @@ impl IntDomain {
         self.encodings.get(&(var.clone(), value)).cloned()
     }
 
-    pub(crate) fn get_model(&self, solver: &cadical::Solver) -> Assignment {
-        if solver.status() != Some(true) {
-            panic!("Solver is not in a SAT state")
-        }
+    pub(crate) fn get_model(&self, solver: &CaDiCaL) -> Assignment {
         let mut model = Assignment::default();
+        let sol = solver.full_solution().expect("No solution found");
         for (var, l, v) in self.iter() {
-            if let Some(true) = solver.value(plit(*v)) {
+            if sol.lit_value(plit(*v)).to_bool_with_def(false) {
                 let ok = model.assign(var.clone(), l);
                 assert!(ok.is_none());
             }

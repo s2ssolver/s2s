@@ -2,6 +2,10 @@ use std::{collections::HashMap, rc::Rc};
 
 use indexmap::IndexMap;
 use itertools::Itertools;
+use rustsat::instances::Cnf;
+use rustsat::solvers::Solve;
+use rustsat::{clause, types::Lit};
+use rustsat_cadical::CaDiCaL;
 use smt_str::{SmtChar, SmtString};
 
 use crate::{
@@ -12,7 +16,7 @@ use crate::{
         EncodingResult, LAMBDA,
     },
     node::{canonical::Assignment, Sort, Sorted, Variable},
-    sat::{nlit, plit, pvar, Cnf, PLit, PVar},
+    sat::{nlit, plit, pvar, PVar},
 };
 
 use super::DomainEncoding;
@@ -65,7 +69,7 @@ impl StringDomain {
     }
 
     #[allow(dead_code)]
-    pub(super) fn get_sub_lit(&self, var: &Rc<Variable>, pos: usize, chr: SmtChar) -> Option<PLit> {
+    pub(super) fn get_sub_lit(&self, var: &Rc<Variable>, pos: usize, chr: SmtChar) -> Option<Lit> {
         self.get_sub(var, pos, chr).map(plit)
     }
 
@@ -96,7 +100,7 @@ impl StringDomain {
         assert!(ok.is_none(), "Length {} already set for {}", len, var);
     }
 
-    pub(crate) fn get_model(&self, solver: &cadical::Solver, bounds: &Domain) -> Assignment {
+    pub(crate) fn get_model(&self, solver: &CaDiCaL, bounds: &Domain) -> Assignment {
         let mut subs: HashMap<Rc<Variable>, Vec<Option<SmtChar>>> = HashMap::new();
         // initialize substitutions
         let vars = self.iter_substitutions().map(|(var, _, _, _)| var).unique();
@@ -107,8 +111,9 @@ impl StringDomain {
                 .expect("Unbounded string variable");
             subs.insert(var.clone(), vec![None; len as usize]);
         }
+        let sol = solver.full_solution().unwrap();
         for (var, pos, chr, v) in self.iter_substitutions() {
-            if let Some(true) = solver.value(plit(*v)) {
+            if sol.lit_value(plit(*v)).to_bool_with_def(false) {
                 let sub = subs
                     .get_mut(var)
                     .unwrap_or_else(|| panic!("No substitution for {}", var));
@@ -204,13 +209,13 @@ impl StringDomainEncoder {
 
                 // If previous position is lambda, then so is this one
                 if b > 0 {
-                    let clause = vec![
+                    let clause = clause![
                         nlit(subs.get_sub(str_var, b - 1, LAMBDA).unwrap_or_else(|| {
                             panic!("{:?}[{}] = {} undefined", str_var, b - 1, LAMBDA)
                         })),
-                        plit(subvar_lambda),
+                        plit(subvar_lambda)
                     ];
-                    cnf.push(clause);
+                    cnf.add_clause(clause);
                 }
                 // Exactly one needs to be selected
                 cnf.extend(exactly_one(&pos_subs));
@@ -246,7 +251,7 @@ impl StringDomainEncoder {
                 // we can only add this here because the following positions after last_bound - 1 were not yet defined in previous rounds
                 if len < upper {
                     let lambda_suffix = encoding.string().get_sub(str_var, len, LAMBDA).unwrap();
-                    res.add_clause(vec![nlit(choice), plit(lambda_suffix)]);
+                    res.add_clause(clause![nlit(choice), plit(lambda_suffix)]);
                 }
             }
 
@@ -263,13 +268,13 @@ impl StringDomainEncoder {
                 // If the variable has this length, then only lambdas follow, and no lambdas precede
                 if len < upper {
                     let lambda_suffix = encoding.string().get_sub(str_var, len, LAMBDA).unwrap();
-                    res.add_clause(vec![nlit(choice), plit(lambda_suffix)]);
+                    res.add_clause(clause![nlit(choice), plit(lambda_suffix)]);
                 }
                 if len > 0 {
                     let lambda_prefix =
                         encoding.string().get_sub(str_var, len - 1, LAMBDA).unwrap();
 
-                    res.add_clause(vec![nlit(choice), nlit(lambda_prefix)]);
+                    res.add_clause(clause![nlit(choice), nlit(lambda_prefix)]);
                 }
             }
 
@@ -309,6 +314,7 @@ mod tests {
 
     use quickcheck::TestResult;
     use quickcheck_macros::quickcheck;
+    use rustsat_cadical::CaDiCaL;
     use smt_str::alphabet::CharRange;
 
     use crate::{
@@ -318,6 +324,7 @@ mod tests {
         interval::Interval,
         node::{NodeManager, Sort},
     };
+    use rustsat::solvers::Solve;
 
     use super::StringDomainEncoder;
 
@@ -394,17 +401,17 @@ mod tests {
         let mut bounds = Domain::default();
         bounds.set_string(var.clone(), Interval::new(0, len as isize));
         let mut encoding = DomainEncoding::new(alphabet, bounds.clone());
-        let mut solver: cadical::Solver = cadical::Solver::new();
+        let mut solver = CaDiCaL::default();
         match encoder.encode_substitutions(&bounds, &mut encoding) {
             crate::encode::EncodingResult::Cnf(cnf, _) => {
-                cnf.into_iter().for_each(|cl| solver.add_clause(cl));
-                solver.solve();
+                solver.add_cnf(cnf).unwrap();
+                solver.solve().unwrap();
             }
             crate::encode::EncodingResult::Trivial(_) => unreachable!(),
         }
 
         // This will panic if the substitution is not valid
-        let subs = encoding.get_model(&solver);
+        let subs = encoding.get_model(&mut solver);
         assert!(
             subs.get(&var).is_some(),
             "No substitution found (length is {})",

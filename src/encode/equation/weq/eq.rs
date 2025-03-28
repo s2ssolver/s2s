@@ -108,6 +108,9 @@ impl LiteralEncoder for WordEquationEncoder {
 mod tests {
     use std::rc::Rc;
 
+    use itertools::Itertools;
+    use rustsat_cadical::CaDiCaL;
+
     use crate::{
         alphabet::Alphabet,
         domain::Domain,
@@ -121,6 +124,7 @@ mod tests {
         },
         sat::plit,
     };
+    use rustsat::solvers::{Solve, SolveIncremental, SolverResult};
 
     use super::WordEquationEncoder;
 
@@ -129,7 +133,7 @@ mod tests {
         let alphabet = Rc::new(alphabet);
         let mut domain = DomainEncoder::new(alphabet);
 
-        let mut cadical: cadical::Solver = cadical::Solver::default();
+        let mut cadical = CaDiCaL::default();
 
         let mut encoder = WordEquationEncoder::new(eq.clone());
 
@@ -145,38 +149,38 @@ mod tests {
 
             let assm = res.assumptions();
 
-            for clause in res.into_inner().0.iter() {
-                cadical.add_clause(clause.iter().copied());
-            }
-            match cadical.solve_with(assm.into_iter()) {
-                Some(true) => {
+            cadical.add_cnf(res.into_inner().0).unwrap();
+            let assm = assm.into_iter().collect_vec();
+            match cadical.solve_assumps(&assm).ok() {
+                Some(SolverResult::Sat) => {
                     print!("Solution WORD: ");
                     encoder
                         .word_encoding
                         .as_ref()
                         .unwrap()
-                        .print_solution_word(&cadical);
+                        .print_solution_word(&mut cadical);
                     println!("Start Positions LHS");
-                    encoder.match_encoder.0.print_start_positions(&cadical);
+                    encoder.match_encoder.0.print_start_positions(&mut cadical);
                     println!("Start Positions RHS");
-                    encoder.match_encoder.1.print_start_positions(&cadical);
+                    encoder.match_encoder.1.print_start_positions(&mut cadical);
                     println!("String lengths");
                     for v in eq.variables() {
+                        let solution = cadical.full_solution().unwrap();
                         let mut found = false;
                         for l in 0..=*b {
                             let var = domain.encoding().string().get_len(&v, l).unwrap();
-                            if cadical.value(plit(var)).unwrap_or(false) {
+                            if solution.lit_value(plit(var)).to_bool_with_def(false) {
                                 println!("\t|{}| = {}", v, l);
                                 found = true;
                             }
                         }
                         assert!(found);
                     }
-                    let subs = domain.encoding().get_model(&cadical);
+                    let subs = domain.encoding().get_model(&mut cadical);
                     return Some(subs);
                 }
-                Some(false) => continue,
-                None => unreachable!(),
+                Some(SolverResult::Unsat) => continue,
+                _ => unreachable!(),
             }
         }
         None

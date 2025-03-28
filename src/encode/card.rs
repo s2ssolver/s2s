@@ -3,8 +3,9 @@
 use std::fmt::Display;
 
 use indexmap::IndexSet;
+use rustsat::{instances::Cnf, types::Clause};
 
-use crate::sat::{nlit, plit, pvar, Cnf, PLit, PVar};
+use crate::sat::{nlit, plit, pvar, PVar};
 
 use super::EncodingResult;
 
@@ -26,12 +27,12 @@ pub fn amo(vars: &[PVar]) -> Cnf {
 fn eo_naive(vars: &[PVar]) -> Cnf {
     let mut cnf = Cnf::new();
     // At least one
-    let as_lits: Vec<PLit> = vars.iter().copied().map(plit).collect();
-    cnf.push(as_lits.clone());
+    let as_lits: Clause = vars.iter().copied().map(plit).collect();
+    cnf.add_clause(as_lits.clone());
     // At most one
     for (i, x) in as_lits.iter().enumerate() {
         for y in as_lits.iter().skip(i + 1) {
-            cnf.push(vec![-(*x), -(*y)]);
+            cnf.add_binary(-(*x), -(*y));
         }
     }
     cnf
@@ -40,10 +41,10 @@ fn eo_naive(vars: &[PVar]) -> Cnf {
 /// Binomial (i.e. naive pairwise) encoding of at most one constraints.
 fn amo_binomial(vars: &[PVar]) -> Cnf {
     let mut cnf = Cnf::new();
-    let as_lits: Vec<PLit> = vars.iter().copied().map(plit).collect();
+    let as_lits: Clause = vars.iter().copied().map(plit).collect();
     for (i, x) in as_lits.iter().enumerate() {
         for y in as_lits.iter().skip(i + 1) {
-            cnf.push(vec![-(*x), -(*y)]);
+            cnf.add_binary(-(*x), -(*y));
         }
     }
     cnf
@@ -70,11 +71,11 @@ impl IncrementalAMO {
         cnf.extend(amo_binomial(vars));
 
         // At most one between the old and the new ones
-        let as_lits_old: Vec<PLit> = self.vars.iter().copied().map(plit).collect();
-        let as_lits_new: Vec<PLit> = vars.iter().copied().map(plit).collect();
+        let as_lits_old: Clause = self.vars.iter().copied().map(plit).collect();
+        let as_lits_new: Clause = vars.iter().copied().map(plit).collect();
         for x in as_lits_old.iter() {
             for y in as_lits_new.iter() {
-                cnf.push(vec![-(*x), -(*y)]);
+                cnf.add_binary(-(*x), -(*y));
             }
         }
         self.vars.extend(vars);
@@ -105,12 +106,12 @@ impl IncrementalALO {
         let mut cnf = Cnf::new();
         self.vars.extend(vars);
         let selector = pvar();
-        let mut clause = [nlit(selector)].to_vec();
+        let mut clause: Clause = [nlit(selector)].into();
         clause.extend(self.vars.iter().copied().map(plit));
-        cnf.push(clause);
+        cnf.add_clause(clause);
 
         if let Some(old_selector) = self.selector {
-            cnf.push(vec![nlit(old_selector)]);
+            cnf.add_unit(nlit(old_selector));
         }
         self.selector = Some(selector);
         let assm = IndexSet::from([plit(self.selector.unwrap())]);
@@ -157,19 +158,20 @@ mod tests {
     use quickcheck::TestResult;
     use quickcheck_macros::quickcheck;
 
+    use rustsat::solvers::{Solve, SolveIncremental, SolverResult};
+    use rustsat::types::TernaryVal;
+    use rustsat_cadical::CaDiCaL;
+
     use super::*;
     #[test]
     fn test_eo_naive_encoding() {
         let cnf = eo_naive(&[1, 2, 3]);
-        assert_eq!(
-            cnf,
-            vec![
-                vec![1, 2, 3], // At least one
-                vec![-1, -2],  // At most one
-                vec![-1, -3],
-                vec![-2, -3],
-            ]
-        );
+        let mut expected = Cnf::new();
+        expected.add_clause([plit(1), plit(2), plit(3)].into()); // At least one
+        expected.add_clause([nlit(1), nlit(2)].into()); // At most one
+        expected.add_clause([nlit(1), nlit(3)].into());
+        expected.add_clause([nlit(2), nlit(3)].into());
+        assert_eq!(cnf, expected,);
     }
 
     #[quickcheck]
@@ -179,15 +181,15 @@ mod tests {
             return TestResult::discard();
         }
         let cnf = eo_naive(&vars);
-        let mut solver: cadical::Solver = cadical::Solver::new();
-        for clause in cnf {
-            solver.add_clause(clause);
-        }
-        assert!(matches!(solver.solve(), Some(true)));
+        let mut solver = CaDiCaL::default();
+        solver.add_cnf(cnf).unwrap();
+
+        assert!(matches!(solver.solve(), Ok(SolverResult::Sat)));
+        let solution = solver.full_solution().unwrap();
         let ts = vars
             .iter()
-            .map(|x| solver.value(*x as PLit).unwrap())
-            .filter(|x| *x)
+            .map(|x| solution.lit_value(plit(*x)))
+            .filter(|x| matches!(x, TernaryVal::True))
             .count();
         TestResult::from_bool(ts == 1)
     }
@@ -200,18 +202,19 @@ mod tests {
         }
         let mut eo_encoder = IncrementalEO::new();
         let cnf = eo_encoder.add(&vars);
-        let mut solver: cadical::Solver = cadical::Solver::new();
+        let mut solver = CaDiCaL::default();
 
         match cnf {
             EncodingResult::Cnf(cnf, assm) => {
-                for clause in cnf {
-                    solver.add_clause(clause);
-                }
-                assert!(matches!(solver.solve_with(assm.into_iter()), Some(true)));
+                solver.add_cnf(cnf).unwrap();
+                let assm = assm.into_iter().collect_vec();
+                let res = solver.solve_assumps(&assm).unwrap();
+                assert!(matches!(res, SolverResult::Sat));
+                let solution = solver.full_solution().unwrap();
                 let ts = vars
                     .iter()
-                    .map(|x| solver.value(*x as PLit).unwrap())
-                    .filter(|x| *x)
+                    .map(|x| solution.lit_value(plit(*x)))
+                    .filter(|x| matches!(x, TernaryVal::True))
                     .count();
                 TestResult::from_bool(ts == 1)
             }

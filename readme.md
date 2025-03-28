@@ -10,13 +10,21 @@ There are known soundness issues.
 ## Build
 
 Assumes that the Rust tool chain is installed.
-Use `cargo` to build:
+
+First install the dependencies: `libssl-dev`, `pkg-config`, and `libclang-dev`.
+On Ubuntu, you can do this with:
+
+```bash
+sudo sudo apt-get install libssl-dev pkg-config libclang-dev
+```
+
+After that, clone the repository, change into the directory, use `cargo` to build:
 
 ```rust
 cargo build -r
 ```
 
-This creates a binary `blastr` at `target/release`. 
+This creates a binary `blastr` at `target/release`.
 
 ## Usage
 

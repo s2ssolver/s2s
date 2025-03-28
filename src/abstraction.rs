@@ -4,6 +4,7 @@ use std::{
 };
 
 use indexmap::IndexMap;
+use rustsat::types::Lit;
 
 use crate::{
     node::{
@@ -11,19 +12,19 @@ use crate::{
         error::NodeError,
         Node, NodeKind,
     },
-    sat::{nlit, plit, pvar, PFormula, PLit, PVar},
+    sat::{nlit, plit, pvar, PFormula, PVar},
 };
 
 /// A definition is a pair (l, L) where l is a propositional literals and L is theory literal.
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct LitDefinition {
-    defining: PLit,
+    defining: Lit,
     defined: Literal,
 }
 
 impl LitDefinition {
-    pub fn defining(&self) -> PLit {
+    pub fn defining(&self) -> Lit {
         self.defining
     }
 

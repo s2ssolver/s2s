@@ -5,6 +5,8 @@ use std::{
     rc::Rc,
 };
 
+use rustsat::clause;
+
 use crate::{
     domain::Domain,
     encode::{domain::DomainEncoding, EncodingError, EncodingResult, LiteralEncoder, LAMBDA},
@@ -45,12 +47,12 @@ impl VareqEncoder {
             for c in alph.iter() {
                 let lhs_pos_c = dom_enc.string().get_sub(&self.lhs, pos, c).unwrap();
                 let rhs_pos_c = dom_enc.string().get_sub(&self.rhs, pos, c).unwrap();
-                let clause = vec![nlit(lhs_pos_c), plit(rhs_pos_c)];
+                let clause = clause![nlit(lhs_pos_c), plit(rhs_pos_c)];
                 res.add_clause(clause);
             }
             let lhs_pos_c = dom_enc.string().get_sub(&self.lhs, pos, LAMBDA).unwrap();
             let rhs_pos_c = dom_enc.string().get_sub(&self.rhs, pos, LAMBDA).unwrap();
-            let clause = vec![nlit(lhs_pos_c), plit(rhs_pos_c)];
+            let clause = clause![nlit(lhs_pos_c), plit(rhs_pos_c)];
             res.add_clause(clause);
         }
 
@@ -109,12 +111,12 @@ impl VareqEncoder {
 
         // Deactivate selector from last iteration and create a new one
         if let Some(s) = self.selector {
-            res.add_clause(vec![nlit(s)]);
+            res.add_clause(clause![nlit(s)]);
         }
         let selector = pvar();
         self.selector = Some(selector);
 
-        let mut def_clause = vec![nlit(selector)];
+        let mut def_clause = clause![nlit(selector)];
         res.add_assumption(plit(selector));
         match lhs_bound.cmp(&rhs_bound) {
             Ordering::Less => {
@@ -122,14 +124,14 @@ impl VareqEncoder {
                     .string()
                     .get_sub(&self.rhs, next_bound, LAMBDA)
                     .unwrap();
-                def_clause.push(nlit(rhs_lambda));
+                def_clause.add(nlit(rhs_lambda));
             }
             Ordering::Greater => {
                 let lhs_lambda = dom_enc
                     .string()
                     .get_sub(&self.lhs, next_bound, LAMBDA)
                     .unwrap();
-                def_clause.push(nlit(lhs_lambda));
+                def_clause.add(nlit(lhs_lambda));
             }
             _ => (),
         }
@@ -137,31 +139,31 @@ impl VareqEncoder {
         for pos in 0..next_bound {
             for c in alph.iter() {
                 let p = pvar();
-                def_clause.push(plit(p));
+                def_clause.add(plit(p));
                 let lhs_pos_c = dom_enc.string().get_sub(&self.lhs, pos, c).unwrap();
                 let rhs_pos_c = dom_enc.string().get_sub(&self.rhs, pos, c).unwrap();
 
                 // p --> (-h(x[pos]) = a /\ h(y[pos]) = a)
                 // <==> (-p \/ -h(x[pos]) = a) /\ (-p \/ h(y[pos]) = a)
-                let clause_lhs = vec![nlit(p), nlit(lhs_pos_c)];
-                let clause_rhs = vec![nlit(p), plit(rhs_pos_c)];
+                let clause_lhs = clause![nlit(p), nlit(lhs_pos_c)];
+                let clause_rhs = clause![nlit(p), plit(rhs_pos_c)];
                 res.add_clause(clause_lhs);
                 res.add_clause(clause_rhs);
 
                 // (-h(x[pos]) = a /\ h(y[pos]) = a) --> p
                 // <==> (h(x[pos]) = a \/ -h(y[pos]) = a \/ p)
-                let clause = vec![plit(lhs_pos_c), nlit(rhs_pos_c), plit(p)];
+                let clause = clause![plit(lhs_pos_c), nlit(rhs_pos_c), plit(p)];
                 res.add_clause(clause);
             }
             // Repeat for lambda
             let p = pvar();
             let lhs_pos_c = dom_enc.string().get_sub(&self.lhs, pos, LAMBDA).unwrap();
             let rhs_pos_c = dom_enc.string().get_sub(&self.rhs, pos, LAMBDA).unwrap();
-            let clause_lhs = vec![nlit(p), nlit(lhs_pos_c)];
-            let clause_rhs = vec![nlit(p), plit(rhs_pos_c)];
+            let clause_lhs = clause![nlit(p), nlit(lhs_pos_c)];
+            let clause_rhs = clause![nlit(p), plit(rhs_pos_c)];
             res.add_clause(clause_lhs);
             res.add_clause(clause_rhs);
-            let clause = vec![plit(lhs_pos_c), nlit(rhs_pos_c), plit(p)];
+            let clause = clause![plit(lhs_pos_c), nlit(rhs_pos_c), plit(p)];
 
             res.add_clause(clause);
         }

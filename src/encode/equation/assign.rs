@@ -3,6 +3,9 @@
 
 use std::{cmp::Ordering, rc::Rc};
 
+use indexmap::IndexSet;
+use rustsat::{instances::Cnf, types::Clause};
+
 use smt_str::SmtString;
 
 use crate::{
@@ -40,19 +43,20 @@ impl AssignmentEncoder {
             .and_then(|i| i.upper_finite())
             .unwrap() as usize;
 
-        let mut result = EncodingResult::empty();
+        let mut result = Cnf::new();
+        let mut assumptions = IndexSet::new();
         if bound < len_rhs {
             // Trivially unsatisfiable
             let p = pvar();
-            result.add_clause(vec![plit(p)]);
-            result.add_assumption(nlit(p));
-            return Ok(result);
+            result.add_unit(plit(p));
+            assumptions.insert(nlit(p));
+            return Ok(EncodingResult::Cnf(result, assumptions.into()));
         }
 
         let last_bound = self.last_bound.unwrap_or(0);
         if last_bound == bound {
             // Already encoded for this bound
-            return Ok(result);
+            return Ok(EncodingResult::Trivial(true));
         }
 
         // Haven't encoded anything yet, was trivially unsatisfiable in previous call
@@ -61,7 +65,7 @@ impl AssignmentEncoder {
                 for i in 0..len_rhs {
                     let chr = self.rhs[i];
                     let sub_var = dom_enc.string().get_sub(&self.lhs, i, chr).unwrap();
-                    result.add_clause(vec![plit(sub_var)]);
+                    result.add_unit(plit(sub_var));
                 }
                 if bound > len_rhs {
                     // Make sure the rest of lhs is empty
@@ -69,7 +73,7 @@ impl AssignmentEncoder {
                         .string()
                         .get_sub(&self.lhs, len_rhs, LAMBDA)
                         .unwrap();
-                    result.add_clause(vec![plit(lambda_sub)]);
+                    result.add_unit(plit(lambda_sub));
                 }
             }
             Ordering::Equal => {
@@ -79,14 +83,14 @@ impl AssignmentEncoder {
                     .get_sub(&self.lhs, len_rhs, LAMBDA)
                     .unwrap();
 
-                result.add_clause(vec![plit(lambda_sub)]);
+                result.add_unit(plit(lambda_sub));
             }
             Ordering::Greater => (), // Already encoded that remainder of lhs is empty
         }
 
         self.last_bound = Some(bound);
 
-        Ok(result)
+        return Ok(EncodingResult::Cnf(result, assumptions.into()));
     }
 
     fn encode_ineq(
@@ -112,11 +116,11 @@ impl AssignmentEncoder {
         // Haven't encoded anything yet, was trivially unsatisfiable in previous call
 
         if self.last_bound.is_none() || last_bound <= len_rhs {
-            let mut clause = Vec::with_capacity(len_rhs);
+            let mut clause = Clause::with_capacity(len_rhs);
             for i in 0..len_rhs {
                 let chr = self.rhs[i];
                 let sub_var = dom_enc.string().get_sub(&self.lhs, i, chr).unwrap();
-                clause.push(nlit(sub_var));
+                clause.add(nlit(sub_var));
             }
 
             match len_rhs.cmp(&bound) {
@@ -127,13 +131,13 @@ impl AssignmentEncoder {
                         .get_sub(&self.lhs, len_rhs, LAMBDA)
                         .unwrap();
 
-                    clause.push(nlit(lambda_sub));
+                    clause.add(nlit(lambda_sub));
                     result.add_clause(clause);
                 }
                 Ordering::Equal => {
                     // Select the clause, in next iteration we will make sure the rest of lhs can also be non-empty
                     let selector = pvar();
-                    clause.push(nlit(selector));
+                    clause.add(nlit(selector));
                     result.add_clause(clause);
                     result.add_assumption(plit(selector));
                 }

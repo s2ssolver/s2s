@@ -8,6 +8,7 @@
 use std::rc::Rc;
 
 use indexmap::{IndexMap, IndexSet};
+use rustsat::{clause, instances::Cnf, types::Clause};
 use smt_str::automata::{StateId, StateNotFound, TransitionType, NFA};
 
 use crate::{
@@ -55,18 +56,18 @@ impl NFAEncoder {
 
     fn encode_intial(&self) -> EncodingResult {
         if self.last_bound.is_none() {
-            let mut res = EncodingResult::empty();
+            let mut res = Cnf::new();
             // Only encode in first round
             for state in self.nfa.states() {
                 if Some(state) == self.nfa.initial() {
                     // Initial state is reachable after reading 0 characters
-                    res.add_clause(vec![plit(self.reach_vars[&(state, 0)])]);
+                    res.add_unit(plit(self.reach_vars[&(state, 0)]));
                 } else {
                     // All other states are not reachable after reading 0 characters
-                    res.add_clause(vec![nlit(self.reach_vars[&(state, 0)])]);
+                    res.add_unit(nlit(self.reach_vars[&(state, 0)]));
                 }
             }
-            res
+            EncodingResult::cnf(res)
         } else {
             EncodingResult::Trivial(true)
         }
@@ -93,8 +94,11 @@ impl NFAEncoder {
                                 dom.string().get_sub(&self.var, l, LAMBDA).unwrap();
 
                             // reach_var /\ -lambda_sub_var => reach_next
-                            let clause =
-                                vec![nlit(reach_var), plit(lambda_sub_var), plit(reach_next)];
+                            let clause = Clause::from([
+                                nlit(reach_var),
+                                plit(lambda_sub_var),
+                                plit(reach_next),
+                            ]);
                             res.add_clause(clause);
                         }
                         TransitionType::Range(range) => {
@@ -113,7 +117,11 @@ impl NFAEncoder {
                                     }
                                 };
                                 // reach_var /\ sub_var => reach_next
-                                let clause = vec![nlit(reach_var), nlit(sub_var), plit(reach_next)];
+                                let clause = Clause::from([
+                                    nlit(reach_var),
+                                    nlit(sub_var),
+                                    plit(reach_next),
+                                ]);
                                 res.add_clause(clause);
                             }
                         }
@@ -128,7 +136,11 @@ impl NFAEncoder {
                                         )
                                     });
                                 // reach_var /\ sub_var => reach_next
-                                let clause = vec![nlit(reach_var), plit(sub_var), plit(reach_next)];
+                                let clause = Clause::from([
+                                    nlit(reach_var),
+                                    plit(sub_var),
+                                    plit(reach_next),
+                                ]);
                                 res.add_clause(clause);
                             }
                         }
@@ -143,7 +155,8 @@ impl NFAEncoder {
                 let reach_self = self.reach_vars[&(state, l + 1)];
                 let lambda_sub_var = dom.string().get_sub(&self.var, l, LAMBDA).unwrap();
                 // reach_var /\ lambda_sub_var => reach_next
-                let clause = vec![nlit(reach_var), nlit(lambda_sub_var), plit(reach_self)];
+                let clause =
+                    Clause::from([nlit(reach_var), nlit(lambda_sub_var), plit(reach_self)]);
                 res.add_clause(clause);
             }
         }
@@ -155,43 +168,43 @@ impl NFAEncoder {
         bound: usize,
         dom: &DomainEncoding,
     ) -> Result<EncodingResult, EncodingError> {
-        let mut res = EncodingResult::empty();
+        let mut res = Cnf::new();
         let last_bound = self.last_bound.unwrap_or(1);
 
         for l in last_bound..=bound {
             for state in self.nfa.states() {
                 let reach_var = self.reach_vars[&(state, l)];
-                let mut alo_clause = vec![nlit(reach_var)];
+                let mut alo_clause = clause!(nlit(reach_var));
                 for (q_pred, trans) in self.delta_inv.get(&state).unwrap_or(&vec![]) {
                     let reach_prev = self.reach_vars[&(*q_pred, l - 1)];
                     // Tseitin on-the-fly
                     let def_var = pvar();
-                    alo_clause.push(plit(def_var));
+                    alo_clause.add(plit(def_var));
                     match trans {
                         TransitionType::Range(range) if range.is_full() => {
                             // Is predecessor if we do not read lambda
                             let sub_var = dom.string().get_sub(&self.var, l - 1, LAMBDA).unwrap();
                             // reach_prev /\ -sub_var
-                            res.add_clause(vec![nlit(def_var), plit(reach_prev)]);
-                            res.add_clause(vec![nlit(def_var), nlit(sub_var)]);
+                            res.add_binary(nlit(def_var), plit(reach_prev));
+                            res.add_binary(nlit(def_var), nlit(sub_var));
                         }
                         TransitionType::Range(range) if range.len() == 1 => {
                             // Is predecessor if we read the given character
                             let c = range.start();
                             let sub_var = dom.string().get_sub(&self.var, l - 1, c).unwrap();
-                            res.add_clause(vec![nlit(def_var), plit(reach_prev)]);
-                            res.add_clause(vec![nlit(def_var), plit(sub_var)]);
+                            res.add_binary(nlit(def_var), plit(reach_prev));
+                            res.add_binary(nlit(def_var), plit(sub_var));
                         }
                         TransitionType::Range(range) => {
                             // Is predecessor if we read a character in the given range
 
                             // reach_prev /\ (sub_var_1 \/ ... \/ sub_var_n)
-                            res.add_clause(vec![nlit(def_var), plit(reach_prev)]);
+                            res.add_binary(nlit(def_var), plit(reach_prev));
 
-                            let mut range_clause = vec![nlit(def_var)];
+                            let mut range_clause = Clause::from([nlit(def_var)]);
                             for c in range.iter() {
                                 let sub_var = dom.string().get_sub(&self.var, l - 1, c).unwrap();
-                                range_clause.push(plit(sub_var));
+                                range_clause.add(plit(sub_var));
                             }
 
                             res.add_clause(range_clause);
@@ -200,19 +213,19 @@ impl NFAEncoder {
                             // Is predecessor if we **NOT** read the given character
                             let c = range.start();
                             let sub_var = dom.string().get_sub(&self.var, l - 1, c).unwrap();
-                            res.add_clause(vec![nlit(def_var), plit(reach_prev)]);
-                            res.add_clause(vec![nlit(def_var), nlit(sub_var)]);
+                            res.add_binary(nlit(def_var), plit(reach_prev));
+                            res.add_binary(nlit(def_var), nlit(sub_var));
                         }
                         TransitionType::NotRange(range) => {
                             // Is predecessor if we read a character in the given range
 
                             // reach_prev /\ (-sub_var_1 \/ ... \/ -sub_var_n)
-                            res.add_clause(vec![nlit(def_var), plit(reach_prev)]);
+                            res.add_binary(nlit(def_var), plit(reach_prev));
 
-                            let mut range_clause = vec![nlit(def_var)];
+                            let mut range_clause = Clause::from([nlit(def_var)]);
                             for c in range.iter() {
                                 let sub_var = dom.string().get_sub(&self.var, l - 1, c).unwrap();
-                                range_clause.push(nlit(sub_var));
+                                range_clause.add(nlit(sub_var));
                             }
 
                             res.add_clause(range_clause);
@@ -227,15 +240,15 @@ impl NFAEncoder {
                 let reach_prev = self.reach_vars[&(state, l - 1)];
                 let lambda_sub_var = dom.string().get_sub(&self.var, l - 1, LAMBDA).unwrap();
                 let def_var = pvar();
-                alo_clause.push(plit(def_var));
-                res.add_clause(vec![nlit(def_var), plit(reach_prev)]);
-                res.add_clause(vec![nlit(def_var), plit(lambda_sub_var)]);
+                alo_clause.add(plit(def_var));
+                res.add_clause(Clause::from([nlit(def_var), plit(reach_prev)]));
+                res.add_clause(Clause::from([nlit(def_var), plit(lambda_sub_var)]));
 
                 res.add_clause(alo_clause);
             }
         }
 
-        Ok(res)
+        Ok(EncodingResult::cnf(res))
     }
 
     fn encode_final(&self, bound: usize) -> EncodingResult {
@@ -250,10 +263,10 @@ impl NFAEncoder {
         let mut res = EncodingResult::empty();
         let selector = self.bound_selector.unwrap();
 
-        let mut clause = vec![nlit(selector)];
+        let mut clause = clause![nlit(selector)];
         for qf in self.nfa.finals() {
             let reach_var = self.reach_vars[&(qf, bound)];
-            clause.push(plit(reach_var));
+            clause.add(plit(reach_var));
         }
         res.add_clause(clause);
         res
@@ -265,7 +278,7 @@ impl NFAEncoder {
 
         for qf in self.nfa.finals() {
             let reach_var = self.reach_vars[&(qf, bound)];
-            res.add_clause(vec![nlit(selector), nlit(reach_var)]);
+            res.add_clause(clause![nlit(selector), nlit(reach_var)]);
         }
 
         res
@@ -357,46 +370,6 @@ impl LiteralEncoder for NFAEncoder {
         self.last_bound = Some(bound);
         Ok(res)
     }
-
-    fn print_debug(&self, solver: &cadical::Solver, _dom: &DomainEncoding) {
-        for l in 0..self.last_bound.unwrap() {
-            for c in _dom.alphabet().iter() {
-                let sub_var = _dom.string().get_sub(&self.var, l, c).unwrap_or_else(|| {
-                    panic!("Substitution h({})[{}] = {} not found", self.var, l, c)
-                });
-                let is_sub = solver.value(plit(sub_var)).unwrap();
-                if is_sub {
-                    print!("{c}({sub_var})\t");
-                } else {
-                    print!("-{c}({sub_var})\t");
-                }
-            }
-            let sub_var = _dom.string().get_sub(&self.var, l, LAMBDA).unwrap();
-            let is_sub = solver.value(plit(sub_var)).unwrap();
-            if is_sub {
-                print!("_({sub_var})\t");
-            } else {
-                print!("-_({sub_var})\t");
-            }
-            println!();
-        }
-
-        println!();
-
-        for l in 0..=self.last_bound.unwrap() {
-            print!("{l}:\t");
-            for s in self.nfa.states() {
-                let reach_var = self.reach_vars[&(s, l)];
-                let reached = solver.value(plit(reach_var)).unwrap();
-                if reached {
-                    print!("{s}({reach_var})\t");
-                } else {
-                    print!("-{s}({reach_var})\t");
-                }
-            }
-            println!();
-        }
-    }
 }
 
 impl NFAEncoder {
@@ -461,7 +434,9 @@ fn precompute_delta_inv(
 
 #[cfg(test)]
 mod test {
-    use cadical::Solver;
+
+    use rustsat::solvers::{Solve, SolveIncremental, SolverResult};
+    use rustsat_cadical::CaDiCaL;
     use smt_str::re::Regex;
 
     use smallvec::smallvec;
@@ -470,7 +445,7 @@ mod test {
 
     use crate::{encode::domain::DomainEncoder, interval::Interval, node::Sort};
 
-    fn solve_with_bounds(re: Regex, pol: bool, ubounds: &[usize]) -> Option<bool> {
+    fn solve_with_bounds(re: Regex, pol: bool, ubounds: &[usize]) -> Option<SolverResult> {
         let mut mngr = NodeManager::default();
         let var = mngr.temp_var(Sort::String);
 
@@ -483,7 +458,7 @@ mod test {
 
         let mut encoder = NFAEncoder::new(&var, nfa, pol);
         let mut dom_encoder = DomainEncoder::new(alph);
-        let mut solver: Solver = cadical::Solver::default();
+        let mut solver = CaDiCaL::default();
 
         let mut result = None;
         for bound in ubounds {
@@ -496,14 +471,12 @@ mod test {
 
             match res {
                 EncodingResult::Cnf(clauses, assms) => {
-                    for clause in clauses.into_iter() {
-                        solver.add_clause(clause);
-                    }
-                    result = solver.solve_with(assms.into_iter());
-                    if let Some(true) = result {
+                    solver.add_cnf(clauses).unwrap();
+                    let assm = assms.into_iter().collect::<Vec<_>>();
+                    result = solver.solve_assumps(&assm).ok();
+                    if let Some(rustsat::solvers::SolverResult::Sat) = result {
                         let _model = dom_encoder.encoding().get_model(&solver);
                         let var_model = _model.get(&var).unwrap().as_string().unwrap();
-                        encoder.print_debug(&solver, dom_encoder.encoding());
                         assert!(
                             re.accepts(&var_model.clone()),
                             "Model `{}` does not match regex `{}`",
@@ -511,7 +484,7 @@ mod test {
                             re
                         );
 
-                        return Some(true);
+                        return Some(rustsat::solvers::SolverResult::Sat);
                     }
                 }
                 _ => unreachable!(),
@@ -526,7 +499,10 @@ mod test {
 
         let re = mngr.re_builder().epsilon();
 
-        assert_eq!(solve_with_bounds(re, true, &[1]), Some(true));
+        assert_eq!(
+            solve_with_bounds(re, true, &[1]),
+            Some(rustsat::solvers::SolverResult::Sat)
+        );
     }
 
     #[test]
@@ -535,7 +511,10 @@ mod test {
 
         let re = mngr.re_builder().none();
 
-        assert_eq!(solve_with_bounds(re, true, &[10]), Some(false));
+        assert_eq!(
+            solve_with_bounds(re, true, &[10]),
+            Some(rustsat::solvers::SolverResult::Unsat)
+        );
     }
 
     #[test]
@@ -544,7 +523,10 @@ mod test {
 
         let re = mngr.re_builder().to_re("foo".into());
 
-        assert_eq!(solve_with_bounds(re, true, &[7]), Some(true));
+        assert_eq!(
+            solve_with_bounds(re, true, &[7]),
+            Some(rustsat::solvers::SolverResult::Sat)
+        );
     }
 
     #[test]
@@ -556,6 +538,9 @@ mod test {
         let args = smallvec![builder.to_re("foo".into()), builder.to_re("bar".into())];
         let re = builder.concat(args);
 
-        assert_eq!(solve_with_bounds(re, true, &[10]), Some(true));
+        assert_eq!(
+            solve_with_bounds(re, true, &[10]),
+            Some(rustsat::solvers::SolverResult::Sat)
+        );
     }
 }

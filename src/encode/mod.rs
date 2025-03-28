@@ -6,7 +6,6 @@ use crate::{
         canonical::{AtomKind, Literal, RegularConstraint},
         NodeManager,
     },
-    sat::{Clause, Cnf, PLit},
 };
 
 use self::{
@@ -29,6 +28,10 @@ mod re;
 mod linear;
 
 use indexmap::IndexSet;
+use rustsat::{
+    instances::Cnf,
+    types::{Clause, Lit},
+};
 use smt_str::SmtChar;
 
 /// The character used to represent unused positions
@@ -38,14 +41,14 @@ const LAMBDA: SmtChar = SmtChar::MAX;
 
 pub enum EncodingResult {
     /// The CNF encoding of the problem
-    Cnf(Cnf, IndexSet<PLit>),
+    Cnf(Cnf, IndexSet<Lit>),
     /// The encoding is trivially valid or unsat
     Trivial(bool),
 }
 
 impl EncodingResult {
     pub fn empty() -> Self {
-        EncodingResult::Cnf(vec![], IndexSet::new())
+        EncodingResult::Cnf(Cnf::new(), IndexSet::new())
     }
 
     /// Conjunctive normal form with no assumptions
@@ -54,21 +57,25 @@ impl EncodingResult {
     }
 
     /// Empty CNF with a single assumption
-    pub fn assumption(assumption: PLit) -> Self {
+    pub fn assumption(assumption: Lit) -> Self {
         let mut asm = IndexSet::new();
         asm.insert(assumption);
-        EncodingResult::Cnf(vec![], asm)
+        EncodingResult::Cnf(Cnf::new(), asm)
     }
 
     pub fn add_clause(&mut self, clause: Clause) {
         match self {
-            EncodingResult::Cnf(ref mut clauses, _) => clauses.push(clause),
-            EncodingResult::Trivial(true) => *self = EncodingResult::cnf(vec![clause]),
+            EncodingResult::Cnf(ref mut clauses, _) => clauses.add_clause(clause),
+            EncodingResult::Trivial(true) => {
+                let mut cnf = Cnf::with_capacity(1);
+                cnf.add_clause(clause);
+                *self = EncodingResult::cnf(cnf);
+            }
             EncodingResult::Trivial(false) => {}
         }
     }
 
-    pub fn add_assumption(&mut self, assumption: PLit) {
+    pub fn add_assumption(&mut self, assumption: Lit) {
         match self {
             EncodingResult::Cnf(_, ref mut asms) => {
                 asms.insert(assumption);
@@ -80,7 +87,7 @@ impl EncodingResult {
         }
     }
 
-    pub fn assumptions(&self) -> IndexSet<PLit> {
+    pub fn assumptions(&self) -> IndexSet<Lit> {
         match self {
             EncodingResult::Cnf(_, asms) => asms.clone(),
             EncodingResult::Trivial(_) => IndexSet::new(),
@@ -108,8 +115,8 @@ impl EncodingResult {
     pub fn extend(&mut self, other: EncodingResult) {
         match self {
             EncodingResult::Cnf(ref mut cnf, ref mut asms) => match other {
-                EncodingResult::Cnf(mut cnf_other, asm_other) => {
-                    cnf.append(&mut cnf_other);
+                EncodingResult::Cnf(cnf_other, asm_other) => {
+                    cnf.extend(cnf_other);
                     asms.extend(asm_other);
                 }
                 EncodingResult::Trivial(false) => *self = other,
@@ -120,10 +127,10 @@ impl EncodingResult {
         }
     }
 
-    pub fn into_inner(self) -> (Cnf, IndexSet<PLit>) {
+    pub fn into_inner(self) -> (Cnf, IndexSet<Lit>) {
         match self {
             EncodingResult::Cnf(cnf, asms) => (cnf, asms),
-            EncodingResult::Trivial(_) => (vec![], IndexSet::new()),
+            EncodingResult::Trivial(_) => (Cnf::new(), IndexSet::new()),
         }
     }
 }
@@ -193,8 +200,6 @@ pub trait LiteralEncoder {
         bounds: &Domain,
         substitution: &DomainEncoding,
     ) -> Result<EncodingResult, EncodingError>;
-
-    fn print_debug(&self, _solver: &cadical::Solver, _dom: &DomainEncoding) {}
 }
 
 pub fn get_encoder(
