@@ -223,6 +223,15 @@ impl BoundRefiner {
                                 increased = increased.with_upper(smp_upper);
                             }
                         }
+
+                        // Lower bounds must be at least the lower bound of the small model bounds
+                        if let Some(smp_lower) = smp_bound.map(|b| b.lower()) {
+                            // Lower bounds must be at least the lower bound of the small model bounds
+                            if increased.lower() < smp_lower {
+                                increased = increased.with_lower(smp_lower);
+                            }
+                        }
+
                         if v.sort().is_string() {
                             // Lower bounds must be at least 0
                             if increased.lower() < BoundValue::Num(0) {
