@@ -197,6 +197,7 @@ mod tests {
     #[test]
     fn test_to_bnf_nested() {
         let mut mngr = NodeManager::default();
+        mngr.set_optimize(false);
 
         let va = mngr.temp_var(Sort::Bool);
         let vb = mngr.temp_var(Sort::Bool);
