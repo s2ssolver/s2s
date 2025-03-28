@@ -20,6 +20,7 @@ mod testutils {
         rhs: &str,
         mngr: &mut NodeManager,
     ) -> WordEquation {
+        mngr.set_optimize(false);
         let node = node::testutils::parse_equation(lhs, rhs, mngr);
         let c = preprocess::canonicalize(&node, mngr);
         match c.kind() {
