@@ -14,27 +14,36 @@ impl EntailmentRule for EntailedBooleanVars {
     fn apply(
         &self,
         node: &Node,
-        _: &IndexSet<Node>,
+        asserted: &IndexSet<Node>,
         mngr: &mut NodeManager,
     ) -> Option<VarSubstitution> {
-        if let NodeKind::Variable(v) = node.kind() {
-            if v.sort().is_bool() {
-                let mut subs = VarSubstitution::default();
-                subs.add(v.clone(), mngr.ttrue());
-                return Some(subs);
-            }
-        } else if NodeKind::Not == *node.kind() {
-            debug_assert!(node.children().len() == 1);
-            let child = node.children().first().unwrap();
-            if let NodeKind::Variable(v) = child.kind() {
+        let mut subs = VarSubstitution::default();
+        for a in asserted {
+            if let NodeKind::Variable(v) = a.kind() {
                 if v.sort().is_bool() {
-                    let mut subs = VarSubstitution::default();
-                    subs.add(v.clone(), mngr.ffalse());
-                    return Some(subs);
+                    if !subs.get(v).is_some() {
+                        subs.add(v.clone(), mngr.ttrue());
+                        return Some(subs);
+                    }
+                }
+            } else if NodeKind::Not == *node.kind() {
+                debug_assert!(node.children().len() == 1);
+                let child = node.children().first().unwrap();
+                if let NodeKind::Variable(v) = child.kind() {
+                    if v.sort().is_bool() {
+                        if !subs.get(v).is_some() {
+                            subs.add(v.clone(), mngr.ffalse());
+                            return Some(subs);
+                        }
+                    }
                 }
             }
         }
-        None
+        if subs.is_empty() {
+            None
+        } else {
+            Some(subs)
+        }
     }
 }
 

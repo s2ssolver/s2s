@@ -16,7 +16,7 @@ use std::fmt::Debug;
 
 use indexmap::{IndexMap, IndexSet};
 
-use crate::node::{self, Node, NodeKind, NodeManager, VarSubstitution};
+use crate::node::{self, get_entailed, Node, NodeKind, NodeManager, VarSubstitution};
 
 /// A rewrite rule that can be applied to a node.
 trait EquivalenceRule: Debug {
@@ -94,7 +94,7 @@ impl Rewriter {
         };
 
         // Apply entailment rules
-        match self.pass_entailment(&new_node, &asserted, mngr) {
+        match self.pass_entailment(&new_node, mngr) {
             Some(rw) => {
                 applied = true;
                 new_node = rw;
@@ -165,12 +165,7 @@ impl Rewriter {
         }
     }
 
-    fn pass_entailment(
-        &mut self,
-        node: &Node,
-        asserted: &IndexSet<Node>,
-        mngr: &mut NodeManager,
-    ) -> Option<Node> {
+    fn pass_entailment(&mut self, node: &Node, mngr: &mut NodeManager) -> Option<Node> {
         fn find_subs(
             rules: &mut [Box<dyn EntailmentRule>],
             node: &Node,
@@ -181,7 +176,6 @@ impl Rewriter {
                 if let Some(sub) = rule.apply(node, asserted, mngr) {
                     if !sub.is_identity() && !sub.is_empty() {
                         log::debug!("({:?}) inferred {}", rule, sub);
-
                         return Some(sub);
                     }
                 }
@@ -203,9 +197,12 @@ impl Rewriter {
         for rule in self.entail_rules.iter_mut() {
             rule.init(node, mngr);
         }
-        while let Some(sub) = find_subs(&mut self.entail_rules, &new_node, asserted, mngr) {
+        let mut asserted = get_entailed(&new_node);
+        while let Some(sub) = find_subs(&mut self.entail_rules, &new_node, &asserted, mngr) {
             new_node = sub.apply(&new_node, mngr);
             self.applied_subs.push(sub);
+            asserted = get_entailed(&new_node);
+
             applied = true;
             // reinitialize the rules with the new node
             for rule in self.entail_rules.iter_mut() {
