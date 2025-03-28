@@ -371,13 +371,41 @@ impl NodeManager {
     /// Boolean negation
     pub fn not(&mut self, r: Node) -> Node {
         if self.optimize {
-            if let Some(b) = r.as_bool_const() {
-                self.intern_node(NodeKind::Bool(!b), vec![])
-            } else if *r.kind() == NodeKind::Not {
-                // double negation
-                r.children().first().unwrap().clone()
-            } else {
-                self.intern_node(NodeKind::Not, vec![r])
+            match r.kind() {
+                NodeKind::Bool(false) => return self.ttrue(),
+                NodeKind::Bool(true) => return self.ffalse(),
+                NodeKind::Not => return r.children().first().unwrap().clone(),
+                NodeKind::Lt => {
+                    let mut children = r.children().to_vec();
+                    let r = children.pop().unwrap();
+                    let l = children.pop().unwrap();
+                    return self.ge(l, r);
+                }
+                NodeKind::Le => {
+                    let mut children = r.children().to_vec();
+                    let r = children.pop().unwrap();
+                    let l = children.pop().unwrap();
+                    return self.gt(l, r);
+                }
+                NodeKind::Gt => {
+                    let mut children = r.children().to_vec();
+                    let r = children.pop().unwrap();
+                    let l = children.pop().unwrap();
+                    return self.le(l, r);
+                }
+                NodeKind::Ge => {
+                    let mut children = r.children().to_vec();
+                    let r = children.pop().unwrap();
+                    let l = children.pop().unwrap();
+                    return self.lt(l, r);
+                }
+                NodeKind::Imp => {
+                    let mut children = r.children().to_vec();
+                    let r = children.pop().unwrap();
+                    let l = children.pop().unwrap();
+                    return self.imp(l, r);
+                }
+                _ => self.intern_node(NodeKind::Not, vec![r]),
             }
         } else {
             self.intern_node(NodeKind::Not, vec![r])
