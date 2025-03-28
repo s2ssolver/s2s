@@ -41,6 +41,20 @@ pub struct NodeManager {
     optimize: bool,
 }
 
+impl Default for NodeManager {
+    fn default() -> Self {
+        Self {
+            next_id: 0,
+            re_builder: smt_str::re::ReBuilder::default(),
+            node_registry: IndexMap::new(),
+            atom_registry: IndexMap::new(),
+            variables: IndexMap::new(),
+            nfas: IndexMap::new(),
+            optimize: true,
+        }
+    }
+}
+
 impl NodeManager {
     pub fn create_node(&mut self, kind: NodeKind, mut children: Vec<Node>) -> Node {
         match kind {
