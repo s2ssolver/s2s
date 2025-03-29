@@ -1,11 +1,14 @@
 use indexmap::IndexMap;
+use rustsat::{clause, types::TernaryVal};
+use rustsat_cadical::CaDiCaL;
 use smt_str::SmtChar;
 
 use crate::{
     alphabet::Alphabet,
-    encode::{card::exactly_one, EncodingResult, LAMBDA},
+    encode::{card::exactly_one, EncodingSink, LAMBDA},
     sat::{nlit, plit, pvar, PVar},
 };
+use rustsat::solvers::Solve;
 
 /// Encodes the set of all words over a finite alphabet up to a given length.
 pub struct WordEncoding {
@@ -27,9 +30,9 @@ impl WordEncoding {
     /// Must be called in increasing order of length.
     /// Panics if called with a length smaller than the current length.
     /// Is a no-op if called with the same length as the current length.
-    pub fn encode(&mut self, length: usize) -> EncodingResult {
+    pub fn encode(&mut self, length: usize, sink: &mut impl EncodingSink) {
         assert!(length >= self.length, "Length cannot shrink");
-        let mut clauses = Vec::new();
+
         let last_len = self.length;
 
         for pos in last_len..length {
@@ -47,17 +50,16 @@ impl WordEncoding {
             choices.push(lambda_choice);
             // encode exactly-one
             let eo = exactly_one(&choices);
-            clauses.extend(eo);
+            sink.add_cnf(eo);
 
             // Symmetry breaking: If a position is lambda, then only lambda may follow
             if pos > 0 {
                 let last_lambda = self.at(pos - 1, LAMBDA);
-                clauses.push(vec![nlit(last_lambda), plit(lambda_choice)]);
+                sink.add_clause(clause![nlit(last_lambda), plit(lambda_choice)]);
             }
         }
 
         self.length = length;
-        EncodingResult::cnf(clauses)
     }
 
     pub fn len(&self) -> usize {
@@ -75,11 +77,12 @@ impl WordEncoding {
     }
 
     #[allow(dead_code)]
-    pub(super) fn print_solution_word(&self, solver: &cadical::Solver) {
+    pub(super) fn print_solution_word(&self, solver: &mut CaDiCaL) {
         for len in 0..self.length {
             let mut found = false;
+            let sol = solver.full_solution().unwrap();
             for symbol in self.alphabet.iter() {
-                if solver.value(plit(self.at(len, symbol))).unwrap_or(false) {
+                if sol.lit_value(plit(self.at(len, symbol))) == TernaryVal::True {
                     print!("{}", symbol);
                     found = true;
                     break;
@@ -88,7 +91,7 @@ impl WordEncoding {
             if found {
                 continue;
             }
-            if solver.value(plit(self.at(len, LAMBDA))).unwrap_or(false) {
+            if sol.lit_value(plit(self.at(len, LAMBDA))) == TernaryVal::True {
                 print!("λ");
                 continue;
             }

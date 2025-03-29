@@ -10,12 +10,13 @@ use bool::{BoolDomain, BoolEncoder};
 
 pub use int::IntDomain;
 use int::IntegerEncoder;
+use rustsat_cadical::CaDiCaL;
 pub use string::StringDomain;
 use string::StringDomainEncoder;
 
-use crate::{
-    alphabet::Alphabet, domain::Domain, encode::EncodingResult, node::canonical::Assignment,
-};
+use crate::{alphabet::Alphabet, domain::Domain, node::canonical::Assignment};
+
+use super::EncodingSink;
 
 /// Propositional encoding of the domains of all variables.
 #[derive(Clone, Debug)]
@@ -61,7 +62,7 @@ impl DomainEncoding {
         &self.alphabet
     }
 
-    pub fn get_model(&self, solver: &cadical::Solver) -> Assignment {
+    pub fn get_model(&self, solver: &CaDiCaL) -> Assignment {
         let mut model = self.string.get_model(solver, &self.dom);
         let overwrite = model.extend(&self.int.get_model(solver));
         assert!(overwrite == 0);
@@ -94,7 +95,7 @@ impl DomainEncoder {
     }
 
     /// Encodes the domain of all variables for which bounds are given.
-    pub fn encode(&mut self, dom: &Domain) -> EncodingResult {
+    pub fn encode(&mut self, dom: &Domain, sink: &mut impl EncodingSink) {
         let mut encoding = self.encoding.take().unwrap_or(DomainEncoding::new(
             Rc::new(self.strings.alphabet().clone()),
             dom.clone(),
@@ -103,12 +104,11 @@ impl DomainEncoder {
         // Bool encoding does not depend on the bounds and does not return a CNF.
         self.bool.encode(&mut encoding, dom);
 
-        let mut res = self.strings.encode(dom, &mut encoding);
+        self.strings.encode(dom, &mut encoding, sink);
 
-        res.extend(self.integers.encode(dom, &mut encoding));
+        self.integers.encode(dom, &mut encoding, sink);
         encoding.dom = dom.clone();
         self.encoding = Some(encoding);
-        res
     }
 
     pub fn encoding(&self) -> &DomainEncoding {

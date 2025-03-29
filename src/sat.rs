@@ -6,6 +6,10 @@ use std::{
 };
 
 use indexmap::IndexMap;
+use rustsat::{
+    instances::Cnf,
+    types::{Clause, Lit},
+};
 
 /// A global counter for propositional variables.
 /// The counter is used to generate new propositional variables.
@@ -14,15 +18,13 @@ static PVAR_COUNTER: AtomicU32 = AtomicU32::new(1);
 
 /// A propositional variable
 pub type PVar = u32;
-/// A propositional literal, i.e., a variable or its negation
-pub type PLit = i32;
 
 /// A propositional formula in negation normal form
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum PFormula {
     And(Vec<PFormula>),
     Or(Vec<PFormula>),
-    Lit(PLit),
+    Lit(Lit),
 }
 impl PFormula {
     pub fn plit(var: PVar) -> Self {
@@ -62,16 +64,12 @@ impl Display for PFormula {
     }
 }
 
-/// A clause, i.e., a disjunction of literals
-pub type Clause = Vec<PLit>;
-/// A formula in conjunctive normal form, i.e., a conjunction of clauses
-pub type Cnf = Vec<Clause>;
-
-pub fn nlit(var: PVar) -> PLit {
-    -plit(var)
+pub fn nlit(var: PVar) -> Lit {
+    Lit::new(var, true)
 }
-pub fn plit(var: PVar) -> PLit {
-    var as i32
+
+pub fn plit(var: PVar) -> Lit {
+    Lit::new(var, false)
 }
 
 /// Creates and returns a new unused propositional variable.
@@ -150,33 +148,33 @@ pub fn to_cnf(formula: &PFormula) -> Cnf {
         match f {
             PFormula::Or(fs) => {
                 // d -> \/fs and \/fs -> d
-                let mut clause = Vec::with_capacity(fs.len() + 1);
-                clause.push(nlit(def_var));
+                let mut clause = Clause::with_capacity(fs.len() + 1);
+                clause.add(nlit(def_var));
                 for f in fs {
                     match f {
                         PFormula::Lit(val) => {
-                            clause.push(val);
-                            cnf.push(vec![-val, plit(def_var)]);
+                            clause.add(val);
+                            cnf.add_binary(-val, plit(def_var));
                         }
                         _ => unreachable!(),
                     }
                 }
-                cnf.push(clause)
+                cnf.add_clause(clause)
             }
             PFormula::And(fs) => {
                 // d -> /\fs and /\fs -> d
-                let mut clause = Vec::with_capacity(fs.len() + 1);
-                clause.push(plit(def_var));
+                let mut clause = Clause::with_capacity(fs.len() + 1);
+                clause.add(plit(def_var));
                 for f in fs {
                     match f {
                         PFormula::Lit(val) => {
-                            clause.push(-val);
-                            cnf.push(vec![nlit(def_var), val]);
+                            clause.add(-val);
+                            cnf.add_binary(nlit(def_var), val);
                         }
                         _ => unreachable!(),
                     }
                 }
-                cnf.push(clause)
+                cnf.add_clause(clause)
             }
             _ => unreachable!(),
         }
@@ -199,9 +197,9 @@ fn cnf_to_clauses(fm: &PFormula) -> Cnf {
     }
 
     match fm {
-        PFormula::Lit(v) => cnf.push(vec![*v]),
+        PFormula::Lit(v) => cnf.add_unit(*v),
         PFormula::Or(fs) => {
-            cnf.push(to_clause(fs));
+            cnf.add_clause(to_clause(fs));
         }
         PFormula::And(fs) => {
             for f in fs {
@@ -213,9 +211,10 @@ fn cnf_to_clauses(fm: &PFormula) -> Cnf {
                         }
                     }
                     PFormula::Or(fs) => {
-                        cnf.push(to_clause(fs));
+                        cnf.add_clause(to_clause(fs));
+                        (to_clause(fs));
                     }
-                    PFormula::Lit(l) => cnf.push(vec![*l]),
+                    PFormula::Lit(l) => cnf.add_unit(*l),
                 }
             }
         }
@@ -247,13 +246,15 @@ mod tests {
     fn test_neg() {
         let v = pvar();
 
-        assert_eq!(nlit(v), -(v as i32));
+        assert_eq!(nlit(v), Lit::negative(v));
+        assert_eq!(nlit(v), -Lit::positive(v));
     }
 
     #[test]
     fn test_as_lit() {
         let v = pvar();
-        assert_eq!(plit(v), v as i32);
+        assert_eq!(plit(v), Lit::positive(v));
+        assert_eq!(plit(v), -Lit::negative(v));
     }
 
     #[test]
@@ -268,7 +269,9 @@ mod tests {
             ]),
         ]);
 
-        let expected_cnf = vec![vec![plit(1), plit(2)], vec![nlit(3), plit(4), plit(5)]];
+        let mut expected_cnf = Cnf::with_capacity(2);
+        expected_cnf.add_binary(plit(1), plit(2));
+        expected_cnf.add_ternary(nlit(3), plit(4), plit(5));
 
         assert_eq!(cnf_to_clauses(&fm), expected_cnf);
     }
@@ -297,12 +300,11 @@ mod tests {
             PFormula::nlit(6),
         ]);
 
-        let expected_cnf = vec![
-            vec![plit(1), plit(2)],
-            vec![plit(3), plit(4)],
-            vec![nlit(5)],
-            vec![nlit(6)],
-        ];
+        let mut expected_cnf = Cnf::with_capacity(4);
+        expected_cnf.add_binary(plit(1), plit(2));
+        expected_cnf.add_binary(plit(3), plit(4));
+        expected_cnf.add_unit(nlit(5));
+        expected_cnf.add_unit(nlit(6));
 
         assert_eq!(cnf_to_clauses(&fm), expected_cnf);
     }

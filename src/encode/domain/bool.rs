@@ -1,6 +1,8 @@
 use std::rc::Rc;
 
 use indexmap::IndexMap;
+use rustsat::solvers::Solve;
+use rustsat_cadical::CaDiCaL;
 
 use crate::{
     domain::Domain,
@@ -33,24 +35,16 @@ impl BoolDomain {
         self.var_map.get(var).cloned()
     }
 
-    pub(crate) fn get_model(&self, solver: &cadical::Solver) -> Assignment {
-        if solver.status() != Some(true) {
-            panic!("Solver is not in a SAT state")
-        }
+    pub(crate) fn get_model(&self, solver: &CaDiCaL) -> Assignment {
         let mut model = Assignment::default();
+        let sol = solver.full_solution().expect("No solution found");
         for (var, v) in self.iter() {
-            match solver.value(plit(*v)) {
-                Some(true) => {
-                    let ok = model.assign(var.clone(), true);
-                    assert!(ok.is_none());
-                }
-                Some(false) => {
-                    let ok = model.assign(var.clone(), false);
-                    assert!(ok.is_none());
-                }
-                None => {
-                    log::warn!("Partial model. Variable {} is not assigned", var);
-                }
+            if sol.lit_value(plit(*v)).to_bool_with_def(false) {
+                let ok = model.assign(var.clone(), true);
+                assert!(ok.is_none());
+            } else {
+                let ok = model.assign(var.clone(), false);
+                assert!(ok.is_none());
             }
         }
         model

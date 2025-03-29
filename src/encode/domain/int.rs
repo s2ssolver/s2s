@@ -1,10 +1,12 @@
 use std::rc::Rc;
 
 use indexmap::IndexMap;
+use rustsat_cadical::CaDiCaL;
 
 use super::DomainEncoding;
 
 use crate::domain::Domain;
+use crate::encode::EncodingSink;
 use crate::interval::Interval;
 use crate::sat::{plit, PVar};
 use crate::{
@@ -12,6 +14,7 @@ use crate::{
     node::{canonical::Assignment, Sort, Sorted, Variable},
     sat::pvar,
 };
+use rustsat::solvers::Solve;
 
 #[derive(Clone, Debug, Default)]
 pub struct IntDomain {
@@ -47,13 +50,11 @@ impl IntDomain {
         self.encodings.get(&(var.clone(), value)).cloned()
     }
 
-    pub(crate) fn get_model(&self, solver: &cadical::Solver) -> Assignment {
-        if solver.status() != Some(true) {
-            panic!("Solver is not in a SAT state")
-        }
+    pub(crate) fn get_model(&self, solver: &CaDiCaL) -> Assignment {
         let mut model = Assignment::default();
+        let sol = solver.full_solution().expect("No solution found");
         for (var, l, v) in self.iter() {
-            if let Some(true) = solver.value(plit(*v)) {
+            if sol.lit_value(plit(*v)).to_bool_with_def(false) {
                 let ok = model.assign(var.clone(), l);
                 assert!(ok.is_none());
             }
@@ -76,11 +77,14 @@ impl IntegerEncoder {
         }
     }
 
-    pub fn encode(&mut self, bounds: &Domain, encoding: &mut DomainEncoding) -> EncodingResult {
-        let res = self.encode_int_vars(bounds, encoding);
-
+    pub fn encode(
+        &mut self,
+        bounds: &Domain,
+        encoding: &mut DomainEncoding,
+        sink: &mut impl EncodingSink,
+    ) {
+        self.encode_int_vars(bounds, encoding, sink);
         self.last_domains = Some(bounds.clone());
-        res
     }
 
     fn get_last_bound(&self, var: &Variable) -> Option<Interval> {
@@ -93,9 +97,8 @@ impl IntegerEncoder {
         &mut self,
         bounds: &Domain,
         encoding: &mut DomainEncoding,
-    ) -> EncodingResult {
-        let mut res = EncodingResult::empty();
-
+        sink: &mut impl EncodingSink,
+    ) {
         for (int_var, bound) in bounds.iter_int().filter(|(v, _)| v.sort().is_int()) {
             let mut len_choices = vec![];
             let last_upper_bound = self
@@ -119,14 +122,22 @@ impl IntegerEncoder {
                 }
             }
             // Exactly one length must be true
-            let eo = self
+            match self
                 .var_len_eo_encoders
                 .entry(int_var.as_ref().clone())
                 .or_default()
-                .add(&len_choices);
-
-            res.extend(eo);
+                .add(&len_choices)
+            {
+                EncodingResult::Cnf(cnf, index_set) => {
+                    // Add the encoding to the sink
+                    sink.add_cnf(cnf);
+                    // Add the assumptions to the encoding
+                    for asm in index_set {
+                        sink.add_assumption(asm);
+                    }
+                }
+                EncodingResult::Trivial(_) => (),
+            }
         }
-        res
     }
 }

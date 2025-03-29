@@ -1,13 +1,15 @@
 use std::cmp::min;
 
+use rustsat::clause;
+
 use super::matching::PatternMatchingEncoder;
 use super::word::WordEncoding;
 
 use crate::{
     domain::Domain,
     encode::{
-        card::IncrementalALO, domain::DomainEncoding, EncodingError, EncodingResult,
-        LiteralEncoder, LAMBDA,
+        card::IncrementalALO, domain::DomainEncoding, EncodeLiteral, EncodingError, EncodingResult,
+        EncodingSink, LAMBDA,
     },
     node::canonical::{Pattern, Symbol, WordEquation},
     sat::{nlit, pvar},
@@ -45,21 +47,22 @@ impl WordInEquationEncoder {
         }
     }
 
-    fn encode_solution_words(&mut self, l_lhs: usize, l_rhs: usize) -> EncodingResult {
-        let mut res = self.word_encoding_lhs.as_mut().unwrap().encode(l_lhs);
-        res.extend(self.word_encoding_rhs.as_mut().unwrap().encode(l_rhs));
-        res
+    fn encode_solution_words(&mut self, l_lhs: usize, l_rhs: usize, sink: &mut impl EncodingSink) {
+        self.word_encoding_lhs.as_mut().unwrap().encode(l_lhs, sink);
+        self.word_encoding_rhs.as_mut().unwrap().encode(l_rhs, sink);
     }
 
-    fn encode_matching(&mut self, dom: &Domain, dom_enc: &DomainEncoding) -> EncodingResult {
-        let mut res = self
-            .match_lhs
-            .encode(self.word_encoding_lhs.as_ref().unwrap(), dom, dom_enc);
-        res.extend(
-            self.match_rhs
-                .encode(self.word_encoding_rhs.as_ref().unwrap(), dom, dom_enc),
-        );
-        res
+    fn encode_matching(
+        &mut self,
+        dom: &Domain,
+        dom_enc: &DomainEncoding,
+        sink: &mut impl EncodingSink,
+    ) {
+        self.match_lhs
+            .encode(self.word_encoding_lhs.as_ref().unwrap(), dom, dom_enc, sink);
+
+        self.match_rhs
+            .encode(self.word_encoding_rhs.as_ref().unwrap(), dom, dom_enc, sink);
     }
 
     fn pattern_upper_bound(&self, pattern: &Pattern, dom: &Domain) -> usize {
@@ -90,8 +93,8 @@ impl WordInEquationEncoder {
         dom: &DomainEncoding,
         l_lhs: usize,
         l_rhs: usize,
-    ) -> EncodingResult {
-        let mut result = EncodingResult::empty();
+        sink: &mut impl EncodingSink,
+    ) {
         let last_lhs_bound = self.lhs_bound.unwrap_or(0);
         let last_rhs_bound = self.rhs_bound.unwrap_or(0);
 
@@ -111,21 +114,27 @@ impl WordInEquationEncoder {
             for c in dom.alphabet().iter() {
                 let lhs_c = wlhs.at(pos, c);
                 let rhs_c = wrhs.at(pos, c);
-                result.add_clause(vec![nlit(v), nlit(lhs_c), nlit(rhs_c)]);
+                sink.add_clause(clause![nlit(v), nlit(lhs_c), nlit(rhs_c)]);
             }
             let lhs_lambda = wlhs.at(pos, LAMBDA);
             let rhs_lambda = wrhs.at(pos, LAMBDA);
 
-            result.add_clause(vec![nlit(v), nlit(lhs_lambda), nlit(rhs_lambda)]);
+            sink.add_clause(clause![nlit(v), nlit(lhs_lambda), nlit(rhs_lambda)]);
         }
 
-        result.extend(self.mismatch_alo.add(&new_mismatch_selectors));
-
-        result
+        match self.mismatch_alo.add(&new_mismatch_selectors) {
+            EncodingResult::Cnf(cnf, asm) => {
+                sink.add_cnf(cnf);
+                for i in asm {
+                    sink.add_assumption(i);
+                }
+            }
+            EncodingResult::Trivial(_) => todo!(),
+        }
     }
 }
 
-impl LiteralEncoder for WordInEquationEncoder {
+impl EncodeLiteral for WordInEquationEncoder {
     fn _is_incremental(&self) -> bool {
         true
     }
@@ -136,24 +145,25 @@ impl LiteralEncoder for WordInEquationEncoder {
 
     fn encode(
         &mut self,
-        bounds: &Domain,
-        dom: &DomainEncoding,
-    ) -> Result<EncodingResult, EncodingError> {
+        dom: &Domain,
+        dom_enc: &DomainEncoding,
+        sink: &mut impl EncodingSink,
+    ) -> Result<(), EncodingError> {
         if self.word_encoding_lhs.is_none() {
-            self.word_encoding_lhs = Some(WordEncoding::new(dom.alphabet().clone()));
+            self.word_encoding_lhs = Some(WordEncoding::new(dom_enc.alphabet().clone()));
         }
         if self.word_encoding_rhs.is_none() {
-            self.word_encoding_rhs = Some(WordEncoding::new(dom.alphabet().clone()));
+            self.word_encoding_rhs = Some(WordEncoding::new(dom_enc.alphabet().clone()));
         }
 
         // we allow both sides to map to any words in bounds
         // +1 is a technicality required by the encoding, see `encode_mismatch`
-        let u_lhs = self.lhs_upper_bound(bounds) + 1;
-        let u_rhs = self.rhs_upper_bound(bounds) + 1;
-        let mut res = self.encode_solution_words(u_lhs, u_rhs);
-        res.extend(self.encode_matching(bounds, dom));
-        res.extend(self.encode_mismatch(dom, u_lhs, u_rhs));
-        Ok(res)
+        let u_lhs = self.lhs_upper_bound(dom) + 1;
+        let u_rhs = self.rhs_upper_bound(dom) + 1;
+        self.encode_solution_words(u_lhs, u_rhs, sink);
+        self.encode_matching(dom, dom_enc, sink);
+        self.encode_mismatch(dom_enc, u_lhs, u_rhs, sink);
+        Ok(())
     }
 }
 
@@ -161,13 +171,16 @@ impl LiteralEncoder for WordInEquationEncoder {
 mod tests {
     use std::rc::Rc;
 
+    use itertools::Itertools;
+    use rustsat_cadical::CaDiCaL;
     use smt_str::alphabet::CharRange;
 
     use crate::{
         alphabet::Alphabet,
         domain::Domain,
         encode::{
-            domain::DomainEncoder, equation::weq::testutils::parse_simple_equation, LiteralEncoder,
+            domain::DomainEncoder, equation::weq::testutils::parse_simple_equation, EncodeLiteral,
+            ResultSink,
         },
         interval::Interval,
         node::{
@@ -179,13 +192,15 @@ mod tests {
 
     use super::WordInEquationEncoder;
 
+    use rustsat::solvers::{Solve, SolveIncremental, SolverResult};
+
     fn solve_with_bounds(eq: &WordEquation, bounds: &[usize]) -> Option<Assignment> {
         let mut alphabet: Alphabet = Alphabet::from_iter(eq.constants().iter().copied());
         alphabet.insert(CharRange::new('a', 'z'));
         let alphabet = Rc::new(alphabet);
         let mut domain = DomainEncoder::new(alphabet);
 
-        let mut cadical: cadical::Solver = cadical::Solver::default();
+        let mut cadical: CaDiCaL = CaDiCaL::default();
 
         let mut encoder = WordInEquationEncoder::new(eq.clone());
 
@@ -195,49 +210,54 @@ mod tests {
                 bounds.set_string(v, Interval::bounded_above(*b));
             }
 
-            let mut res = domain.encode(&bounds);
+            let mut sink = ResultSink::default();
+            domain.encode(&bounds, &mut sink);
 
-            res.extend(encoder.encode(&bounds, domain.encoding()).unwrap());
+            encoder
+                .encode(&bounds, domain.encoding(), &mut sink)
+                .unwrap();
+
+            let res = sink.result();
 
             let assm = res.assumptions();
 
-            for clause in res.into_inner().0.iter() {
-                cadical.add_clause(clause.iter().copied());
-            }
-            match cadical.solve_with(assm.into_iter()) {
-                Some(true) => {
+            cadical.add_cnf(res.into_inner().0).unwrap();
+            let assm = assm.into_iter().collect_vec();
+            match cadical.solve_assumps(&assm).ok() {
+                Some(SolverResult::Sat) => {
                     print!("Solution WORD LHS: ");
                     encoder
                         .word_encoding_lhs
                         .as_ref()
                         .unwrap()
-                        .print_solution_word(&cadical);
+                        .print_solution_word(&mut cadical);
                     print!("Solution WORD RHS: ");
                     encoder
                         .word_encoding_rhs
                         .as_ref()
                         .unwrap()
-                        .print_solution_word(&cadical);
+                        .print_solution_word(&mut cadical);
                     println!("Start Positions LHS");
-                    encoder.match_lhs.print_start_positions(&cadical);
+                    encoder.match_lhs.print_start_positions(&mut cadical);
                     println!("Start Positions RHS");
-                    encoder.match_rhs.print_start_positions(&cadical);
+                    encoder.match_rhs.print_start_positions(&mut cadical);
                     println!("String lengths");
+                    let solution = cadical.full_solution().unwrap();
                     for v in eq.variables() {
                         let mut found = false;
                         for l in 0..=*b {
                             let var = domain.encoding().string().get_len(&v, l).unwrap();
-                            if cadical.value(plit(var)).unwrap_or(false) {
+                            if solution.lit_value(plit(var)).to_bool_with_def(false) {
                                 println!("\t|{}| = {}", v, l);
                                 found = true;
                             }
                         }
                         assert!(found);
                     }
-                    let subs = domain.encoding().get_model(&cadical);
+                    let subs = domain.encoding().get_model(&mut cadical);
                     return Some(subs);
                 }
-                Some(false) => continue,
+                Some(_) => continue,
                 None => unreachable!(),
             }
         }

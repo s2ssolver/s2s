@@ -9,8 +9,7 @@ use itertools::Itertools;
 use crate::{
     abstraction::LitDefinition,
     interval::{BoundValue, Interval},
-    node::{canonical::Literal, get_entailed_literals, Node, NodeKind, NodeManager, Sorted},
-    sat::{Cnf, PLit},
+    node::{canonical::Literal, Node, NodeKind, NodeManager, Sorted},
 };
 
 use crate::bounds::{BoundInferer, Bounds};
@@ -152,28 +151,13 @@ impl Hash for Cube {
     }
 }
 
+#[derive(Debug, Default)]
 pub(super) struct BoundRefiner {
-    _cadical: cadical::Solver,
-    _entailed_defs: IndexSet<PLit>,
-
     conflict_cubes: Vec<Cube>,
     cube_bounds: IndexMap<Cube, Bounds>,
 }
 
 impl BoundRefiner {
-    pub fn new(skeleton: Cnf) -> Self {
-        let mut cadical = cadical::Solver::new();
-        for clause in skeleton.into_iter() {
-            cadical.add_clause(clause);
-        }
-        BoundRefiner {
-            _cadical: cadical,
-            _entailed_defs: IndexSet::new(),
-            conflict_cubes: Vec::new(),
-            cube_bounds: IndexMap::new(),
-        }
-    }
-
     /// Refines the bounds of the string and integer variables in the domain based on the given literals.
     pub fn refine_bounds(
         &mut self,
@@ -264,72 +248,6 @@ impl BoundRefiner {
         } else {
             BoundRefinement::Refined(bounds)
         }
-    }
-
-    /// Legacy implementation of the small-model bounds computation.
-    /// This iterates all subsets of the literals and computes the bounds for each subset.
-    /// This is way coarser than the dnf based implementation.
-    /// Computes the small-model bounds for any combinations given literals that can be satisfied by the formula.
-    fn _small_model_bounds(
-        &mut self,
-        literals: &[LitDefinition],
-        fm: &Node,
-        mngr: &mut NodeManager,
-    ) -> Option<Bounds> {
-        // Split literals into entailed and not entailed
-        let entailed = get_entailed_literals(fm);
-        let (mut entailed, not_entailed): (Vec<_>, Vec<_>) = literals
-            .iter()
-            .partition(|l| entailed.contains(l.defined()));
-
-        // We check if some more are entailed by invoking the SAT solver.
-        let mut new_not_entailed = Vec::new();
-        for l in not_entailed.into_iter() {
-            if self._entailed_defs.contains(&l.defining()) {
-                // This is also entailed
-                entailed.push(l);
-                log::debug!("Entailed: {}", l);
-                continue;
-            } else if let Some(false) = self._cadical.solve_with(vec![-l.defining()]) {
-                // This is also entailed
-                entailed.push(l);
-                self._entailed_defs.insert(l.defining());
-                log::debug!("Entailed: {}", l);
-            } else {
-                new_not_entailed.push(l);
-            }
-        }
-        let not_entailed = new_not_entailed;
-
-        let mut base_inferer = BoundInferer::default();
-        for l in entailed {
-            base_inferer.add_literal(l.defined().clone(), mngr);
-        }
-        // The bounds of the conjunction of all entailed literals.
-        // If these are conflicting, then any combination of literals is conflicting.
-        let base_bounds = base_inferer.infer()?;
-
-        // Build all possible combinations of the entailed literals.
-        // That it, compute the subset of the power set of the literals such that each subset contains all entailed literals.
-        // For each combination compute the small-model bounds.
-        let mut combinations: Vec<(BoundInferer, Bounds)> =
-            Vec::with_capacity(2usize.pow(not_entailed.len() as u32 + 1));
-        combinations.push((base_inferer, base_bounds));
-
-        // Dynamic programming to build the combinations.
-        // We filter out any combination that is conflicting.
-        for l in not_entailed {
-            let mut new_combinations = Vec::new();
-            for (inferer, _) in &combinations {
-                let mut new_inferer = inferer.clone();
-                new_inferer.add_literal(l.defined().clone(), mngr);
-                if let Some(bounds) = new_inferer.infer() {
-                    new_combinations.push((new_inferer, bounds));
-                }
-            }
-            combinations.extend(new_combinations);
-        }
-        Self::max_smp_of(combinations.into_iter().map(|(_, b)| b).collect())
     }
 
     fn max_smp_of(alternatives: Vec<Bounds>) -> Option<Bounds> {

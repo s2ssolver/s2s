@@ -15,12 +15,18 @@ use itertools::Itertools;
 
 pub use options::SolverOptions;
 use refine::BoundRefiner;
+use rustsat::types::Lit;
+use rustsat::{
+    encodings::CollectClauses,
+    solvers::{Solve, SolveIncremental},
+};
+use rustsat_cadical::CaDiCaL;
 
 use crate::{
     abstraction::LitDefinition,
     alphabet::Alphabet,
     node::{Node, NodeManager},
-    sat::{to_cnf, PFormula, PLit},
+    sat::{to_cnf, PFormula},
 };
 
 use crate::error::PublicError as Error;
@@ -77,11 +83,11 @@ impl std::fmt::Display for SolverAnswer {
 pub(crate) struct Solver {
     options: SolverOptions,
 
-    cadical: cadical::Solver,
+    cadical: Box<CaDiCaL<'static, 'static>>,
 
     skeleton: PFormula,
     /// The definitions of the abstraction variables
-    defs: IndexMap<PLit, LitDefinition>,
+    defs: IndexMap<Lit, LitDefinition>,
 
     encoder: DefintionEncoder,
     next_bounds: Domain,
@@ -98,16 +104,14 @@ impl Solver {
         alphabet: Rc<Alphabet>,
         init_bounds: Domain,
     ) -> Self {
-        let mut sat_solver = cadical::Solver::default();
+        let mut sat_solver = rustsat_cadical::CaDiCaL::default();
         let cnf = to_cnf(&skeleton);
-        let refiner = BoundRefiner::new(cnf.clone());
-        for clause in cnf.into_iter() {
-            sat_solver.add_clause(clause);
-        }
+        sat_solver.add_cnf(cnf).unwrap();
+        let refiner = BoundRefiner::default();
         Self {
             options,
             skeleton,
-            cadical: sat_solver,
+            cadical: Box::new(sat_solver),
             refiner,
             defs: IndexMap::new(),
             encoder: DefintionEncoder::new(alphabet),
@@ -152,69 +156,86 @@ impl Solver {
             // Encode and Solve
             let mut timer = Instant::now();
 
-            let encoding = self
-                .encoder
-                .encode(self.defs.values().cloned(), &bounds, mngr)?;
-            let (cnf, asm) = encoding.into_inner();
-            log::info!("Encoded ({} clauses) ({:?})", cnf.len(), timer.elapsed());
+            let assumptions = self.encoder.encode(
+                self.defs.values().cloned(),
+                &bounds,
+                self.cadical.as_mut(),
+                mngr,
+            )?;
+
+            log::info!(
+                "Encoded ({} clauses) ({:?})",
+                self.cadical.n_clauses(),
+                timer.elapsed()
+            );
             timer = Instant::now();
-            for clause in cnf {
-                self.cadical.add_clause(clause);
-            }
+
             log::info!("Added clauses to cadical ({:?})", timer.elapsed());
 
             timer = Instant::now();
-            let res = self.cadical.solve_with(asm);
+
+            let res = self.cadical.as_mut().solve_assumps(&assumptions);
             log::info!("Done SAT solving: {:?} ({:?})", res, timer.elapsed());
 
             match res {
-                Some(true) => {
-                    // If SAT, check if model is a solution for the original formula.
-                    let assign = self.encoder.get_model(&self.cadical);
+                Ok(res) => match res {
+                    rustsat::solvers::SolverResult::Sat => {
+                        // If SAT, check if model is a solution for the original formula.
+                        let assign = self.encoder.get_model(&self.cadical);
 
-                    log::info!("Encoding is SAT");
-                    // encoder.print_debug(&cadical);
-                    let subs = VarSubstitution::from_assignment(&assign, mngr);
-                    return Ok(SolverAnswer::Sat(Some(subs)));
-                }
-
-                Some(false) => {
-                    if self.frozen_bounds {
-                        // Don't refine bounds if they are frozen, return UNKNOWN
-                        return Ok(SolverAnswer::Unknown);
+                        log::info!("Encoding is SAT");
+                        // encoder.print_debug(&cadical);
+                        let subs = VarSubstitution::from_assignment(&assign, mngr);
+                        return Ok(SolverAnswer::Sat(Some(subs)));
                     }
-                    log::info!("Unsat");
-                    let failed = self.encoder.get_failed_literals(&self.cadical);
-                    log::info!("{} Failed literal(s)", failed.len());
-                    log::debug!("Failed literals: {}", failed.iter().join(", "));
-                    // Refine bounds. If bounds are at max, return UNSAT. Otherwise, continue with new bounds.
-                    let fm = self
-                        .to_formula(mngr, &self.skeleton)
-                        .unwrap_or(mngr.ttrue());
-                    match self
-                        .refiner
-                        .refine_bounds(&failed, &bounds, &fm, self.options.step, mngr)
-                    {
-                        refine::BoundRefinement::Refined(b) => {
-                            let clamped = self.clamp_bounds_in_dom(b);
-                            // if the clamped bound are equal to the bounds we used in this round, nothing changed
-                            // in that case, the limit is reached
-                            if clamped == bounds {
-                                if self.options.unsat_on_max_bound {
-                                    return Ok(SolverAnswer::Unsat);
+                    rustsat::solvers::SolverResult::Unsat => {
+                        if self.frozen_bounds {
+                            // Don't refine bounds if they are frozen, return UNKNOWN
+                            return Ok(SolverAnswer::Unknown);
+                        }
+                        log::info!("Unsat");
+                        let failed = self.encoder.get_failed_literals(&mut self.cadical);
+                        log::info!("{} Failed literal(s)", failed.len());
+                        log::debug!("Failed literals: {}", failed.iter().join(", "));
+                        // Refine bounds. If bounds are at max, return UNSAT. Otherwise, continue with new bounds.
+                        let fm = self
+                            .to_formula(mngr, &self.skeleton)
+                            .unwrap_or(mngr.ttrue());
+                        match self.refiner.refine_bounds(
+                            &failed,
+                            &bounds,
+                            &fm,
+                            self.options.step,
+                            mngr,
+                        ) {
+                            refine::BoundRefinement::Refined(b) => {
+                                let clamped = self.clamp_bounds_in_dom(b);
+                                // if the clamped bound are equal to the bounds we used in this round, nothing changed
+                                // in that case, the limit is reached
+                                if clamped == bounds {
+                                    if self.options.unsat_on_max_bound {
+                                        return Ok(SolverAnswer::Unsat);
+                                    } else {
+                                        return Ok(SolverAnswer::Unknown);
+                                    }
                                 } else {
-                                    return Ok(SolverAnswer::Unknown);
+                                    self.next_bounds = clamped
                                 }
-                            } else {
-                                self.next_bounds = clamped
+                            }
+                            refine::BoundRefinement::SmallModelReached => {
+                                return Ok(SolverAnswer::Unsat);
                             }
                         }
-                        refine::BoundRefinement::SmallModelReached => {
-                            return Ok(SolverAnswer::Unsat);
-                        }
                     }
+                    rustsat::solvers::SolverResult::Interrupted => {
+                        log::error!("Cadical was interrupted");
+                        return Ok(SolverAnswer::Unknown);
+                    }
+                },
+                Err(e) => {
+                    log::error!("Cadical failed to solve: {e}");
+                    return Ok(SolverAnswer::Unknown);
                 }
-                None => panic!("Cadical failed to solve"),
             }
         }
     }
@@ -224,9 +245,7 @@ impl Solver {
     /// That is, if the assignment is `x -> abc` and `y -> def`, the both "x = abc" and "y = def" are blocked for every solution.
     pub fn block(&mut self, asn: &Assignment) {
         let (clauses, _) = self.encoder.block_assignment(asn).into_inner();
-        for clause in clauses {
-            self.cadical.add_clause(clause);
-        }
+        self.cadical.add_cnf(clauses).unwrap();
     }
 
     /// Makes sure the bounds in the domain do not exceed the maximum bounds set in the options.
