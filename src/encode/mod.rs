@@ -8,9 +8,7 @@ use crate::{
     },
 };
 
-use self::{
-    boolvar::BoolVarEncoder, domain::DomainEncoding, linear::MddEncoder, re::build_inre_encoder,
-};
+use self::{boolvar::BoolVarEncoder, domain::DomainEncoding, linear::MddEncoder};
 
 /// Facilities for encoding cardinality constraints
 mod card;
@@ -28,7 +26,9 @@ mod re;
 mod linear;
 
 use indexmap::IndexSet;
+use re::build_inre_encoder;
 use rustsat::{
+    clause,
     instances::Cnf,
     types::{Clause, Lit},
 };
@@ -39,6 +39,126 @@ use smt_str::SmtChar;
 /// TODO: This is unsound if this character is used in the input.
 const LAMBDA: SmtChar = SmtChar::MAX;
 
+#[derive(Debug, thiserror::Error)]
+pub struct EncodingError {
+    msg: String,
+}
+impl EncodingError {
+    pub fn new(msg: &str) -> Self {
+        Self {
+            msg: msg.to_string(),
+        }
+    }
+
+    pub fn not_epsi_free() -> Self {
+        Self::new("NFA must be epsilon-free")
+    }
+}
+impl Display for EncodingError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Encoding error: {}", self.msg)
+    }
+}
+
+/// This trait is implemented by structs that can be used to record the encoding of a problem.
+pub trait EncodingSink {
+    /// Adds a clause to the encoding
+    fn add_clause(&mut self, clause: Clause);
+
+    fn add_binary(&mut self, a: Lit, b: Lit) {
+        self.add_clause(clause![a, b]);
+    }
+
+    fn add_unit(&mut self, a: Lit) {
+        self.add_clause(clause![a]);
+    }
+
+    /// Adds a clause to the encoding
+    fn add_cnf(&mut self, cnf: Cnf) {
+        for clause in cnf {
+            self.add_clause(clause);
+        }
+    }
+
+    /// Adds an assumption to the encoding
+    fn add_assumption(&mut self, assumption: Lit);
+}
+
+/// This trait is implemented by structs that encode predicates. It is a general trait that is
+/// subtyped for specific predicates.
+/// Moreover, it serves as an indicator of whether or not the encoder performs an incremental encoding of the problem, when called with increased variable bounds.
+/// If all encoders used to solver the problem are incremental, then the IPASIR interface of
+/// the SAT solver will lead to a speedup.
+///
+/// Note that if an incremental encoder can be used in a non-incremental way by simply resetting its state when updating the bounds.
+pub trait EncodeLiteral {
+    /// Returns true if the encoder performs incremental encoding.
+    fn _is_incremental(&self) -> bool {
+        unimplemented!()
+    }
+    /// Resets the encoder to the initial state.
+    /// After calling this functions, the next call to the `encode` function will completely re-encode the problem with the provided bounds.
+    /// This has no effect on non-incremental encoders.
+    fn _reset(&mut self) {
+        unimplemented!()
+    }
+
+    fn encode(
+        &mut self,
+        dom: &Domain,
+        dom_enc: &DomainEncoding,
+        sink: &mut impl EncodingSink,
+    ) -> Result<(), EncodingError>;
+}
+
+pub enum LiteralEncoder {
+    BoolVar(BoolVarEncoder),
+    NFAEncoder(re::NFAEncoder),
+    WeqEncode(equation::WEQEncoder),
+    LinearEncode(MddEncoder),
+}
+
+pub fn get_encoder(lit: &Literal, mngr: &mut NodeManager) -> Result<LiteralEncoder, EncodingError> {
+    let pol = lit.polarity();
+    let e = match lit.atom().kind() {
+        AtomKind::Boolvar(v) => LiteralEncoder::BoolVar(BoolVarEncoder::new(v, pol)),
+        AtomKind::InRe(inre) => LiteralEncoder::NFAEncoder(build_inre_encoder(inre, pol, mngr)),
+        AtomKind::WordEquation(weq) => LiteralEncoder::WeqEncode(equation::get_encoder(weq, pol)),
+        AtomKind::FactorConstraint(rfc) => {
+            // Right now, we cast it into a regular constraint
+            log::warn!("Specialized encodings for regular factor constraints are not implemented yet. Casting to regular constraint.");
+            let re = rfc.as_regex(mngr);
+            let inre = RegularConstraint::new(rfc.of().clone(), re);
+            LiteralEncoder::NFAEncoder(build_inre_encoder(&inre, pol, mngr))
+        }
+        AtomKind::Linear(lc) => LiteralEncoder::LinearEncode(MddEncoder::new(lc.clone(), pol)),
+    };
+    Ok(e)
+}
+
+impl EncodeLiteral for LiteralEncoder {
+    fn encode(
+        &mut self,
+        dom: &Domain,
+        dom_enc: &DomainEncoding,
+        sink: &mut impl EncodingSink,
+    ) -> Result<(), EncodingError> {
+        match self {
+            LiteralEncoder::BoolVar(ref mut e) => e.encode(dom, dom_enc, sink),
+            LiteralEncoder::NFAEncoder(ref mut e) => e.encode(dom, dom_enc, sink),
+            LiteralEncoder::WeqEncode(ref mut e) => e.encode(dom, dom_enc, sink),
+            LiteralEncoder::LinearEncode(ref mut e) => e.encode(dom, dom_enc, sink),
+        }
+    }
+}
+
+/// The result of an encoding.
+/// It can be either a CNF encoding of the problem or a trivial encoding.
+/// The trivial encoding is either unsat or sat.
+/// The CNF encoding is a conjunction of clauses.
+/// The assumptions are the literals that are assumed to be true.
+#[derive(Clone, Debug)]
+#[allow(dead_code)]
 pub enum EncodingResult {
     /// The CNF encoding of the problem
     Cnf(Cnf, IndexSet<Lit>),
@@ -46,6 +166,13 @@ pub enum EncodingResult {
     Trivial(bool),
 }
 
+impl Default for EncodingResult {
+    fn default() -> Self {
+        EncodingResult::empty()
+    }
+}
+
+#[allow(dead_code)]
 impl EncodingResult {
     pub fn empty() -> Self {
         EncodingResult::Cnf(Cnf::new(), IndexSet::new())
@@ -155,69 +282,27 @@ impl Display for EncodingResult {
     }
 }
 
-#[derive(Debug, thiserror::Error)]
-pub struct EncodingError {
-    msg: String,
-}
-impl EncodingError {
-    pub fn new(msg: &str) -> Self {
-        Self {
-            msg: msg.to_string(),
-        }
-    }
-
-    pub fn not_epsi_free() -> Self {
-        Self::new("NFA must be epsilon-free")
-    }
-}
-impl Display for EncodingError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Encoding error: {}", self.msg)
-    }
+#[derive(Default)]
+#[cfg(test)]
+pub(crate) struct ResultSink {
+    /// The result of the encoding
+    result: EncodingResult,
 }
 
-/// This trait is implemented by structs that encode predicates. It is a general trait that is
-/// subtyped for specific predicates.
-/// Moreover, it serves as an indicator of whether or not the encoder performs an incremental encoding of the problem, when called with increased variable bounds.
-/// If all encoders used to solver the problem are incremental, then the IPASIR interface of
-/// the SAT solver will lead to a speedup.
-///
-/// Note that if an incremental encoder can be used in a non-incremental way by simply resetting its state when updating the bounds.
-pub trait LiteralEncoder {
-    /// Returns true if the encoder performs incremental encoding.
-    fn _is_incremental(&self) -> bool {
-        unimplemented!()
-    }
-    /// Resets the encoder to the initial state.
-    /// After calling this functions, the next call to the `encode` function will completely re-encode the problem with the provided bounds.
-    /// This has no effect on non-incremental encoders.
-    fn _reset(&mut self) {
-        unimplemented!()
+#[cfg(test)]
+impl EncodingSink for ResultSink {
+    fn add_clause(&mut self, clause: Clause) {
+        self.result.add_clause(clause);
     }
 
-    fn encode(
-        &mut self,
-        bounds: &Domain,
-        substitution: &DomainEncoding,
-    ) -> Result<EncodingResult, EncodingError>;
+    fn add_assumption(&mut self, assumption: Lit) {
+        self.result.add_assumption(assumption);
+    }
 }
-
-pub fn get_encoder(
-    lit: &Literal,
-    mngr: &mut NodeManager,
-) -> Result<Box<dyn LiteralEncoder>, EncodingError> {
-    let pol = lit.polarity();
-    match lit.atom().kind() {
-        AtomKind::Boolvar(v) => Ok(Box::new(BoolVarEncoder::new(v, pol))),
-        AtomKind::InRe(inre) => build_inre_encoder(inre, pol, mngr),
-        AtomKind::WordEquation(weq) => Ok(equation::get_encoder(weq, pol)),
-        AtomKind::FactorConstraint(rfc) => {
-            // Right now, we cast it into a regular constraint
-            log::warn!("Specialized encodings for regular factor constraints are not implemented yet. Casting to regular constraint.");
-            let re = rfc.as_regex(mngr);
-            let inre = RegularConstraint::new(rfc.of().clone(), re);
-            build_inre_encoder(&inre, pol, mngr)
-        }
-        AtomKind::Linear(lc) => Ok(Box::new(MddEncoder::new(lc.clone(), pol))),
+#[cfg(test)]
+impl ResultSink {
+    /// Returns the result of the encoding
+    pub fn result(self) -> EncodingResult {
+        self.result
     }
 }

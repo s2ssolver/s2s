@@ -5,7 +5,7 @@ use crate::{
     alphabet::Alphabet,
     encode::{
         domain::{DomainEncoder, DomainEncoding},
-        get_encoder, EncodingError, EncodingResult, LiteralEncoder,
+        get_encoder, EncodeLiteral, EncodingError, EncodingResult, EncodingSink, LiteralEncoder,
     },
     node::{
         canonical::{AssignedValue, Assignment, Literal},
@@ -14,6 +14,7 @@ use crate::{
     sat::{nlit, plit, pvar, PVar},
 };
 use indexmap::{IndexMap, IndexSet};
+use rustsat::solvers::Solve;
 use rustsat::{clause, types::Lit};
 use rustsat::{solvers::SolveIncremental, types::Clause};
 use rustsat_cadical::CaDiCaL;
@@ -62,7 +63,7 @@ pub struct DefintionEncoder {
     /// The probe variable for each literal. These are used to check which literals failed, i.e., the encoding of which literals are part of the unsat core.
     probes: IndexMap<LitDefinition, FailedProbe>,
 
-    encoders: IndexMap<Literal, Box<dyn LiteralEncoder>>,
+    encoders: IndexMap<Literal, LiteralEncoder>,
     domain_encoder: DomainEncoder,
 }
 
@@ -79,28 +80,35 @@ impl DefintionEncoder {
         &mut self,
         defs: impl Iterator<Item = LitDefinition> + Clone,
         bounds: &Domain,
+        cadical: &mut CaDiCaL<'static, 'static>,
         mngr: &mut NodeManager,
-    ) -> Result<EncodingResult, EncodingError> {
+    ) -> Result<Vec<Lit>, EncodingError> {
         // INPUT: BOUNDS
 
         let t = Instant::now();
 
+        let mut sink = CadicalEncodingSink::new(cadical);
+
         // Encode the domain
-        let mut res = self.domain_encoder.encode(bounds);
+        self.domain_encoder.encode(bounds, &mut sink);
+        let mut assumptions = std::mem::take(&mut sink.assumptions);
 
         log::debug!("Encoded domain ({:?})", t.elapsed());
 
         // TODO: Instead let domain_encoder return the encoding of the domain or an Rc<DomainEncoding>
         let dom = self.domain_encoder.encoding().clone();
+
         // Encode all definitions
         for def in defs {
             let t = Instant::now();
-            let cnf = self.encode_def(&def, bounds, &dom, mngr)?;
-            res.extend(cnf);
+            sink.clear_sub();
+            sink.clear_assumptions();
+            let lit_assumptions = self.encode_def(&def, bounds, &dom, mngr, &mut sink)?;
+            assumptions.extend(lit_assumptions);
             log::debug!("Encoded {} ({:?})", def, t.elapsed());
         }
 
-        Ok(res)
+        Ok(assumptions.into_iter().collect())
     }
 
     fn encode_def(
@@ -109,34 +117,37 @@ impl DefintionEncoder {
         bounds: &Domain,
         dom: &DomainEncoding,
         mngr: &mut NodeManager,
-    ) -> Result<EncodingResult, EncodingError> {
+        sink: &mut CadicalEncodingSink,
+    ) -> Result<IndexSet<Lit>, EncodingError> {
         let lit = def.defined();
         let defining = def.defining();
-        let mut encoding = self.get_encoder(lit, mngr).encode(bounds, dom)?;
 
-        // Add -def var to every clause
-        encoding.iter_clauses_mut().for_each(|cl| {
-            cl.add(defining.neg());
-        });
+        let probe_var = {
+            let probe = self.probes.entry(def.clone()).or_default();
+            probe.probe_var()
+        };
 
-        let probe = self.probes.entry(def.clone()).or_default();
-        probe.set_assumptions(encoding.assumptions().clone());
-        let pvar = probe.probe_var();
+        let sub = clause!(defining.neg(), nlit(probe_var));
 
-        // Add -probe to every clause
-        encoding
-            .iter_clauses_mut()
-            .for_each(|cl| cl.add(nlit(pvar)));
-        // assert all probes
-        encoding.add_assumption(plit(pvar));
-        Ok(encoding)
+        sink.set_sub(sub);
+
+        self.get_encoder(lit, mngr).encode(bounds, dom, sink)?;
+
+        let mut assumptions = std::mem::take(&mut sink.assumptions);
+
+        self.probes
+            .entry(def.clone())
+            .or_default()
+            .set_assumptions(assumptions.clone());
+
+        // Add the probe variable to the assumptions
+        assumptions.insert(plit(probe_var));
+        sink.clear_sub();
+
+        Ok(assumptions)
     }
 
-    fn get_encoder(
-        &mut self,
-        lit: &Literal,
-        mngr: &mut NodeManager,
-    ) -> &mut Box<dyn LiteralEncoder> {
+    fn get_encoder(&mut self, lit: &Literal, mngr: &mut NodeManager) -> &mut LiteralEncoder {
         if self.encoders.get(lit).is_none() {
             // Create new encoder
             let encoder = get_encoder(lit, mngr).unwrap();
@@ -204,5 +215,65 @@ impl DefintionEncoder {
     /// Returns the model of the current assignment.
     pub fn get_model(&self, solver: &CaDiCaL) -> Assignment {
         self.domain_encoder.encoding().get_model(solver)
+    }
+}
+
+pub(crate) struct CadicalEncodingSink<'a> {
+    cadical: &'a mut CaDiCaL<'static, 'static>,
+    assumptions: IndexSet<Lit>,
+
+    sub: Option<Clause>,
+}
+
+impl<'a> CadicalEncodingSink<'a> {
+    fn new(cadical: &'a mut CaDiCaL<'static, 'static>) -> Self {
+        Self {
+            cadical,
+            assumptions: IndexSet::new(),
+            sub: None,
+        }
+    }
+}
+
+impl CadicalEncodingSink<'_> {
+    /// Sets the clause that is used to add all literals in the sub to the clause.
+    pub fn set_sub(&mut self, sub: Clause) {
+        self.sub = Some(sub);
+    }
+
+    pub fn clear_sub(&mut self) {
+        self.sub = None;
+    }
+
+    fn clear_assumptions(&mut self) {
+        self.assumptions.clear();
+    }
+}
+
+impl<'a> EncodingSink for CadicalEncodingSink<'a> {
+    fn add_clause(&mut self, mut clause: Clause) {
+        if let Some(sub) = &self.sub {
+            // Add all literals in sub to the clause
+            for l in sub.iter() {
+                clause.add(*l);
+            }
+        }
+        self.cadical.add_clause(clause).unwrap();
+    }
+
+    fn add_assumption(&mut self, assumption: Lit) {
+        self.assumptions.insert(assumption);
+    }
+
+    fn add_cnf(&mut self, mut cnf: rustsat::instances::Cnf) {
+        if let Some(sub) = &self.sub {
+            // Add all literals in sub to the clause
+            cnf.iter_mut().for_each(|clause| {
+                for l in sub.iter() {
+                    clause.add(*l);
+                }
+            });
+        }
+        self.cadical.add_cnf(cnf).unwrap();
     }
 }

@@ -1,11 +1,11 @@
 use indexmap::IndexMap;
-use rustsat::{clause, instances::Cnf, types::TernaryVal};
+use rustsat::{clause, types::TernaryVal};
 use rustsat_cadical::CaDiCaL;
 use smt_str::SmtChar;
 
 use crate::{
     alphabet::Alphabet,
-    encode::{card::exactly_one, EncodingResult, LAMBDA},
+    encode::{card::exactly_one, EncodingSink, LAMBDA},
     sat::{nlit, plit, pvar, PVar},
 };
 use rustsat::solvers::Solve;
@@ -30,9 +30,9 @@ impl WordEncoding {
     /// Must be called in increasing order of length.
     /// Panics if called with a length smaller than the current length.
     /// Is a no-op if called with the same length as the current length.
-    pub fn encode(&mut self, length: usize) -> EncodingResult {
+    pub fn encode(&mut self, length: usize, sink: &mut impl EncodingSink) {
         assert!(length >= self.length, "Length cannot shrink");
-        let mut clauses = Cnf::new();
+
         let last_len = self.length;
 
         for pos in last_len..length {
@@ -50,17 +50,16 @@ impl WordEncoding {
             choices.push(lambda_choice);
             // encode exactly-one
             let eo = exactly_one(&choices);
-            clauses.extend(eo);
+            sink.add_cnf(eo);
 
             // Symmetry breaking: If a position is lambda, then only lambda may follow
             if pos > 0 {
                 let last_lambda = self.at(pos - 1, LAMBDA);
-                clauses.add_clause(clause![nlit(last_lambda), plit(lambda_choice)]);
+                sink.add_clause(clause![nlit(last_lambda), plit(lambda_choice)]);
             }
         }
 
         self.length = length;
-        EncodingResult::cnf(clauses)
     }
 
     pub fn len(&self) -> usize {

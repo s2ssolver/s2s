@@ -5,7 +5,7 @@ use super::word::WordEncoding;
 
 use crate::{
     domain::Domain,
-    encode::{domain::DomainEncoding, EncodingError, EncodingResult, LiteralEncoder},
+    encode::{domain::DomainEncoding, EncodeLiteral, EncodingError, EncodingSink},
     node::canonical::{Pattern, Symbol, WordEquation},
 };
 
@@ -32,21 +32,22 @@ impl WordEquationEncoder {
         }
     }
 
-    fn encode_solution_words(&mut self, length: usize) -> EncodingResult {
-        self.word_encoding.as_mut().unwrap().encode(length)
+    fn encode_solution_words(&mut self, length: usize, sink: &mut impl EncodingSink) {
+        self.word_encoding.as_mut().unwrap().encode(length, sink)
     }
 
-    fn encode_matching(&mut self, bounds: &Domain, dom: &DomainEncoding) -> EncodingResult {
-        let mut res =
-            self.match_encoder
-                .0
-                .encode(self.word_encoding.as_ref().unwrap(), bounds, dom);
-        res.extend(
-            self.match_encoder
-                .1
-                .encode(self.word_encoding.as_ref().unwrap(), bounds, dom),
-        );
-        res
+    fn encode_matching(
+        &mut self,
+        bounds: &Domain,
+        dom: &DomainEncoding,
+        sink: &mut impl EncodingSink,
+    ) {
+        self.match_encoder
+            .0
+            .encode(self.word_encoding.as_ref().unwrap(), bounds, dom, sink);
+        self.match_encoder
+            .1
+            .encode(self.word_encoding.as_ref().unwrap(), bounds, dom, sink);
     }
 
     fn pattern_upper_bound(&self, pattern: &Pattern, dom: &Domain) -> usize {
@@ -72,7 +73,7 @@ impl WordEquationEncoder {
     }
 }
 
-impl LiteralEncoder for WordEquationEncoder {
+impl EncodeLiteral for WordEquationEncoder {
     fn _is_incremental(&self) -> bool {
         true
     }
@@ -85,7 +86,8 @@ impl LiteralEncoder for WordEquationEncoder {
         &mut self,
         bounds: &Domain,
         dom: &DomainEncoding,
-    ) -> Result<EncodingResult, EncodingError> {
+        sink: &mut impl EncodingSink,
+    ) -> Result<(), EncodingError> {
         if self.word_encoding.is_none() {
             self.word_encoding = Some(WordEncoding::new(dom.alphabet().clone()));
         }
@@ -96,11 +98,11 @@ impl LiteralEncoder for WordEquationEncoder {
         // Thus we need to allow X to start after the last position, which we get by adding +1.
         let u = min(self.lhs_upper_bound(bounds), self.rhs_upper_bound(bounds)) + 1;
 
-        let mut res = self.encode_solution_words(u);
+        self.encode_solution_words(u, sink);
 
-        res.extend(self.encode_matching(bounds, dom));
+        self.encode_matching(bounds, dom, sink);
 
-        Ok(res)
+        Ok(())
     }
 }
 
@@ -115,7 +117,8 @@ mod tests {
         alphabet::Alphabet,
         domain::Domain,
         encode::{
-            domain::DomainEncoder, equation::weq::testutils::parse_simple_equation, LiteralEncoder,
+            domain::DomainEncoder, equation::weq::testutils::parse_simple_equation, EncodeLiteral,
+            ResultSink,
         },
         interval::Interval,
         node::{
@@ -143,9 +146,14 @@ mod tests {
                 bounds.set_string(v, Interval::bounded_above(*b));
             }
 
-            let mut res = domain.encode(&bounds);
+            let mut sink = ResultSink::default();
+            domain.encode(&bounds, &mut sink);
 
-            res.extend(encoder.encode(&bounds, domain.encoding()).unwrap());
+            encoder
+                .encode(&bounds, domain.encoding(), &mut sink)
+                .unwrap();
+
+            let res = sink.result();
 
             let assm = res.assumptions();
 

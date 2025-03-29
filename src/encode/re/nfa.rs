@@ -13,8 +13,8 @@ use smt_str::automata::{StateId, StateNotFound, TransitionType, NFA};
 
 use crate::{
     domain::Domain,
-    encode::{domain::DomainEncoding, EncodingError, EncodingResult, LiteralEncoder, LAMBDA},
-    node::{canonical::RegularConstraint, NodeManager, Variable},
+    encode::{domain::DomainEncoding, EncodeLiteral, EncodingError, EncodingSink, LAMBDA},
+    node::Variable,
     sat::{nlit, plit, pvar, PVar},
 };
 
@@ -54,7 +54,7 @@ impl NFAEncoder {
         }
     }
 
-    fn encode_intial(&self) -> EncodingResult {
+    fn encode_intial(&self, sink: &mut impl EncodingSink) {
         if self.last_bound.is_none() {
             let mut res = Cnf::new();
             // Only encode in first round
@@ -67,9 +67,7 @@ impl NFAEncoder {
                     res.add_unit(nlit(self.reach_vars[&(state, 0)]));
                 }
             }
-            EncodingResult::cnf(res)
-        } else {
-            EncodingResult::Trivial(true)
+            sink.add_cnf(res);
         }
     }
 
@@ -78,8 +76,8 @@ impl NFAEncoder {
         &self,
         bound: usize,
         dom: &DomainEncoding,
-    ) -> Result<EncodingResult, EncodingError> {
-        let mut res = EncodingResult::empty();
+        sink: &mut impl EncodingSink,
+    ) -> Result<(), EncodingError> {
         let last_bound = self.last_bound.unwrap_or(0);
         for l in last_bound.saturating_sub(1)..bound {
             for state in self.nfa.states() {
@@ -99,7 +97,7 @@ impl NFAEncoder {
                                 plit(lambda_sub_var),
                                 plit(reach_next),
                             ]);
-                            res.add_clause(clause);
+                            sink.add_clause(clause);
                         }
                         TransitionType::Range(range) => {
                             // Follow transition if we read a character in the given range
@@ -122,7 +120,7 @@ impl NFAEncoder {
                                     nlit(sub_var),
                                     plit(reach_next),
                                 ]);
-                                res.add_clause(clause);
+                                sink.add_clause(clause);
                             }
                         }
                         TransitionType::NotRange(range) => {
@@ -141,7 +139,7 @@ impl NFAEncoder {
                                     plit(sub_var),
                                     plit(reach_next),
                                 ]);
-                                res.add_clause(clause);
+                                sink.add_clause(clause);
                             }
                         }
                         TransitionType::Epsilon => {
@@ -157,18 +155,18 @@ impl NFAEncoder {
                 // reach_var /\ lambda_sub_var => reach_next
                 let clause =
                     Clause::from([nlit(reach_var), nlit(lambda_sub_var), plit(reach_self)]);
-                res.add_clause(clause);
+                sink.add_clause(clause);
             }
         }
-        Ok(res)
+        Ok(())
     }
 
     fn encode_predecessor(
         &self,
         bound: usize,
         dom: &DomainEncoding,
-    ) -> Result<EncodingResult, EncodingError> {
-        let mut res = Cnf::new();
+        sink: &mut impl EncodingSink,
+    ) -> Result<(), EncodingError> {
         let last_bound = self.last_bound.unwrap_or(1);
 
         for l in last_bound..=bound {
@@ -185,21 +183,21 @@ impl NFAEncoder {
                             // Is predecessor if we do not read lambda
                             let sub_var = dom.string().get_sub(&self.var, l - 1, LAMBDA).unwrap();
                             // reach_prev /\ -sub_var
-                            res.add_binary(nlit(def_var), plit(reach_prev));
-                            res.add_binary(nlit(def_var), nlit(sub_var));
+                            sink.add_binary(nlit(def_var), plit(reach_prev));
+                            sink.add_binary(nlit(def_var), nlit(sub_var));
                         }
                         TransitionType::Range(range) if range.len() == 1 => {
                             // Is predecessor if we read the given character
                             let c = range.start();
                             let sub_var = dom.string().get_sub(&self.var, l - 1, c).unwrap();
-                            res.add_binary(nlit(def_var), plit(reach_prev));
-                            res.add_binary(nlit(def_var), plit(sub_var));
+                            sink.add_binary(nlit(def_var), plit(reach_prev));
+                            sink.add_binary(nlit(def_var), plit(sub_var));
                         }
                         TransitionType::Range(range) => {
                             // Is predecessor if we read a character in the given range
 
                             // reach_prev /\ (sub_var_1 \/ ... \/ sub_var_n)
-                            res.add_binary(nlit(def_var), plit(reach_prev));
+                            sink.add_binary(nlit(def_var), plit(reach_prev));
 
                             let mut range_clause = Clause::from([nlit(def_var)]);
                             for c in range.iter() {
@@ -207,20 +205,20 @@ impl NFAEncoder {
                                 range_clause.add(plit(sub_var));
                             }
 
-                            res.add_clause(range_clause);
+                            sink.add_clause(range_clause);
                         }
                         TransitionType::NotRange(range) if range.len() == 1 => {
                             // Is predecessor if we **NOT** read the given character
                             let c = range.start();
                             let sub_var = dom.string().get_sub(&self.var, l - 1, c).unwrap();
-                            res.add_binary(nlit(def_var), plit(reach_prev));
-                            res.add_binary(nlit(def_var), nlit(sub_var));
+                            sink.add_binary(nlit(def_var), plit(reach_prev));
+                            sink.add_binary(nlit(def_var), nlit(sub_var));
                         }
                         TransitionType::NotRange(range) => {
                             // Is predecessor if we read a character in the given range
 
                             // reach_prev /\ (-sub_var_1 \/ ... \/ -sub_var_n)
-                            res.add_binary(nlit(def_var), plit(reach_prev));
+                            sink.add_binary(nlit(def_var), plit(reach_prev));
 
                             let mut range_clause = Clause::from([nlit(def_var)]);
                             for c in range.iter() {
@@ -228,7 +226,7 @@ impl NFAEncoder {
                                 range_clause.add(nlit(sub_var));
                             }
 
-                            res.add_clause(range_clause);
+                            sink.add_clause(range_clause);
                         }
                         TransitionType::Epsilon => {
                             return Err(EncodingError::not_epsi_free());
@@ -241,26 +239,25 @@ impl NFAEncoder {
                 let lambda_sub_var = dom.string().get_sub(&self.var, l - 1, LAMBDA).unwrap();
                 let def_var = pvar();
                 alo_clause.add(plit(def_var));
-                res.add_clause(Clause::from([nlit(def_var), plit(reach_prev)]));
-                res.add_clause(Clause::from([nlit(def_var), plit(lambda_sub_var)]));
+                sink.add_clause(Clause::from([nlit(def_var), plit(reach_prev)]));
+                sink.add_clause(Clause::from([nlit(def_var), plit(lambda_sub_var)]));
 
-                res.add_clause(alo_clause);
+                sink.add_clause(alo_clause);
             }
         }
 
-        Ok(EncodingResult::cnf(res))
+        Ok(())
     }
 
-    fn encode_final(&self, bound: usize) -> EncodingResult {
+    fn encode_final(&self, bound: usize, sink: &mut impl EncodingSink) {
         if self.sign {
-            self.encode_final_positive(bound)
+            self.encode_final_positive(bound, sink)
         } else {
-            self.encode_final_negative(bound)
+            self.encode_final_negative(bound, sink)
         }
     }
 
-    fn encode_final_positive(&self, bound: usize) -> EncodingResult {
-        let mut res = EncodingResult::empty();
+    fn encode_final_positive(&self, bound: usize, sink: &mut impl EncodingSink) {
         let selector = self.bound_selector.unwrap();
 
         let mut clause = clause![nlit(selector)];
@@ -268,24 +265,20 @@ impl NFAEncoder {
             let reach_var = self.reach_vars[&(qf, bound)];
             clause.add(plit(reach_var));
         }
-        res.add_clause(clause);
-        res
+        sink.add_clause(clause);
     }
 
-    fn encode_final_negative(&self, bound: usize) -> EncodingResult {
-        let mut res = EncodingResult::empty();
+    fn encode_final_negative(&self, bound: usize, sink: &mut impl EncodingSink) {
         let selector = self.bound_selector.unwrap();
 
         for qf in self.nfa.finals() {
             let reach_var = self.reach_vars[&(qf, bound)];
-            res.add_clause(clause![nlit(selector), nlit(reach_var)]);
+            sink.add_clause(clause![nlit(selector), nlit(reach_var)]);
         }
-
-        res
     }
 }
 
-impl LiteralEncoder for NFAEncoder {
+impl EncodeLiteral for NFAEncoder {
     fn _is_incremental(&self) -> bool {
         true
     }
@@ -298,10 +291,11 @@ impl LiteralEncoder for NFAEncoder {
 
     fn encode(
         &mut self,
-        bounds: &Domain,
-        dom: &DomainEncoding,
-    ) -> Result<EncodingResult, EncodingError> {
-        let bound = bounds
+        dom: &Domain,
+        dom_enc: &DomainEncoding,
+        sink: &mut impl EncodingSink,
+    ) -> Result<(), EncodingError> {
+        let bound = dom
             .get_string(&self.var)
             .and_then(|i| i.upper_finite())
             .unwrap_or(0) as usize;
@@ -310,17 +304,17 @@ impl LiteralEncoder for NFAEncoder {
         if Some(bound) == self.last_bound {
             log::trace!("Upper bound did not change, skipping encoding");
             if let Some(s) = self.bound_selector {
-                return Ok(EncodingResult::assumption(plit(s)));
+                sink.add_assumption(plit(s));
+                return Ok(());
             } else {
-                return Ok(EncodingResult::Trivial(true));
+                return Ok(());
             }
         }
-        let mut res = EncodingResult::empty();
 
         // Create new selector for this bound
         let selector = pvar();
         self.bound_selector = Some(selector);
-        res.add_assumption(plit(selector));
+        sink.add_assumption(plit(selector));
         // Create reachability vars for this bound
         self.create_reach_vars(bound);
 
@@ -351,29 +345,21 @@ impl LiteralEncoder for NFAEncoder {
                                          bound
                                      };*/
 
-        let e_init = self.encode_intial();
-        log::trace!("Encoded initial state: {} clauses", e_init.clauses());
-        res.extend(e_init);
+        self.encode_intial(sink);
 
-        let e_transition = self.encode_transitions(effective_bound, dom)?;
-        log::trace!("Encoded transitions: {} clauses", e_transition.clauses());
-        res.extend(e_transition);
+        self.encode_transitions(effective_bound, dom_enc, sink)?;
 
-        let e_predecessor = self.encode_predecessor(effective_bound, dom)?;
-        log::trace!("Encoded predecessors: {} clauses", e_predecessor.clauses());
-        res.extend(e_predecessor);
+        self.encode_predecessor(effective_bound, dom_enc, sink)?;
 
-        let e_final = self.encode_final(effective_bound);
-        log::trace!("Encoded final state: {} clauses", e_final.clauses());
-        res.extend(e_final);
+        self.encode_final(effective_bound, sink);
 
         self.last_bound = Some(bound);
-        Ok(res)
+        Ok(())
     }
 }
 
 impl NFAEncoder {
-    fn new(var: &Rc<Variable>, nfa: Rc<NFA>, pol: bool) -> Self {
+    pub(super) fn new(var: &Rc<Variable>, nfa: Rc<NFA>, pol: bool) -> Self {
         let delta_inv = precompute_delta_inv(&nfa).unwrap();
         Self {
             var: var.clone(),
@@ -391,18 +377,6 @@ impl From<StateNotFound> for EncodingError {
     fn from(err: StateNotFound) -> Self {
         EncodingError::new(&err.to_string())
     }
-}
-
-pub fn build_inre_encoder(
-    inre: &RegularConstraint,
-    pol: bool,
-    mngr: &mut NodeManager,
-) -> Result<Box<dyn LiteralEncoder>, EncodingError> {
-    let v = inre.lhs();
-    let re = inre.re();
-    let nfa = mngr.get_nfa(re);
-    let encoder: Box<dyn LiteralEncoder> = Box::new(NFAEncoder::new(v, nfa, pol));
-    Ok(encoder)
 }
 
 fn precompute_delta_inv(
@@ -443,7 +417,11 @@ mod test {
 
     use super::*;
 
-    use crate::{encode::domain::DomainEncoder, interval::Interval, node::Sort};
+    use crate::{
+        encode::{domain::DomainEncoder, EncodingResult, ResultSink},
+        interval::Interval,
+        node::{NodeManager, Sort},
+    };
 
     fn solve_with_bounds(re: Regex, pol: bool, ubounds: &[usize]) -> Option<SolverResult> {
         let mut mngr = NodeManager::default();
@@ -465,9 +443,13 @@ mod test {
             bounds.set_string(var.clone(), Interval::new(0, *bound as isize));
             let mut res = EncodingResult::empty();
 
-            res.extend(dom_encoder.encode(&bounds));
+            let mut sink = ResultSink::default();
+            dom_encoder.encode(&bounds, &mut sink);
 
-            res.extend(encoder.encode(&bounds, dom_encoder.encoding()).unwrap());
+            encoder
+                .encode(&bounds, dom_encoder.encoding(), &mut sink)
+                .unwrap();
+            res.extend(sink.result());
 
             match res {
                 EncodingResult::Cnf(clauses, assms) => {

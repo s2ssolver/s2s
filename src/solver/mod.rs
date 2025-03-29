@@ -15,8 +15,11 @@ use itertools::Itertools;
 
 pub use options::SolverOptions;
 use refine::BoundRefiner;
-use rustsat::solvers::{Solve, SolveIncremental};
 use rustsat::types::Lit;
+use rustsat::{
+    encodings::CollectClauses,
+    solvers::{Solve, SolveIncremental},
+};
 use rustsat_cadical::CaDiCaL;
 
 use crate::{
@@ -103,8 +106,8 @@ impl Solver {
     ) -> Self {
         let mut sat_solver = rustsat_cadical::CaDiCaL::default();
         let cnf = to_cnf(&skeleton);
-        let refiner = BoundRefiner::default();
         sat_solver.add_cnf(cnf).unwrap();
+        let refiner = BoundRefiner::default();
         Self {
             options,
             skeleton,
@@ -153,20 +156,25 @@ impl Solver {
             // Encode and Solve
             let mut timer = Instant::now();
 
-            let encoding = self
-                .encoder
-                .encode(self.defs.values().cloned(), &bounds, mngr)?;
-            let (mut cnf, asm) = encoding.into_inner();
-            cnf = cnf.sanitize();
-            log::info!("Encoded ({} clauses) ({:?})", cnf.len(), timer.elapsed());
+            let assumptions = self.encoder.encode(
+                self.defs.values().cloned(),
+                &bounds,
+                self.cadical.as_mut(),
+                mngr,
+            )?;
+
+            log::info!(
+                "Encoded ({} clauses) ({:?})",
+                self.cadical.n_clauses(),
+                timer.elapsed()
+            );
             timer = Instant::now();
-            self.cadical.as_mut().add_cnf(cnf).unwrap();
 
             log::info!("Added clauses to cadical ({:?})", timer.elapsed());
 
             timer = Instant::now();
-            let asm = asm.into_iter().collect_vec();
-            let res = self.cadical.as_mut().solve_assumps(&asm);
+
+            let res = self.cadical.as_mut().solve_assumps(&assumptions);
             log::info!("Done SAT solving: {:?} ({:?})", res, timer.elapsed());
 
             match res {

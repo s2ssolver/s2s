@@ -8,7 +8,7 @@ use crate::{
     sat::{nlit, plit},
 };
 
-use super::{domain::DomainEncoding, EncodingError, EncodingResult, LiteralEncoder};
+use super::{domain::DomainEncoding, EncodeLiteral, EncodingError, EncodingSink};
 
 pub struct BoolVarEncoder {
     encoded: bool,
@@ -28,7 +28,7 @@ impl BoolVarEncoder {
     }
 }
 
-impl LiteralEncoder for BoolVarEncoder {
+impl EncodeLiteral for BoolVarEncoder {
     fn _is_incremental(&self) -> bool {
         true
     }
@@ -39,18 +39,18 @@ impl LiteralEncoder for BoolVarEncoder {
 
     fn encode(
         &mut self,
-        _bounds: &Domain,
-        dom: &DomainEncoding,
-    ) -> Result<EncodingResult, EncodingError> {
-        if self.encoded {
-            Ok(EncodingResult::Trivial(true))
-        } else {
-            let v = dom.bool().get(&self.var).unwrap();
+        _: &Domain,
+        dom_enc: &DomainEncoding,
+        sink: &mut impl EncodingSink,
+    ) -> Result<(), EncodingError> {
+        if !self.encoded {
+            let v = dom_enc.bool().get(&self.var).unwrap();
             let lit = if self.pol { plit(v) } else { nlit(v) };
             self.encoded = true;
             let mut cnf = Cnf::new();
             cnf.add_unit(lit);
-            Ok(EncodingResult::cnf(cnf))
+            sink.add_cnf(cnf);
         }
+        Ok(())
     }
 }

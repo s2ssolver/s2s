@@ -6,6 +6,7 @@ use rustsat_cadical::CaDiCaL;
 use super::DomainEncoding;
 
 use crate::domain::Domain;
+use crate::encode::EncodingSink;
 use crate::interval::Interval;
 use crate::sat::{plit, PVar};
 use crate::{
@@ -76,11 +77,14 @@ impl IntegerEncoder {
         }
     }
 
-    pub fn encode(&mut self, bounds: &Domain, encoding: &mut DomainEncoding) -> EncodingResult {
-        let res = self.encode_int_vars(bounds, encoding);
-
+    pub fn encode(
+        &mut self,
+        bounds: &Domain,
+        encoding: &mut DomainEncoding,
+        sink: &mut impl EncodingSink,
+    ) {
+        self.encode_int_vars(bounds, encoding, sink);
         self.last_domains = Some(bounds.clone());
-        res
     }
 
     fn get_last_bound(&self, var: &Variable) -> Option<Interval> {
@@ -93,9 +97,8 @@ impl IntegerEncoder {
         &mut self,
         bounds: &Domain,
         encoding: &mut DomainEncoding,
-    ) -> EncodingResult {
-        let mut res = EncodingResult::empty();
-
+        sink: &mut impl EncodingSink,
+    ) {
         for (int_var, bound) in bounds.iter_int().filter(|(v, _)| v.sort().is_int()) {
             let mut len_choices = vec![];
             let last_upper_bound = self
@@ -119,14 +122,22 @@ impl IntegerEncoder {
                 }
             }
             // Exactly one length must be true
-            let eo = self
+            match self
                 .var_len_eo_encoders
                 .entry(int_var.as_ref().clone())
                 .or_default()
-                .add(&len_choices);
-
-            res.extend(eo);
+                .add(&len_choices)
+            {
+                EncodingResult::Cnf(cnf, index_set) => {
+                    // Add the encoding to the sink
+                    sink.add_cnf(cnf);
+                    // Add the assumptions to the encoding
+                    for asm in index_set {
+                        sink.add_assumption(asm);
+                    }
+                }
+                EncodingResult::Trivial(_) => (),
+            }
         }
-        res
     }
 }

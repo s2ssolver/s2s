@@ -3,14 +3,13 @@
 
 use std::{cmp::Ordering, rc::Rc};
 
-use indexmap::IndexSet;
-use rustsat::{instances::Cnf, types::Clause};
+use rustsat::types::Clause;
 
 use smt_str::SmtString;
 
 use crate::{
     domain::Domain,
-    encode::{domain::DomainEncoding, EncodingError, EncodingResult, LiteralEncoder, LAMBDA},
+    encode::{domain::DomainEncoding, EncodeLiteral, EncodingError, EncodingSink, LAMBDA},
     node::Variable,
     sat::{nlit, plit, pvar},
 };
@@ -36,27 +35,26 @@ impl AssignmentEncoder {
         &mut self,
         dom: &Domain,
         dom_enc: &DomainEncoding,
-    ) -> Result<EncodingResult, EncodingError> {
+        sink: &mut impl EncodingSink,
+    ) -> Result<(), EncodingError> {
         let len_rhs = self.rhs.len();
         let bound = dom
             .get_string(&self.lhs)
             .and_then(|i| i.upper_finite())
             .unwrap() as usize;
 
-        let mut result = Cnf::new();
-        let mut assumptions = IndexSet::new();
         if bound < len_rhs {
             // Trivially unsatisfiable
             let p = pvar();
-            result.add_unit(plit(p));
-            assumptions.insert(nlit(p));
-            return Ok(EncodingResult::Cnf(result, assumptions.into()));
+            sink.add_unit(plit(p));
+            sink.add_assumption(nlit(p));
+            return Ok(());
         }
 
         let last_bound = self.last_bound.unwrap_or(0);
         if last_bound == bound {
             // Already encoded for this bound
-            return Ok(EncodingResult::Trivial(true));
+            return Ok(());
         }
 
         // Haven't encoded anything yet, was trivially unsatisfiable in previous call
@@ -65,7 +63,7 @@ impl AssignmentEncoder {
                 for i in 0..len_rhs {
                     let chr = self.rhs[i];
                     let sub_var = dom_enc.string().get_sub(&self.lhs, i, chr).unwrap();
-                    result.add_unit(plit(sub_var));
+                    sink.add_unit(plit(sub_var));
                 }
                 if bound > len_rhs {
                     // Make sure the rest of lhs is empty
@@ -73,7 +71,7 @@ impl AssignmentEncoder {
                         .string()
                         .get_sub(&self.lhs, len_rhs, LAMBDA)
                         .unwrap();
-                    result.add_unit(plit(lambda_sub));
+                    sink.add_unit(plit(lambda_sub));
                 }
             }
             Ordering::Equal => {
@@ -83,33 +81,31 @@ impl AssignmentEncoder {
                     .get_sub(&self.lhs, len_rhs, LAMBDA)
                     .unwrap();
 
-                result.add_unit(plit(lambda_sub));
+                sink.add_unit(plit(lambda_sub));
             }
             Ordering::Greater => (), // Already encoded that remainder of lhs is empty
         }
 
         self.last_bound = Some(bound);
 
-        return Ok(EncodingResult::Cnf(result, assumptions.into()));
+        return Ok(());
     }
 
     fn encode_ineq(
         &mut self,
         dom: &Domain,
         dom_enc: &DomainEncoding,
-    ) -> Result<EncodingResult, EncodingError> {
+        sink: &mut impl EncodingSink,
+    ) -> Result<(), EncodingError> {
         let len_rhs = self.rhs.len();
         let bound = dom
             .get_string(&self.lhs)
             .and_then(|i| i.upper_finite())
             .unwrap() as usize;
 
-        let mut result = EncodingResult::empty();
-
         if bound < len_rhs {
             // Trivially satisfiable
-
-            return Ok(result);
+            return Ok(());
         }
 
         let last_bound = self.last_bound.unwrap_or(0);
@@ -132,14 +128,14 @@ impl AssignmentEncoder {
                         .unwrap();
 
                     clause.add(nlit(lambda_sub));
-                    result.add_clause(clause);
+                    sink.add_clause(clause);
                 }
                 Ordering::Equal => {
                     // Select the clause, in next iteration we will make sure the rest of lhs can also be non-empty
                     let selector = pvar();
                     clause.add(nlit(selector));
-                    result.add_clause(clause);
-                    result.add_assumption(plit(selector));
+                    sink.add_clause(clause);
+                    sink.add_assumption(plit(selector));
                 }
                 Ordering::Greater => (),
             }
@@ -147,11 +143,11 @@ impl AssignmentEncoder {
 
         self.last_bound = Some(bound);
 
-        Ok(result)
+        Ok(())
     }
 }
 
-impl LiteralEncoder for AssignmentEncoder {
+impl EncodeLiteral for AssignmentEncoder {
     fn _is_incremental(&self) -> bool {
         true
     }
@@ -162,13 +158,14 @@ impl LiteralEncoder for AssignmentEncoder {
 
     fn encode(
         &mut self,
-        bounds: &Domain,
-        substitution: &DomainEncoding,
-    ) -> Result<EncodingResult, EncodingError> {
+        dom: &Domain,
+        dom_enc: &DomainEncoding,
+        sink: &mut impl EncodingSink,
+    ) -> Result<(), EncodingError> {
         if self.sign {
-            self.encode_eq(bounds, substitution)
+            self.encode_eq(dom, dom_enc, sink)
         } else {
-            self.encode_ineq(bounds, substitution)
+            self.encode_ineq(dom, dom_enc, sink)
         }
     }
 }
