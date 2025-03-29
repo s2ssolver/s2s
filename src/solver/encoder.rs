@@ -90,10 +90,15 @@ impl DefintionEncoder {
         let mut sink = CadicalEncodingSink::new(cadical);
 
         // Encode the domain
+        let mut nclauses = sink.nclauses;
         self.domain_encoder.encode(bounds, &mut sink);
         let mut assumptions = std::mem::take(&mut sink.assumptions);
 
-        log::debug!("Encoded domain ({:?})", t.elapsed());
+        log::debug!(
+            "Encoded domain ({} clauses, {:?})",
+            sink.nclauses - nclauses,
+            t.elapsed()
+        );
 
         // TODO: Instead let domain_encoder return the encoding of the domain or an Rc<DomainEncoding>
         let dom = self.domain_encoder.encoding().clone();
@@ -103,9 +108,15 @@ impl DefintionEncoder {
             let t = Instant::now();
             sink.clear_sub();
             sink.clear_assumptions();
+            nclauses = sink.nclauses;
             let lit_assumptions = self.encode_def(&def, bounds, &dom, mngr, &mut sink)?;
             assumptions.extend(lit_assumptions);
-            log::debug!("Encoded {} ({:?})", def, t.elapsed());
+            log::info!(
+                "Encoded {} ({} clauses, {:?})",
+                def,
+                sink.nclauses - nclauses,
+                t.elapsed()
+            );
         }
 
         Ok(assumptions.into_iter().collect())
@@ -223,6 +234,8 @@ pub(crate) struct CadicalEncodingSink<'a> {
     assumptions: IndexSet<Lit>,
 
     sub: Option<Clause>,
+
+    nclauses: usize,
 }
 
 impl<'a> CadicalEncodingSink<'a> {
@@ -231,6 +244,7 @@ impl<'a> CadicalEncodingSink<'a> {
             cadical,
             assumptions: IndexSet::new(),
             sub: None,
+            nclauses: 0,
         }
     }
 }
@@ -258,22 +272,11 @@ impl<'a> EncodingSink for CadicalEncodingSink<'a> {
                 clause.add(*l);
             }
         }
+        self.nclauses += 1;
         self.cadical.add_clause(clause).unwrap();
     }
 
     fn add_assumption(&mut self, assumption: Lit) {
         self.assumptions.insert(assumption);
-    }
-
-    fn add_cnf(&mut self, mut cnf: rustsat::instances::Cnf) {
-        if let Some(sub) = &self.sub {
-            // Add all literals in sub to the clause
-            cnf.iter_mut().for_each(|clause| {
-                for l in sub.iter() {
-                    clause.add(*l);
-                }
-            });
-        }
-        self.cadical.add_cnf(cnf).unwrap();
     }
 }
