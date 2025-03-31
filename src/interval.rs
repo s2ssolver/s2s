@@ -87,6 +87,48 @@ impl std::ops::Mul for BoundValue {
     }
 }
 
+impl std::ops::Add for BoundValue {
+    type Output = BoundValue;
+
+    fn add(self, rhs: Self) -> Self::Output {
+        match (self, rhs) {
+            (BoundValue::Num(n1), BoundValue::Num(n2)) => match n1.checked_add(n2) {
+                Some(v) => BoundValue::Num(v),
+                None => {
+                    if n1.signum() == n2.signum() {
+                        BoundValue::PosInf
+                    } else {
+                        BoundValue::NegInf
+                    }
+                }
+            },
+            (BoundValue::PosInf, _) | (_, BoundValue::PosInf) => BoundValue::PosInf,
+            (BoundValue::NegInf, _) | (_, BoundValue::NegInf) => BoundValue::NegInf,
+        }
+    }
+}
+
+impl std::ops::Sub for BoundValue {
+    type Output = BoundValue;
+
+    fn sub(self, rhs: Self) -> Self::Output {
+        match (self, rhs) {
+            (BoundValue::Num(n1), BoundValue::Num(n2)) => match n1.checked_sub(n2) {
+                Some(v) => BoundValue::Num(v),
+                None => {
+                    if n1.signum() == n2.signum() {
+                        BoundValue::PosInf
+                    } else {
+                        BoundValue::NegInf
+                    }
+                }
+            },
+            (BoundValue::PosInf, _) | (_, BoundValue::PosInf) => BoundValue::PosInf,
+            (BoundValue::NegInf, _) | (_, BoundValue::NegInf) => BoundValue::NegInf,
+        }
+    }
+}
+
 impl BoundValue {
     /// Returns `Some(n=` if the value is a finite integer `n` and `None` otherwise.
     pub fn as_num(&self) -> Option<i32> {

@@ -123,8 +123,15 @@ impl Rewriter {
         let mut applied_children = Vec::with_capacity(node.children().len());
         let mut applied = false;
 
-        let asserted_context = node::get_entailed(node);
-        let mut asserted_for_children = asserted.union(&asserted_context).cloned().collect();
+        let mut asserted_for_children = asserted.clone();
+        // remove the node from the asserted set, otherwise we would always replace asserted nodes with true
+        asserted_for_children.remove(node);
+        if *node.kind() == NodeKind::And {
+            // add all siblings to the asserted set
+            for child in node.children() {
+                asserted_for_children.insert(child.clone());
+            }
+        }
 
         for child in node.children() {
             match self.pass_equivalence(child, &mut asserted_for_children, mngr) {
@@ -146,13 +153,7 @@ impl Rewriter {
         for rule in self.equiv_rules.iter() {
             if let Some(rw) = rule.apply(&new_node, asserted, mngr) {
                 log::debug!("({:?}) {} ==> {}", rule, new_node, rw);
-                // if the node is in the asserted set, we also add the new node
-                if asserted.contains(node) {
-                    asserted.remove(node);
-                    asserted.insert(rw.clone());
-                }
                 new_node = rw;
-
                 applied = true;
             }
         }
@@ -246,6 +247,7 @@ impl Default for Rewriter {
         equiv_rules.push(Box::new(int::GreaterTrivial));
         equiv_rules.push(Box::new(int::EqualityTrivial));
         equiv_rules.push(Box::new(int::DistributeNeg));
+        // does not seem to help
         equiv_rules.push(Box::new(int::NormalizeIneq));
         equiv_rules.push(Box::new(int::NotComparison));
         equiv_rules.push(Box::new(int::IntForwardReasoning));

@@ -1,6 +1,9 @@
 use std::{collections::HashSet, fmt::Display, rc::Rc};
 
-use crate::{interval::Interval, node::{NodeKind, Sorted, Variable}};
+use crate::{
+    interval::Interval,
+    node::{NodeKind, Sorted, Variable},
+};
 
 use super::*;
 
@@ -197,23 +200,28 @@ impl EquivalenceRule for NotComparison {
 pub(super) struct NormalizeIneq;
 impl EquivalenceRule for NormalizeIneq {
     fn apply(&self, node: &Node, _: &IndexSet<Node>, mngr: &mut NodeManager) -> Option<Node> {
-        if let Some((lhs, op, rhs)) = normalize_ineq(node) {
+        if let Some(normed) = normalize_ineq(node) {
             let mut new_children = Vec::new();
-            for (k, v) in lhs.coeffs {
-                if v == 0 {
+            for (k, v) in &normed.lhs.coeffs {
+                if *v == 0 {
                     continue;
                 }
-                let v_node = mngr.const_int(v);
-                if v == 1 {
-                    new_children.push(k);
+                let v_node = mngr.const_int(*v);
+                if *v == 1 {
+                    new_children.push(k.clone());
                 } else {
                     let mul = mngr.mul(vec![v_node, k.clone()]);
                     new_children.push(mul);
                 }
             }
             let lhs = mngr.add(new_children);
-            let rhs = mngr.const_int(rhs);
-            let new_node = mngr.create_node(op, vec![lhs, rhs]);
+            let rhs = mngr.const_int(normed.rhs);
+            let new_node = if normed.pol() {
+                mngr.create_node(normed.op, vec![lhs, rhs])
+            } else {
+                let t = mngr.create_node(normed.op, vec![lhs, rhs]);
+                mngr.not(t)
+            };
             if new_node == *node {
                 None
             } else {
@@ -225,7 +233,99 @@ impl EquivalenceRule for NormalizeIneq {
     }
 }
 
-pub fn normalize_ineq(node: &Node) -> Option<(LinTerm, NodeKind, i64)> {
+/// A term describing a linear integer relation.
+/// The term is of the form `LHS op RHS`, where `LHS` is a linear term, `op` is a comparison operator, and `RHS` is a constant integer.
+/// The polarity of the relation is also stored, which indicates whether the relation is positive or negative.
+pub(super) struct LinearIntRealtion {
+    lhs: LinTerm,
+    op: NodeKind,
+    pol: bool,
+    rhs: i64,
+}
+
+impl Display for LinearIntRealtion {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if self.pol {
+            write!(f, "{} {} {}", self.lhs, self.op, self.rhs)
+        } else {
+            write!(f, "not({} {} {})", self.lhs, self.op, self.rhs)
+        }
+    }
+}
+
+impl LinearIntRealtion {
+    fn new(lhs: LinTerm, op: NodeKind, pol: bool, rhs: i64) -> Self {
+        LinearIntRealtion { lhs, op, pol, rhs }
+    }
+
+    pub fn mult(&mut self, i: i64) {
+        if i == 0 {
+            self.lhs.coeffs.clear();
+            self.lhs.constant = 0;
+            self.rhs = 0;
+        } else {
+            for (_, v) in self.lhs.coeffs.iter_mut() {
+                *v = v.checked_mul(i).unwrap();
+            }
+            self.lhs.constant = self.lhs.constant.checked_mul(i).unwrap();
+            self.rhs = self.rhs.checked_mul(i).unwrap();
+            if i < 0 {
+                self.op = match self.op {
+                    NodeKind::Lt => NodeKind::Gt,
+                    NodeKind::Le => NodeKind::Ge,
+                    NodeKind::Gt => NodeKind::Lt,
+                    NodeKind::Ge => NodeKind::Le,
+                    NodeKind::Eq => NodeKind::Eq,
+                    _ => unreachable!(),
+                };
+            }
+        }
+    }
+
+    pub fn flip_polarity(&self) -> Self {
+        if self.op == NodeKind::Eq {
+            // flip polarity
+            return LinearIntRealtion {
+                lhs: self.lhs.clone(),
+                op: self.op.clone(),
+                pol: !self.pol,
+                rhs: self.rhs,
+            };
+        } else {
+            let new_op = match self.op {
+                NodeKind::Lt => NodeKind::Ge,
+                NodeKind::Le => NodeKind::Gt,
+                NodeKind::Gt => NodeKind::Le,
+                NodeKind::Ge => NodeKind::Lt,
+                _ => unreachable!(),
+            };
+            LinearIntRealtion {
+                lhs: self.lhs.clone(),
+                op: new_op,
+                pol: self.pol,
+                rhs: self.rhs,
+            }
+        }
+    }
+
+    pub fn lhs(&self) -> &LinTerm {
+        &self.lhs
+    }
+
+    pub fn rhs(&self) -> i64 {
+        self.rhs
+    }
+
+    pub fn op(&self) -> &NodeKind {
+        &self.op
+    }
+
+    pub fn pol(&self) -> bool {
+        self.pol
+    }
+}
+
+pub fn normalize_ineq(node: &Node) -> Option<LinearIntRealtion> {
     match node.kind() {
         NodeKind::Eq | NodeKind::Lt | NodeKind::Le | NodeKind::Gt | NodeKind::Ge
             if node.children()[0].sort().is_int() && node.children()[1].sort().is_int() =>
@@ -242,37 +342,40 @@ pub fn normalize_ineq(node: &Node) -> Option<(LinTerm, NodeKind, i64)> {
                 *new_lhs.entry(k).or_insert(0) -= v;
             }
             let new_constant = lin_rhs.constant - lin_lhs.constant;
+            let mut norm = LinearIntRealtion::new(
+                LinTerm {
+                    coeffs: new_lhs,
+                    constant: 0,
+                },
+                node.kind().clone(),
+                true,
+                new_constant,
+            );
 
-            if new_constant < 0 {
-                //Multiply both sides by -1
-                for (_, v) in new_lhs.iter_mut() {
-                    *v *= -1;
-                }
-                return Some((
-                    LinTerm {
-                        coeffs: new_lhs,
-                        constant: 0,
-                    },
-                    match node.kind() {
-                        NodeKind::Eq => NodeKind::Eq,
-                        NodeKind::Lt => NodeKind::Gt,
-                        NodeKind::Le => NodeKind::Ge,
-                        NodeKind::Gt => NodeKind::Lt,
-                        NodeKind::Ge => NodeKind::Le,
-                        _ => unreachable!(),
-                    },
-                    -new_constant,
-                ));
-            } else {
-                return Some((
-                    LinTerm {
-                        coeffs: new_lhs,
-                        constant: 0,
-                    },
-                    node.kind().clone(),
-                    new_constant,
-                ));
+            // In normal form, we enforce that the constant term is non-negative.
+            if norm.rhs() < 0 {
+                // Multiply both sides by -1
+                norm.mult(-1);
             }
+            if norm.rhs() == 0 && norm.op() == &NodeKind::Eq {
+                // If we have and equality or disequality with a zero right hand side, we normalize by enforcing the first constant to be positive
+                if norm
+                    .lhs()
+                    .coeffs
+                    .first()
+                    .map(|(_, s)| *s < 0)
+                    .unwrap_or(false)
+                {
+                    norm.mult(-1);
+                }
+            }
+
+            Some(norm)
+        }
+        NodeKind::Not => {
+            let child = node.children().first().unwrap();
+            let normed = normalize_ineq(child)?;
+            Some(normed.flip_polarity())
         }
         _ => None,
     }
@@ -567,8 +670,8 @@ pub(super) struct IntForwardReasoning;
 
 impl IntForwardReasoning {
     fn apply(fact: &Node, other: &Node, mngr: &mut NodeManager) -> Option<Node> {
-        let (lhs_fact, op_fact, rhs_fact) = normalize_ineq(fact)?;
-        let (l2, op2, r2) = normalize_ineq(other)?;
+        let fact_norm = normalize_ineq(fact)?;
+        let other_norm = normalize_ineq(other)?;
         // We check if they are
         // - conflicting: `fact` and `other` cannot be true at the same time. In that case, we return false.
         // - valid: `fact` implies `other`. In that case, we return true.
@@ -580,34 +683,55 @@ impl IntForwardReasoning {
         /// If they are conflicting, it returns false.
         /// If the the first implies the second, it returns true.
         /// Otherwise, it returns None.
-        fn compare(op_fact: &NodeKind, r_fact: i64, op2: &NodeKind, r2: i64) -> Option<bool> {
-            fn to_interval(op: &NodeKind, r: i64) -> Interval {
-                match op {
+        fn compare(fact: LinearIntRealtion, other: LinearIntRealtion) -> Option<bool> {
+            fn to_interval(rel: &LinearIntRealtion) -> Vec<Interval> {
+                let op = &rel.op;
+                let r = rel.rhs;
+                let interval = match op {
                     NodeKind::Lt => Interval::bounded_above(r - 1),
                     NodeKind::Le => Interval::bounded_above(r),
                     NodeKind::Eq => Interval::new(r, r),
                     NodeKind::Ge => Interval::bounded_below(r),
                     NodeKind::Gt => Interval::bounded_below(r + 1),
                     _ => unreachable!(),
+                };
+                if rel.pol {
+                    vec![interval]
+                } else {
+                    // If the polarity is negative, we compute the complement of the interval [l, u]
+                    // Left: (-inf, l-1]
+                    // Right: [u+1, +inf)
+                    let left = Interval::bounded_above(interval.lower() - 1.into());
+                    let right = Interval::bounded_below(interval.upper() + 1.into());
+                    vec![left, right]
                 }
             }
 
-            let left = to_interval(op_fact, r_fact);
-            let right = to_interval(op2, r2);
+            let fact_interval = to_interval(&fact);
+            let other_interval = to_interval(&other);
 
-            if left.intersect(right).is_empty() {
-                Some(false)
-            } else if left.is_subset(right) {
-                // The asserted condition is more restrictive than the fact
-
-                Some(true)
-            } else {
-                None
+            let mut disjoint = true;
+            let mut subsumed = true;
+            for left in fact_interval {
+                for right in &other_interval {
+                    // Check if the intervals are disjoint
+                    disjoint &= left.intersect(*right).is_empty();
+                    // Check if the fact is a subset of the other
+                    subsumed &= left.is_subset(*right);
+                }
             }
+            debug_assert!(!disjoint || !subsumed);
+            if disjoint {
+                return Some(false);
+            }
+            if subsumed {
+                return Some(true);
+            }
+            None
         }
 
-        if lhs_fact == l2 {
-            if compare(&op_fact, rhs_fact, &op2, r2)? {
+        if fact_norm.lhs == other_norm.lhs {
+            if compare(fact_norm, other_norm)? {
                 return Some(mngr.ttrue());
             } else {
                 return Some(mngr.ffalse());
@@ -626,7 +750,12 @@ impl EquivalenceRule for IntForwardReasoning {
         mngr: &mut NodeManager,
     ) -> Option<Node> {
         match node.kind() {
-            NodeKind::Lt | NodeKind::Le | NodeKind::Gt | NodeKind::Ge | NodeKind::Eq => {
+            NodeKind::Lt
+            | NodeKind::Le
+            | NodeKind::Gt
+            | NodeKind::Ge
+            | NodeKind::Eq
+            | NodeKind::Not => {
                 for fact in asserted.iter().filter(|a| *a != node) {
                     if let Some(equiv) = IntForwardReasoning::apply(fact, node, mngr) {
                         return Some(equiv);
