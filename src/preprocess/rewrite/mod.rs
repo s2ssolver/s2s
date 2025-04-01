@@ -2,6 +2,7 @@
 mod boolean;
 mod entailed;
 mod factors;
+mod fwd;
 mod independent;
 mod int;
 pub mod levis;
@@ -252,11 +253,14 @@ impl Default for Rewriter {
         // does not seem to help
         equiv_rules.push(Box::new(int::NormalizeIneq));
         equiv_rules.push(Box::new(int::NotComparison));
-        equiv_rules.push(Box::new(int::IntForwardReasoning));
+
+        equiv_rules.push(Box::new(fwd::LinIntForward));
 
         equiv_rules.push(Box::new(strlen::StringLengthAddition));
         equiv_rules.push(Box::new(strlen::ConstStringLength));
         equiv_rules.push(Box::new(strlen::LengthTrivial));
+        equiv_rules.push(Box::new(strlen::TrivialLenghtConstraints));
+
         // Hurts forward reasoning
         //equiv_rules.push(Box::new(strlen::LengthToReg));
 
@@ -284,12 +288,13 @@ impl Default for Rewriter {
         equiv_rules.push(Box::new(str_int::FromIntConstant));
         equiv_rules.push(Box::new(str_int::VarEqConstantToInt));
 
+        /* Entailment rules */
         let mut entail_rules: Vec<Box<dyn EntailmentRule>> = Vec::new();
         entail_rules.push(Box::new(regex::ConstantPrefixSuffix));
         entail_rules.push(Box::new(
             independent::IndependentVariableAssignment::default(),
         ));
-        entail_rules.push(Box::new(int::ZeroLengthEpsilon));
+        entail_rules.push(Box::new(strlen::ZeroLengthEpsilon));
         entail_rules.push(Box::new(levis::LevisRule));
         entail_rules.push(Box::new(entailed::EntailedBooleanVars));
         entail_rules.push(Box::new(entailed::EntailedAssigments));
