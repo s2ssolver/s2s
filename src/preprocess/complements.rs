@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 use indexmap::IndexMap;
 use smt_str::{
     alphabet::CharRange,
@@ -13,7 +11,7 @@ use smallvec::smallvec;
 #[derive(Default)]
 pub struct ReCompRemover {
     cache: IndexMap<Regex, Regex>,
-    range_cache: HashMap<CharRange, Regex>,
+    range_cache: IndexMap<CharRange, Regex>,
 }
 
 impl ReCompRemover {

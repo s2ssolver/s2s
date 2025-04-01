@@ -1,4 +1,4 @@
-use std::{collections::HashMap, rc::Rc};
+use std::rc::Rc;
 
 use indexmap::IndexMap;
 use itertools::Itertools;
@@ -24,14 +24,14 @@ use super::DomainEncoding;
 
 #[derive(Clone, Debug)]
 pub struct StringDomain {
-    substitutions: HashMap<(Rc<Variable>, usize, SmtChar), PVar>,
+    substitutions: IndexMap<(Rc<Variable>, usize, SmtChar), PVar>,
     lengths: IndexMap<(Variable, usize), PVar>,
 }
 
 impl StringDomain {
     pub fn new() -> Self {
         Self {
-            substitutions: HashMap::new(),
+            substitutions: IndexMap::new(),
             lengths: IndexMap::new(),
         }
     }
@@ -102,7 +102,7 @@ impl StringDomain {
     }
 
     pub(crate) fn get_model(&self, solver: &CaDiCaL, bounds: &Domain) -> Assignment {
-        let mut subs: HashMap<Rc<Variable>, Vec<Option<SmtChar>>> = HashMap::new();
+        let mut subs: IndexMap<Rc<Variable>, Vec<Option<SmtChar>>> = IndexMap::new();
         // initialize substitutions
         let vars = self.iter_substitutions().map(|(var, _, _, _)| var).unique();
         for var in vars {

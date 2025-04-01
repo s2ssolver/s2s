@@ -1,8 +1,9 @@
 use std::{
-    collections::HashMap,
     fmt::{Display, Formatter},
     rc::Rc,
 };
+
+use indexmap::IndexMap;
 
 use super::{canonical::Assignment, Node, NodeKind, NodeManager, Variable};
 
@@ -16,7 +17,7 @@ use super::{canonical::Assignment, Node, NodeKind, NodeManager, Variable};
 /// Substitutions might be ciclic, but they are always guaranteed to terminate.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct VarSubstitution {
-    map: HashMap<Rc<Variable>, Node>,
+    map: IndexMap<Rc<Variable>, Node>,
 }
 
 impl VarSubstitution {

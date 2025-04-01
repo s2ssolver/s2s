@@ -1,6 +1,6 @@
 //! Simplification for variables the occur only once in the formula.
 
-use std::{collections::HashMap, rc::Rc};
+use std::rc::Rc;
 
 use smt_str::{re::Regex, sampling::sample_regex};
 
@@ -11,11 +11,11 @@ use super::*;
 /// Finds variables that occur only once in the formula and replaces them with a constant, based on the literal they occur in.
 #[derive(Clone, Default, Debug)]
 pub(super) struct IndependentVariableAssignment {
-    vcount: HashMap<Rc<Variable>, usize>,
+    vcount: IndexMap<Rc<Variable>, usize>,
 }
 
 impl IndependentVariableAssignment {
-    fn count_variables(node: &Node, counter: &mut HashMap<Rc<Variable>, usize>) {
+    fn count_variables(node: &Node, counter: &mut IndexMap<Rc<Variable>, usize>) {
         match node.kind() {
             NodeKind::Variable(v) => {
                 *counter.entry(v.clone()).or_default() += 1;

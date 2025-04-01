@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use indexmap::{IndexMap, IndexSet};
 
 use super::Literal;
 
@@ -13,8 +13,8 @@ use super::Literal;
 pub fn partition_by_vars(lits: &[Literal]) -> Vec<Vec<Literal>> {
     // Build a graph where each literal is a vertex and there is an edge between two literals if they share a variable
 
-    let mut lit2vars = HashMap::new();
-    let mut var2lits = HashMap::new();
+    let mut lit2vars = IndexMap::new();
+    let mut var2lits = IndexMap::new();
     for lit in lits {
         let vars = lit.variables();
         for v in &vars {
@@ -23,7 +23,7 @@ pub fn partition_by_vars(lits: &[Literal]) -> Vec<Vec<Literal>> {
         lit2vars.insert(lit, vars);
     }
 
-    let mut edges = HashMap::new();
+    let mut edges = IndexMap::new();
     for lit in lits {
         for var in lit.variables() {
             // Find all literals that share this variable
@@ -38,7 +38,7 @@ pub fn partition_by_vars(lits: &[Literal]) -> Vec<Vec<Literal>> {
     }
 
     // Find the connected components of the graph using DFS until all vertices are visited
-    let mut unvisited = lits.iter().collect::<HashSet<_>>();
+    let mut unvisited = lits.iter().collect::<IndexSet<_>>();
     let mut components = Vec::new();
     while let Some(&lit) = unvisited.iter().next() {
         let mut stack = vec![lit];

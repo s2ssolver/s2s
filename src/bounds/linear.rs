@@ -1,8 +1,8 @@
 //! Linear Bound Refinement
 
-use std::{collections::HashMap, rc::Rc};
+use std::rc::Rc;
 
-use indexmap::IndexSet;
+use indexmap::{IndexMap, IndexSet};
 
 use crate::{
     interval::{BoundValue, Interval},
@@ -310,7 +310,7 @@ impl LinearRefiner {
 /// Every assignment of the variables that satisfies the word equation also satisfies the linear constraint.
 /// The other way around is not necessarily true.
 pub fn length_abstraction(weq: &WordEquation) -> LinearConstraint {
-    let mut var_occurrences = HashMap::new();
+    let mut var_occurrences = IndexMap::new();
     let mut constant_counter = 0;
     let lhs = weq.lhs();
     let rhs = weq.rhs();

@@ -1,6 +1,6 @@
-use std::{collections::HashMap, fmt::Display, ops::Index, rc::Rc};
+use std::{fmt::Display, ops::Index, rc::Rc};
 
-use indexmap::IndexSet;
+use indexmap::{IndexMap, IndexSet};
 use quickcheck::Arbitrary;
 
 use crate::node::{Sort, Sorted, Variable};
@@ -262,7 +262,7 @@ impl LinearArithTerm {
         if self.canonical {
             return;
         }
-        let mut factors = HashMap::new();
+        let mut factors = IndexMap::new();
         let mut residual = 0;
         for f in self.factors.iter() {
             match f {

@@ -559,7 +559,7 @@ impl ZeroLengthEpsilon {
     fn apply(lhs: &Node, mngr: &mut NodeManager) -> Option<VarSubstitution> {
         // Collects all in the given node of sort string that need to be replaced by epsilon
         // Returns false if a variable is found that is not of sort string
-        fn collect_vars(n: &Node, in_len: bool, vars: &mut HashSet<Rc<Variable>>) -> bool {
+        fn collect_vars(n: &Node, in_len: bool, vars: &mut IndexSet<Rc<Variable>>) -> bool {
             match n.kind() {
                 NodeKind::Length => {
                     assert!(!in_len);
@@ -605,7 +605,7 @@ impl ZeroLengthEpsilon {
                 _ => false,
             }
         }
-        let mut vars = HashSet::new();
+        let mut vars = IndexSet::new();
         if collect_vars(lhs, false, &mut vars) && !vars.is_empty() {
             // set all variables to epsilon
             let mut subs = VarSubstitution::default();

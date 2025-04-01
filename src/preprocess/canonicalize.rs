@@ -13,7 +13,7 @@ use indexmap::IndexMap;
 
 use smt_str::re::{ReOp, Regex};
 
-use std::{collections::HashMap, rc::Rc};
+use std::rc::Rc;
 
 pub fn canonicalize(node: &Node, mngr: &mut NodeManager) -> Node {
     let mut canonicalizer = Canonicalizer::default();
@@ -25,7 +25,7 @@ pub fn canonicalize(node: &Node, mngr: &mut NodeManager) -> Node {
 struct Canonicalizer {
     /// Identities of the form t = v, where t is a term and v is a variable.
     /// Theses dentities are introduced during the canonicalization process if a term is not in canonical form.
-    def_identities: HashMap<Node, Rc<Variable>>,
+    def_identities: IndexMap<Node, Rc<Variable>>,
     patterns: IndexMap<Node, Pattern>,
     cache: IndexMap<Node, Node>,
 }
