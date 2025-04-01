@@ -1,9 +1,6 @@
 use std::{collections::HashSet, fmt::Display, rc::Rc};
 
-use crate::{
-    interval::Interval,
-    node::{NodeKind, Sorted, Variable},
-};
+use crate::node::{NodeKind, Sorted};
 
 use super::*;
 

@@ -1,8 +1,13 @@
-use crate::node::{Node, NodeKind, NodeManager};
+use std::rc::Rc;
+
+use crate::{
+    interval::{BoundValue, Interval},
+    node::{Node, NodeKind, NodeManager, Sorted, VarSubstitution, Variable},
+};
 
 use super::{
     int::{is_const_int, linearlize_term, normalize_ineq},
-    EquivalenceRule,
+    EntailmentRule, EquivalenceRule,
 };
 
 use indexmap::IndexSet;
@@ -326,3 +331,81 @@ impl EntailmentRule for ZeroLengthEpsilon {
     }
 }
 
+/// Finds asserted terms of the form `L # c` where L is a linear combination of string lengths
+/// and c is a constant integer.
+/// Returns `false` if `c` is not in the range of possible value `L` can take.
+#[derive(Clone, Default, Debug)]
+pub(super) struct TrivialLenghtConstraints;
+
+impl EquivalenceRule for TrivialLenghtConstraints {
+    fn apply(&self, node: &Node, _: &IndexSet<Node>, mngr: &mut NodeManager) -> Option<Node> {
+        let normed = normalize_ineq(node)?;
+
+        let all_str_len = normed
+            .lhs()
+            .coeffs
+            .iter()
+            .all(|(n, _)| matches!(n.kind(), NodeKind::Length));
+
+        if all_str_len {
+            // Compute the range of possible values for L, which is
+            // - [0, +inf] if all coefficients are positive
+            // - [-inf, 0] if all coefficients are negative
+            // - [0, 0] if all coefficients are zero
+            // - [-int, +inf] if some coefficients are positive and some are negative
+
+            let coeffs = normed
+                .lhs()
+                .coeffs
+                .iter()
+                .map(|(_, v)| *v)
+                .collect::<Vec<_>>();
+            let all_positive = coeffs.iter().all(|v| *v > 0);
+            let all_negative = coeffs.iter().all(|v| *v < 0);
+            let all_zero = coeffs.iter().all(|v| *v == 0);
+            let range = match (all_positive, all_negative, all_zero) {
+                (true, false, false) => Interval::bounded_below(0),
+                (false, true, false) => Interval::bounded_above(0),
+                (false, false, true) => Interval::new(0, 0),
+                (false, false, false) => Interval::unbounded(),
+                _ => unreachable!(),
+            };
+
+            // check if we can cast to i32
+            if normed.rhs() > i32::MAX as i64 || normed.rhs() < i32::MIN as i64 {
+                return None;
+            }
+
+            let c = BoundValue::Num(normed.rhs() as i32);
+            match normed.op() {
+                NodeKind::Lt if normed.pol() => {
+                    if c <= range.lower() {
+                        return Some(mngr.ffalse());
+                    }
+                }
+                NodeKind::Le if normed.pol() => {
+                    if c < range.lower() {
+                        return Some(mngr.ffalse());
+                    }
+                }
+                NodeKind::Eq if normed.pol() => {
+                    if c < range.lower() || c > range.upper() {
+                        return Some(mngr.ffalse());
+                    }
+                }
+                NodeKind::Ge if normed.pol() => {
+                    if c > range.upper() {
+                        return Some(mngr.ffalse());
+                    }
+                }
+                NodeKind::Gt if normed.pol() => {
+                    if c >= range.upper() {
+                        return Some(mngr.ffalse());
+                    }
+                }
+                _ => return None,
+            }
+        }
+        return None;
+    }
+}
