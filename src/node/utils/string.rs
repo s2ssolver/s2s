@@ -4,7 +4,7 @@ use smt_str::{SmtChar, SmtString};
 
 use crate::node::{Node, NodeKind, NodeManager, Sorted, Variable};
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Symbol {
     /// A constant character
     Const(SmtChar),
@@ -21,6 +21,10 @@ impl Symbol {
 
     pub fn is_variable(&self) -> bool {
         matches!(self, Symbol::Variable(_))
+    }
+
+    pub fn is_other(&self) -> bool {
+        matches!(self, Symbol::Other(_))
     }
 }
 

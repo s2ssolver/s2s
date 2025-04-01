@@ -169,6 +169,7 @@ impl Rewriter {
                 applied = true;
             }
         }
+        // Also cache if not applied to not traverse the same node again
         self.rewrite_cache.insert(node.clone(), new_node.clone());
 
         if applied {
@@ -283,6 +284,7 @@ impl Default for Rewriter {
         equiv_rules.push(Box::new(weq::StripLCP));
         equiv_rules.push(Box::new(weq::StripLCS));
         equiv_rules.push(Box::new(weq::LengthReasoning));
+        equiv_rules.push(Box::new(weq::ParikhMatrixMismatch));
 
         equiv_rules.push(Box::new(factors::TrivialPrefixof));
         equiv_rules.push(Box::new(factors::TrivialSuffixof));

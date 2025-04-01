@@ -5,6 +5,7 @@ use crate::node::{
 };
 use indexmap::IndexMap;
 use num_integer::Integer;
+
 use smt_str::SmtChar;
 
 /// Tries to strip the longest common constant prefix from the two sides of a word equation.
@@ -168,6 +169,80 @@ impl EquivalenceRule for LengthReasoning {
             }
         }
         None
+    }
+}
+
+/// Computes the Parikh matrix of both sides of the equation.
+/// If there is a prefix of length `i` that has the same occurrences variables but different constants, then the equation is unsatisfiable.
+/// For example `aX = Xb` is unsatisfiable because `a` and `b` are different constants but `X` is the same variable.
+/// These prefixes are obtained using the parikh matrix.
+#[derive(Debug, Clone, Copy)]
+pub(super) struct ParikhMatrixMismatch;
+
+impl ParikhMatrixMismatch {
+    fn is_unsat(lhs: impl Iterator<Item = Symbol>, rhs: impl Iterator<Item = Symbol>) -> bool {
+        let mut lhs_map: IndexMap<Symbol, u32> = IndexMap::new();
+        let mut rhs_map: IndexMap<Symbol, u32> = IndexMap::new();
+        let mut keys = IndexSet::new();
+
+        for (lhs_symbol, rhs_symbol) in lhs.zip(rhs) {
+            if lhs_symbol.is_other() || rhs_symbol.is_other() {
+                return false;
+            }
+
+            *lhs_map.entry(lhs_symbol.clone()).or_insert(0) += 1;
+            *rhs_map.entry(rhs_symbol.clone()).or_insert(0) += 1;
+            keys.insert(lhs_symbol);
+            keys.insert(rhs_symbol);
+
+            let mut constant_mismatch = false;
+            let mut variable_mismatch = false;
+            for k in &keys {
+                let lhs_count = lhs_map.get(k).unwrap_or(&0);
+                let rhs_count = rhs_map.get(k).unwrap_or(&0);
+                if lhs_count != rhs_count {
+                    if k.is_variable() {
+                        variable_mismatch = true;
+                    } else {
+                        constant_mismatch = true;
+                    }
+                }
+            }
+            if constant_mismatch && !variable_mismatch {
+                return true;
+            }
+        }
+        false
+    }
+}
+
+impl EquivalenceRule for ParikhMatrixMismatch {
+    fn apply(&self, node: &Node, _: &IndexSet<Node>, mngr: &mut NodeManager) -> Option<Node> {
+        if node.kind() == &NodeKind::Eq {
+            let lhs = &node.children()[0];
+            let rhs = &node.children()[1];
+            if !lhs.sort().is_string() || !rhs.sort().is_string() {
+                return None;
+            }
+
+            let lhs_iter = PatternIterator::new(lhs);
+            let rhs_iter = PatternIterator::new(rhs);
+
+            if Self::is_unsat(lhs_iter, rhs_iter) {
+                return Some(mngr.ffalse());
+            }
+
+            // Check for suffix mismatch
+
+            let reversed_lhs = reverse(lhs, mngr);
+            let lhs_iter = PatternIterator::new(&reversed_lhs);
+            let reversed_rhs = reverse(rhs, mngr);
+            let rhs_iter = PatternIterator::new(&reversed_rhs);
+            if Self::is_unsat(lhs_iter, rhs_iter) {
+                return Some(mngr.ffalse());
+            }
+        }
+        return None;
     }
 }
 
