@@ -1,4 +1,0 @@
-Variables {HLC}
-Terminals {gfabcde}
-Equation: fgdgbgeaafLfabfafbefgbdcaffcaagbccbHagdbfabbcceccgcecefeadeagddgeebdedbcfgabgeagfggdebecccecfcgf = fgdgbgeaafbfeeedefeCabbcceccgcecefeadeagddgeebdedbcfgabgeagfggdebecccecfcgf
-SatGlucose(100)

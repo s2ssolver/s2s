@@ -1,4 +1,0 @@
-Variables {B}
-Terminals {gacbjfhdei}
-Equation: hbgdjgabehbcihfhggfdijbjcBgiedhcjcibfffacgbgejibbgjadjeddhjehjj = hbgdjgabehbcihfhggfdijbjchjjfbfeijebfjabciadjchegiiedjdiihifdbfebiechbegiedhcjcibfffacgbgejibbgjadjeddhjehjj
-SatGlucose(100)

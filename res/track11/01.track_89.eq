@@ -1,4 +1,0 @@
-Variables {CA}
-Terminals {gfabcde}
-Equation: gadfgfdabgCgcefaecbgddefbefcfbf = gadfgfdabgaaacbdgcefbbgeegfdcdcdacfaddeegdegcccaedcAgddefbefcfbf
-SatGlucose(100)

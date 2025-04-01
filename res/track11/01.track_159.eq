@@ -1,4 +1,0 @@
-Variables {BAMJ}
-Terminals {gacbfhdei}
-Equation: cfaeggdifAiigbacihegbhifichcbJahBcfbcfideggigdfigciibeefhigcegaeiaefihgdffbaicfiehfhai = cfaeggdifefhahcciigbacihegbhifichMfdhicfbcfideggigdfigciibeefhigcegaeiaefihgdffbaicfiehfhai
-SatGlucose(100)
