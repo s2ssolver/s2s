@@ -17,7 +17,7 @@ use std::fmt::Debug;
 
 use indexmap::{IndexMap, IndexSet};
 
-use crate::node::{self, get_entailed, Node, NodeKind, NodeManager, VarSubstitution};
+use crate::node::{get_entailed, Node, NodeKind, NodeManager, VarSubstitution};
 
 /// A rewrite rule that can be applied to a node.
 trait EquivalenceRule: Debug {
@@ -83,10 +83,7 @@ impl Rewriter {
     fn pass(&mut self, node: &Node, mngr: &mut NodeManager) -> Option<Node> {
         // Apply equivalence rules
         let mut applied = false;
-
-        let mut asserted = node::get_entailed(node);
-
-        let mut new_node = match self.pass_equivalence(node, &mut asserted, mngr) {
+        let mut new_node = match self.pass_equivalence(node, &Vec::new(), mngr) {
             Some(rw) => {
                 applied = true;
                 rw
@@ -113,7 +110,7 @@ impl Rewriter {
     fn pass_equivalence(
         &mut self,
         node: &Node,
-        asserted: &mut IndexSet<Node>,
+        path: &[&Node],
         mngr: &mut NodeManager,
     ) -> Option<Node> {
         if let Some(rw) = self.rewrite_cache.get(node) {
@@ -124,18 +121,11 @@ impl Rewriter {
         let mut applied_children = Vec::with_capacity(node.children().len());
         let mut applied = false;
 
-        let mut asserted_for_children = asserted.clone();
-        // remove the node from the asserted set, otherwise we would always replace asserted nodes with true
-        asserted_for_children.remove(node);
-        if *node.kind() == NodeKind::And {
-            // add all siblings to the asserted set
-            for child in node.children() {
-                asserted_for_children.insert(child.clone());
-            }
-        }
+        let mut path_ch = path.to_vec();
+        path_ch.push(node);
 
         for child in node.children() {
-            match self.pass_equivalence(child, &mut asserted_for_children, mngr) {
+            match self.pass_equivalence(child, &path_ch, mngr) {
                 Some(new_child) => {
                     applied_children.push(new_child.clone());
                     applied = true;
@@ -150,6 +140,26 @@ impl Rewriter {
         } else {
             node.clone()
         };
+
+        /// Returns all nodes that must be true for the current node to be true.
+        fn get_asserted(path: &[&Node]) -> IndexSet<Node> {
+            let mut asserted = IndexSet::new();
+            if path.len() == 1 {
+                // if the node is a leaf, we need to add it to the asserted set
+                asserted.insert(path[0].clone());
+            }
+            for &node in path.iter() {
+                if *node.kind() == NodeKind::And {
+                    asserted.insert(node.clone());
+                }
+            }
+            asserted
+        }
+
+        let facts = get_asserted(path);
+        // remove self from the asserted set, otherwise we might get unsound results.
+        // we dont with this approach?
+        // asserted.remove(node);
 
         for rule in self.equiv_rules.iter() {
             if let Some(rw) = rule.apply(&new_node, asserted, mngr) {
