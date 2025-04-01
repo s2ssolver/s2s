@@ -15,8 +15,13 @@ impl EntailmentRule for EntailedBooleanVars {
         &self,
         node: &Node,
         asserted: &IndexSet<Node>,
+        _pol: bool,
         mngr: &mut NodeManager,
     ) -> Option<VarSubstitution> {
+        // This is only applicable if the node itself is asserted
+        if !asserted.contains(node) {
+            return None;
+        }
         let mut subs = VarSubstitution::default();
         for a in asserted {
             if let NodeKind::Variable(v) = a.kind() {
@@ -57,9 +62,14 @@ impl EntailmentRule for EntailedAssigments {
     fn apply(
         &self,
         node: &Node,
-        _: &IndexSet<Node>,
+        asserted: &IndexSet<Node>,
+        _pol: bool,
         _: &mut NodeManager,
     ) -> Option<VarSubstitution> {
+        // This is only applicable if the node itself is asserted
+        if !asserted.contains(node) {
+            return None;
+        }
         if let NodeKind::Eq = *node.kind() {
             debug_assert!(node.children().len() == 2);
             let lhs = node.children().first().unwrap();

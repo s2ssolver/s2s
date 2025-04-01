@@ -1,4 +1,4 @@
-use std::{collections::HashSet, fmt::Display, rc::Rc};
+use std::fmt::Display;
 
 use crate::node::{NodeKind, Sorted};
 

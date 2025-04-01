@@ -191,9 +191,15 @@ impl EntailmentRule for ConstantPrefixSuffix {
     fn apply(
         &self,
         node: &Node,
-        _: &IndexSet<Node>,
+        asserted: &IndexSet<Node>,
+        _: bool,
         mngr: &mut NodeManager,
     ) -> Option<VarSubstitution> {
+        // This is only applicable if the node itself is asserted
+        if !asserted.contains(node) {
+            return None;
+        }
+
         if node.is_atomic() && *node.kind() == NodeKind::InRe {
             debug_assert!(node.children().len() == 2);
             let lhs = &node.children()[0];

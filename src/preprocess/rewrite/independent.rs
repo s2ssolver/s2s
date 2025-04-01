@@ -115,7 +115,7 @@ impl IndependentVariableAssignment {
         None
     }
 
-    fn apply(
+    fn apply_atom(
         &self,
         atom: &Node,
         polarity: bool,
@@ -144,6 +144,7 @@ impl IndependentVariableAssignment {
             NodeKind::InRe => {
                 let lhs = atom.children().first().unwrap();
                 let rhs = atom.children().last().unwrap();
+
                 if let NodeKind::Regex(re) = rhs.kind() {
                     if let Some(subs) = self.try_reduce_reg_membership(lhs, re, polarity, mngr) {
                         return Some(subs);
@@ -191,16 +192,11 @@ impl EntailmentRule for IndependentVariableAssignment {
         &self,
         node: &Node,
         _: &IndexSet<Node>,
+        pol: bool,
         mngr: &mut NodeManager,
     ) -> Option<VarSubstitution> {
-        if node.is_literal() {
-            return match node.kind() {
-                NodeKind::Not => {
-                    let child = node.children().first().unwrap();
-                    self.apply(child, false, mngr)
-                }
-                _ => self.apply(node, true, mngr),
-            };
+        if node.is_atomic() {
+            return self.apply_atom(node, pol, mngr);
         }
         None
     }

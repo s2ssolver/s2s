@@ -36,6 +36,7 @@ trait EntailmentRule: Debug {
         &self,
         node: &Node,
         asserted: &IndexSet<Node>,
+        pol: bool,
         mngr: &mut NodeManager,
     ) -> Option<VarSubstitution>;
 
@@ -162,10 +163,8 @@ impl Rewriter {
         // asserted.remove(node);
 
         for rule in self.equiv_rules.iter() {
-            if let Some(rw) = rule.apply(&new_node, asserted, mngr) {
+            if let Some(rw) = rule.apply(&new_node, &facts, mngr) {
                 log::debug!("({:?}) {} ==> {}", rule, new_node, rw);
-asserted.remove(&new_node);
-                asserted.insert(rw.clone());
                 new_node = rw;
                 applied = true;
             }
@@ -184,10 +183,11 @@ asserted.remove(&new_node);
             rules: &mut [Box<dyn EntailmentRule>],
             node: &Node,
             asserted: &IndexSet<Node>,
+            pol: bool,
             mngr: &mut NodeManager,
         ) -> Option<VarSubstitution> {
             for rule in rules.iter_mut() {
-                if let Some(sub) = rule.apply(node, asserted, mngr) {
+                if let Some(sub) = rule.apply(node, asserted, pol, mngr) {
                     if !sub.is_identity() && !sub.is_empty() {
                         log::debug!("({:?}) inferred {}", rule, sub);
                         return Some(sub);
@@ -195,13 +195,17 @@ asserted.remove(&new_node);
                 }
             }
 
-            if *node.kind() == NodeKind::And {
-                for child in node.children() {
-                    if let Some(sub) = find_subs(rules, child, asserted, mngr) {
-                        return Some(sub);
-                    }
+            let pol = match node.kind() {
+                NodeKind::Not => !pol,
+                _ => pol,
+            };
+
+            for child in node.children() {
+                if let Some(sub) = find_subs(rules, child, asserted, pol, mngr) {
+                    return Some(sub);
                 }
             }
+
             None
         }
 
@@ -211,17 +215,18 @@ asserted.remove(&new_node);
         for rule in self.entail_rules.iter_mut() {
             rule.init(node, mngr);
         }
-        let mut asserted = get_entailed(&new_node);
-        while let Some(sub) = find_subs(&mut self.entail_rules, &new_node, &asserted, mngr) {
+        let mut facts = get_entailed(&new_node);
+        while let Some(sub) = find_subs(&mut self.entail_rules, &new_node, &facts, true, mngr) {
             new_node = sub.apply(&new_node, mngr);
-            self.applied_subs.push(sub);
-            asserted = get_entailed(&new_node);
 
+            self.applied_subs.push(sub);
             applied = true;
             // reinitialize the rules with the new node
             for rule in self.entail_rules.iter_mut() {
                 rule.init(&new_node, mngr);
             }
+            // update the asserted set
+            facts = get_entailed(&new_node);
         }
 
         if applied {

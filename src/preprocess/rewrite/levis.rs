@@ -16,9 +16,14 @@ impl EntailmentRule for LevisRule {
     fn apply(
         &self,
         node: &Node,
-        _: &IndexSet<Node>,
+        asserted: &IndexSet<Node>,
+        _: bool,
         mngr: &mut NodeManager,
     ) -> Option<VarSubstitution> {
+        // This is only applicable if the node itself is asserted
+        if !asserted.contains(node) {
+            return None;
+        }
         if *node.kind() == NodeKind::Eq {
             debug_assert!(node.children().len() == 2);
             let lhs = node.children().first().unwrap();
@@ -95,7 +100,7 @@ mod tests {
         let mut mngr = NodeManager::default();
         // Y must start with 'b'
         let eq = parse_equation("YaX", "bX", &mut mngr);
-        let res = LevisRule.apply(&eq, &IndexSet::new(), &mut mngr);
+        let res = LevisRule.apply(&eq, &IndexSet::new(), true, &mut mngr);
 
         match res {
             Some(got) => {
@@ -112,7 +117,7 @@ mod tests {
         let mut mngr = NodeManager::default();
         // Y must start with 'b'
         let eq = parse_equation("YaX", "fooX", &mut mngr);
-        let res = LevisRule.apply(&eq, &IndexSet::new(), &mut mngr);
+        let res = LevisRule.apply(&eq, &IndexSet::new(), true, &mut mngr);
 
         match res {
             Some(got) => {
@@ -129,7 +134,7 @@ mod tests {
         let mut mngr = NodeManager::default();
         // Y must start with 'b'
         let eq = parse_equation("bX", "YaX", &mut mngr);
-        let res = LevisRule.apply(&eq, &IndexSet::new(), &mut mngr);
+        let res = LevisRule.apply(&eq, &IndexSet::new(), true, &mut mngr);
 
         match res {
             Some(got) => {
@@ -146,7 +151,7 @@ mod tests {
         let mut mngr = NodeManager::default();
         // Y must start with 'b'
         let eq = parse_equation("fooX", "YaX", &mut mngr);
-        let res = LevisRule.apply(&eq, &IndexSet::new(), &mut mngr);
+        let res = LevisRule.apply(&eq, &IndexSet::new(), true, &mut mngr);
 
         match res {
             Some(got) => {
@@ -163,7 +168,7 @@ mod tests {
         let mut mngr = NodeManager::default();
         // Y could start with 'b' or be empty
         let eq = parse_equation("YaX", "aX", &mut mngr);
-        let res = LevisRule.apply(&eq, &IndexSet::new(), &mut mngr);
+        let res = LevisRule.apply(&eq, &IndexSet::new(), true, &mut mngr);
 
         assert!(matches!(res, None));
     }
@@ -173,7 +178,7 @@ mod tests {
         let mut mngr = NodeManager::default();
         // Y could start with 'b' or be empty
         let eq = parse_equation("aX", "YaX", &mut mngr);
-        let res = LevisRule.apply(&eq, &IndexSet::new(), &mut mngr);
+        let res = LevisRule.apply(&eq, &IndexSet::new(), true, &mut mngr);
 
         assert!(matches!(res, None));
     }
