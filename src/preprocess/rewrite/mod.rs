@@ -153,6 +153,8 @@ impl Rewriter {
         for rule in self.equiv_rules.iter() {
             if let Some(rw) = rule.apply(&new_node, asserted, mngr) {
                 log::debug!("({:?}) {} ==> {}", rule, new_node, rw);
+asserted.remove(&new_node);
+                asserted.insert(rw.clone());
                 new_node = rw;
                 applied = true;
             }
