@@ -199,7 +199,7 @@ impl Solver {
                         let assign = self.encoder.get_model(&self.cadical);
 
                         log::info!("Encoding is SAT");
-                        // encoder.print_debug(&cadical);
+                        //self.encoder.print_debug(&self.cadical);
                         let subs = VarSubstitution::from_assignment(&assign, mngr);
                         return Ok(SolverAnswer::Sat(Some(subs)));
                     }

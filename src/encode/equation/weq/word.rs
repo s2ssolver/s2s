@@ -11,13 +11,13 @@ use crate::{
 use rustsat::solvers::Solve;
 
 /// Encodes the set of all words over a finite alphabet up to a given length.
-pub struct WordEncoding {
+pub struct WordSetEncoding {
     alphabet: Alphabet,
     length: usize,
     encoding: IndexMap<(usize, SmtChar), PVar>,
 }
 
-impl WordEncoding {
+impl WordSetEncoding {
     pub fn new(alphabet: Alphabet) -> Self {
         Self {
             alphabet,
@@ -77,7 +77,7 @@ impl WordEncoding {
     }
 
     #[allow(dead_code)]
-    pub(super) fn print_solution_word(&self, solver: &mut CaDiCaL) {
+    pub(super) fn print_solution_word(&self, solver: &CaDiCaL) {
         for len in 0..self.length {
             let mut found = false;
             let sol = solver.full_solution().unwrap();

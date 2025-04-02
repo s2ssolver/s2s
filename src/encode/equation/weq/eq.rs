@@ -1,7 +1,9 @@
 use std::cmp::min;
 
-use super::matching::PatternMatchingEncoder;
-use super::word::WordEncoding;
+use rustsat::clause;
+
+use super::matching::MatchEncoder;
+use super::word::WordSetEncoding;
 
 use crate::{
     domain::Domain,
@@ -12,8 +14,8 @@ use crate::{
 pub struct WordEquationEncoder {
     lhs: Pattern,
     rhs: Pattern,
-    match_encoder: (PatternMatchingEncoder, PatternMatchingEncoder),
-    word_encoding: Option<WordEncoding>,
+    match_encoder: (MatchEncoder, MatchEncoder),
+    word_encoding: Option<WordSetEncoding>,
 }
 
 impl WordEquationEncoder {
@@ -21,8 +23,8 @@ impl WordEquationEncoder {
         let word_encoding = None;
         let lhs = eq.lhs();
         let rhs = eq.rhs();
-        let lhs_match = PatternMatchingEncoder::new(lhs.clone());
-        let rhs_match = PatternMatchingEncoder::new(rhs.clone());
+        let lhs_match = MatchEncoder::new(lhs.clone());
+        let rhs_match = MatchEncoder::new(rhs.clone());
         let match_encoder = (lhs_match, rhs_match);
         Self {
             lhs,
@@ -42,12 +44,34 @@ impl WordEquationEncoder {
         dom: &DomainEncoding,
         sink: &mut impl EncodingSink,
     ) {
-        self.match_encoder
-            .0
-            .encode(self.word_encoding.as_ref().unwrap(), bounds, dom, sink);
-        self.match_encoder
-            .1
-            .encode(self.word_encoding.as_ref().unwrap(), bounds, dom, sink);
+        match (self.lhs.as_constant(), self.rhs.as_constant()) {
+            (None, None) => {
+                self.match_encoder.0.encode(
+                    &self.word_encoding.as_ref().unwrap().into(),
+                    bounds,
+                    dom,
+                    sink,
+                );
+                self.match_encoder.1.encode(
+                    &self.word_encoding.as_ref().unwrap().into(),
+                    bounds,
+                    dom,
+                    sink,
+                );
+            }
+            (None, Some(s)) => {
+                self.match_encoder.0.encode(&s.into(), bounds, dom, sink);
+            }
+            (Some(s), None) => {
+                self.match_encoder.1.encode(&s.into(), bounds, dom, sink);
+            }
+            (Some(s1), Some(s2)) => {
+                if s1 != s2 {
+                    // add the empty clause
+                    sink.add_clause(clause!());
+                }
+            }
+        }
     }
 
     fn pattern_upper_bound(&self, pattern: &Pattern, dom: &Domain) -> usize {
@@ -89,7 +113,7 @@ impl EncodeLiteral for WordEquationEncoder {
         sink: &mut impl EncodingSink,
     ) -> Result<(), EncodingError> {
         if self.word_encoding.is_none() {
-            self.word_encoding = Some(WordEncoding::new(dom.alphabet().clone()));
+            self.word_encoding = Some(WordSetEncoding::new(dom.alphabet().clone()));
         }
 
         // The largest possible length of a solution word is the minumum of the largest word either side can be mapped to.
@@ -103,6 +127,21 @@ impl EncodeLiteral for WordEquationEncoder {
         self.encode_matching(bounds, dom, sink);
 
         Ok(())
+    }
+
+    fn print_debug(&self, solver: &rustsat_cadical::CaDiCaL) {
+        print!("Solution WORD: ");
+        if let Some(enc) = self.word_encoding.as_ref() {
+            enc.print_solution_word(solver);
+        } else {
+            println!("No solution word encoding");
+        }
+
+        println!("Start Positions LHS");
+        self.match_encoder.0.print_start_positions(&solver);
+        println!("Start Positions RHS");
+        self.match_encoder.1.print_start_positions(&solver);
+        println!("String lengths");
     }
 }
 

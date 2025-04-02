@@ -42,6 +42,15 @@ impl EncodeLiteral for WEQEncoder {
             WEQEncoder::Assignment(encoder) => encoder.encode(dom, dom_enc, sink),
         }
     }
+
+    fn print_debug(&self, solver: &rustsat_cadical::CaDiCaL) {
+        match self {
+            WEQEncoder::WordEquation(encoder) => encoder.print_debug(solver),
+            WEQEncoder::WordInEquation(encoder) => encoder.print_debug(solver),
+            WEQEncoder::Vareq(encoder) => encoder.print_debug(solver),
+            WEQEncoder::Assignment(encoder) => encoder.print_debug(solver),
+        }
+    }
 }
 pub fn get_encoder(equation: &WordEquation, pol: bool) -> WEQEncoder {
     // Both constants => panic

@@ -32,6 +32,7 @@ use rustsat::{
     instances::Cnf,
     types::{Clause, Lit},
 };
+use rustsat_cadical::CaDiCaL;
 use smt_str::SmtChar;
 
 /// The character used to represent unused positions
@@ -109,6 +110,8 @@ pub trait EncodeLiteral {
         dom_enc: &DomainEncoding,
         sink: &mut impl EncodingSink,
     ) -> Result<(), EncodingError>;
+
+    fn print_debug(&self, _: &CaDiCaL) {}
 }
 
 #[allow(clippy::large_enum_variant)]
@@ -149,6 +152,33 @@ impl EncodeLiteral for LiteralEncoder {
             LiteralEncoder::NFAEncoder(ref mut e) => e.encode(dom, dom_enc, sink),
             LiteralEncoder::WeqEncode(ref mut e) => e.encode(dom, dom_enc, sink),
             LiteralEncoder::LinearEncode(ref mut e) => e.encode(dom, dom_enc, sink),
+        }
+    }
+
+    fn _is_incremental(&self) -> bool {
+        match self {
+            LiteralEncoder::BoolVar(ref e) => e._is_incremental(),
+            LiteralEncoder::NFAEncoder(ref e) => e._is_incremental(),
+            LiteralEncoder::WeqEncode(ref e) => e._is_incremental(),
+            LiteralEncoder::LinearEncode(ref e) => e._is_incremental(),
+        }
+    }
+
+    fn _reset(&mut self) {
+        match self {
+            LiteralEncoder::BoolVar(ref mut e) => e._reset(),
+            LiteralEncoder::NFAEncoder(ref mut e) => e._reset(),
+            LiteralEncoder::WeqEncode(ref mut e) => e._reset(),
+            LiteralEncoder::LinearEncode(ref mut e) => e._reset(),
+        }
+    }
+
+    fn print_debug(&self, s: &CaDiCaL) {
+        match self {
+            LiteralEncoder::BoolVar(ref e) => e.print_debug(s),
+            LiteralEncoder::NFAEncoder(ref e) => e.print_debug(s),
+            LiteralEncoder::WeqEncode(ref e) => e.print_debug(s),
+            LiteralEncoder::LinearEncode(ref e) => e.print_debug(s),
         }
     }
 }

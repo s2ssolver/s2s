@@ -16,7 +16,7 @@ use crate::{
     sat::{nlit, plit, pvar, PVar},
 };
 
-use super::word::WordEncoding;
+use super::word::WordSetEncoding;
 
 /// A segment of a pattern, i.e., a string constant or a variable.
 /// A factor of a pattern is called a *segment* iff
@@ -124,7 +124,7 @@ impl Display for SegmentedPattern {
     }
 }
 
-pub(super) struct PatternMatchingEncoder {
+pub(super) struct MatchEncoder {
     pattern: SegmentedPattern,
     /// The encoding of the start position of each segment in the pattern.
     /// start_pos[(i, j)] is a Boolean variable that is true if and only if the i-th segments of the pattern starts at position j.
@@ -148,7 +148,7 @@ pub(super) struct PatternMatchingEncoder {
     match_cache: IndexMap<(Rc<Variable>, usize, usize), PVar>,
 }
 
-impl PatternMatchingEncoder {
+impl MatchEncoder {
     pub fn new(pattern: Pattern) -> Self {
         let pattern = SegmentedPattern::new(pattern);
         Self {
@@ -162,36 +162,36 @@ impl PatternMatchingEncoder {
     }
 
     /// Encodes the matching of the pattern to the word, represented by the given word encoding.
-    pub fn encode(
+    pub fn encode<'a>(
         &mut self,
-        word: &WordEncoding,
+        rhs: &MatchAgainst,
         bounds: &Domain,
         dom: &DomainEncoding,
         sink: &mut impl EncodingSink,
     ) {
         assert!(
-            self.len.unwrap_or(0) <= word.len(),
+            self.len.unwrap_or(0) <= rhs.positions(),
             "Word length cannot shrink"
         );
 
         self.selector = Some(pvar());
 
-        self.init_start_positions(word);
+        self.init_start_positions(rhs);
 
         self.encode_pattern_start(sink);
-        self.encode_pattern_end(word, sink);
-        self.disable_early_starts(word, sink);
-        self.encode_match(word, bounds, dom, sink);
+        self.encode_pattern_end(rhs, sink);
+        self.disable_early_starts(rhs, sink);
+        self.encode_match(rhs, bounds, dom, sink);
 
         // add the selector as an assumption
         sink.add_assumption(plit(self.selector.unwrap()));
 
         self.bounds = bounds.clone();
-        self.len = Some(word.len());
+        self.len = Some(rhs.positions());
     }
 
-    fn init_start_positions(&mut self, word: &WordEncoding) {
-        let wlen = word.len(); // the length of the word to be matched
+    fn init_start_positions(&mut self, rhs: &MatchAgainst) {
+        let wlen = rhs.positions(); // the number of positions in the word to be matched, this is one more than the length of the word
         let segs = self.pattern.length(); // the number of segments in the pattern
 
         // Initialize the start position encoding for all segments and positions
@@ -212,23 +212,33 @@ impl PatternMatchingEncoder {
     }
 
     /// Encode the end of the pattern by asserting that from the start position of the end segment, the word is empty
-    fn encode_pattern_end(&self, word: &WordEncoding, sink: &mut impl EncodingSink) {
-        let wlen = word.len(); // the length of the word to be matched
+    fn encode_pattern_end(&self, word: &MatchAgainst, sink: &mut impl EncodingSink) {
         let end_seg = self.pattern.length(); // the number of segments in the pattern
-        for len in self.len.unwrap_or(0)..wlen {
-            let p = self.starts_at(end_seg, len);
-            // end segment starts at position len -> word[len] = lambda
-            sink.add_clause(clause![nlit(p), plit(word.at(len, LAMBDA))]);
+        let wlen = word.positions(); // the length of the word to be matched
+        match word {
+            MatchAgainst::Any(word) => {
+                for pos in self.len.unwrap_or(0)..wlen {
+                    let p = self.starts_at(end_seg, pos);
+                    sink.add_clause(clause![nlit(p), plit(word.at(pos, LAMBDA))]);
+                }
+            }
+            MatchAgainst::Constant(s) => {
+                // The last segment must start at end of the word
+                for pos in self.len.unwrap_or(0)..s.len() {
+                    let p = self.starts_at(end_seg, pos);
+                    sink.add_clause(clause![nlit(p)]);
+                }
+            }
         }
     }
 
     /// Disables start positions pos for all segments i if i cannot start at position pos.
-    fn disable_early_starts(&self, word: &WordEncoding, sink: &mut impl EncodingSink) {
-        let wlen = word.len(); // the length of the word to be matched
+    fn disable_early_starts(&self, rhs: &MatchAgainst, sink: &mut impl EncodingSink) {
+        let wlen = rhs.positions(); // the length of the word to be matched
         for seg in 0..self.pattern.length() {
             for pos in self.len.unwrap_or(0)..wlen {
                 if pos < self.pattern.consts_before(seg) {
-                    // The segment cannot start here, disable this position using assumption: !start_pos[i][pos]
+                    // The segment cannot start here, disable this position using clause: !start_pos[i][pos]
                     let starts_here = self.starts_at(seg, pos);
                     sink.add_clause(clause![nlit(starts_here)]);
                 }
@@ -242,7 +252,7 @@ impl PatternMatchingEncoder {
     /// - the word at positions `len`..`len`+l is equal to the segment i+1
     fn encode_match(
         &mut self,
-        word: &WordEncoding,
+        rhs: &MatchAgainst,
         dom: &Domain,
         dom_enc: &DomainEncoding,
         sink: &mut impl EncodingSink,
@@ -261,9 +271,9 @@ impl PatternMatchingEncoder {
                         .get_string(&v)
                         .and_then(|i| i.upper_finite())
                         .unwrap_or(0) as usize;
-                    self.encode_match_variable(seg, &v, vbound, last_vbound, word, dom_enc, sink)
+                    self.encode_match_variable(seg, &v, vbound, last_vbound, rhs, dom_enc, sink)
                 }
-                PatternSegment::Word(w) => self.encode_match_const(seg, &w, word, sink),
+                PatternSegment::Word(w) => self.encode_match_const(seg, &w, rhs, sink),
             }
         }
     }
@@ -273,14 +283,14 @@ impl PatternMatchingEncoder {
         &self,
         i: usize,
         w: &SmtString,
-        word: &WordEncoding,
+        rhs: &MatchAgainst,
         sink: &mut impl EncodingSink,
     ) {
         debug_assert_eq!(*self.pattern.get(i), PatternSegment::Word(w.clone()));
-
         // We need to consider all start positions from (last length) - (|w| + const_after(i)) to the end of the word
         // subtracting (|w| + const_after(i)) is required because these position where unusable in the last iteration, as they would exceed the word length (and were disabled by assumptions)
         // In this iteration, we need to consider them, as the word length might have increased.
+
         let earliest = self
             .len
             .unwrap_or(0)
@@ -289,16 +299,31 @@ impl PatternMatchingEncoder {
         // if this is smaller than the sum of constant prior to this segment, we can skip those positions
         let earliest = earliest.max(self.pattern.consts_before(i));
 
-        for pos in earliest..word.len() {
+        let until = if i == 0 { 1 } else { rhs.positions() };
+
+        for pos in earliest..until {
             let starts_here = self.starts_at(i, pos);
             // check if the segment can start here
-            if pos + w.len() < word.len().saturating_sub(self.pattern.consts_after(i)) {
-                // Encode that the next w.len() positions in the solution word  are equal to w
-                for (k, c) in w.iter().enumerate() {
-                    let cand_var = word.at(pos + k, *c);
-                    sink.add_clause(clause![nlit(starts_here), plit(cand_var)]);
+            if pos + w.len() < rhs.positions().saturating_sub(self.pattern.consts_after(i)) {
+                match rhs {
+                    MatchAgainst::Any(rhs) => {
+                        // Encode that the next w.len() positions in the solution word  are equal to w
+                        for (k, c) in w.iter().enumerate() {
+                            let cand_var = rhs.at(pos + k, *c);
+                            sink.add_clause(clause![nlit(starts_here), plit(cand_var)]);
+                        }
+                    }
+                    MatchAgainst::Constant(s) => {
+                        // Ensure that the next w.len() positions in the solution word are equal to w
+                        if *w != s.drop(pos).take(w.len()) {
+                            // If the word is not equal to the segment, disable this position using assumption: !start_pos[i][pos]
+                            sink.add_clause(clause![nlit(starts_here)]);
+                        }
+                    }
                 }
+
                 // Encode that i+1 starts at pos + w.len()
+
                 let succ_start = self.starts_at(i + 1, pos + w.len());
                 sink.add_clause(clause![nlit(starts_here), plit(succ_start)]);
             } else {
@@ -315,7 +340,7 @@ impl PatternMatchingEncoder {
         v: &Rc<Variable>,
         vbound: usize,
         last_vbound: usize,
-        word: &WordEncoding,
+        rhs: &MatchAgainst,
         dom: &DomainEncoding,
         sink: &mut impl EncodingSink,
     ) {
@@ -326,10 +351,14 @@ impl PatternMatchingEncoder {
             .unwrap_or(0)
             .saturating_sub(self.pattern.consts_after(i));
 
-        let earlist = self.pattern.consts_before(i);
+        let earliest = self.pattern.consts_before(i);
 
-        // TODO: for the first segment it is sufficient to consider the first position!!
-        for pos in earlist..word.len() {
+        let until = if i == 0 && false {
+            1
+        } else {
+            rhs.positions().saturating_sub(self.pattern.consts_after(i))
+        };
+        for pos in earliest..until {
             for len in 0..=vbound {
                 // Check if this was encoded in the last iteration
                 if pos < last_len && len < last_vbound && pos + len < last_len {
@@ -342,8 +371,7 @@ impl PatternMatchingEncoder {
                     .unwrap_or_else(|| panic!("No length {} for variable {}", len, v));
                 let starts_at = self.starts_at(i, pos);
 
-                let latest = word.len().saturating_sub(self.pattern.consts_after(i));
-                if pos + len < latest {
+                if pos + len < until {
                     // encode that var = w[pos..pos+len].
                     // this is encoded inducively:
                     // - length = 1: var = w[0]
@@ -353,12 +381,32 @@ impl PatternMatchingEncoder {
                     if len == 1 {
                         let m_var: u32 = pvar();
                         self.match_cache.insert((v.clone(), pos, len), m_var);
-                        for c in dom.alphabet().iter() {
-                            let cand_c = word.at(pos, c);
-                            let sub_c = dom.string().get_sub(v, 0, c).unwrap();
-                            sink.add_clause(clause![nlit(m_var), nlit(cand_c), plit(sub_c)]);
-                            sink.add_clause(clause![nlit(m_var), plit(cand_c), nlit(sub_c)]);
+
+                        match rhs {
+                            MatchAgainst::Any(rhs) => {
+                                for c in dom.alphabet().iter() {
+                                    let cand_c = rhs.at(pos, c);
+                                    let sub_c = dom.string().get_sub(v, 0, c).unwrap();
+                                    sink.add_clause(clause![
+                                        nlit(m_var),
+                                        nlit(cand_c),
+                                        plit(sub_c)
+                                    ]);
+                                    sink.add_clause(clause![
+                                        nlit(m_var),
+                                        plit(cand_c),
+                                        nlit(sub_c)
+                                    ]);
+                                }
+                            }
+                            MatchAgainst::Constant(s) => {
+                                let c = s[pos];
+
+                                let sub_c = dom.string().get_sub(v, 0, c).unwrap();
+                                sink.add_clause(clause![nlit(m_var), plit(sub_c)]);
+                            }
                         }
+
                         sink.add_clause(clause![nlit(starts_at), nlit(has_length), plit(m_var)]);
                     } else if len > 1 {
                         let m_var = pvar();
@@ -377,43 +425,29 @@ impl PatternMatchingEncoder {
                         sink.add_clause(clause![nlit(m_var), plit(pred_m_var)]);
                         self.match_cache.insert((v.clone(), pos, len), m_var);
 
-                        /* THIS CACHING IS NOT WORKING IF WE HAVE INEQUALITY: The caching assumes we match against the same word, but in case of inequality, we match against two different words, and the cache is invalid.
-                        // Cache this with variable
-                        I.e., match(x[l-1], cand[p+l-1]) -> EX c. such that they match
-                        let mv = match self.var_cand_match_cache.get(&(
-                            x.clone(),
-                            l - 1,
-                            p + (l - 1),
-                        )) {
-                            Some(mv) => *mv,
-                            None => {
-                                let mv = pvar();
+                        match rhs {
+                            MatchAgainst::Any(wenc) => {
                                 for c in dom.alphabet().iter() {
-                                    let cand_c = word.char_at(p + (l - 1), c);
-                                    let sub_c = subs.get_sub(x, l - 1, c).unwrap();
-                                    clauses.push(vec![
-                                        nlit(mv),
+                                    let cand_c = wenc.at(pos + (len - 1), c);
+                                    let sub_c = dom.string().get_sub(v, len - 1, c).unwrap();
+                                    sink.add_clause(clause![
+                                        nlit(m_var),
                                         nlit(cand_c),
-                                        plit(sub_c),
+                                        plit(sub_c)
                                     ]);
-                                    clauses.push(vec![
-                                        nlit(mv),
+                                    sink.add_clause(clause![
+                                        nlit(m_var),
                                         plit(cand_c),
-                                        nlit(sub_c),
+                                        nlit(sub_c)
                                     ]);
                                 }
-                                self.var_cand_match_cache
-                                    .insert((x.clone(), l - 1, p + (l - 1)), mv);
-                                mv
                             }
-                        };
-                        clauses.push(vec![nlit(m_var), plit(mv)]);*/
+                            MatchAgainst::Constant(smt_string) => {
+                                let c = smt_string[pos + (len - 1)];
+                                let sub_c = dom.string().get_sub(v, len - 1, c).unwrap();
 
-                        for c in dom.alphabet().iter() {
-                            let cand_c = word.at(pos + (len - 1), c);
-                            let sub_c = dom.string().get_sub(v, len - 1, c).unwrap();
-                            sink.add_clause(clause![nlit(m_var), nlit(cand_c), plit(sub_c)]);
-                            sink.add_clause(clause![nlit(m_var), plit(cand_c), nlit(sub_c)]);
+                                sink.add_clause(clause![nlit(m_var), plit(sub_c)]);
+                            }
                         }
 
                         sink.add_clause(clause![nlit(starts_at), nlit(has_length), plit(m_var)]);
@@ -451,20 +485,43 @@ impl PatternMatchingEncoder {
     }
 
     #[allow(dead_code)]
-    pub(super) fn print_start_positions(&self, solver: &mut CaDiCaL) {
+    pub(super) fn print_start_positions(&self, solver: &CaDiCaL) {
         let sol = solver.full_solution().unwrap();
         for (i, seg) in self.pattern.segments.iter().enumerate() {
-            let mut found = false;
             for pos in 0..self.len.unwrap_or(0) {
                 let p = self.starts_at(i, pos);
                 if sol.lit_value(plit(p)).to_bool_with_def(false) {
                     println!("Segment {} ({}) starts at position {}", seg, i, pos);
-                    found = true;
                 }
             }
-            if !found {
-                panic!("Segment {} ({}) does not start", seg, i);
-            }
         }
+    }
+}
+
+/// The right-hand side of the matching.
+/// Is either an encoding of a set of words or a constant word.
+pub(super) enum MatchAgainst<'a> {
+    Any(&'a WordSetEncoding),
+    Constant(SmtString),
+}
+
+impl MatchAgainst<'_> {
+    fn positions(&self) -> usize {
+        match self {
+            MatchAgainst::Any(w) => w.len(),
+            MatchAgainst::Constant(s) => s.len() + 1, // we add +1 to account for the last positions
+        }
+    }
+}
+
+impl<'a> From<&'a WordSetEncoding> for MatchAgainst<'a> {
+    fn from(word: &'a WordSetEncoding) -> Self {
+        MatchAgainst::Any(word)
+    }
+}
+
+impl From<SmtString> for MatchAgainst<'_> {
+    fn from(word: SmtString) -> Self {
+        MatchAgainst::Constant(word)
     }
 }

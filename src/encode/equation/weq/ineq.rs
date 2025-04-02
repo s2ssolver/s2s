@@ -2,8 +2,8 @@ use std::cmp::min;
 
 use rustsat::clause;
 
-use super::matching::PatternMatchingEncoder;
-use super::word::WordEncoding;
+use super::matching::MatchEncoder;
+use super::word::WordSetEncoding;
 
 use crate::{
     domain::Domain,
@@ -18,10 +18,10 @@ use crate::{
 pub struct WordInEquationEncoder {
     lhs: Pattern,
     rhs: Pattern,
-    match_lhs: PatternMatchingEncoder,
-    match_rhs: PatternMatchingEncoder,
-    word_encoding_lhs: Option<WordEncoding>,
-    word_encoding_rhs: Option<WordEncoding>,
+    match_lhs: MatchEncoder,
+    match_rhs: MatchEncoder,
+    word_encoding_lhs: Option<WordSetEncoding>,
+    word_encoding_rhs: Option<WordSetEncoding>,
     mismatch_alo: IncrementalALO,
     lhs_bound: Option<usize>,
     rhs_bound: Option<usize>,
@@ -31,8 +31,8 @@ impl WordInEquationEncoder {
     pub fn new(eq: WordEquation) -> Self {
         let lhs = eq.lhs();
         let rhs = eq.rhs();
-        let match_lhs = PatternMatchingEncoder::new(lhs.clone());
-        let match_rhs = PatternMatchingEncoder::new(rhs.clone());
+        let match_lhs = MatchEncoder::new(lhs.clone());
+        let match_rhs = MatchEncoder::new(rhs.clone());
 
         Self {
             lhs,
@@ -58,11 +58,19 @@ impl WordInEquationEncoder {
         dom_enc: &DomainEncoding,
         sink: &mut impl EncodingSink,
     ) {
-        self.match_lhs
-            .encode(self.word_encoding_lhs.as_ref().unwrap(), dom, dom_enc, sink);
+        self.match_lhs.encode(
+            &self.word_encoding_lhs.as_ref().unwrap().into(),
+            dom,
+            dom_enc,
+            sink,
+        );
 
-        self.match_rhs
-            .encode(self.word_encoding_rhs.as_ref().unwrap(), dom, dom_enc, sink);
+        self.match_rhs.encode(
+            &self.word_encoding_rhs.as_ref().unwrap().into(),
+            dom,
+            dom_enc,
+            sink,
+        );
     }
 
     fn pattern_upper_bound(&self, pattern: &Pattern, dom: &Domain) -> usize {
@@ -150,10 +158,10 @@ impl EncodeLiteral for WordInEquationEncoder {
         sink: &mut impl EncodingSink,
     ) -> Result<(), EncodingError> {
         if self.word_encoding_lhs.is_none() {
-            self.word_encoding_lhs = Some(WordEncoding::new(dom_enc.alphabet().clone()));
+            self.word_encoding_lhs = Some(WordSetEncoding::new(dom_enc.alphabet().clone()));
         }
         if self.word_encoding_rhs.is_none() {
-            self.word_encoding_rhs = Some(WordEncoding::new(dom_enc.alphabet().clone()));
+            self.word_encoding_rhs = Some(WordSetEncoding::new(dom_enc.alphabet().clone()));
         }
 
         // we allow both sides to map to any words in bounds

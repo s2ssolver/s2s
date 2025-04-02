@@ -229,6 +229,14 @@ impl DefintionEncoder {
     pub fn get_model(&self, solver: &CaDiCaL) -> Assignment {
         self.domain_encoder.encoding().get_model(solver)
     }
+
+    #[allow(dead_code)]
+    pub(crate) fn print_debug(&self, cadical: &CaDiCaL<'static, 'static>) {
+        for (l, lenc) in self.encoders.iter() {
+            println!("Debug output for {}:", l);
+            lenc.print_debug(cadical);
+        }
+    }
 }
 
 pub(crate) struct CadicalEncodingSink<'a> {
