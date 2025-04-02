@@ -1,37 +1,62 @@
 # Blastr
 
-This is an SMT solver for quantifier-free theory of strings with linear integer arithmetic (QF_SLIA).
-Only a limited set of operands are supported.
+**Blastr** is an SMT solver for the quantifier-free theory of strings combined with linear integer arithmetic (QF_SLIA).  
+It currently supports a limited subset of SMT-LIB constraints.
 
-**Work in Progress**
-The code is work-in-progress, experimental and frequently changes. Some features are unstable.
-There are known soundness issues.
+⚠️ **Work in Progress**  
+This project is experimental, under active development, and subject to frequent changes. Some features may be incomplete or unstable.
 
-## Build
+---
 
-Assumes that the Rust tool chain is installed.
+## Build Instructions
 
-First install the dependencies: `libssl-dev`, `pkg-config`, and `libclang-dev`.
-On Ubuntu, you can do this with:
+Ensure that the [Rust toolchain](https://www.rust-lang.org/tools/install) is installed.
+
+You'll also need the following system dependencies:
+
+- `libssl-dev`
+- `pkg-config`
+- `libclang-dev`
+
+On Ubuntu-based systems, you can install them with:
 
 ```bash
-sudo sudo apt-get install libssl-dev pkg-config libclang-dev
+sudo apt-get install libssl-dev pkg-config libclang-dev
 ```
 
-After that, clone the repository, change into the directory, use `cargo` to build:
+Then clone the repository and build the project:
 
-```rust
-cargo build -r
+```bash
+git clone https://github.com/your-username/blastr.git
+cd blastr
+cargo build --release
 ```
 
-This creates a binary `blastr` at `target/release`.
+The compiled binary will be located at `target/release/blastr`.
+
+---
 
 ## Usage
 
-```rust
+```bash
 blastr [OPTIONS] <FILE>
 ```
 
-Here, `<FILE>` is a path to an SMT-LIB file.
-Example files are in `res/tests_sat/`.
-For a list of options, use `blastr -h`.
+- `<FILE>` is the path to an SMT-LIB file (QF_SLIA).
+- Example files can be found in the `res/tests_sat/` directory.
+
+---
+
+### Options
+
+| Option | Description |
+|--------|-------------|
+| `--dry` | Stop after preprocessing. Returns `unknown` if satisfiability can't be determined from preprocessing alone. |
+| `--print-preprocessed` | Output the preprocessed formula (in SMT-LIB format) to stdout. Use with `--dry` to only preprocess a formula. |
+| `--init-bound`, `-b <b>` | Initial bound for variable domains. The bound is soft, the solver may choose larger bounds if needed. |
+| `--max-bound`, `-B <B>` | Maximum bound to check satisfiability for. Terminates after checking all satisfiability where all string lengths are in `[0, B]` and integers are in `[-B, B]`. If no model is found, returns `unknown`. If not set, the solver may run indefinitely. |
+| `--unsat-on-max-bound` | In combination with `--max-bound`, returns `unsat` (instead of `unknown`) if no model is found within the given bound. |
+| `--model` | Prints the model after `(check-sat)`. Equivalent to including `(get-model)` in the input. If both are used, the model is printed twice. |
+| `--skip-simp` | Skips the simplification phase during preprocessing. |
+| `--help`, `-h` | Print help message. |
+| `--version`, `-V` | Print version information. |
