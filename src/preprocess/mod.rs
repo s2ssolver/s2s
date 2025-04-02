@@ -1,9 +1,9 @@
 mod canonicalize;
 mod complements;
 mod compress;
-mod elim;
+
 mod ite;
-mod rewrite;
+mod simp;
 //mod simp;
 
 use std::time::Instant;
@@ -15,8 +15,7 @@ use crate::{
 pub use canonicalize::canonicalize;
 
 use compress::RangeCompressor;
-use elim::EliminateEntailed;
-use rewrite::Rewriter;
+use simp::Simplifier;
 //use simp::Simplifier;
 
 #[derive(Default)]
@@ -45,7 +44,8 @@ impl Preprocessor {
         }
 
         let t = Instant::now();
-        new_root = compress_ranges(&new_root, mngr);
+        let mut compressor = RangeCompressor::default();
+        new_root = compressor.compress(&new_root, mngr);
         log::debug!("Compressed formula in {:?}", t.elapsed());
         log::debug!("Compressed formula: {}", new_root);
 
@@ -55,34 +55,13 @@ impl Preprocessor {
     fn simplify(&mut self, root: &Node, passes: usize, mngr: &mut NodeManager) -> Node {
         let mut result = root.clone();
 
-        let mut last_size = root.size();
-        let mut pass = 0;
+        let simplifier = Simplifier::default();
+        let simp_res = simplifier.apply(&result, passes, mngr);
+        let subs = simp_res.subs;
+        result = to_nnf(&simp_res.node, mngr);
 
-        while pass < passes || result.size() < last_size {
-            // First remove all non-entailed occurrences of entailed literals
-            let mut lit_eliminator = EliminateEntailed::default();
-            result = lit_eliminator.apply(result, mngr);
-
-            if result.size() >= last_size {
-                // we only count passes if we did not simplify
-                pass += 1;
-            }
-            last_size = result.size();
-            let mut applied = false;
-            let mut rewriter = Rewriter::default();
-            // Rewrite passes are cheaper than simplification passes, so we do them first and with a higher limit
-            let new_node = rewriter.rewrite(&result, passes, mngr);
-            if new_node != result {
-                applied = true;
-                result = to_nnf(&new_node, mngr);
-            }
-
-            if !applied {
-                break;
-            }
-            for sub in rewriter.get_applied_subs() {
-                self.subs = std::mem::take(&mut self.subs).compose(sub.clone(), mngr);
-            }
+        for sub in subs {
+            self.subs = std::mem::take(&mut self.subs).compose(sub.clone(), mngr);
         }
 
         result
@@ -91,9 +70,4 @@ impl Preprocessor {
     pub fn applied_substitutions(&self) -> &VarSubstitution {
         &self.subs
     }
-}
-
-pub fn compress_ranges(node: &Node, mngr: &mut NodeManager) -> Node {
-    let mut compressor = RangeCompressor::default();
-    compressor.compress(node, mngr)
 }

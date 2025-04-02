@@ -80,6 +80,21 @@ impl std::fmt::Display for SolverAnswer {
     }
 }
 
+/// The main solver.
+/// Solves the given formula by iteratively refining the bounds of the variables until a solution is found or the bounds are exhausted.
+/// In each iteration, the solver encodes the definitions of the variables and adds them to the SAT solver.
+/// The SAT solver is then called to check the satisfiability of the formula.
+/// If the formula is satisfiable, the solver decodes the propositional model to a first-order model and returns it.
+/// If the formula is unsatisfiable, the solver refines the bounds of the variables and continues.
+/// This is repeated until
+///
+/// - a solution is found
+/// - the bounds exceed the bounds of a presumed smallest model, in that case `UNSAT` is returned
+/// - the bounds are at the set maximum bounds, in that case either `UNSAT` or `UNKNOWN` is returned, based on the options
+/// - the bounds are frozen and the solver cannot refine them anymore, in that case `UNKNOWN` is returned
+///
+/// After each call to `solve`, more definitions can be added to the solver.
+/// The solver works incrementally, so adding definitions does not require a full restart.
 pub(crate) struct Solver {
     options: SolverOptions,
 

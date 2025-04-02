@@ -143,7 +143,7 @@ mod tests {
 
     use crate::{
         node::{NodeManager, Sort},
-        preprocess::rewrite::{str_int::VarEqConstantToInt, EquivalenceRule},
+        preprocess::simp::{str_int::VarEqConstantToInt, EquivalenceRule},
     };
 
     use super::int_to_re;

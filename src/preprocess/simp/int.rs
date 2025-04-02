@@ -16,10 +16,7 @@ impl EquivalenceRule for FoldConstantInts {
             return None; // already a fully simplified constant
         }
 
-        match is_const_int(node) {
-            Some(as_i) => Some(mngr.const_int(as_i)),
-            None => None,
-        }
+        is_const_int(node).map(|as_i| mngr.const_int(as_i))
     }
 }
 
@@ -85,15 +82,12 @@ impl EquivalenceRule for DistributeNeg {
             debug_assert!(node.children().len() == 1);
             let child = node.children().first().unwrap();
 
-            match child.kind() {
-                NodeKind::Add => {
-                    let mut new_children = Vec::new();
-                    for c in child.children() {
-                        new_children.push(mngr.neg(c.clone()));
-                    }
-                    return Some(mngr.add(new_children));
+            if child.kind() == &NodeKind::Add {
+                let mut new_children = Vec::new();
+                for c in child.children() {
+                    new_children.push(mngr.neg(c.clone()));
                 }
-                _ => (),
+                return Some(mngr.add(new_children));
             }
         }
         None
@@ -282,12 +276,12 @@ impl LinearIntRealtion {
     pub fn flip_polarity(&self) -> Self {
         if self.op == NodeKind::Eq {
             // flip polarity
-            return LinearIntRealtion {
+            LinearIntRealtion {
                 lhs: self.lhs.clone(),
                 op: self.op.clone(),
                 pol: !self.pol,
                 rhs: self.rhs,
-            };
+            }
         } else {
             let new_op = match self.op {
                 NodeKind::Lt => NodeKind::Ge,

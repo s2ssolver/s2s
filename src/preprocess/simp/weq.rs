@@ -34,14 +34,8 @@ impl EquivalenceRule for StripLCP {
             }
 
             if i > 0 {
-                let lhs_new = match lhs_iter.to_node(mngr) {
-                    Some(l) => l,
-                    None => return None,
-                };
-                let rhs_new = match rhs_iter.to_node(mngr) {
-                    Some(r) => r,
-                    None => return None,
-                };
+                let lhs_new = lhs_iter.to_node(mngr)?;
+                let rhs_new = rhs_iter.to_node(mngr)?;
                 return Some(mngr.eq(lhs_new, rhs_new));
             }
         }
@@ -242,7 +236,7 @@ impl EquivalenceRule for ParikhMatrixMismatch {
                 return Some(mngr.ffalse());
             }
         }
-        return None;
+        None
     }
 }
 

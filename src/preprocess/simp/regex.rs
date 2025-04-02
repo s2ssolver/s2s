@@ -103,10 +103,7 @@ impl EquivalenceRule for InReStripPrefix {
                 regex = deriver.deriv(&regex, c, mngr.re_builder());
                 iter.next();
             }
-            let node = match iter.to_node(mngr) {
-                Some(i) => i,
-                None => return None,
-            };
+            let node = iter.to_node(mngr)?;
 
             if rewritten {
                 let re = mngr.create_node(NodeKind::Regex(regex), vec![]);
@@ -212,7 +209,7 @@ impl EntailmentRule for ConstantPrefixSuffix {
 
                         let mut subst = VarSubstitution::default();
                         subst.add(v.clone(), pattern);
-                        return Some(subst.into());
+                        return Some(subst);
                     } else if let Some(suf) = regex.suffix().filter(|s| !s.is_empty()) {
                         // X -> Xsuf
                         let suffix_w = mngr.const_string(suf);
@@ -220,7 +217,7 @@ impl EntailmentRule for ConstantPrefixSuffix {
 
                         let mut subst = VarSubstitution::default();
                         subst.add(v.clone(), pattern);
-                        return Some(subst.into());
+                        return Some(subst);
                     }
                 } else {
                     unreachable!("Expected a regex node");

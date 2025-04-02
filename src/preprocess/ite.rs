@@ -1,3 +1,5 @@
+//! Preprecessing ITE nodes.
+
 use std::rc::Rc;
 
 use indexmap::IndexMap;
@@ -17,6 +19,7 @@ impl ITEHandler {
         // Remove all ITE nodes from the given node
         let removed = self.remove_ite(node, mngr);
 
+        // Handle the definitions
         let mut defs = self.rewrite_defs(mngr);
         if defs.is_empty() {
             removed
@@ -24,7 +27,6 @@ impl ITEHandler {
             defs.push(removed);
             mngr.and(defs)
         }
-        // Handle the definitions
     }
 
     /// Removes ITE nodes from the given node.
@@ -38,17 +40,14 @@ impl ITEHandler {
 
         // If the node is an ITE, rewrite it
         let new_node = mngr.create_node(node.kind().clone(), ch_rw);
-        
+
         if *new_node.kind() == NodeKind::Ite {
             if let Some(rw) = self.pure_boolean_ite(&new_node, mngr) {
                 rw
             } else {
-                // define with a new variable
                 let tmpv = self.define_ite(&new_node, mngr);
                 mngr.var(tmpv.clone())
-            };
-            let tmpv = self.define_ite(&new_node, mngr);
-            mngr.var(tmpv.clone())
+            }
         } else {
             new_node
         }
@@ -133,9 +132,9 @@ impl ITEHandler {
             ite
         );
 
-        let c = ite.children()[0].clone();
-        let t = ite.children()[1].clone();
-        let e = ite.children()[2].clone();
+        let c = &ite.children()[0];
+        let t = &ite.children()[1];
+        let e = &ite.children()[2];
 
         debug_assert!(
             c.sort().is_bool(),
@@ -152,6 +151,104 @@ impl ITEHandler {
             Some(rewrt)
         } else {
             None
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::node::NodeKind;
+
+    fn setup() -> NodeManager {
+        NodeManager::default()
+    }
+
+    #[test]
+    fn test_pure_boolean_ite() {
+        let mut mngr = setup();
+        let c = mngr.bool_var("c").unwrap();
+        let c = mngr.var(c.clone());
+        let t = mngr.bool_var("t").unwrap();
+        let t = mngr.var(t.clone());
+        let e = mngr.bool_var("e").unwrap();
+        let e = mngr.var(e.clone());
+        let ite = mngr.ite(c.clone(), t.clone(), e.clone());
+
+        let handler = ITEHandler::default();
+        let rewritten = handler.pure_boolean_ite(&ite, &mut mngr).unwrap();
+
+        // Expected: (c → t) ∧ (¬c → e)
+        let not_c = mngr.not(c.clone());
+        let imp1 = mngr.imp(c.clone(), t.clone());
+        let imp2 = mngr.imp(not_c, e.clone());
+        let expected = mngr.and(vec![imp1, imp2]);
+
+        assert_eq!(rewritten, expected,);
+    }
+
+    #[test]
+    fn test_define_ite_creates_variable() {
+        let mut mngr = setup();
+        let mut handler = ITEHandler::default();
+
+        let c = mngr.bool_var("cond").unwrap();
+        let c = mngr.var(c.clone());
+        let t = mngr.const_int(1);
+        let e = mngr.const_int(2);
+        let ite = mngr.ite(c.clone(), t.clone(), e.clone());
+
+        let v = handler.define_ite(&ite, &mut mngr);
+        let v_node = mngr.var(v.clone());
+
+        assert_eq!(v_node.sort(), t.sort());
+        assert!(handler.defs.contains_key(&ite));
+    }
+
+    #[test]
+    fn test_elim_ite_creates_definition() {
+        let mut mngr = setup();
+        let mut handler = ITEHandler::default();
+
+        let c = mngr.bool_var("cond").unwrap();
+        let c = mngr.var(c.clone());
+        let t = mngr.const_int(42);
+        let e = mngr.const_int(0);
+        let ite = mngr.ite(c.clone(), t.clone(), e.clone());
+
+        let one = mngr.const_int(1);
+
+        // (= ITE(c, 42, 0), 1)
+        let root = mngr.eq(ite.clone(), one.clone());
+
+        let rewritten = handler.elim_ite(&root, &mut mngr);
+
+        // rewritten should  be of the form: 1=temp /\ (c -> 42=temp) /\ (!c ->  0 = temp)
+        assert_eq!(rewritten.kind(), &NodeKind::And);
+        let children = rewritten.children();
+        assert_eq!(children.len(), 3);
+        assert_eq!(children[0].kind(), &NodeKind::Eq);
+        assert_eq!(children[1].kind(), &NodeKind::Imp);
+        assert_eq!(children[2].kind(), &NodeKind::Imp);
+
+        assert_eq!(children[0].children()[0], one);
+        if let NodeKind::Variable(temp_var) = children[0].children()[1].kind() {
+            let temp_var = mngr.var(temp_var.clone());
+            assert_eq!(children[0].children()[0], one.clone());
+            assert_eq!(children[1].kind(), &NodeKind::Imp);
+            assert_eq!(children[1].children()[0], c);
+            assert_eq!(children[1].children()[1].kind(), &NodeKind::Eq);
+            assert_eq!(children[1].children()[1].children()[0], t);
+            assert_eq!(children[1].children()[1].children()[1], temp_var);
+
+            assert_eq!(children[2].kind(), &NodeKind::Imp);
+            assert_eq!(children[2].children()[0].kind(), &NodeKind::Not);
+            assert_eq!(children[2].children()[0].children()[0], c);
+            assert_eq!(children[2].children()[1].kind(), &NodeKind::Eq);
+            assert_eq!(children[2].children()[1].children()[0], e);
+            assert_eq!(children[2].children()[1].children()[1], temp_var);
+        } else {
+            unreachable!()
         }
     }
 }

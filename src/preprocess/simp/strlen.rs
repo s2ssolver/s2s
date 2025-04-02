@@ -22,12 +22,9 @@ impl EquivalenceRule for ConstStringLength {
             debug_assert!(node.children().len() == 1);
             let child = node.children().first().unwrap();
 
-            match child.kind() {
-                NodeKind::String(s) => {
-                    let len = s.len() as i64;
-                    return Some(mngr.const_int(len));
-                }
-                _ => (),
+            if let NodeKind::String(s) = child.kind() {
+                let len = s.len() as i64;
+                return Some(mngr.const_int(len));
             }
         }
         None
@@ -43,15 +40,12 @@ impl EquivalenceRule for StringLengthAddition {
             debug_assert!(node.children().len() == 1);
             let child = node.children().first().unwrap();
 
-            match child.kind() {
-                NodeKind::Concat => {
-                    let mut sum = Vec::with_capacity(child.children().len());
-                    for c in child.children() {
-                        sum.push(mngr.str_len(c.clone()));
-                    }
-                    return Some(mngr.add(sum));
+            if child.kind() == &NodeKind::Concat {
+                let mut sum = Vec::with_capacity(child.children().len());
+                for c in child.children() {
+                    sum.push(mngr.str_len(c.clone()));
                 }
-                _ => (),
+                return Some(mngr.add(sum));
             }
         }
         None
@@ -69,17 +63,11 @@ impl EquivalenceRule for LengthTrivial {
                 let rhs = node.children().last().unwrap();
 
                 let (ts, kind, mut c) = if let Some(c) = is_const_int(rhs) {
-                    let lin = match linearlize_term(lhs) {
-                        Some(l) => l,
-                        None => return None,
-                    };
+                    let lin = linearlize_term(lhs)?;
                     (lin, node.kind().clone(), c)
                 } else if let Some(c) = is_const_int(lhs) {
                     // flip the operator
-                    let linearlized = match linearlize_term(rhs) {
-                        Some(l) => l,
-                        None => return None,
-                    };
+                    let linearlized = linearlize_term(rhs)?;
                     match node.kind() {
                         NodeKind::Lt => (linearlized, NodeKind::Gt, c),
                         NodeKind::Le => (linearlized, NodeKind::Ge, c),
@@ -311,18 +299,16 @@ impl EntailmentRule for ZeroLengthEpsilon {
                 debug_assert!(node.children().len() == 2);
                 let lhs = node.children().first().unwrap();
                 let rhs = node.children().last().unwrap();
-                match (lhs.kind(), rhs.kind()) {
-                    (_, NodeKind::Int(0)) => return ZeroLengthEpsilon::apply(lhs, mngr),
-                    _ => (),
+                if let (NodeKind::Int(0), _) = (lhs.kind(), rhs.kind()) {
+                    return ZeroLengthEpsilon::apply(lhs, mngr);
                 }
             }
             NodeKind::Ge => {
                 debug_assert!(node.children().len() == 2);
                 let lhs = node.children().first().unwrap();
                 let rhs = node.children().last().unwrap();
-                match (lhs.kind(), rhs.kind()) {
-                    (NodeKind::Int(0), _) => return ZeroLengthEpsilon::apply(rhs, mngr),
-                    _ => (),
+                if let (NodeKind::Int(0), _) = (lhs.kind(), rhs.kind()) {
+                    return ZeroLengthEpsilon::apply(rhs, mngr);
                 }
             }
             _ => (),
@@ -406,6 +392,6 @@ impl EquivalenceRule for TrivialLenghtConstraints {
                 _ => return None,
             }
         }
-        return None;
+        None
     }
 }

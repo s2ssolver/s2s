@@ -111,6 +111,7 @@ pub trait EncodeLiteral {
     ) -> Result<(), EncodingError>;
 }
 
+#[allow(clippy::large_enum_variant)]
 pub enum LiteralEncoder {
     BoolVar(BoolVarEncoder),
     NFAEncoder(re::NFAEncoder),

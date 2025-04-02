@@ -1,5 +1,13 @@
-//! Computation of small model bounds for formulas.
+//! Module for computing the small model bounds of sets of literals.
 //!
+//! For a given conjunction of literals, the small model bounds are the length variables in a presumed smallest solution.
+//! If the conjunction has a solution, then it also has a solution of the length variables that is bounded by the small model bounds.
+//! If not solution exists within the bounds, then the conjunction is unsatisfiable.
+//!
+//! The bounds are not computed exactly, but rather over-approximated.
+//! Depending on the fragment of the conjunction, the bounds are computed using different strategies.
+//! Not for all fragments, the bounds can be computed.
+
 mod linear;
 mod regular;
 use std::{fmt::Display, rc::Rc};
@@ -25,28 +33,39 @@ use crate::interval::Interval;
 
 /// Bounds for integer variables and string lengths.
 /// This is used to infer the small model bounds of a (sub) formula.
+/// Maps every variable to an interval that bounds the variable length.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Bounds {
     bounds: IndexMap<Rc<Variable>, Interval>,
 }
 
 impl Bounds {
+    /// Sets the bounds of a variable to the given interval.
     pub fn set(&mut self, var: Rc<Variable>, bound: Interval) {
         self.bounds.insert(var, bound);
     }
 
+    /// Obtains the bounds of a variable.
+    /// Returns None if the variable is not present in the bounds.
     pub fn get(&self, var: &Variable) -> Option<Interval> {
         self.bounds.get(var).copied()
     }
 
+    /// Obtains the upper bound of a variable.
+    /// Returns None if the variable is not present in the bounds.
     pub fn get_upper(&self, var: &Variable) -> Option<BoundValue> {
         self.bounds.get(var).map(|i| i.upper())
     }
 
+    /// Obtains the lower bound of a variable.
+    /// Returns None if the variable is not present in the bounds.
     pub fn get_lower(&self, var: &Variable) -> Option<BoundValue> {
         self.bounds.get(var).map(|i| i.lower())
     }
 
+    /// Sets the upper bound of a variable to the given value.
+    /// If the variable is not present in the bounds, it is added with the given upper bounds and unbounded lower bound.
+    /// If the variable is present in the bounds, the upper bound is set to the given value and the lower bound is unbounded.
     pub fn set_upper(&mut self, var: Rc<Variable>, upper: BoundValue) {
         let current = self
             .bounds
@@ -56,6 +75,9 @@ impl Bounds {
         self.bounds.insert(var, new);
     }
 
+    /// Sets the lower bound of a variable to the given value.
+    /// If the variable is not present in the bounds, it is added with the given lower bounds and unbounded upper bound.
+    /// If the variable is present in the bounds, the lower bound is set to the given value and the upper bound is unbounded.
     pub fn set_lower(&mut self, var: Rc<Variable>, lower: BoundValue) {
         let current = self
             .bounds
@@ -65,6 +87,8 @@ impl Bounds {
         self.bounds.insert(var, new);
     }
 
+    /// Returns an iterator over the bounds.
+    /// The iterator yields tuples of the form (variable, interval).
     pub fn iter(&self) -> impl Iterator<Item = (&Rc<Variable>, &Interval)> {
         self.bounds.iter()
     }
@@ -79,6 +103,7 @@ impl Display for Bounds {
     }
 }
 
+/// The fragment that a formula belongs to.
 #[allow(dead_code)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum Fragment {
@@ -92,6 +117,9 @@ enum Fragment {
     RegWeqLin(bool),
 }
 
+/// Helper struct to find the fragment of a formula.
+/// This is used to determine which strategy to use for inferring the bounds.
+/// The fragment is determined by the literals in the formula.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 struct FragmentFinder {
     // The set of variables that appear in an inequality
@@ -172,6 +200,7 @@ impl FragmentFinder {
     }
 }
 
+/// Infers bounds for a set of literals.
 #[derive(Debug, Default, Clone)]
 pub struct BoundInferer {
     /// The set of literals for which we infer bounds
@@ -216,6 +245,8 @@ impl BoundInferer {
         self.lin.add_linear(lc.clone());
     }
 
+    /// Adds a literal to the bounds inferer.
+    /// This will add the literal to the set of literals for which we infer bounds.
     pub fn add_literal(&mut self, lit: Literal, mngr: &mut NodeManager) {
         self.literals.insert(lit.clone());
 
@@ -245,11 +276,17 @@ impl BoundInferer {
     }
 
     /// Returns true if the literals contain a conflict, i.e., a literal and its negation.
-    pub fn conflicting(&self) -> bool {
+    fn conflicting(&self) -> bool {
         self.conflict || self.reg.conflict() || self.lin.conflict()
     }
 
     /// Infers the bounds of the variables in the literals.
+    /// Depending on the fragment of the literals, different strategies are used to infer the bounds.
+    /// It is not guaranteed that the bounds are exact, or are even computed for all variables.
+    /// If the bounds on a variable cannot be computed, the variable is set to unbounded, i.e. the bounds are set to `(-inf, inf)`.
+    ///
+    /// If the set of literals is conflicting, i.e., has no valid bounds, then None is returned.
+    /// In that case, the conjunction of the literals is unsatisfiable.
     pub fn infer(&mut self) -> Option<Bounds> {
         if self.conflicting() {
             return None;

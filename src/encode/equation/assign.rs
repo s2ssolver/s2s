@@ -88,7 +88,7 @@ impl AssignmentEncoder {
 
         self.last_bound = Some(bound);
 
-        return Ok(());
+        Ok(())
     }
 
     fn encode_ineq(

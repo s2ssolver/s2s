@@ -256,7 +256,7 @@ impl NodeManager {
 
     /// Creates a new variable with a given name and sort.
     /// If that variable already exists, returns the existing variable.
-    /// If a variable with the same name but different sort exists, panics.
+    /// If a variable with the same name but different sort exists, returns an error.
     pub fn new_var(&mut self, name: String, sort: Sort) -> Result<Rc<Variable>, NodeError> {
         if let Some(var) = self.variables.get(&name) {
             if var.sort() != sort {
@@ -269,6 +269,27 @@ impl NodeManager {
             self.variables.insert(name.clone(), var.clone());
             Ok(var)
         }
+    }
+
+    /// Creates a new variable with a given name and Bool sort.
+    /// If that variable already exists, returns the existing variable.
+    /// If a variable with the same name but different sort exists, returns an error.
+    pub fn bool_var(&mut self, name: &str) -> Result<Rc<Variable>, NodeError> {
+        self.new_var(name.to_string(), Sort::Bool)
+    }
+
+    /// Creates a new variable with a given name and Int sort.
+    /// If that variable already exists, returns the existing variable.
+    /// If a variable with the same name but different sort exists, returns an error.
+    pub fn int_var(&mut self, name: &str) -> Result<Rc<Variable>, NodeError> {
+        self.new_var(name.to_string(), Sort::Int)
+    }
+
+    /// Creates a new variable with a given name and String sort.
+    /// If that variable already exists, returns the existing variable.
+    /// If a variable with the same name but different sort exists, panics.
+    pub fn string_var(&mut self, name: &str) -> Result<Rc<Variable>, NodeError> {
+        self.new_var(name.to_string(), Sort::String)
     }
 
     pub fn get_var(&self, name: &str) -> Option<Rc<Variable>> {
@@ -371,38 +392,38 @@ impl NodeManager {
     pub fn not(&mut self, r: Node) -> Node {
         if self.optimize {
             match r.kind() {
-                NodeKind::Bool(false) => return self.ttrue(),
-                NodeKind::Bool(true) => return self.ffalse(),
-                NodeKind::Not => return r.children().first().unwrap().clone(),
+                NodeKind::Bool(false) => self.ttrue(),
+                NodeKind::Bool(true) => self.ffalse(),
+                NodeKind::Not => r.children().first().unwrap().clone(),
                 NodeKind::Lt => {
                     let mut children = r.children().to_vec();
                     let r = children.pop().unwrap();
                     let l = children.pop().unwrap();
-                    return self.ge(l, r);
+                    self.ge(l, r)
                 }
                 NodeKind::Le => {
                     let mut children = r.children().to_vec();
                     let r = children.pop().unwrap();
                     let l = children.pop().unwrap();
-                    return self.gt(l, r);
+                    self.gt(l, r)
                 }
                 NodeKind::Gt => {
                     let mut children = r.children().to_vec();
                     let r = children.pop().unwrap();
                     let l = children.pop().unwrap();
-                    return self.le(l, r);
+                    self.le(l, r)
                 }
                 NodeKind::Ge => {
                     let mut children = r.children().to_vec();
                     let r = children.pop().unwrap();
                     let l = children.pop().unwrap();
-                    return self.lt(l, r);
+                    self.lt(l, r)
                 }
                 NodeKind::Imp => {
                     let mut children = r.children().to_vec();
                     let r = children.pop().unwrap();
                     let l = children.pop().unwrap();
-                    return self.imp(l, r);
+                    self.imp(l, r)
                 }
                 _ => self.intern_node(NodeKind::Not, vec![r]),
             }

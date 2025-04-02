@@ -15,13 +15,13 @@ impl EliminateEntailed {
         self.entailed.contains(node)
     }
 
-    pub fn apply(&mut self, root: Node, mngr: &mut NodeManager) -> Node {
-        self.entailed = get_entailed(&root);
+    pub fn apply(&mut self, root: &Node, mngr: &mut NodeManager) -> Node {
+        self.entailed = get_entailed(root);
         self.apply_node(root, true, mngr)
     }
 
-    fn apply_node(&self, node: Node, entailed: bool, mngr: &mut NodeManager) -> Node {
-        if node.sort().is_bool() && !entailed && self.occurrs_entailed(&node) {
+    fn apply_node(&self, node: &Node, entailed: bool, mngr: &mut NodeManager) -> Node {
+        if node.sort().is_bool() && !entailed && self.occurrs_entailed(node) {
             mngr.ttrue()
         } else {
             // apply to children
@@ -29,7 +29,7 @@ impl EliminateEntailed {
             let children = node
                 .children()
                 .iter()
-                .map(|child| self.apply_node(child.clone(), entailed, mngr))
+                .map(|child| self.apply_node(child, entailed, mngr))
                 .collect();
             mngr.create_node(kind, children)
         }

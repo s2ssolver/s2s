@@ -68,7 +68,7 @@ fn levis_step(lhs: &Node, rhs: &Node, mngr: &mut NodeManager) -> Option<VarSubst
             let mut prefix = SmtString::empty();
             let v_node = mngr.var(v.clone());
             while let Some(Symbol::Const(c)) = lhs_iter.next() {
-                if not_empty(c, &mut rhs_iter) {
+                if not_empty(c, &rhs_iter) {
                     prefix.push(c);
                 } else {
                     break;

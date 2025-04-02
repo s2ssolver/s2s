@@ -3,7 +3,7 @@ use indexmap::IndexSet;
 use crate::{
     interval::Interval,
     node::{Node, NodeKind, NodeManager},
-    preprocess::rewrite::int::{normalize_ineq, LinearIntRealtion},
+    preprocess::simp::int::{normalize_ineq, LinearIntRealtion},
 };
 
 use super::EquivalenceRule;
@@ -22,13 +22,16 @@ impl LinIntForward {
         let fact_norm = normalize_ineq(fact)?;
         let other_norm = normalize_ineq(other)?;
         // We check if they are
+
         // - conflicting: `fact` and `other` cannot be true at the same time. In that case, we return false.
         // - valid: `fact` implies `other`. In that case, we return true.
         // - otherwise, we return None.
 
         /// Compores two inequalities of the form:
+        ///
         /// - `LHS op1 r1`
         /// - `LHS op2 r2`
+        ///
         /// If they are conflicting, it returns false.
         /// If the the first implies the second, it returns true.
         /// Otherwise, it returns None.

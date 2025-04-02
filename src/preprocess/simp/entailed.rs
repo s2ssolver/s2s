@@ -25,21 +25,17 @@ impl EntailmentRule for EntailedBooleanVars {
         let mut subs = VarSubstitution::default();
         for a in asserted {
             if let NodeKind::Variable(v) = a.kind() {
-                if v.sort().is_bool() {
-                    if !subs.get(v).is_some() {
-                        subs.add(v.clone(), mngr.ttrue());
-                        return Some(subs);
-                    }
+                if v.sort().is_bool() && subs.get(v).is_none() {
+                    subs.add(v.clone(), mngr.ttrue());
+                    return Some(subs);
                 }
             } else if NodeKind::Not == *node.kind() {
                 debug_assert!(node.children().len() == 1);
                 let child = node.children().first().unwrap();
                 if let NodeKind::Variable(v) = child.kind() {
-                    if v.sort().is_bool() {
-                        if !subs.get(v).is_some() {
-                            subs.add(v.clone(), mngr.ffalse());
-                            return Some(subs);
-                        }
+                    if v.sort().is_bool() && subs.get(v).is_none() {
+                        subs.add(v.clone(), mngr.ffalse());
+                        return Some(subs);
                     }
                 }
             }

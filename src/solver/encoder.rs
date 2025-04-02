@@ -1,3 +1,5 @@
+//! Manager for encoding definitions into CNF.
+
 use std::{ops::Neg, rc::Rc, time::Instant};
 
 use crate::{
@@ -264,7 +266,7 @@ impl CadicalEncodingSink<'_> {
     }
 }
 
-impl<'a> EncodingSink for CadicalEncodingSink<'a> {
+impl EncodingSink for CadicalEncodingSink<'_> {
     fn add_clause(&mut self, mut clause: Clause) {
         if let Some(sub) = &self.sub {
             // Add all literals in sub to the clause
