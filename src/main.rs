@@ -11,10 +11,6 @@ struct Options {
     #[arg(long)]
     skip_simp: bool,
 
-    /// If this is set to true, the solver will double-check that the found model is correct.
-    #[arg(long)]
-    verify_model: bool,
-
     /// If this is set to true, the solver will not actually solve the instance, but terminate after preprocessing.
     #[arg(long)]
     dry: bool,
