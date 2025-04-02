@@ -1,5 +1,7 @@
 # Blastr
 
+[![Build](https://github.com/splortsolver/s2s/actions/workflows/build.yml/badge.svg)](https://github.com/splortsolver/s2s/actions/workflows/build.yml)
+
 **Blastr** is an SMT solver for the quantifier-free theory of strings combined with linear integer arithmetic (QF_SLIA).  
 It currently supports a limited subset of SMT-LIB constraints.
 
