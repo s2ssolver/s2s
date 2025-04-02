@@ -92,6 +92,8 @@ fn levis_step(lhs: &Node, rhs: &Node, mngr: &mut NodeManager) -> Option<VarSubst
 
 #[cfg(test)]
 mod tests {
+    use indexmap::indexset;
+
     use super::*;
     use crate::node::testutils::parse_equation;
 
@@ -100,7 +102,8 @@ mod tests {
         let mut mngr = NodeManager::default();
         // Y must start with 'b'
         let eq = parse_equation("YaX", "bX", &mut mngr);
-        let res = LevisRule.apply(&eq, &IndexSet::new(), true, &mut mngr);
+        let asserted = indexset! {eq.clone()};
+        let res = LevisRule.apply(&eq, &asserted, true, &mut mngr);
 
         match res {
             Some(got) => {
@@ -117,7 +120,8 @@ mod tests {
         let mut mngr = NodeManager::default();
         // Y must start with 'b'
         let eq = parse_equation("YaX", "fooX", &mut mngr);
-        let res = LevisRule.apply(&eq, &IndexSet::new(), true, &mut mngr);
+        let asserted = indexset! {eq.clone()};
+        let res = LevisRule.apply(&eq, &asserted, true, &mut mngr);
 
         match res {
             Some(got) => {
@@ -134,7 +138,8 @@ mod tests {
         let mut mngr = NodeManager::default();
         // Y must start with 'b'
         let eq = parse_equation("bX", "YaX", &mut mngr);
-        let res = LevisRule.apply(&eq, &IndexSet::new(), true, &mut mngr);
+        let asserted = indexset! {eq.clone()};
+        let res = LevisRule.apply(&eq, &asserted, true, &mut mngr);
 
         match res {
             Some(got) => {
@@ -151,7 +156,8 @@ mod tests {
         let mut mngr = NodeManager::default();
         // Y must start with 'b'
         let eq = parse_equation("fooX", "YaX", &mut mngr);
-        let res = LevisRule.apply(&eq, &IndexSet::new(), true, &mut mngr);
+        let asserted = indexset! {eq.clone()};
+        let res = LevisRule.apply(&eq, &asserted, true, &mut mngr);
 
         match res {
             Some(got) => {
