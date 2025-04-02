@@ -86,5 +86,8 @@ fn convert_options(options: &Options) -> SolverOptions {
     if options.print_preprocessed {
         opts.print_preprocessed();
     }
+    if options.model {
+        opts.get_model = true;
+    }
     opts
 }

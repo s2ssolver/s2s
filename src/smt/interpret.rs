@@ -8,14 +8,18 @@ use crate::{
 /// Interpreter for SMT-LIB scripts.
 pub struct Interpreter<'a> {
     mngr: &'a mut NodeManager,
-
+    options: SolverOptions,
     engine: Engine,
 }
 
 impl<'a> Interpreter<'a> {
     pub fn new(options: SolverOptions, mngr: &'a mut NodeManager) -> Self {
         let engine = Engine::with_options(options.clone());
-        Self { mngr, engine }
+        Self {
+            mngr,
+            options,
+            engine,
+        }
     }
 
     pub fn run(&mut self, script: &Script) -> Result<(), Error> {
@@ -27,22 +31,27 @@ impl<'a> Interpreter<'a> {
                 Command::CheckSat => {
                     let res = self.check_sat()?;
                     println!("{}", res);
+                    if self.options.get_model {
+                        self.print_model();
+                    }
                 }
                 Command::Echo(msg) => {
                     println!("{}", msg);
                 }
                 Command::Exit => return Ok(()),
-                Command::GetModel => {
-                    if let SolverAnswer::Sat(Some(m)) = &self.engine.get_result() {
-                        println!("{}", m);
-                    } else {
-                        eprintln!("error: no model to get");
-                    }
-                }
+                Command::GetModel => self.print_model(),
                 Command::DeclareConst(_) | Command::SetLogic(_) | Command::NoOp => (),
             }
         }
         Ok(())
+    }
+
+    fn print_model(&self) {
+        if let SolverAnswer::Sat(Some(m)) = &self.engine.get_result() {
+            println!("{}", m);
+        } else {
+            eprintln!("error: no model to get");
+        }
     }
 
     pub fn assert(&mut self, node: &Node) {

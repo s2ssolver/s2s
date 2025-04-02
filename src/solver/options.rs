@@ -7,6 +7,7 @@ const DEFAULT_PREPROCESS_PASSES: usize = 20;
 const DEFAULT_CHECK_MODEL: bool = false;
 const DEFAULT_UNSAT_ON_MAX_BOUND: bool = false;
 const DEFAULT_MAX_BLOCKING: usize = 100;
+const DEFAULT_GET_MODEL: bool = false;
 
 #[derive(Debug, Clone)]
 pub struct SolverOptions {
@@ -16,10 +17,13 @@ pub struct SolverOptions {
     /// An extra preprocessing pass is performed if the size of the formula did not decrease in previous pass.
     /// If set to 0, will only apply preprocessing while the size of the formula is decreasing.
     pub preprocess_extra_passes: usize,
-    pub cegar: bool,
+
     pub max_bounds: Interval,
     pub step: BoundStep,
     pub check_model: bool,
+    /// Wheter to print the model after solving.
+    /// This is only used if the solver returns `sat`.
+    pub get_model: bool,
     pub unsat_on_max_bound: bool,
     pub init_upper_bound: i32,
     pub print_preprocessed: bool,
@@ -33,10 +37,10 @@ impl Default for SolverOptions {
             dry: false,
             simplify: DEFAULT_SIMPLIFY,
             preprocess_extra_passes: DEFAULT_PREPROCESS_PASSES,
-            cegar: true,
             max_bounds: Interval::unbounded(),
             step: BoundStep::default(),
             check_model: DEFAULT_CHECK_MODEL,
+            get_model: DEFAULT_GET_MODEL,
             unsat_on_max_bound: DEFAULT_UNSAT_ON_MAX_BOUND,
             init_upper_bound: 2,
             max_blocking: DEFAULT_MAX_BLOCKING,
@@ -58,18 +62,6 @@ impl SolverOptions {
     /// Simplification is done by applying algebraic simplifications to the formula.
     pub fn simplify(&mut self, simplify: bool) -> &mut Self {
         self.simplify = simplify;
-        self
-    }
-
-    /// Whether to use a counterexample-guided abstraction refinement (CEGAR) strategy if unsupported literals are found.
-    ///
-    /// If CEGAR is enabled, the solver solves an abstracted version of the formula containing only supported literals.
-    /// If the abstracted formula is satisfiable, the solver checks if the model is a solution to the original formula.
-    /// If the model is not a solution, the solver tries to refine the abstraction and solve the abstracted formula again.
-    /// If the abstracted formula is unsatisfiable, the solver refines the abstraction and tries again.
-    /// If this is set to false, the solver will refuse to solve the formula if it contains unsupported literals.
-    pub fn cegar(&mut self, cegar: bool) -> &mut Self {
-        self.cegar = cegar;
         self
     }
 
