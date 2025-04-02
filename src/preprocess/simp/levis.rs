@@ -170,7 +170,7 @@ mod tests {
         let eq = parse_equation("YaX", "aX", &mut mngr);
         let res = LevisRule.apply(&eq, &IndexSet::new(), true, &mut mngr);
 
-        assert!(matches!(res, None));
+        assert!(res.is_none());
     }
 
     #[test]
@@ -180,6 +180,6 @@ mod tests {
         let eq = parse_equation("aX", "YaX", &mut mngr);
         let res = LevisRule.apply(&eq, &IndexSet::new(), true, &mut mngr);
 
-        assert!(matches!(res, None));
+        assert!(res.is_none());
     }
 }

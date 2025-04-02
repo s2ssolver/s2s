@@ -420,7 +420,7 @@ mod tests {
         }
 
         // This will panic if the substitution is not valid
-        let subs = encoding.get_model(&mut solver);
+        let subs = encoding.get_model(&solver);
         assert!(
             subs.get(&var).is_some(),
             "No substitution found (length is {})",

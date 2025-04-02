@@ -254,7 +254,7 @@ mod tests {
                         }
                         assert!(found);
                     }
-                    let subs = domain.encoding().get_model(&mut cadical);
+                    let subs = domain.encoding().get_model(&cadical);
                     return Some(subs);
                 }
                 Some(_) => continue,
