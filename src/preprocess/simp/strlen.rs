@@ -11,6 +11,7 @@ use super::{
 };
 
 use indexmap::IndexSet;
+use itertools::Itertools;
 use smallvec::smallvec;
 
 /// Reduces expressions of the form `len(s)` with `s` a constant string to the length of the string.
@@ -52,7 +53,11 @@ impl EquivalenceRule for StringLengthAddition {
     }
 }
 
-/// Checks if a linear (in)-equality requires that a string length is less than zero and simplifies it to false if so.
+/// Fold trivial length constraints.
+///
+/// - If a linear (in)-equality requires that a string length is less than zero and simplifies it to false if so.
+/// - If a string length asserts that the length is greater or equal to zero, it simplifies it to true.
+/// - If a string length asserts that the less than or equal to zero, it simplifies it to equal to zero.
 #[derive(Debug, Clone, Copy)]
 pub(super) struct LengthTrivial;
 impl EquivalenceRule for LengthTrivial {
@@ -84,7 +89,6 @@ impl EquivalenceRule for LengthTrivial {
                 if ts.coeffs.iter().all(|(n, _)| *n.kind() == NodeKind::Length) {
                     // all coefficients are positive
                     let coeffs_positive = ts.coeffs.iter().all(|(_, v)| *v >= 0);
-
                     match kind {
                         NodeKind::Eq if ts.coeffs.len() == 1 && c == 0 => {
                             // that string term needs to be epsilon
@@ -103,10 +107,28 @@ impl EquivalenceRule for LengthTrivial {
                         NodeKind::Le if c < 0 && coeffs_positive => {
                             return Some(mngr.ffalse());
                         }
+                        NodeKind::Le if c == 0 && coeffs_positive => {
+                            let lhs_new = ts
+                                .coeffs
+                                .iter()
+                                .map(|(n, v)| (n, mngr.const_int(*v)))
+                                .collect_vec()
+                                .into_iter()
+                                .map(|(n, v)| mngr.mul(vec![v, n.clone()]))
+                                .collect();
+                            let lhs_new = mngr.add(lhs_new);
+                            let rhs_new = mngr.const_int(0);
+                            let new_eq = mngr.eq(lhs_new, rhs_new);
+                            return Some(new_eq);
+                        }
                         NodeKind::Gt if c < 0 && coeffs_positive => {
                             return Some(mngr.ttrue());
                         }
                         NodeKind::Ge if c <= 0 && coeffs_positive => {
+                            return Some(mngr.ttrue());
+                        }
+                        NodeKind::Ge if c == 0 && coeffs_positive => {
+                            // This is a trivial constraint, we can remove it
                             return Some(mngr.ttrue());
                         }
                         _ => (),
