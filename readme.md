@@ -12,31 +12,14 @@ This project is experimental, under active development, and subject to frequent 
 
 ## Build Instructions
 
-Ensure that the [Rust toolchain](https://www.rust-lang.org/tools/install) is installed.
-
-You'll also need the following system dependencies:
-
-- `libssl-dev`
-- `pkg-config`
-- `libclang-dev`
-
-On Ubuntu-based systems, you can install them with:
-
-```bash
-sudo apt-get install libssl-dev pkg-config libclang-dev
-```
-
-Then clone the repository and build the project:
-
-```bash
-git clone https://github.com/your-username/blastr.git
-cd blastr
-cargo build --release
-```
+1. Ensure that the [Rust toolchain](https://www.rust-lang.org/tools/install) is installed.
+2. Install dependencies:
+    - On Ubuntu: `sudo apt-get install libssl-dev pkg-config libclang-dev`
+    - On MacOs: `brew install pkgconf openssl`
+    - Windows is currently not supported
+3. Clone the repository and build the project using `cargo build --release`
 
 The compiled binary will be located at `target/release/blastr`.
-
----
 
 ## Usage
 
@@ -46,8 +29,6 @@ blastr [OPTIONS] <FILE>
 
 - `<FILE>` is the path to an SMT-LIB file (QF_SLIA).
 - Example files can be found in the `res/tests_sat/` directory.
-
----
 
 ### Options
 
