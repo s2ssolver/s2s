@@ -1,0 +1,5 @@
+(declare-const X String)
+(declare-const Y String)
+(declare-const R Int)
+(assert (or (= X (str.++ Y "abc")) (= 1 (* R (- 1)))))
+(check-sat)

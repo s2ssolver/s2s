@@ -287,21 +287,24 @@ impl MatchEncoder {
         sink: &mut impl EncodingSink,
     ) {
         debug_assert_eq!(*self.pattern.get(i), PatternSegment::Word(w.clone()));
-        // We need to consider all start positions from (last length) - (|w| + const_after(i)) to the end of the word
+        // We need to consider all start positions from (last length) - (|w| + const_after(i)) to the end of the word - const_after(i)
         // subtracting (|w| + const_after(i)) is required because these position where unusable in the last iteration, as they would exceed the word length (and were disabled by assumptions)
         // In this iteration, we need to consider them, as the word length might have increased.
 
-        let earliest = self
+        let earliest_start = self
             .len
             .unwrap_or(0)
             .saturating_sub(w.len())
             .saturating_sub(self.pattern.consts_after(i));
-        // if this is smaller than the sum of constant prior to this segment, we can skip those positions
-        let earliest = earliest.max(self.pattern.consts_before(i));
 
-        let until = if i == 0 { 1 } else { rhs.positions() };
+        let latest_start = if i == 0 {
+            // first segment can only start at position 0
+            1
+        } else {
+            rhs.positions().saturating_sub(self.pattern.consts_after(i))
+        };
 
-        for pos in earliest..until {
+        for pos in earliest_start..latest_start {
             let starts_here = self.starts_at(i, pos);
             // check if the segment can start here
             if pos + w.len() < rhs.positions().saturating_sub(self.pattern.consts_after(i)) {
@@ -353,12 +356,16 @@ impl MatchEncoder {
 
         let earliest = self.pattern.consts_before(i);
 
-        let until = if i == 0 && false {
+        let latest_end = rhs.positions().saturating_sub(self.pattern.consts_after(i));
+
+        let latest_start = if i == 0 {
+            // first segment can only start at position 0
             1
         } else {
-            rhs.positions().saturating_sub(self.pattern.consts_after(i))
+            latest_end
         };
-        for pos in earliest..until {
+
+        for pos in earliest..latest_start {
             for len in 0..=vbound {
                 // Check if this was encoded in the last iteration
                 if pos < last_len && len < last_vbound && pos + len < last_len {
@@ -371,7 +378,7 @@ impl MatchEncoder {
                     .unwrap_or_else(|| panic!("No length {} for variable {}", len, v));
                 let starts_at = self.starts_at(i, pos);
 
-                if pos + len < until {
+                if pos + len < latest_end {
                     // encode that var = w[pos..pos+len].
                     // this is encoded inducively:
                     // - length = 1: var = w[0]
