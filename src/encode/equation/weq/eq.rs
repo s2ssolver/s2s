@@ -205,11 +205,11 @@ mod tests {
                         .word_encoding
                         .as_ref()
                         .unwrap()
-                        .print_solution_word(&mut cadical);
+                        .print_solution_word(&cadical);
                     println!("Start Positions LHS");
-                    encoder.match_encoder.0.print_start_positions(&mut cadical);
+                    encoder.match_encoder.0.print_start_positions(&cadical);
                     println!("Start Positions RHS");
-                    encoder.match_encoder.1.print_start_positions(&mut cadical);
+                    encoder.match_encoder.1.print_start_positions(&cadical);
                     println!("String lengths");
                     for v in eq.variables() {
                         let solution = cadical.full_solution().unwrap();

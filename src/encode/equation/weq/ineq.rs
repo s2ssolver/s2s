@@ -238,17 +238,17 @@ mod tests {
                         .word_encoding_lhs
                         .as_ref()
                         .unwrap()
-                        .print_solution_word(&mut cadical);
+                        .print_solution_word(&cadical);
                     print!("Solution WORD RHS: ");
                     encoder
                         .word_encoding_rhs
                         .as_ref()
                         .unwrap()
-                        .print_solution_word(&mut cadical);
+                        .print_solution_word(&cadical);
                     println!("Start Positions LHS");
-                    encoder.match_lhs.print_start_positions(&mut cadical);
+                    encoder.match_lhs.print_start_positions(&cadical);
                     println!("Start Positions RHS");
-                    encoder.match_rhs.print_start_positions(&mut cadical);
+                    encoder.match_rhs.print_start_positions(&cadical);
                     println!("String lengths");
                     let solution = cadical.full_solution().unwrap();
                     for v in eq.variables() {
