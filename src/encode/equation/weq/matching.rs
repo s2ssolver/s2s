@@ -162,7 +162,7 @@ impl MatchEncoder {
     }
 
     /// Encodes the matching of the pattern to the word, represented by the given word encoding.
-    pub fn encode<'a>(
+    pub fn encode(
         &mut self,
         rhs: &MatchAgainst,
         bounds: &Domain,

@@ -138,9 +138,9 @@ impl EncodeLiteral for WordEquationEncoder {
         }
 
         println!("Start Positions LHS");
-        self.match_encoder.0.print_start_positions(&solver);
+        self.match_encoder.0.print_start_positions(solver);
         println!("Start Positions RHS");
-        self.match_encoder.1.print_start_positions(&solver);
+        self.match_encoder.1.print_start_positions(solver);
         println!("String lengths");
     }
 }
