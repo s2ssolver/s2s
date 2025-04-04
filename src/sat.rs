@@ -138,10 +138,14 @@ pub fn to_cnf(formula: &PFormula) -> Cnf {
         }
     }
 
+    if let Some(cnf) = cnf_to_clauses(formula) {
+        return cnf;
+    }
+
     let mut defs = IndexMap::new();
 
     let res: PFormula = maincnf(formula, &mut defs);
-    let mut cnf = cnf_to_clauses(&res);
+    let mut cnf = cnf_to_clauses(&res).unwrap();
 
     // Add definitional clauses
     for (f, def_var) in defs {
@@ -184,34 +188,37 @@ pub fn to_cnf(formula: &PFormula) -> Cnf {
 
 /// Converts a formula in conjunctive normal form to a [Clause].
 /// Panics if the formula is not in conjunctive normal form.
-fn cnf_to_clauses(fm: &PFormula) -> Cnf {
+fn cnf_to_clauses(fm: &PFormula) -> Option<Cnf> {
     let mut cnf = Cnf::new();
 
-    fn to_clause(lits: &[PFormula]) -> Clause {
-        lits.iter()
-            .map(|f| match f {
-                PFormula::Lit(val) => *val,
-                _ => panic!("Not a CNF formula"),
-            })
-            .collect()
+    fn to_clause(lits: &[PFormula]) -> Option<Clause> {
+        let mut clause = Clause::with_capacity(lits.len());
+        for l in lits {
+            if let PFormula::Lit(l) = l {
+                clause.add(*l);
+            } else {
+                return None;
+            }
+        }
+        Some(clause)
     }
 
     match fm {
         PFormula::Lit(v) => cnf.add_unit(*v),
         PFormula::Or(fs) => {
-            cnf.add_clause(to_clause(fs));
+            cnf.add_clause(to_clause(fs)?);
         }
         PFormula::And(fs) => {
             for f in fs {
                 match f {
                     PFormula::And(fs) => {
                         for f in fs {
-                            let subcnf = cnf_to_clauses(f);
+                            let subcnf = cnf_to_clauses(f)?;
                             cnf.extend(subcnf);
                         }
                     }
                     PFormula::Or(fs) => {
-                        cnf.add_clause(to_clause(fs));
+                        cnf.add_clause(to_clause(fs)?);
                         (to_clause(fs));
                     }
                     PFormula::Lit(l) => cnf.add_unit(*l),
@@ -219,7 +226,7 @@ fn cnf_to_clauses(fm: &PFormula) -> Cnf {
             }
         }
     }
-    cnf
+    Some(cnf)
 }
 
 #[cfg(test)]
@@ -273,11 +280,10 @@ mod tests {
         expected_cnf.add_binary(plit(1), plit(2));
         expected_cnf.add_ternary(nlit(3), plit(4), plit(5));
 
-        assert_eq!(cnf_to_clauses(&fm), expected_cnf);
+        assert_eq!(cnf_to_clauses(&fm).unwrap(), expected_cnf);
     }
 
     #[test]
-    #[should_panic]
     fn test_cnf_to_clause_not_cnf() {
         // Test case 2: formula that is not in CNF
         // (!F) || (A && B)
@@ -286,7 +292,7 @@ mod tests {
             PFormula::And(vec![PFormula::plit(2), PFormula::plit(3)]),
         ]);
 
-        cnf_to_clauses(&fm);
+        assert!(cnf_to_clauses(&fm).is_none());
     }
 
     #[test]
@@ -306,6 +312,6 @@ mod tests {
         expected_cnf.add_unit(nlit(5));
         expected_cnf.add_unit(nlit(6));
 
-        assert_eq!(cnf_to_clauses(&fm), expected_cnf);
+        assert_eq!(cnf_to_clauses(&fm).unwrap(), expected_cnf);
     }
 }
