@@ -343,22 +343,15 @@ pub fn normalize_ineq(node: &Node) -> Option<LinearIntRealtion> {
                 new_constant,
             );
 
-            // In normal form, we enforce that the constant term is non-negative.
-            if norm.rhs() < 0 {
-                // Multiply both sides by -1
+            // In normal form, we enfore that the first coeffiecient is positive
+            if norm
+                .lhs()
+                .coeffs
+                .first()
+                .map(|(_, s)| *s < 0)
+                .unwrap_or(false)
+            {
                 norm.mult(-1);
-            }
-            if norm.rhs() == 0 && norm.op() == &NodeKind::Eq {
-                // If we have and equality or disequality with a zero right hand side, we normalize by enforcing the first constant to be positive
-                if norm
-                    .lhs()
-                    .coeffs
-                    .first()
-                    .map(|(_, s)| *s < 0)
-                    .unwrap_or(false)
-                {
-                    norm.mult(-1);
-                }
             }
 
             Some(norm)
