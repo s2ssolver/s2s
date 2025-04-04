@@ -41,5 +41,6 @@ blastr [OPTIONS] <FILE>
 | `--unsat-on-max-bound` | In combination with `--max-bound`, returns `unsat` (instead of `unknown`) if no model is found within the given bound. |
 | `--model` | Prints the model after `(check-sat)`. Equivalent to including `(get-model)` in the input. If both are used, the model is printed twice. |
 | `--skip-simp` | Skips the simplification phase during preprocessing. |
+| `--skip-guessing` | Skips the Boolean variable value guessing phase during preprocessing. |
 | `--help`, `-h` | Print help message. |
 | `--version`, `-V` | Print version information. |

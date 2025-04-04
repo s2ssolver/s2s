@@ -7,9 +7,14 @@ use blastr::{solve_smt, SolverOptions};
 /// The command line interface for the solver
 #[derive(ClapParser, Debug)]
 #[command(author, version, about, long_about = None)] // Read from `Cargo.toml`
-struct Options {
+struct Args {
+    /// Skip the simplfication during preprocessing
     #[arg(long)]
     skip_simp: bool,
+
+    /// Skip guessing values for Boolean variables during preprocessing
+    #[arg(long)]
+    skip_guessing: bool,
 
     /// If this is set to true, the solver will not actually solve the instance, but terminate after preprocessing.
     #[arg(long)]
@@ -44,7 +49,7 @@ struct Options {
 fn main() {
     env_logger::init();
     let ts = Instant::now();
-    let cli = Options::parse();
+    let cli = Args::parse();
     let file = Path::new(&cli.file);
     if !file.exists() {
         panic!("File not found: {}", cli.file);
@@ -64,23 +69,28 @@ fn main() {
     log::info!("Done ({}ms).", ts.elapsed().as_millis());
 }
 
-fn convert_options(options: &Options) -> SolverOptions {
+fn convert_options(options: &Args) -> SolverOptions {
     let mut opts = SolverOptions::default();
-    opts.dry(options.dry);
+    if options.dry {
+        opts.dry = true;
+    }
     if let Some(max) = options.max_bound {
-        opts.max_bounds(max);
+        opts.max_bounds = max;
     }
     if options.skip_simp {
-        opts.simplify(false);
+        opts.simplify = false;
+    }
+    if options.skip_guessing {
+        opts.guess_bools = false;
     }
     if options.unsat_on_max_bound {
-        opts.unsat_on_max_bound(true);
+        opts.unsat_on_max_bound = true;
     }
     if let Some(b) = options.init_bound {
-        opts.init_upper_bound(b);
+        opts.init_upper_bound = b;
     }
     if options.print_preprocessed {
-        opts.print_preprocessed();
+        opts.print_preprocessed = true;
     }
     if options.model {
         opts.get_model = true;

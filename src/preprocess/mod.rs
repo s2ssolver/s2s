@@ -2,6 +2,7 @@ mod canonicalize;
 mod complements;
 mod compress;
 
+mod guess;
 mod ite;
 mod simp;
 //mod simp;
@@ -15,21 +16,25 @@ use crate::{
 pub use canonicalize::canonicalize;
 
 use compress::RangeCompressor;
+use guess::BoolVarGuesser;
 use simp::Simplifier;
 //use simp::Simplifier;
 
 #[derive(Default)]
 pub struct Preprocessor {
     subs: VarSubstitution,
+    options: SolverOptions,
 }
 
 impl Preprocessor {
-    pub fn apply(
-        &mut self,
-        root: &Node,
-        options: &SolverOptions,
-        mngr: &mut NodeManager,
-    ) -> Result<Node, NodeError> {
+    pub fn new(options: SolverOptions) -> Self {
+        Self {
+            options,
+            subs: VarSubstitution::default(),
+        }
+    }
+
+    pub fn apply(&mut self, root: &Node, mngr: &mut NodeManager) -> Result<Node, NodeError> {
         // first we need to get rid of the ITEs
         let mut ite_handler = ite::ITEHandler::default();
         let ite_elim = ite_handler.elim_ite(root, mngr);
@@ -38,10 +43,15 @@ impl Preprocessor {
 
         log::debug!("After ITE elimination:\n{}", new_root);
 
-        if options.simplify {
+        if self.options.simplify {
             // Simplify the formula
-            new_root = self.simplify(&new_root, options.preprocess_extra_passes, mngr);
+            new_root = self.simplify(&new_root, self.options.simp_max_passes, mngr);
         }
+        if self.options.guess_bools {
+            new_root = self.guess_bools(&new_root, mngr)
+        }
+        // ensure we are still in NNF
+        new_root = to_nnf(&new_root, mngr);
 
         let t = Instant::now();
         let mut compressor = RangeCompressor::default();
@@ -53,18 +63,26 @@ impl Preprocessor {
     }
 
     fn simplify(&mut self, root: &Node, passes: usize, mngr: &mut NodeManager) -> Node {
-        let mut result = root.clone();
-
         let simplifier = Simplifier::default();
-        let simp_res = simplifier.apply(&result, passes, mngr);
-        let subs = simp_res.subs;
-        result = to_nnf(&simp_res.node, mngr);
+        let simp_res = simplifier.apply(root, passes, mngr);
 
-        for sub in subs {
+        for sub in simp_res.subs {
             self.subs = std::mem::take(&mut self.subs).compose(sub.clone(), mngr);
         }
 
-        result
+        simp_res.node
+    }
+
+    fn guess_bools(&mut self, root: &Node, mngr: &mut NodeManager) -> Node {
+        // Guess Boolean vars
+        let guesser = BoolVarGuesser::new(self.options.clone());
+        let guessed = guesser.apply(root, mngr);
+
+        for sub in guessed.subs {
+            self.subs = std::mem::take(&mut self.subs).compose(sub.clone(), mngr);
+        }
+
+        guessed.node
     }
 
     pub fn applied_substitutions(&self) -> &VarSubstitution {
