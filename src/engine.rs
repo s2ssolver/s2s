@@ -103,9 +103,9 @@ impl Engine {
 
         let nnf = to_nnf(fm, mngr);
 
-        let mut preprocessor = Preprocessor::default();
+        let mut preprocessor = Preprocessor::new(self.options.clone());
 
-        let preprocessed = preprocessor.apply(&nnf, &self.options, mngr)?;
+        let preprocessed = preprocessor.apply(&nnf, mngr)?;
 
         // These are the substitutions applied by the preprocessor
         // We need to store them and re-apply them to the model of the preprocessed formula, to get the model of the original formula
@@ -245,8 +245,13 @@ impl Engine {
     }
 
     /// Pick the next definition(s) to encode.
-    /// Currently, this is a no-op, and just returns the input definitions.
-    /// That is, all definitions are encoded after the first iteration.
+    /// In the `n`th call this add the following literals:
+    ///
+    /// 1. all Boolean variables, simple equations (variable equality or one side constant), and simple regular constraints (no comps, intersections)
+    /// 2. all remaining word equations and linear constraints
+    /// 3. all remaining regular constraints with extended regex (comps or intersection)
+    ///
+    /// After the first call, the fragment is still decidable.
     fn pick_defs(
         &self,
         _fm: &Node,
@@ -272,7 +277,13 @@ impl Engine {
                     WordEquation::ConstantEquality(_, _) => unreachable!(),
                     WordEquation::VarEquality(_, _) => simple_eqs.push(d.clone()),
                     WordEquation::VarAssignment(_, _) => simple_eqs.push(d.clone()),
-                    WordEquation::General(_, _) => weqs.push(d.clone()),
+                    WordEquation::General(l, r) => {
+                        if l.is_constant() || r.is_constant() {
+                            simple_eqs.push(d.clone())
+                        } else {
+                            weqs.push(d.clone())
+                        }
+                    }
                 },
                 AtomKind::InRe(inre) => {
                     if inre.re().simple() {
@@ -288,6 +299,7 @@ impl Engine {
         let mut result = boolvars;
         result.extend(simple_eqs);
         result.extend(simple_inres);
+
         if !result.is_empty() {
             return result;
         }
