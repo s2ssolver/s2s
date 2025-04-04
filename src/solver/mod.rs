@@ -3,7 +3,6 @@ use std::{rc::Rc, time::Instant};
 
 use crate::{
     domain::Domain,
-    interval::Interval,
     node::{
         canonical::{Assignment, AtomKind, Literal},
         Sort, VarSubstitution,
@@ -268,11 +267,11 @@ impl Solver {
     fn clamp_bounds_in_dom(&self, dom: Domain) -> Domain {
         let mut new_dom = dom.clone();
         for (var, bound) in dom.iter_string() {
-            let new_bound = bound.intersect(Interval::bounded_above(self.options.max_bounds));
+            let new_bound = bound.intersect(self.options.max_bounds);
             new_dom.set_string(var.clone(), new_bound);
         }
         for (var, bound) in dom.iter_int() {
-            let new_bound = bound.intersect(Interval::bounded_above(self.options.max_bounds));
+            let new_bound = bound.intersect(self.options.max_bounds);
             new_dom.set_int(var.clone(), new_bound);
         }
         for v in dom.iter_bool() {

@@ -350,8 +350,7 @@ impl Engine {
                         .max(1); // at least 1
                     let interval = Interval::new(lower, upper);
                     // Clamp the bound to max
-                    let interval =
-                        interval.intersect(Interval::bounded_above(self.options.max_bounds));
+                    let interval = interval.intersect(self.options.max_bounds);
                     match v.sort() {
                         Sort::Int => domain.set_int(v.clone(), interval),
                         Sort::String => domain.set_string(v.clone(), interval),
@@ -420,8 +419,7 @@ impl Engine {
                         .max(1); // at least 1
                     let interval = Interval::new(lower, upper);
                     // Clamp the bound to max
-                    let interval =
-                        interval.intersect(Interval::bounded_above(self.options.max_bounds));
+                    let interval = interval.intersect(self.options.max_bounds);
                     match v.sort() {
                         Sort::Int => domain.set_int(v.clone(), interval),
                         Sort::String => domain.set_string(v.clone(), interval),

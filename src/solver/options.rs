@@ -1,3 +1,5 @@
+use crate::interval::Interval;
+
 use super::refine::BoundStep;
 
 const DEFAULT_SIMPLIFY: bool = true;
@@ -25,7 +27,7 @@ pub struct SolverOptions {
     /// The maximum upper bound the solver will try to find a solution for.
     /// If no solution is found within this bound, the solver returns `unknown`.
     /// Use `unsat_on_max_bound` to change this behavior to return `unsat` instead.
-    pub max_bounds: u32,
+    pub max_bounds: Interval,
     pub step: BoundStep,
     pub check_model: bool,
     /// Wheter to print the model after solving.
@@ -54,7 +56,7 @@ impl Default for SolverOptions {
             dry: false,
             simplify: DEFAULT_SIMPLIFY,
             simp_max_passes: DEFAULT_PREPROCESS_PASSES,
-            max_bounds: u32::MAX,
+            max_bounds: Interval::unbounded(),
             step: BoundStep::default(),
             check_model: DEFAULT_CHECK_MODEL,
             guess_bools: DEFAULT_GUESS_BOOLS,
@@ -65,5 +67,11 @@ impl Default for SolverOptions {
             print_preprocessed: false,
             max_bool_guesses: DEFAULT_MAX_BOOL_GUESS,
         }
+    }
+}
+
+impl SolverOptions {
+    pub fn set_max_bound(&mut self, b: u16) {
+        self.max_bounds = Interval::new(-(b as i32), b as i32)
     }
 }

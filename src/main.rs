@@ -22,7 +22,7 @@ struct Args {
 
     /// The maximum variable bound to check before returning `unknown`
     #[arg(short = 'B', long, value_enum, default_value = None)]
-    max_bound: Option<u32>,
+    max_bound: Option<u16>,
 
     /// The minimal initial variable bound to start the search with
     #[arg(long, short = 'b')]
@@ -75,7 +75,7 @@ fn convert_options(options: &Args) -> SolverOptions {
         opts.dry = true;
     }
     if let Some(max) = options.max_bound {
-        opts.max_bounds = max;
+        opts.set_max_bound(max);
     }
     if options.skip_simp {
         opts.simplify = false;
