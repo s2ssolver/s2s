@@ -8,7 +8,7 @@ const DEFAULT_CHECK_MODEL: bool = false;
 const DEFAULT_UNSAT_ON_MAX_BOUND: bool = false;
 const DEFAULT_MAX_BLOCKING: usize = 100;
 const DEFAULT_GET_MODEL: bool = false;
-const DEFAULT_MAX_BOOL_GUESS: usize = 50;
+const DEFAULT_MAX_BOOL_GUESS: usize = 10;
 const DEFAULT_GUESS_BOOLS: bool = true;
 
 #[derive(Debug, Clone)]
@@ -62,7 +62,7 @@ impl Default for SolverOptions {
             guess_bools: DEFAULT_GUESS_BOOLS,
             get_model: DEFAULT_GET_MODEL,
             unsat_on_max_bound: DEFAULT_UNSAT_ON_MAX_BOUND,
-            init_upper_bound: 10,
+            init_upper_bound: 1,
             max_blocking: DEFAULT_MAX_BLOCKING,
             print_preprocessed: false,
             max_bool_guesses: DEFAULT_MAX_BOOL_GUESS,
