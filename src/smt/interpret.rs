@@ -1,7 +1,7 @@
 use crate::{
     engine::Engine,
     node::{Node, NodeManager},
-    smt::{Command, Script},
+    smt::{Command, Script, ToSmt},
     Error, SolverAnswer, SolverOptions,
 };
 
@@ -48,7 +48,7 @@ impl<'a> Interpreter<'a> {
 
     fn print_model(&self) {
         if let SolverAnswer::Sat(Some(m)) = &self.engine.get_result() {
-            println!("{}", m);
+            println!("{}", m.to_smt());
         } else {
             eprintln!("error: no model to get");
         }
