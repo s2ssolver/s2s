@@ -1,0 +1,5 @@
+(set-logic QF_S)
+(declare-const X String)
+(assert (str.in_re X (re.++ (str.to_re "ut") (re.range "0" "9"))))
+(assert (str.in_re X (re.++ (re.comp (re.range "0" "9")) (re.range "0" "9"))))
+(check-sat)

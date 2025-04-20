@@ -207,31 +207,51 @@ impl ReCompRemover {
         }
     }
 
+    /// In SMT-LIB sematics, the complement of a range [l..u] is every word expect the single-char words in [l..u].
+    /// This is equivalent to the union of
+    ///
+    /// - [0..(l-1)]
+    /// - [(u+1)..max]
+    /// - the empty word
+    /// - any word of length > 1
+    ///
+    /// As a special case, if the range is empty, the result is `re.all()`
     fn comp_range(&mut self, r: CharRange, builder: &mut ReBuilder) -> Regex {
         if let Some(re) = self.range_cache.get(&r) {
             return re.clone();
         }
         if r.is_empty() {
-            return builder.allchar();
+            return builder.all();
         }
-        let diff_r = CharRange::all().subtract(&r);
-        let diff_r = diff_r.into_iter().map(|r| builder.range(r)).collect();
-        let union = builder.union(diff_r);
-        let opt = builder.opt(union);
+        // [0..(l-1)] | [(u+1)..max]
+        let mut alternatives: smallvec::SmallVec<[Regex; 2]> = CharRange::all()
+            .subtract(&r)
+            .into_iter()
+            .map(|r| builder.range(r))
+            .collect();
+        // empty word
+        alternatives.push(builder.epsilon());
+        // any word of length > 1: (allchar)(allchar)+
+        let all_char_plus = builder.plus(builder.allchar());
+        let all_char_plus_plus = builder.concat(smallvec![all_char_plus, builder.allchar()]);
+        alternatives.push(all_char_plus_plus);
 
-        self.range_cache.insert(r, opt.clone());
-        opt
+        let union = builder.union(alternatives);
+
+        self.range_cache.insert(r, union.clone());
+        union
     }
 }
 
 #[cfg(test)]
 mod test {
+
     use quickcheck::TestResult;
     use quickcheck_macros::quickcheck;
     use smt_str::{
         alphabet::CharRange,
         re::{ReBuilder, ReOp},
-        SmtChar, SmtString,
+        CharIterator, SmtChar, SmtString,
     };
 
     use super::ReCompRemover;
@@ -260,50 +280,66 @@ mod test {
     }
 
     #[quickcheck]
-    fn re_comp_canonicalize_range_non_empty(l: u8, u: u8) -> TestResult {
-        if l >= u || u == u8::MAX {
-            return TestResult::discard();
-        }
+    fn elim_comp_of_nonempty_range(l: u8, u: u8, strs: Vec<SmtString>) -> TestResult {
+        let (l, u) = if l > u { (u, l) } else { (l, u) };
 
         let mut comp = ReCompRemover::default();
         let mut builder = ReBuilder::default();
 
-        if let ReOp::Opt(opts) = comp
-            .comp_range(CharRange::new(l as char, u as char), &mut builder)
-            .op()
-        {
-            match opts.op() {
-                ReOp::Union(items) => {
-                    assert_eq!(items[0], builder.range_from_to(0 as char, (l - 1) as char));
-                    assert_eq!(
-                        items[1],
-                        builder.range_from_to((u + 1) as char, SmtChar::MAX)
-                    );
-                }
-                ReOp::Range(r) => {
-                    assert_eq!(l, 0);
-                    assert_eq!(r.start(), (u as u32 + 1).into());
-                }
-                x => panic!("Unexpected {}", x),
+        let elimenated = comp.comp_range(CharRange::new(l as char, u as char), &mut builder);
+
+        // must accept empty word
+        elimenated.accepts(&SmtString::empty());
+        // must not accept any char in the range
+
+        // must not accept any char in the range
+        let l = SmtChar::from(l);
+        let u = SmtChar::from(u);
+        for i in CharIterator::new(l, u) {
+            assert!(!elimenated.accepts(&SmtString::from(i)));
+        }
+        // must accept any char outside the range
+        if let Some(p) = l.try_prev() {
+            assert!(elimenated.accepts(&SmtString::from(p)));
+        }
+        if let Some(p) = u.try_next() {
+            assert!(elimenated.accepts(&SmtString::from(p)));
+        }
+
+        for s in &strs {
+            if s.is_empty() {
+                assert!(elimenated.accepts(s));
             }
-        } else {
-            unreachable!()
+            if s.len() == 1 {
+                let c = s.first().unwrap();
+                if c >= l && c <= u {
+                    assert!(!elimenated.accepts(&s));
+                } else {
+                    assert!(elimenated.accepts(&s));
+                }
+            } else {
+                assert!(elimenated.accepts(&s));
+            }
         }
 
         TestResult::passed()
     }
 
     #[quickcheck]
-    fn re_comp_canonicalize_range_empty(l: u8, u: u8) -> TestResult {
-        if l <= u {
+    fn elim_comp_of_empty_range(l: u8, u: u8) -> TestResult {
+        let (l, u) = if l < u {
+            (u, l)
+        } else if u < l {
+            (l, u)
+        } else {
             return TestResult::discard();
-        }
+        };
 
         let mut comp = ReCompRemover::default();
         let mut builder = ReBuilder::default();
 
-        let r = comp.comp_range(CharRange::new(l as char, u as char), &mut builder);
-        if let ReOp::Any = r.op() {
+        let r = comp.comp_range(CharRange::new(l, u), &mut builder);
+        if let ReOp::All = r.op() {
             TestResult::passed()
         } else {
             panic!("Expected empty range to be represented as AllChar but got {r}",);
@@ -311,7 +347,7 @@ mod test {
     }
 
     #[test]
-    fn re_comp_canonicalize_empty_word() {
+    fn elim_comp_empty_word() {
         let mut comp = ReCompRemover::default();
 
         let mut builder = ReBuilder::default();
