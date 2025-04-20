@@ -266,10 +266,12 @@ impl BoundInferer {
                 let lc = if pol { lc.clone() } else { lc.negate() };
 
                 if let Some(as_reg) = lc_to_reg(&lc, mngr) {
+                    // also add the same constraint as a regular constraint
+                    // that can help to converge faster in some cases
                     self.add_reg(&as_reg, true, mngr);
-                } else {
-                    self.add_linear_constraint(&lc)
                 }
+
+                self.add_linear_constraint(&lc)
             }
         }
         self.fragment.and(&lit);
