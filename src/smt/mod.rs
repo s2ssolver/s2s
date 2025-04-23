@@ -19,16 +19,12 @@ pub use script::*;
 pub use interpret::Interpreter;
 use smt2parser::concrete::SyntaxBuilder;
 
-use crate::ast::{Node, NodeKind, NodeManager, VarSubstitution};
-use crate::context::{Sort, Sorted};
+use crate::ast::{Node, NodeKind, VarSubstitution};
+use crate::context::{Context, Sort, Sorted};
 
-pub fn parse_script(
-    smt: impl std::io::BufRead,
-
-    mngr: &mut NodeManager,
-) -> Result<Script, AstError> {
+pub fn parse_script(smt: impl std::io::BufRead, ctx: &mut Context) -> Result<Script, AstError> {
     let cmds = smt2parser::CommandStream::new(smt, SyntaxBuilder, None);
-    let mut converter = convert::Converter::new(mngr);
+    let mut converter = convert::Converter::new(ctx);
     let mut script = Script::default();
     for cmd in cmds {
         script.push(converter.convert(cmd?)?);

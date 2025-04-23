@@ -1,10 +1,8 @@
 use std::rc::Rc;
 
-use crate::ast::error::NodeError;
-use crate::ast::Node;
-use crate::ast::NodeKind;
-use crate::ast::NodeManager;
-use crate::context::{Sort, Sorted, Variable};
+use crate::ast::{Node, NodeKind};
+
+use crate::context::{Context, ContextError, Sort, Sorted, Variable};
 use num_bigint::BigUint;
 use num_traits::cast::ToPrimitive;
 
@@ -17,15 +15,15 @@ use smt_str::SmtString;
 use super::{AstError, Command};
 
 pub struct Converter<'a> {
-    mngr: &'a mut NodeManager,
+    ctx: &'a mut Context,
 
     let_bindings: Vec<(smt::Symbol, smt::Term)>,
 }
 
 impl<'a> Converter<'a> {
-    pub fn new(mngr: &'a mut NodeManager) -> Self {
+    pub fn new(ctx: &'a mut Context) -> Self {
         Self {
-            mngr,
+            ctx,
             let_bindings: vec![],
         }
     }
@@ -77,9 +75,9 @@ impl<'a> Converter<'a> {
         // todo: do we need to check if the symbol is escaped in | |?
         let symbol = symbol.0.clone();
         let sort = self.sort(sort)?;
-        match self.mngr.new_var(symbol, sort) {
+        match self.ctx.new_var(symbol, sort) {
             Ok(v) => Ok(v),
-            Err(NodeError::AlreadyDeclared(s, _, _)) => Err(AstError::AlreadyDeclared(s)),
+            Err(ContextError::AlreadyDeclared(s, _, _)) => Err(AstError::AlreadyDeclared(s)),
             _ => unreachable!(),
         }
     }
@@ -141,11 +139,11 @@ impl<'a> Converter<'a> {
         match &constant {
             smt::Constant::Numeral(num) => {
                 let conv = self.numeral(num)?;
-                Ok(self.mngr.const_int(conv as i64))
+                Ok(self.ctx.ast().const_int(conv as i64))
             }
             smt::Constant::String(s) => {
                 let parsed = SmtString::parse(s);
-                Ok(self.mngr.const_string(parsed))
+                Ok(self.ctx.ast().const_string(parsed))
             }
             smt::Constant::Decimal(_)
             | smt::Constant::Hexadecimal(_)
@@ -175,24 +173,24 @@ impl<'a> Converter<'a> {
                     }
 
                     // check if it is a variable
-                    if let Some(v) = self.mngr.get_var(symbol.0.as_str()) {
-                        return Ok(self.mngr.var(v));
+                    if let Some(v) = self.ctx.get_var(symbol.0.as_str()) {
+                        return Ok(self.ctx.ast().variable(v));
                     }
                     // check if it is a constant
                     match symbol.0.as_str() {
-                        "true" => Ok(self.mngr.ttrue()),
-                        "false" => Ok(self.mngr.ffalse()),
+                        "true" => Ok(self.ctx.ast().ttrue()),
+                        "false" => Ok(self.ctx.ast().ffalse()),
                         "re.all" => {
-                            let re = self.mngr.re_builder().all();
-                            Ok(self.mngr.create_node(NodeKind::Regex(re), vec![]))
+                            let re = self.ctx.re_builder().all();
+                            Ok(self.ctx.ast().create_node(NodeKind::Regex(re), vec![]))
                         }
                         "re.none" => {
-                            let re = self.mngr.re_builder().none();
-                            Ok(self.mngr.create_node(NodeKind::Regex(re), vec![]))
+                            let re = self.ctx.re_builder().none();
+                            Ok(self.ctx.ast().create_node(NodeKind::Regex(re), vec![]))
                         }
                         "re.allchar" => {
-                            let re = self.mngr.re_builder().allchar();
-                            Ok(self.mngr.create_node(NodeKind::Regex(re), vec![]))
+                            let re = self.ctx.re_builder().allchar();
+                            Ok(self.ctx.ast().create_node(NodeKind::Regex(re), vec![]))
                         }
                         _ => Err(AstError::Undeclared(symbol.0.clone())),
                     }
@@ -216,22 +214,22 @@ impl<'a> Converter<'a> {
             smt::QualIdentifier::Simple { identifier } => match identifier {
                 smt::Identifier::Simple { symbol } => match symbol.0.as_str() {
                     // Core
-                    "not" if args.len() == 1 => self.mngr.not(args.pop().unwrap()),
-                    "and" => self.mngr.and(args),
-                    "or" => self.mngr.or(args),
+                    "not" if args.len() == 1 => self.ctx.ast().not(args.pop().unwrap()),
+                    "and" => self.ctx.ast().and(args),
+                    "or" => self.ctx.ast().or(args),
                     "=>" if args.len() == 2 => {
                         let right = args.pop().unwrap();
                         let left = args.pop().unwrap();
-                        self.mngr.imp(left, right)
+                        self.ctx.ast().imp(left, right)
                     }
                     "=" if args.len() == 2 => {
                         let right = args.pop().unwrap();
                         let left = args.pop().unwrap();
                         if right.sort() == left.sort() {
                             if right.sort().is_bool() {
-                                self.mngr.equiv(left, right)
+                                self.ctx.ast().equiv(left, right)
                             } else {
-                                self.mngr.eq(left, right)
+                                self.ctx.ast().eq(left, right)
                             }
                         } else {
                             return Err(AstError::Unsupported(format!("= {} {}", left, right)));
@@ -241,54 +239,54 @@ impl<'a> Converter<'a> {
                         let else_branch = args.pop().unwrap();
                         let then_branch = args.pop().unwrap();
                         let cond = args.pop().unwrap();
-                        self.mngr.ite(cond, then_branch, else_branch)
+                        self.ctx.ast().ite(cond, then_branch, else_branch)
                     }
                     "distinct" => return Err(AstError::Unsupported("distinct".to_string())),
                     // String
-                    "str.++" => self.mngr.concat(args),
-                    "str.len" if args.len() == 1 => self.mngr.str_len(args.pop().unwrap()),
+                    "str.++" => self.ctx.ast().concat(args),
+                    "str.len" if args.len() == 1 => self.ctx.ast().str_len(args.pop().unwrap()),
                     "str.substr" if args.len() == 3 => {
                         let len = args.pop().unwrap();
                         let idx = args.pop().unwrap();
                         let s = args.pop().unwrap();
-                        self.mngr.substr(s, idx, len)
+                        self.ctx.ast().substr(s, idx, len)
                     }
                     "str.at" if args.len() == 2 => {
                         let idx = args.pop().unwrap();
                         let s = args.pop().unwrap();
-                        self.mngr.at(s, idx)
+                        self.ctx.ast().at(s, idx)
                     }
                     "str.prefixof" if args.len() == 2 => {
                         let right = args.pop().unwrap();
                         let left = args.pop().unwrap();
-                        self.mngr.prefix_of(left, right)
+                        self.ctx.ast().prefix_of(left, right)
                     }
                     "str.suffixof" if args.len() == 2 => {
                         let right = args.pop().unwrap();
                         let left = args.pop().unwrap();
-                        self.mngr.suffix_of(left, right)
+                        self.ctx.ast().suffix_of(left, right)
                     }
                     "str.contains" if args.len() == 2 => {
                         let right = args.pop().unwrap();
                         let left = args.pop().unwrap();
-                        self.mngr.contains(left, right)
+                        self.ctx.ast().contains(left, right)
                     }
                     "str.indexof" if args.len() == 3 => {
                         return Err(AstError::Unsupported("str.indexof".to_string()))
                     }
                     "str.to_int" if args.len() == 1 => {
                         let arg = args.pop().unwrap();
-                        self.mngr.str_to_int(arg)
+                        self.ctx.ast().str_to_int(arg)
                     }
                     "str.from_int" if args.len() == 1 => {
                         let arg = args.pop().unwrap();
-                        self.mngr.str_from_int(arg)
+                        self.ctx.ast().str_from_int(arg)
                     }
                     "str.replace" if args.len() == 3 => {
                         let to = args.pop().unwrap();
                         let from = args.pop().unwrap();
                         let s = args.pop().unwrap();
-                        self.mngr.str_replace(s, from, to)
+                        self.ctx.ast().str_replace(s, from, to)
                     }
                     "str.replace_all" if args.len() == 3 => {
                         return Err(AstError::Unsupported("str.replace_all".to_string()))
@@ -309,7 +307,7 @@ impl<'a> Converter<'a> {
                     "str.in_re" if args.len() == 2 => {
                         let right = args.pop().unwrap();
                         let left = args.pop().unwrap();
-                        self.mngr.in_re(left, right)
+                        self.ctx.ast().in_re(left, right)
                     }
                     "str.in_re" => {
                         panic!("str.in_re requires two arguments but got {}", args.len())
@@ -319,8 +317,8 @@ impl<'a> Converter<'a> {
                         // Must be a string constant
                         match arg.kind() {
                             NodeKind::String(s) => {
-                                let re = self.mngr.re_builder().to_re(s.clone());
-                                self.mngr.create_node(NodeKind::Regex(re), vec![])
+                                let re = self.ctx.re_builder().to_re(s.clone());
+                                self.ctx.ast().create_node(NodeKind::Regex(re), vec![])
                             }
                             _ => return Err(AstError::Unsupported("str.to_re".to_string())),
                         }
@@ -335,11 +333,11 @@ impl<'a> Converter<'a> {
                                 let l = left[0];
                                 let r = right[0];
                                 let range = CharRange::new(l, r);
-                                self.mngr.re_builder().range(range)
+                                self.ctx.re_builder().range(range)
                             } else {
-                                self.mngr.re_builder().none()
+                                self.ctx.re_builder().none()
                             };
-                            self.mngr.create_node(NodeKind::Regex(re), vec![])
+                            self.ctx.ast().create_node(NodeKind::Regex(re), vec![])
                         } else {
                             return Err(AstError::Unsupported(format!(
                                 "re.range {} {})",
@@ -356,8 +354,8 @@ impl<'a> Converter<'a> {
                                 return Err(AstError::Unsupported(format!("re.++ on {}", arg)));
                             }
                         }
-                        let re = self.mngr.re_builder().concat(re_args);
-                        self.mngr.create_node(NodeKind::Regex(re), vec![])
+                        let re = self.ctx.re_builder().concat(re_args);
+                        self.ctx.ast().create_node(NodeKind::Regex(re), vec![])
                     }
                     "re.union" => {
                         let mut re_args = smallvec![];
@@ -368,8 +366,8 @@ impl<'a> Converter<'a> {
                                 return Err(AstError::Unsupported(format!("re.union on {}", arg)));
                             }
                         }
-                        let re = self.mngr.re_builder().union(re_args);
-                        self.mngr.create_node(NodeKind::Regex(re), vec![])
+                        let re = self.ctx.re_builder().union(re_args);
+                        self.ctx.ast().create_node(NodeKind::Regex(re), vec![])
                     }
                     "re.inter" => {
                         let mut re_args = smallvec![];
@@ -380,14 +378,14 @@ impl<'a> Converter<'a> {
                                 return Err(AstError::Unsupported(format!("re.inter on {}", arg)));
                             }
                         }
-                        let re = self.mngr.re_builder().inter(re_args);
-                        self.mngr.create_node(NodeKind::Regex(re), vec![])
+                        let re = self.ctx.re_builder().inter(re_args);
+                        self.ctx.ast().create_node(NodeKind::Regex(re), vec![])
                     }
                     "re.*" if args.len() == 1 => {
                         let arg = args.pop().unwrap();
                         if let NodeKind::Regex(re) = arg.kind() {
-                            let re = self.mngr.re_builder().star(re.clone());
-                            self.mngr.create_node(NodeKind::Regex(re), vec![])
+                            let re = self.ctx.re_builder().star(re.clone());
+                            self.ctx.ast().create_node(NodeKind::Regex(re), vec![])
                         } else {
                             return Err(AstError::Unsupported(format!("(re.* {})", arg)));
                         }
@@ -395,8 +393,8 @@ impl<'a> Converter<'a> {
                     "re.+" if args.len() == 1 => {
                         let arg = args.pop().unwrap();
                         if let NodeKind::Regex(re) = arg.kind() {
-                            let re = self.mngr.re_builder().plus(re.clone());
-                            self.mngr.create_node(NodeKind::Regex(re), vec![])
+                            let re = self.ctx.re_builder().plus(re.clone());
+                            self.ctx.ast().create_node(NodeKind::Regex(re), vec![])
                         } else {
                             return Err(AstError::Unsupported(format!("(re.+ {})", arg)));
                         }
@@ -404,8 +402,8 @@ impl<'a> Converter<'a> {
                     "re.opt" if args.len() == 1 => {
                         let arg = args.pop().unwrap();
                         if let NodeKind::Regex(re) = arg.kind() {
-                            let re = self.mngr.re_builder().opt(re.clone());
-                            self.mngr.create_node(NodeKind::Regex(re), vec![])
+                            let re = self.ctx.re_builder().opt(re.clone());
+                            self.ctx.ast().create_node(NodeKind::Regex(re), vec![])
                         } else {
                             return Err(AstError::Unsupported(format!("(re.opt {})", arg)));
                         }
@@ -413,20 +411,20 @@ impl<'a> Converter<'a> {
                     "re.comp" if args.len() == 1 => {
                         let arg = args.pop().unwrap();
                         if let NodeKind::Regex(re) = arg.kind() {
-                            let re = self.mngr.re_builder().comp(re.clone());
-                            self.mngr.create_node(NodeKind::Regex(re), vec![])
+                            let re = self.ctx.re_builder().comp(re.clone());
+                            self.ctx.ast().create_node(NodeKind::Regex(re), vec![])
                         } else {
                             return Err(AstError::Unsupported(format!("(re.comp {})", arg)));
                         }
                     }
                     // int
-                    "+" => self.mngr.add(args),
+                    "+" => self.ctx.ast().add(args),
                     "-" if args.len() == 1 => {
                         let arg = args.pop().unwrap();
-                        self.mngr.neg(arg)
+                        self.ctx.ast().neg(arg)
                     }
-                    "-" => self.mngr.sub(args),
-                    "*" => self.mngr.mul(args),
+                    "-" => self.ctx.ast().sub(args),
+                    "*" => self.ctx.ast().mul(args),
                     "div" if args.len() == 2 => {
                         return Err(AstError::Unsupported("div".to_string()))
                     }
@@ -436,22 +434,22 @@ impl<'a> Converter<'a> {
                     "<" if args.len() == 2 => {
                         let right = args.pop().unwrap();
                         let left = args.pop().unwrap();
-                        self.mngr.lt(left, right)
+                        self.ctx.ast().lt(left, right)
                     }
                     "<=" if args.len() == 2 => {
                         let right = args.pop().unwrap();
                         let left = args.pop().unwrap();
-                        self.mngr.le(left, right)
+                        self.ctx.ast().le(left, right)
                     }
                     ">" if args.len() == 2 => {
                         let right = args.pop().unwrap();
                         let left = args.pop().unwrap();
-                        self.mngr.gt(left, right)
+                        self.ctx.ast().gt(left, right)
                     }
                     ">=" if args.len() == 2 => {
                         let right = args.pop().unwrap();
                         let left = args.pop().unwrap();
-                        self.mngr.ge(left, right)
+                        self.ctx.ast().ge(left, right)
                     }
                     _ => {
                         return Err(AstError::Unsupported(format!(
@@ -474,8 +472,8 @@ impl<'a> Converter<'a> {
                         };
                         let arg = args.pop().unwrap();
                         if let NodeKind::Regex(re) = arg.kind() {
-                            let re = self.mngr.re_builder().loop_(re.clone(), lower, upper);
-                            self.mngr.create_node(NodeKind::Regex(re), vec![])
+                            let re = self.ctx.re_builder().loop_(re.clone(), lower, upper);
+                            self.ctx.ast().create_node(NodeKind::Regex(re), vec![])
                         } else {
                             return Err(AstError::Unsupported(format!(
                                 "(re.loop {} {} {})",
@@ -495,8 +493,8 @@ impl<'a> Converter<'a> {
 
                         let arg = args.pop().unwrap();
                         if let NodeKind::Regex(re) = arg.kind() {
-                            let re = self.mngr.re_builder().pow(re.clone(), exp);
-                            self.mngr.create_node(NodeKind::Regex(re), vec![])
+                            let re = self.ctx.re_builder().pow(re.clone(), exp);
+                            self.ctx.ast().create_node(NodeKind::Regex(re), vec![])
                         } else {
                             return Err(AstError::Unsupported(format!("(re.^ {} {})", arg, exp)));
                         }
@@ -523,14 +521,14 @@ mod tests {
     use smt2parser::concrete::SyntaxBuilder;
     use smt_str::SmtString;
 
-    use crate::{ast::NodeManager, smt::Script};
+    use crate::smt::Script;
 
     use super::*;
 
-    fn convert_term(term: &str, mngr: &mut NodeManager) -> Node {
+    fn convert_term(term: &str, ctx: &mut Context) -> Node {
         let script = format!("(assert {})", term);
         let cmds = smt2parser::CommandStream::new(script.as_bytes(), SyntaxBuilder, None);
-        let mut converter = Converter::new(mngr);
+        let mut converter = Converter::new(ctx);
         let mut script = Script::default();
         for cmd in cmds {
             script.push(converter.convert(cmd.unwrap()).unwrap());
@@ -544,75 +542,78 @@ mod tests {
 
     #[test]
     fn parse_re_all() {
-        let mut mngr = NodeManager::default();
-        let term = convert_term(r#"re.all"#, &mut mngr);
+        let mut ctx = Context::default();
+        let term = convert_term(r#"re.all"#, &mut ctx);
 
-        let all = mngr.re_builder().all();
-        assert_eq!(term, mngr.create_node(NodeKind::Regex(all), vec![]));
+        let all = ctx.re_builder().all();
+        assert_eq!(term, ctx.ast().create_node(NodeKind::Regex(all), vec![]));
     }
 
     #[test]
     fn parse_re_none() {
-        let mut mngr = NodeManager::default();
-        let term = convert_term(r#"re.none"#, &mut mngr);
-        let none = mngr.re_builder().none();
-        assert_eq!(term, mngr.create_node(NodeKind::Regex(none), vec![]));
+        let mut ctx = Context::default();
+        let term = convert_term(r#"re.none"#, &mut ctx);
+        let none = ctx.re_builder().none();
+        assert_eq!(term, ctx.ast().create_node(NodeKind::Regex(none), vec![]));
     }
 
     #[test]
     fn parse_re_allchar() {
-        let mut mngr = NodeManager::default();
-        let term = convert_term(r#"re.allchar"#, &mut mngr);
-        let allchar = mngr.re_builder().allchar();
-        assert_eq!(term, mngr.create_node(NodeKind::Regex(allchar), vec![]));
+        let mut ctx = Context::default();
+        let term = convert_term(r#"re.allchar"#, &mut ctx);
+        let allchar = ctx.re_builder().allchar();
+        assert_eq!(
+            term,
+            ctx.ast().create_node(NodeKind::Regex(allchar), vec![])
+        );
     }
 
     #[test]
     fn parse_re_plus() {
-        let mut mngr = NodeManager::default();
-        let term = convert_term(r#"(re.+ (str.to_re "a"))"#, &mut mngr);
-        let str_a = mngr.re_builder().to_re("a".into());
-        let plus = mngr.re_builder().plus(str_a);
-        assert_eq!(term, mngr.create_node(NodeKind::Regex(plus), vec![]));
+        let mut ctx = Context::default();
+        let term = convert_term(r#"(re.+ (str.to_re "a"))"#, &mut ctx);
+        let str_a = ctx.re_builder().to_re("a".into());
+        let plus = ctx.re_builder().plus(str_a);
+        assert_eq!(term, ctx.ast().create_node(NodeKind::Regex(plus), vec![]));
     }
 
     #[test]
     fn parse_re_comp() {
-        let mut mngr = NodeManager::default();
-        let term = convert_term(r#"(re.comp (str.to_re "a"))"#, &mut mngr);
-        let str_a = mngr.re_builder().to_re("a".into());
-        let comp = mngr.re_builder().comp(str_a);
-        let expected = mngr.create_node(NodeKind::Regex(comp), vec![]);
+        let mut ctx = Context::default();
+        let term = convert_term(r#"(re.comp (str.to_re "a"))"#, &mut ctx);
+        let str_a = ctx.re_builder().to_re("a".into());
+        let comp = ctx.re_builder().comp(str_a);
+        let expected = ctx.ast().create_node(NodeKind::Regex(comp), vec![]);
         assert_eq!(term, expected, "\nExpected: {}\nGot: {}", expected, term);
     }
 
     #[test]
     fn parse_re_loop() {
-        let mut mngr = NodeManager::default();
-        let term = convert_term(r#"((_ re.loop 1 2) (str.to_re "a"))"#, &mut mngr);
-        let str_a = mngr.re_builder().to_re("a".into());
-        let loop_ = mngr.re_builder().loop_(str_a, 1, 2);
-        assert_eq!(term, mngr.create_node(NodeKind::Regex(loop_), vec![]));
+        let mut ctx = Context::default();
+        let term = convert_term(r#"((_ re.loop 1 2) (str.to_re "a"))"#, &mut ctx);
+        let str_a = ctx.re_builder().to_re("a".into());
+        let loop_ = ctx.re_builder().loop_(str_a, 1, 2);
+        assert_eq!(term, ctx.ast().create_node(NodeKind::Regex(loop_), vec![]));
     }
 
     #[test]
     fn parse_re_pow() {
-        let mut mngr = NodeManager::default();
-        let term = convert_term(r#"((_ re.^ 2) (str.to_re "a"))"#, &mut mngr);
-        let str_a = mngr.re_builder().to_re("a".into());
-        let pow = mngr.re_builder().pow(str_a, 2);
-        assert_eq!(term, mngr.create_node(NodeKind::Regex(pow), vec![]));
+        let mut ctx = Context::default();
+        let term = convert_term(r#"((_ re.^ 2) (str.to_re "a"))"#, &mut ctx);
+        let str_a = ctx.re_builder().to_re("a".into());
+        let pow = ctx.re_builder().pow(str_a, 2);
+        assert_eq!(term, ctx.ast().create_node(NodeKind::Regex(pow), vec![]));
     }
 
     #[test]
     fn parse_let() {
-        let mut mngr = NodeManager::default();
-        let x = mngr.new_var("x".to_string(), Sort::String).unwrap();
-        let term = convert_term(r#"(let ((y "")) (= x y))"#, &mut mngr);
+        let mut ctx = Context::default();
+        let x = ctx.new_var("x".to_string(), Sort::String).unwrap();
+        let term = convert_term(r#"(let ((y "")) (= x y))"#, &mut ctx);
 
-        let vx = mngr.var(x);
-        let epsi = mngr.const_string(SmtString::empty());
-        let expected = mngr.eq(vx, epsi);
+        let vx = ctx.ast().variable(x);
+        let epsi = ctx.ast().const_string(SmtString::empty());
+        let expected = ctx.ast().eq(vx, epsi);
         assert_eq!(term, expected);
     }
 }

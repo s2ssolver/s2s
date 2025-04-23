@@ -15,7 +15,7 @@ pub mod utils;
 
 use canonical::Literal;
 use indexmap::IndexSet;
-pub use manager::NodeManager;
+pub use manager::AstBuilder;
 use smt_str::{re::Regex, SmtString};
 pub use subs::VarSubstitution;
 
@@ -535,9 +535,11 @@ impl Display for OwnedNode {
 #[cfg(test)]
 pub mod testutils {
 
+    use crate::context::Context;
+
     use super::*;
 
-    pub fn parse_pattern(s: &str, mngr: &mut NodeManager) -> Node {
+    pub fn parse_pattern(s: &str, ctx: &mut Context) -> Node {
         let mut children = Vec::new();
         let mut word = String::new();
         for c in s.chars() {
@@ -545,11 +547,11 @@ pub mod testutils {
                 word.push(c);
             } else if c.is_ascii_uppercase() {
                 if !word.is_empty() {
-                    children.push(mngr.const_str(&word));
+                    children.push(ctx.ast().const_str(&word));
                     word.clear();
                 }
-                let v = mngr.new_var(c.to_string(), Sort::String).unwrap();
-                children.push(mngr.var(v.clone()));
+                let v = ctx.new_var(c.to_string(), Sort::String).unwrap();
+                children.push(ctx.ast().variable(v.clone()));
             } else if c.is_ascii_whitespace() {
                 continue;
             } else {
@@ -557,14 +559,14 @@ pub mod testutils {
             }
         }
         if !word.is_empty() {
-            children.push(mngr.const_str(&word));
+            children.push(ctx.ast().const_str(&word));
         }
-        mngr.concat(children)
+        ctx.ast().concat(children)
     }
 
-    pub fn parse_equation(lhs: &str, rhs: &str, mngr: &mut NodeManager) -> Node {
-        let lhs = parse_pattern(lhs, mngr);
-        let rhs = parse_pattern(rhs, mngr);
-        mngr.eq(lhs, rhs)
+    pub fn parse_equation(lhs: &str, rhs: &str, ctx: &mut Context) -> Node {
+        let lhs = parse_pattern(lhs, ctx);
+        let rhs = parse_pattern(rhs, ctx);
+        ctx.ast().eq(lhs, rhs)
     }
 }

@@ -2,41 +2,43 @@ mod string;
 
 pub use string::*;
 
-use super::{Node, NodeKind, NodeManager};
+use crate::context::Context;
+
+use super::{Node, NodeKind};
 
 /// Reverse a node by reversing all children and the order of the children.
 /// As a special case, if a node is a constant string, the string is reversed.
-pub fn reverse(node: &Node, mngr: &mut NodeManager) -> Node {
+pub fn reverse(node: &Node, ctx: &mut Context) -> Node {
     match node.kind() {
         NodeKind::String(s) => {
             let revd = s.reversed();
             debug_assert_eq!(revd.len(), s.len());
-            mngr.const_string(revd)
+            ctx.ast().const_string(revd)
         }
         _ => {
             let children = node
                 .children()
                 .iter()
                 .rev()
-                .map(|c| reverse(c, mngr))
+                .map(|c| reverse(c, ctx))
                 .collect();
-            mngr.create_node(node.kind().clone(), children)
+            ctx.ast().create_node(node.kind().clone(), children)
         }
     }
 }
 
 #[cfg(test)]
 mod test {
-    use crate::ast::{testutils::parse_pattern, NodeManager};
+    use crate::{ast::testutils::parse_pattern, context::Context};
 
     #[test]
     fn revers_concat() {
-        let mut mngr = NodeManager::default();
+        let mut ctx = Context::default();
         let pattern_str = "abXcdYaX";
         let pattern_str_rev = "XaYdcXba";
-        let pattern = parse_pattern(pattern_str, &mut mngr);
-        let reversed = super::reverse(&pattern, &mut mngr);
-        let expected = parse_pattern(pattern_str_rev, &mut mngr);
+        let pattern = parse_pattern(pattern_str, &mut ctx);
+        let reversed = super::reverse(&pattern, &mut ctx);
+        let expected = parse_pattern(pattern_str_rev, &mut ctx);
         assert_eq!(
             reversed, expected,
             "\nExpected: {}\nGot: {}",

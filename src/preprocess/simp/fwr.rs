@@ -12,7 +12,7 @@ use super::{int::normalize_ineq, EquivalenceRule};
 pub(super) struct IntForwardReasoning;
 
 impl IntForwardReasoning {
-    fn apply(fact: &Node, other: &Node, mngr: &mut NodeManager) -> Option<Node> {
+    fn apply(fact: &Node, other: &Node, ctx: &mut NodeManager) -> Option<Node> {
         let (lhs_fact, op_fact, rhs_fact) = normalize_ineq(fact)?;
         let (l2, op2, r2) = normalize_ineq(other)?;
         // We check if they are
@@ -54,9 +54,9 @@ impl IntForwardReasoning {
 
         if lhs_fact == l2 {
             if compare(&op_fact, rhs_fact, &op2, r2)? {
-                return Some(mngr.ttrue());
+                return Some(ctx.ast().ttrue());
             } else {
-                return Some(mngr.ffalse());
+                return Some(ctx.ast().ffalse());
             }
         }
 
@@ -65,16 +65,11 @@ impl IntForwardReasoning {
 }
 
 impl EquivalenceRule for IntForwardReasoning {
-    fn apply(
-        &self,
-        node: &Node,
-        asserted: &IndexSet<Node>,
-        mngr: &mut NodeManager,
-    ) -> Option<Node> {
+    fn apply(&self, node: &Node, asserted: &IndexSet<Node>, ctx: &mut NodeManager) -> Option<Node> {
         match node.kind() {
             NodeKind::Lt | NodeKind::Le | NodeKind::Gt | NodeKind::Ge | NodeKind::Eq => {
                 for fact in asserted.iter().filter(|a| *a != node) {
-                    if let Some(equiv) = IntForwardReasoning::apply(fact, node, mngr) {
+                    if let Some(equiv) = IntForwardReasoning::apply(fact, node, ctx) {
                         return Some(equiv);
                     }
                 }

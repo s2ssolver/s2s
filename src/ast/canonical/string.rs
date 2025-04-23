@@ -8,8 +8,7 @@ use indexmap::IndexSet;
 use smt_str::re::Regex;
 use smt_str::{SmtChar, SmtString};
 
-use crate::ast::NodeManager;
-use crate::context::{Sort, Sorted, Variable};
+use crate::context::{Context, Sort, Sorted, Variable};
 use smallvec::smallvec;
 
 /// Represents a pattern symbol, which can be either a constant word or a variable.
@@ -584,14 +583,14 @@ impl RegularFactorConstraint {
         self.typ
     }
 
-    pub fn as_regex(&self, mngr: &mut NodeManager) -> Regex {
-        let all = mngr.re_builder().all();
-        let w = mngr.re_builder().to_re(self.rhs.clone());
+    pub fn as_regex(&self, ctx: &mut Context) -> Regex {
+        let all = ctx.re_builder().all();
+        let w = ctx.re_builder().to_re(self.rhs.clone());
         match self.typ {
-            FactorConstraintType::Prefix => mngr.re_builder().concat(smallvec![w, all]),
-            FactorConstraintType::Suffix => mngr.re_builder().concat(smallvec![all, w]),
+            FactorConstraintType::Prefix => ctx.re_builder().concat(smallvec![w, all]),
+            FactorConstraintType::Suffix => ctx.re_builder().concat(smallvec![all, w]),
             FactorConstraintType::Contains => {
-                mngr.re_builder().concat(smallvec![all.clone(), w, all])
+                ctx.re_builder().concat(smallvec![all.clone(), w, all])
             }
         }
     }

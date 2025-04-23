@@ -2,7 +2,10 @@ use std::{fmt::Display, rc::Rc};
 
 use smt_str::{SmtChar, SmtString};
 
-use crate::ast::{Node, NodeKind, NodeManager, Sorted, Variable};
+use crate::{
+    ast::{Node, NodeKind, Sorted, Variable},
+    context::Context,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Symbol {
@@ -91,7 +94,7 @@ impl<'a> PatternIterator<'a> {
     /// Creates a new node that represents a string term representing the remaining symbols in the iterator.
     /// If the iterator is fully exhausted, returns the node that represents the empty string.
     /// If the iterator encounter a non-string-symbol (i.e., not a constant string, string variable, or concatenation), returns `None`.
-    pub fn to_node(mut self, mngr: &mut NodeManager) -> Option<Node> {
+    pub fn to_node(mut self, ctx: &mut Context) -> Option<Node> {
         if self.index == 0 {
             // If the iterator has not been advanced, return the original node
             return Some(self.node.clone());
@@ -100,14 +103,14 @@ impl<'a> PatternIterator<'a> {
             NodeKind::String(s) => {
                 // Process constant characters within the string
                 let ch = s.drop(self.index);
-                Some(mngr.const_string(ch))
+                Some(ctx.ast().const_string(ch))
             }
             NodeKind::Variable(v) if v.sort().is_string() => {
                 // Return the variable symbol and move to the next child
                 if self.index > 0 {
-                    Some(mngr.empty_string())
+                    Some(ctx.ast().empty_string())
                 } else {
-                    Some(mngr.var(v.clone()))
+                    Some(ctx.ast().variable(v.clone()))
                 }
             }
             NodeKind::Concat => {
@@ -115,7 +118,7 @@ impl<'a> PatternIterator<'a> {
                 // if the iterator has not been advanced, the original was already returned
                 // otherwise, sub_iter is either Some or we already processed all children
                 while let Some(sub_iter) = self.sub_iter {
-                    let n = sub_iter.to_node(mngr)?;
+                    let n = sub_iter.to_node(ctx)?;
                     children.push(n);
 
                     self.sub_iter = if self.index < self.node.children().len() {
@@ -127,7 +130,7 @@ impl<'a> PatternIterator<'a> {
                     };
                     self.index += 1;
                 }
-                Some(mngr.concat(children))
+                Some(ctx.ast().concat(children))
             }
             _ => None,
         }
@@ -243,40 +246,40 @@ pub fn const_suffix(node: &Node) -> Option<SmtString> {
 
 #[cfg(test)]
 mod tests {
-    use crate::ast::{NodeManager, Sort};
+    use crate::ast::Sort;
 
     use super::*;
 
     #[test]
     fn test_const_prefix_with_constant_string() {
-        let mut mngr = NodeManager::default();
+        let mut ctx = Context::default();
 
         // Test with a simple constant string
-        let node = mngr.const_str("foo");
+        let node = ctx.ast().const_str("foo");
         assert_eq!(const_prefix(&node), Some("foo".into()));
     }
 
     #[test]
     fn test_const_prefix_with_concat_of_strings() {
-        let mut mngr = NodeManager::default();
+        let mut ctx = Context::default();
 
         // Concatenation of two constant strings
-        let string_foo = mngr.const_str("foo");
-        let string_bar = mngr.const_str("bar");
-        let node = mngr.concat(vec![string_foo, string_bar]);
+        let string_foo = ctx.ast().const_str("foo");
+        let string_bar = ctx.ast().const_str("bar");
+        let node = ctx.ast().concat(vec![string_foo, string_bar]);
 
         assert_eq!(const_prefix(&node), Some("foobar".into()));
     }
 
     #[test]
     fn test_const_prefix_with_concat_with_variable() {
-        let mut mngr = NodeManager::default();
+        let mut ctx = Context::default();
 
         // Concatenation of a constant string and a variable
-        let string_foo = mngr.const_str("foo");
-        let x = mngr.temp_var(Sort::String);
-        let var_x = mngr.var(x);
-        let node = mngr.concat(vec![string_foo, var_x.clone()]);
+        let string_foo = ctx.ast().const_str("foo");
+        let x = ctx.temp_var(Sort::String);
+        let var_x = ctx.ast().variable(x);
+        let node = ctx.ast().concat(vec![string_foo, var_x.clone()]);
 
         // Prefix should stop at variable
         assert_eq!(const_prefix(&node), Some("foo".into()));
@@ -284,18 +287,18 @@ mod tests {
 
     #[test]
     fn test_const_prefix_with_nested_concat() {
-        let mut mngr = NodeManager::default();
+        let mut ctx = Context::default();
 
         // Nested concatenation with strings and a variable
-        let string_abc = mngr.const_str("abc");
-        let string_def = mngr.const_str("def");
-        let x = mngr.temp_var(Sort::String);
-        let var_x = mngr.var(x);
+        let string_abc = ctx.ast().const_str("abc");
+        let string_def = ctx.ast().const_str("def");
+        let x = ctx.temp_var(Sort::String);
+        let var_x = ctx.ast().variable(x);
 
         // Create the inner concatenation "def" + var_x
-        let inner_concat = mngr.concat(vec![string_def, var_x.clone()]);
+        let inner_concat = ctx.ast().concat(vec![string_def, var_x.clone()]);
         // Create the outer concatenation "abc" + inner_concat
-        let node = mngr.concat(vec![string_abc, inner_concat]);
+        let node = ctx.ast().concat(vec![string_abc, inner_concat]);
 
         // Expect "abcdef" as the longest prefix, stopping at the variable
         assert_eq!(const_prefix(&node), Some("abcdef".into()));
@@ -303,52 +306,52 @@ mod tests {
 
     #[test]
     fn test_const_prefix_with_non_string_term() {
-        let mut mngr = NodeManager::default();
+        let mut ctx = Context::default();
 
         // Test with a non-string node
-        let node = mngr.const_int(42);
+        let node = ctx.ast().const_int(42);
         assert_eq!(const_prefix(&node), None);
     }
 
     #[test]
     fn test_const_prefix_empty_concat() {
-        let mut mngr = NodeManager::default();
+        let mut ctx = Context::default();
 
         // Empty concatenation
-        let node = mngr.concat(vec![]);
+        let node = ctx.ast().concat(vec![]);
         assert_eq!(const_prefix(&node), Some("".into())); // Empty concat should return an empty prefix
     }
 
     #[test]
     fn test_const_suffix_with_constant_string() {
-        let mut mngr = NodeManager::default();
+        let mut ctx = Context::default();
 
         // Test with a simple constant string
-        let node = mngr.const_str("foo");
+        let node = ctx.ast().const_str("foo");
         assert_eq!(const_suffix(&node), Some("foo".into()));
     }
 
     #[test]
     fn test_const_suffix_with_concat_of_strings() {
-        let mut mngr = NodeManager::default();
+        let mut ctx = Context::default();
 
         // Concatenation of two constant strings
-        let string_foo = mngr.const_str("foo");
-        let string_bar = mngr.const_str("bar");
-        let node = mngr.concat(vec![string_foo, string_bar]);
+        let string_foo = ctx.ast().const_str("foo");
+        let string_bar = ctx.ast().const_str("bar");
+        let node = ctx.ast().concat(vec![string_foo, string_bar]);
 
         assert_eq!(const_suffix(&node), Some("foobar".into()));
     }
 
     #[test]
     fn test_const_suffix_with_concat_with_variable() {
-        let mut mngr = NodeManager::default();
+        let mut ctx = Context::default();
 
         // Concatenation of a constant string and a variable
-        let string_foo = mngr.const_str("foo");
-        let x = mngr.temp_var(Sort::String);
-        let var_x = mngr.var(x);
-        let node = mngr.concat(vec![var_x.clone(), string_foo]);
+        let string_foo = ctx.ast().const_str("foo");
+        let x = ctx.temp_var(Sort::String);
+        let var_x = ctx.ast().variable(x);
+        let node = ctx.ast().concat(vec![var_x.clone(), string_foo]);
 
         // Suffix should stop at variable
         assert_eq!(const_suffix(&node), Some("foo".into()));
@@ -356,18 +359,18 @@ mod tests {
 
     #[test]
     fn test_const_suffix_with_nested_concat() {
-        let mut mngr = NodeManager::default();
+        let mut ctx = Context::default();
 
         // Nested concatenation with strings and a variable
-        let string_abc = mngr.const_str("abc");
-        let string_def = mngr.const_str("def");
-        let x = mngr.temp_var(Sort::String);
-        let var_x = mngr.var(x);
+        let string_abc = ctx.ast().const_str("abc");
+        let string_def = ctx.ast().const_str("def");
+        let x = ctx.temp_var(Sort::String);
+        let var_x = ctx.ast().variable(x);
 
         // Create the inner concatenation var_x + "abc"
-        let inner_concat = mngr.concat(vec![var_x.clone(), string_abc]);
+        let inner_concat = ctx.ast().concat(vec![var_x.clone(), string_abc]);
         // Create the outer concatenation inner_concat + "def"
-        let node = mngr.concat(vec![inner_concat, string_def]);
+        let node = ctx.ast().concat(vec![inner_concat, string_def]);
 
         // Expect "defabc" as the longest suffix, stopping at the variable
         assert_eq!(const_suffix(&node), Some("abcdef".into()));
@@ -375,26 +378,26 @@ mod tests {
 
     #[test]
     fn test_const_suffix_with_non_string_term() {
-        let mut mngr = NodeManager::default();
+        let mut ctx = Context::default();
 
         // Test with a non-string node
-        let node = mngr.const_int(42);
+        let node = ctx.ast().const_int(42);
         assert_eq!(const_suffix(&node), None);
     }
 
     #[test]
     fn test_const_suffix_empty_concat() {
-        let mut mngr = NodeManager::default();
+        let mut ctx = Context::default();
 
         // Empty concatenation
-        let node = mngr.concat(vec![]);
+        let node = ctx.ast().concat(vec![]);
         assert_eq!(const_suffix(&node), Some("".into())); // Empty concat should return an empty suffix
     }
 
     #[test]
     fn test_symbol_iterator_with_simple_string() {
-        let mut mngr = NodeManager::default();
-        let node = mngr.const_str("abcde");
+        let mut ctx = Context::default();
+        let node = ctx.ast().const_str("abcde");
         let mut iter = PatternIterator::new(&node);
 
         assert_eq!(iter.next(), Some(Symbol::Const('a'.into())));
@@ -407,10 +410,10 @@ mod tests {
 
     #[test]
     fn test_symbol_iterator_with_variable() {
-        let mut mngr = NodeManager::default();
+        let mut ctx = Context::default();
 
-        let x = mngr.temp_var(Sort::String);
-        let var_x = mngr.var(x.clone());
+        let x = ctx.temp_var(Sort::String);
+        let var_x = ctx.ast().variable(x.clone());
         let mut iter = PatternIterator::new(&var_x);
 
         assert_eq!(iter.next(), Some(Symbol::Variable(x.clone())));
@@ -419,12 +422,12 @@ mod tests {
 
     #[test]
     fn test_symbol_iterator_with_concat_of_string_and_variable() {
-        let mut mngr = NodeManager::default();
+        let mut ctx = Context::default();
 
-        let x = mngr.temp_var(Sort::String);
-        let var_x = mngr.var(x.clone());
-        let string_hello = mngr.const_str("abcde");
-        let node = mngr.concat(vec![string_hello, var_x.clone()]);
+        let x = ctx.temp_var(Sort::String);
+        let var_x = ctx.ast().variable(x.clone());
+        let string_hello = ctx.ast().const_str("abcde");
+        let node = ctx.ast().concat(vec![string_hello, var_x.clone()]);
         let mut iter = PatternIterator::new(&node);
 
         assert_eq!(iter.next(), Some(Symbol::Const('a'.into())));
@@ -438,16 +441,16 @@ mod tests {
 
     #[test]
     fn test_symbol_iterator_with_nested_concat() {
-        let mut mngr = NodeManager::default();
+        let mut ctx = Context::default();
 
-        let x = mngr.temp_var(Sort::String);
-        let var_x = mngr.var(x.clone());
-        let string_foo = mngr.const_str("foo");
-        let string_bar = mngr.const_str("bar");
+        let x = ctx.temp_var(Sort::String);
+        let var_x = ctx.ast().variable(x.clone());
+        let string_foo = ctx.ast().const_str("foo");
+        let string_bar = ctx.ast().const_str("bar");
 
         // Create nested concatenation: ("foo" + ("bar" + var_x))
-        let inner_concat = mngr.concat(vec![string_bar, var_x.clone()]);
-        let node = mngr.concat(vec![string_foo, inner_concat]);
+        let inner_concat = ctx.ast().concat(vec![string_bar, var_x.clone()]);
+        let node = ctx.ast().concat(vec![string_foo, inner_concat]);
         let mut iter = PatternIterator::new(&node);
 
         assert_eq!(iter.next(), Some(Symbol::Const('f'.into())));
@@ -462,17 +465,17 @@ mod tests {
 
     #[test]
     fn to_node_constant_string() {
-        let mut mngr = NodeManager::default();
-        let node = mngr.const_str("abcde");
+        let mut ctx = Context::default();
+        let node = ctx.ast().const_str("abcde");
 
         let iter = PatternIterator::new(&node);
-        let new_node = iter.to_node(&mut mngr).unwrap();
+        let new_node = iter.to_node(&mut ctx).unwrap();
         assert_eq!(new_node, node);
 
         let mut iter = PatternIterator::new(&node);
         iter.next();
-        let new_node = iter.to_node(&mut mngr).unwrap();
-        assert_eq!(new_node, mngr.const_str("bcde"));
+        let new_node = iter.to_node(&mut ctx).unwrap();
+        assert_eq!(new_node, ctx.ast().const_str("bcde"));
 
         let mut iter = PatternIterator::new(&node);
         iter.next();
@@ -480,47 +483,47 @@ mod tests {
         iter.next();
         iter.next();
         iter.next();
-        let new_node = iter.to_node(&mut mngr).unwrap();
-        assert_eq!(new_node, mngr.empty_string());
+        let new_node = iter.to_node(&mut ctx).unwrap();
+        assert_eq!(new_node, ctx.ast().empty_string());
     }
 
     #[test]
     fn to_node_single_var() {
-        let mut mngr = NodeManager::default();
-        let x = mngr.temp_var(Sort::String);
-        let var_x = mngr.var(x.clone());
+        let mut ctx = Context::default();
+        let x = ctx.temp_var(Sort::String);
+        let var_x = ctx.ast().variable(x.clone());
 
         let iter = PatternIterator::new(&var_x);
-        let new_node = iter.to_node(&mut mngr).unwrap();
+        let new_node = iter.to_node(&mut ctx).unwrap();
         assert_eq!(new_node, var_x);
 
         let mut iter = PatternIterator::new(&var_x);
         iter.next();
-        let new_node = iter.to_node(&mut mngr).unwrap();
-        assert_eq!(new_node, mngr.empty_string());
+        let new_node = iter.to_node(&mut ctx).unwrap();
+        assert_eq!(new_node, ctx.ast().empty_string());
     }
 
     #[test]
     fn to_node_concat_nested() {
-        let mut mngr = NodeManager::default();
-        let x = mngr.temp_var(Sort::String);
-        let var_x = mngr.var(x.clone());
-        let string_foo = mngr.const_str("foo");
-        let string_bar = mngr.const_str("bar");
+        let mut ctx = Context::default();
+        let x = ctx.temp_var(Sort::String);
+        let var_x = ctx.ast().variable(x.clone());
+        let string_foo = ctx.ast().const_str("foo");
+        let string_bar = ctx.ast().const_str("bar");
 
         // Create nested concatenation: ("foo" + ("bar" + var_x))
-        let inner_concat = mngr.concat(vec![string_bar.clone(), var_x.clone()]);
-        let node = mngr.concat(vec![string_foo, inner_concat.clone()]);
+        let inner_concat = ctx.ast().concat(vec![string_bar.clone(), var_x.clone()]);
+        let node = ctx.ast().concat(vec![string_foo, inner_concat.clone()]);
 
         let iter = PatternIterator::new(&node);
-        let new_node = iter.to_node(&mut mngr).unwrap();
+        let new_node = iter.to_node(&mut ctx).unwrap();
         assert_eq!(new_node, node);
 
         let mut iter = PatternIterator::new(&node);
         iter.next();
-        let new_node = iter.to_node(&mut mngr).unwrap();
-        let string_oo = mngr.const_str("oo");
-        let expected = mngr.concat(vec![string_oo, inner_concat]);
+        let new_node = iter.to_node(&mut ctx).unwrap();
+        let string_oo = ctx.ast().const_str("oo");
+        let expected = ctx.ast().concat(vec![string_oo, inner_concat]);
         assert_eq!(
             new_node, expected,
             "Expected: {}, Actual: {}",
@@ -531,9 +534,9 @@ mod tests {
         for _ in 0..7 {
             iter.next();
         }
-        let new_node = iter.to_node(&mut mngr).unwrap();
+        let new_node = iter.to_node(&mut ctx).unwrap();
 
-        let expected = mngr.empty_string();
+        let expected = ctx.ast().empty_string();
         assert_eq!(new_node, expected,);
     }
 }

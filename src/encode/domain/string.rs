@@ -324,8 +324,7 @@ mod tests {
 
     use crate::{
         alphabet::Alphabet,
-        ast::NodeManager,
-        context::Sort,
+        context::{Context, Sort},
         domain::Domain,
         encode::{domain::DomainEncoding, ResultSink, LAMBDA},
         interval::Interval,
@@ -336,8 +335,8 @@ mod tests {
 
     #[test]
     fn all_subst_defined() {
-        let mut mngr = NodeManager::default();
-        let var = mngr.temp_var(Sort::String);
+        let mut ctx = Context::default();
+        let var = ctx.temp_var(Sort::String);
 
         let alphabet = Alphabet::from_iter(vec!['a'.into(), 'b'.into(), 'c'.into(), LAMBDA]);
         let alphabet = Rc::new(alphabet);
@@ -367,8 +366,8 @@ mod tests {
 
     #[test]
     fn all_subst_defined_incremental() {
-        let mut mngr = NodeManager::default();
-        let var = mngr.temp_var(Sort::String);
+        let mut ctx = Context::default();
+        let var = ctx.temp_var(Sort::String);
 
         let alphabet = Alphabet::from_iter(vec!['a'.into(), 'b'.into(), 'c'.into(), LAMBDA]);
         let alphabet = Rc::new(alphabet);
@@ -396,8 +395,8 @@ mod tests {
             return TestResult::discard();
         }
 
-        let mut mngr = NodeManager::default();
-        let var = mngr.temp_var(Sort::String);
+        let mut ctx = Context::default();
+        let var = ctx.temp_var(Sort::String);
 
         let mut alphabet = Alphabet::empty();
         alphabet.insert(CharRange::new('a', 'd'));

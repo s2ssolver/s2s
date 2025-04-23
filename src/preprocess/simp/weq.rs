@@ -4,7 +4,7 @@ use super::*;
 use crate::{
     ast::{
         utils::{reverse, PatternIterator, Symbol},
-        Node, NodeKind, NodeManager,
+        Node, NodeKind,
     },
     context::{Sorted, Variable},
 };
@@ -19,7 +19,7 @@ use smt_str::SmtChar;
 #[derive(Debug, Clone, Copy)]
 pub(super) struct StripLCP;
 impl EquivalenceRule for StripLCP {
-    fn apply(&self, node: &Node, _: &IndexSet<Node>, mngr: &mut NodeManager) -> Option<Node> {
+    fn apply(&self, node: &Node, _: &IndexSet<Node>, ctx: &mut Context) -> Option<Node> {
         if *node.kind() == NodeKind::Eq && node.children()[0].sort().is_string() {
             debug_assert!(node.children().len() == 2);
             debug_assert!(node.children()[0].sort().is_string());
@@ -39,9 +39,9 @@ impl EquivalenceRule for StripLCP {
             }
 
             if i > 0 {
-                let lhs_new = lhs_iter.to_node(mngr)?;
-                let rhs_new = rhs_iter.to_node(mngr)?;
-                return Some(mngr.eq(lhs_new, rhs_new));
+                let lhs_new = lhs_iter.to_node(ctx)?;
+                let rhs_new = rhs_iter.to_node(ctx)?;
+                return Some(ctx.ast().eq(lhs_new, rhs_new));
             }
         }
         None
@@ -52,16 +52,11 @@ impl EquivalenceRule for StripLCP {
 #[derive(Debug, Clone, Copy)]
 pub(super) struct StripLCS;
 impl EquivalenceRule for StripLCS {
-    fn apply(
-        &self,
-        node: &Node,
-        asserted: &IndexSet<Node>,
-        mngr: &mut NodeManager,
-    ) -> Option<Node> {
+    fn apply(&self, node: &Node, asserted: &IndexSet<Node>, ctx: &mut Context) -> Option<Node> {
         if *node.kind() == NodeKind::Eq && node.children()[0].sort().is_string() {
-            let reversed = reverse(node, mngr);
-            if let Some(stripped_rev) = StripLCP.apply(&reversed, asserted, mngr) {
-                return Some(reverse(&stripped_rev, mngr));
+            let reversed = reverse(node, ctx);
+            if let Some(stripped_rev) = StripLCP.apply(&reversed, asserted, ctx) {
+                return Some(reverse(&stripped_rev, ctx));
             };
         }
         None
@@ -73,7 +68,7 @@ impl EquivalenceRule for StripLCS {
 #[derive(Debug, Clone, Copy)]
 pub(super) struct ConstMismatch;
 impl EquivalenceRule for ConstMismatch {
-    fn apply(&self, node: &Node, _: &IndexSet<Node>, mngr: &mut NodeManager) -> Option<Node> {
+    fn apply(&self, node: &Node, _: &IndexSet<Node>, ctx: &mut Context) -> Option<Node> {
         if *node.kind() == NodeKind::Eq {
             debug_assert!(node.children().len() == 2);
             let lhs = &node.children()[0];
@@ -82,10 +77,10 @@ impl EquivalenceRule for ConstMismatch {
             // Check for first character mismatch
             match (first_char(lhs), first_char(rhs)) {
                 (Some(lhs_char), Some(rhs_char)) if lhs_char != rhs_char => {
-                    return Some(mngr.ffalse());
+                    return Some(ctx.ast().ffalse());
                 }
-                (Some(_), None) if is_empty_string(rhs) => return Some(mngr.ffalse()),
-                (None, Some(_)) if is_empty_string(lhs) => return Some(mngr.ffalse()),
+                (Some(_), None) if is_empty_string(rhs) => return Some(ctx.ast().ffalse()),
+                (None, Some(_)) if is_empty_string(lhs) => return Some(ctx.ast().ffalse()),
 
                 _ => {}
             }
@@ -93,7 +88,7 @@ impl EquivalenceRule for ConstMismatch {
             // Check for last character mismatch
             if let (Some(lhs_char), Some(rhs_char)) = (last_char(lhs), last_char(rhs)) {
                 if lhs_char != rhs_char {
-                    return Some(mngr.ffalse());
+                    return Some(ctx.ast().ffalse());
                 }
             }
         }
@@ -111,7 +106,7 @@ impl EquivalenceRule for ConstMismatch {
 #[derive(Debug, Clone, Copy)]
 pub(super) struct LengthReasoning;
 impl EquivalenceRule for LengthReasoning {
-    fn apply(&self, node: &Node, _: &IndexSet<Node>, mngr: &mut NodeManager) -> Option<Node> {
+    fn apply(&self, node: &Node, _: &IndexSet<Node>, ctx: &mut Context) -> Option<Node> {
         if *node.kind() == NodeKind::Eq {
             debug_assert!(node.children().len() == 2);
             let lhs = &node.children()[0];
@@ -141,29 +136,29 @@ impl EquivalenceRule for LengthReasoning {
 
             // Parity condition
             if r % 2 != 0 && coeffs.values().all(|&c| (c.unsigned_abs() as u64) % 2 == 0) {
-                return Some(mngr.ffalse());
+                return Some(ctx.ast().ffalse());
             }
 
             // lefthand-side is 0 but right-hand-side is non-zero
             if r != 0 && (coeffs.values().all(|&c| c == 0) || coeffs.is_empty()) {
-                return Some(mngr.ffalse());
+                return Some(ctx.ast().ffalse());
             }
 
             // All coefficients < 0 but the constant term is positive
             if r > 0 && coeffs.values().all(|&c| c < 0) {
-                return Some(mngr.ffalse());
+                return Some(ctx.ast().ffalse());
             }
 
             // All coefficients >= 0 but the constant term is negative
             if r < 0 && coeffs.values().all(|&c| c >= 0) {
-                return Some(mngr.ffalse());
+                return Some(ctx.ast().ffalse());
             }
 
             // Divisibility condition: gcd(c_1, c_2, ..., c_n) divides b
             if !coeffs.is_empty() && r != 0 {
                 let gcd = coeffs.values().fold(0, |a: i32, &b| a.gcd(&b.abs()));
                 if r % gcd != 0 {
-                    return Some(mngr.ffalse());
+                    return Some(ctx.ast().ffalse());
                 }
             }
         }
@@ -216,7 +211,7 @@ impl ParikhMatrixMismatch {
 }
 
 impl EquivalenceRule for ParikhMatrixMismatch {
-    fn apply(&self, node: &Node, _: &IndexSet<Node>, mngr: &mut NodeManager) -> Option<Node> {
+    fn apply(&self, node: &Node, _: &IndexSet<Node>, ctx: &mut Context) -> Option<Node> {
         if node.kind() == &NodeKind::Eq {
             let lhs = &node.children()[0];
             let rhs = &node.children()[1];
@@ -228,17 +223,17 @@ impl EquivalenceRule for ParikhMatrixMismatch {
             let rhs_iter = PatternIterator::new(rhs);
 
             if Self::is_unsat(lhs_iter, rhs_iter) {
-                return Some(mngr.ffalse());
+                return Some(ctx.ast().ffalse());
             }
 
             // Check for suffix mismatch
 
-            let reversed_lhs = reverse(lhs, mngr);
+            let reversed_lhs = reverse(lhs, ctx);
             let lhs_iter = PatternIterator::new(&reversed_lhs);
-            let reversed_rhs = reverse(rhs, mngr);
+            let reversed_rhs = reverse(rhs, ctx);
             let rhs_iter = PatternIterator::new(&reversed_rhs);
             if Self::is_unsat(lhs_iter, rhs_iter) {
-                return Some(mngr.ffalse());
+                return Some(ctx.ast().ffalse());
             }
         }
         None
@@ -290,32 +285,32 @@ mod tests {
 
     #[test]
     fn test_strip_common_prefix_with_constants() {
-        let mut mngr = NodeManager::default();
+        let mut ctx = Context::default();
 
-        let equation = parse_equation("abx", "aby", &mut mngr);
-        let result = StripLCP.apply(&equation, &IndexSet::new(), &mut mngr);
-        let expected = parse_equation("x", "y", &mut mngr);
+        let equation = parse_equation("abx", "aby", &mut ctx);
+        let result = StripLCP.apply(&equation, &IndexSet::new(), &mut ctx);
+        let expected = parse_equation("x", "y", &mut ctx);
 
         assert_eq!(result, Some(expected));
     }
 
     #[test]
     fn test_strip_common_prefix_with_variables() {
-        let mut mngr = NodeManager::default();
-        let equation = parse_equation("abX", "abY", &mut mngr);
-        let result = StripLCP.apply(&equation, &IndexSet::new(), &mut mngr);
+        let mut ctx = Context::default();
+        let equation = parse_equation("abX", "abY", &mut ctx);
+        let result = StripLCP.apply(&equation, &IndexSet::new(), &mut ctx);
 
-        let expected = parse_equation("X", "Y", &mut mngr);
+        let expected = parse_equation("X", "Y", &mut ctx);
         assert_eq!(result, Some(expected));
     }
 
     #[test]
     fn test_no_common_prefix_with_variables() {
-        let mut mngr = NodeManager::default();
+        let mut ctx = Context::default();
 
-        let equation = parse_equation("aX", "bY", &mut mngr);
+        let equation = parse_equation("aX", "bY", &mut ctx);
 
-        let result = StripLCP.apply(&equation, &IndexSet::new(), &mut mngr);
+        let result = StripLCP.apply(&equation, &IndexSet::new(), &mut ctx);
 
         // No common prefix, so no rewrite should happen
         assert_eq!(result, None);
@@ -323,53 +318,53 @@ mod tests {
 
     #[test]
     fn test_strip_partial_prefix_with_variables() {
-        let mut mngr = NodeManager::default();
-        let equation = parse_equation("aX", "abcY", &mut mngr);
+        let mut ctx = Context::default();
+        let equation = parse_equation("aX", "abcY", &mut ctx);
 
-        let result = StripLCP.apply(&equation, &IndexSet::new(), &mut mngr);
-        let expected = parse_equation("X", "bcY", &mut mngr);
+        let result = StripLCP.apply(&equation, &IndexSet::new(), &mut ctx);
+        let expected = parse_equation("X", "bcY", &mut ctx);
         assert_eq!(result, Some(expected));
     }
 
     #[test]
     fn test_mismatch_first_char() {
-        let mut mngr = NodeManager::default();
-        let equation = parse_equation("abcX", "yX", &mut mngr);
+        let mut ctx = Context::default();
+        let equation = parse_equation("abcX", "yX", &mut ctx);
 
-        let result = ConstMismatch.apply(&equation, &IndexSet::new(), &mut mngr);
+        let result = ConstMismatch.apply(&equation, &IndexSet::new(), &mut ctx);
 
         // Expect the result to be `false` due to mismatch in first characters "a" and "x"
-        assert_eq!(result, Some(mngr.ffalse()));
+        assert_eq!(result, Some(ctx.ast().ffalse()));
     }
 
     #[test]
     fn test_mismatch_last_char() {
-        let mut mngr = NodeManager::default();
-        let equation = parse_equation("Xab", "Xac", &mut mngr);
+        let mut ctx = Context::default();
+        let equation = parse_equation("Xab", "Xac", &mut ctx);
 
-        let result = ConstMismatch.apply(&equation, &IndexSet::new(), &mut mngr);
+        let result = ConstMismatch.apply(&equation, &IndexSet::new(), &mut ctx);
 
-        assert_eq!(result, Some(mngr.ffalse()));
+        assert_eq!(result, Some(ctx.ast().ffalse()));
     }
 
     #[test]
     fn test_no_mismatch() {
-        let mut mngr = NodeManager::default();
+        let mut ctx = Context::default();
 
-        let equation = parse_equation("Xab", "XaY", &mut mngr);
+        let equation = parse_equation("Xab", "XaY", &mut ctx);
 
-        let result = ConstMismatch.apply(&equation, &IndexSet::new(), &mut mngr);
+        let result = ConstMismatch.apply(&equation, &IndexSet::new(), &mut ctx);
 
         assert_eq!(result, None);
     }
 
     #[test]
     fn test_empty_lhs_rhs() {
-        let mut mngr = NodeManager::default();
+        let mut ctx = Context::default();
 
-        let equation = parse_equation("", "", &mut mngr);
+        let equation = parse_equation("", "", &mut ctx);
 
-        let result = ConstMismatch.apply(&equation, &IndexSet::new(), &mut mngr);
+        let result = ConstMismatch.apply(&equation, &IndexSet::new(), &mut ctx);
 
         assert_eq!(result, None);
     }

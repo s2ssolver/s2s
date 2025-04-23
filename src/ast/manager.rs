@@ -1,58 +1,38 @@
-use std::{rc::Rc, time::Instant};
+use std::rc::Rc;
 
 use indexmap::IndexMap;
 
-use smt_str::{
-    automata::{compile, NFA},
-    re::Regex,
-    SmtString,
-};
+use smt_str::{re::Regex, SmtString};
 
-use super::canonical::{Atom, AtomKind, Literal};
-use crate::context::{Sort, Sorted, Variable};
+use crate::context::{Sorted, Variable};
 
-use super::{error::NodeError, Node, NodeKind, OwnedNode};
+use super::{Node, NodeKind, OwnedNode};
 
 /// The type we use for hash-consing nodes
 type NodeKey = (NodeKind, Vec<Node>);
 
-pub struct NodeManager {
+pub struct AstBuilder {
     /// Counter for unique identifiers
     next_id: usize,
 
-    /// Regular expression builder
-    re_builder: smt_str::re::ReBuilder,
-
     /// Registry of nodes
     node_registry: IndexMap<NodeKey, Node>,
-
-    /// Registry of atoms, indexed by kind
-    atom_registry: IndexMap<AtomKind, Rc<Atom>>,
-
-    /// Registry of variables, indexed by name
-    variables: IndexMap<String, Rc<Variable>>,
-
-    nfas: IndexMap<Regex, Rc<NFA>>,
 
     /// If false, will perform no optimizations
     optimize: bool,
 }
 
-impl Default for NodeManager {
+impl Default for AstBuilder {
     fn default() -> Self {
         Self {
             next_id: 0,
-            re_builder: smt_str::re::ReBuilder::default(),
             node_registry: IndexMap::new(),
-            atom_registry: IndexMap::new(),
-            variables: IndexMap::new(),
-            nfas: IndexMap::new(),
             optimize: true,
         }
     }
 }
 
-impl NodeManager {
+impl AstBuilder {
     pub fn create_node(&mut self, kind: NodeKind, mut children: Vec<Node>) -> Node {
         match kind {
             NodeKind::Bool(_)
@@ -217,106 +197,12 @@ impl NodeManager {
         // }
     }
 
-    /* Regex */
-
-    pub fn re_builder(&mut self) -> &mut smt_str::re::ReBuilder {
-        &mut self.re_builder
-    }
-
-    /// Returns the NFA for the given regular expression.
-    /// Computes the NFA if it has not been computed yet.
-    pub fn get_nfa(&mut self, regex: &Regex) -> Rc<NFA> {
-        let t = Instant::now();
-        let nfa = if let Some(nfa) = self.nfas.get(regex) {
-            nfa.clone()
-        } else {
-            let builder = self.re_builder();
-            let mut nfa = compile(regex, builder).eliminate_epsilon();
-
-            // Should be trim by construction, but just in case.
-            // If the regex is trim, then this is a no-op anyway (returns the automaton directly).
-            nfa = nfa.trim();
-            // May help with performance, but not strictly necessary.
-            nfa.compress_ranges();
-            let nfa = Rc::new(nfa);
-            self.nfas.insert(regex.clone(), nfa.clone());
-            nfa
-        };
-        log::debug!(
-            "Compiled NFA ({:?}) ({} states)",
-            t.elapsed(),
-            nfa.num_states()
-        );
-
-        nfa
-    }
-    /* Variables */
-
-    /// Creates a new variable with a given name and sort.
-    /// If that variable already exists, returns the existing variable.
-    /// If a variable with the same name but different sort exists, returns an error.
-    pub fn new_var(&mut self, name: String, sort: Sort) -> Result<Rc<Variable>, NodeError> {
-        if let Some(var) = self.variables.get(&name) {
-            if var.sort() != sort {
-                return Err(NodeError::AlreadyDeclared(name, sort, var.sort()));
-            }
-            Ok(var.clone())
-        } else {
-            let var = Rc::new(Variable::new(self.next_id, name.clone(), sort));
-            self.next_id += 1;
-            self.variables.insert(name.clone(), var.clone());
-            Ok(var)
-        }
-    }
-
-    /// Creates a new variable with a given name and Bool sort.
-    /// If that variable already exists, returns the existing variable.
-    /// If a variable with the same name but different sort exists, returns an error.
-    pub fn bool_var(&mut self, name: &str) -> Result<Rc<Variable>, NodeError> {
-        self.new_var(name.to_string(), Sort::Bool)
-    }
-
-    /// Creates a new variable with a given name and Int sort.
-    /// If that variable already exists, returns the existing variable.
-    /// If a variable with the same name but different sort exists, returns an error.
-    pub fn int_var(&mut self, name: &str) -> Result<Rc<Variable>, NodeError> {
-        self.new_var(name.to_string(), Sort::Int)
-    }
-
-    /// Creates a new variable with a given name and String sort.
-    /// If that variable already exists, returns the existing variable.
-    /// If a variable with the same name but different sort exists, panics.
-    pub fn string_var(&mut self, name: &str) -> Result<Rc<Variable>, NodeError> {
-        self.new_var(name.to_string(), Sort::String)
-    }
-
-    pub fn get_var(&self, name: &str) -> Option<Rc<Variable>> {
-        self.variables.get(name).cloned()
-    }
-
-    /// Creates a new temporary variable with a given sort.
-    pub fn temp_var(&mut self, sort: Sort) -> Rc<Variable> {
-        let name = format!("__temp_{}", self.next_id);
-        self.next_id += 1;
-        self.new_var(name, sort).unwrap() // safe to unwrap
-    }
-
-    /// Creates new node with a temporary variable
-    pub fn temp_var_node(&mut self, sort: Sort) -> Node {
-        let tv = self.temp_var(sort);
-        self.var(tv)
-    }
-
-    pub fn vars(&self) -> impl Iterator<Item = &Rc<Variable>> {
-        self.variables.values()
-    }
-
     /* Constructions */
 
     /* Boolean Functions */
 
     /// A variable
-    pub fn var(&mut self, var: Rc<Variable>) -> Node {
+    pub fn variable(&mut self, var: Rc<Variable>) -> Node {
         self.intern_node(NodeKind::Variable(var), vec![])
     }
 
@@ -333,7 +219,6 @@ impl NodeManager {
     /// Boolean conjunction
     pub fn and(&mut self, rs: Vec<Node>) -> Node {
         // Do minor simplifications and flatten the conjunction
-
         let mut cleaned = Vec::with_capacity(rs.len());
         if self.optimize {
             for r in rs {
@@ -660,24 +545,6 @@ impl NodeManager {
         debug_assert!(l.sort().is_int());
         debug_assert!(r.sort().is_int());
         self.intern_node(NodeKind::Ge, vec![l, r])
-    }
-
-    /* Literals */
-
-    pub fn literal(&mut self, lit: Literal) -> Node {
-        self.intern_node(NodeKind::Literal(lit), vec![])
-    }
-
-    pub fn atom(&mut self, kind: AtomKind) -> Rc<Atom> {
-        if let Some(atom) = self.atom_registry.get(&kind) {
-            atom.clone()
-        } else {
-            let id = self.next_id;
-            self.next_id += 1;
-            let atom = Rc::new(Atom::new(kind.clone(), id));
-            self.atom_registry.insert(kind.clone(), atom.clone());
-            atom
-        }
     }
 }
 

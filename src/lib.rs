@@ -31,7 +31,7 @@ use std::{io::BufRead, time::Instant};
 
 pub use error::PublicError as Error;
 
-use ast::NodeManager;
+use context::Context;
 pub use engine::Engine as Blastr;
 use smt::{Interpreter, Script};
 pub use solver::{SolverAnswer, SolverOptions};
@@ -42,17 +42,17 @@ pub use solver::{SolverAnswer, SolverOptions};
 /// Optionally, the solver can be configured with additional options.
 /// If no options are given, the solver uses the default options.
 pub fn solve_smt(smt: impl BufRead, options: SolverOptions) -> Result<(), Error> {
-    let mut mngr = NodeManager::default();
+    let mut ctx = Context::default();
 
     let t = Instant::now();
     // Parse the input problem
-    let script = parse_script(smt, &mut mngr)?;
+    let script = parse_script(smt, &mut ctx)?;
     log::info!("Parsed in {:?}", t.elapsed());
 
-    let mut interpreter = Interpreter::new(options, &mut mngr);
+    let mut interpreter = Interpreter::new(options, &mut ctx);
     interpreter.run(&script)
 }
 
-pub fn parse_script(smt: impl BufRead, mngr: &mut NodeManager) -> Result<Script, Error> {
-    smt::parse_script(smt, mngr).map_err(Into::into)
+pub fn parse_script(smt: impl BufRead, ctx: &mut Context) -> Result<Script, Error> {
+    smt::parse_script(smt, ctx).map_err(Into::into)
 }

@@ -11,12 +11,12 @@ use super::*;
 #[derive(Debug, Clone, Copy)]
 pub(super) struct FoldConstantInts;
 impl EquivalenceRule for FoldConstantInts {
-    fn apply(&self, node: &Node, _: &IndexSet<Node>, mngr: &mut NodeManager) -> Option<Node> {
+    fn apply(&self, node: &Node, _: &IndexSet<Node>, ctx: &mut Context) -> Option<Node> {
         if node.is_const() {
             return None; // already a fully simplified constant
         }
 
-        is_const_int(node).map(|as_i| mngr.const_int(as_i))
+        is_const_int(node).map(|as_i| ctx.ast().const_int(as_i))
     }
 }
 
@@ -31,7 +31,7 @@ impl EquivalenceRule for FoldConstantInts {
 #[derive(Debug, Clone, Copy)]
 pub(super) struct LessTrivial;
 impl EquivalenceRule for LessTrivial {
-    fn apply(&self, node: &Node, _: &IndexSet<Node>, mngr: &mut NodeManager) -> Option<Node> {
+    fn apply(&self, node: &Node, _: &IndexSet<Node>, ctx: &mut Context) -> Option<Node> {
         if *node.kind() == NodeKind::Lt {
             // strictly less
             debug_assert!(node.children().len() == 2);
@@ -39,14 +39,14 @@ impl EquivalenceRule for LessTrivial {
             let rhs = node.children().last().unwrap();
 
             if lhs == rhs {
-                return Some(mngr.ffalse());
+                return Some(ctx.ast().ffalse());
             }
 
             if let (NodeKind::Int(i1), NodeKind::Int(i2)) = (lhs.kind(), rhs.kind()) {
                 if i1 < i2 {
-                    return Some(mngr.ttrue());
+                    return Some(ctx.ast().ttrue());
                 } else {
-                    return Some(mngr.ffalse());
+                    return Some(ctx.ast().ffalse());
                 }
             }
         }
@@ -57,14 +57,14 @@ impl EquivalenceRule for LessTrivial {
             let rhs = node.children().last().unwrap();
 
             if lhs == rhs {
-                return Some(mngr.ttrue());
+                return Some(ctx.ast().ttrue());
             }
 
             if let (NodeKind::Int(i1), NodeKind::Int(i2)) = (lhs.kind(), rhs.kind()) {
                 if i1 <= i2 {
-                    return Some(mngr.ttrue());
+                    return Some(ctx.ast().ttrue());
                 } else {
-                    return Some(mngr.ffalse());
+                    return Some(ctx.ast().ffalse());
                 }
             }
         }
@@ -77,7 +77,7 @@ impl EquivalenceRule for LessTrivial {
 #[derive(Debug, Clone, Copy)]
 pub(super) struct DistributeNeg;
 impl EquivalenceRule for DistributeNeg {
-    fn apply(&self, node: &Node, _: &IndexSet<Node>, mngr: &mut NodeManager) -> Option<Node> {
+    fn apply(&self, node: &Node, _: &IndexSet<Node>, ctx: &mut Context) -> Option<Node> {
         if *node.kind() == NodeKind::Neg {
             debug_assert!(node.children().len() == 1);
             let child = node.children().first().unwrap();
@@ -85,9 +85,9 @@ impl EquivalenceRule for DistributeNeg {
             if child.kind() == &NodeKind::Add {
                 let mut new_children = Vec::new();
                 for c in child.children() {
-                    new_children.push(mngr.neg(c.clone()));
+                    new_children.push(ctx.ast().neg(c.clone()));
                 }
-                return Some(mngr.add(new_children));
+                return Some(ctx.ast().add(new_children));
             }
         }
         None
@@ -98,12 +98,7 @@ impl EquivalenceRule for DistributeNeg {
 #[derive(Debug, Clone, Copy)]
 pub(super) struct GreaterTrivial;
 impl EquivalenceRule for GreaterTrivial {
-    fn apply(
-        &self,
-        node: &Node,
-        asserted: &IndexSet<Node>,
-        mngr: &mut NodeManager,
-    ) -> Option<Node> {
+    fn apply(&self, node: &Node, asserted: &IndexSet<Node>, ctx: &mut Context) -> Option<Node> {
         if *node.kind() == NodeKind::Gt || *node.kind() == NodeKind::Ge {
             debug_assert!(node.children().len() == 2);
 
@@ -118,9 +113,11 @@ impl EquivalenceRule for GreaterTrivial {
             } else {
                 NodeKind::Le
             };
-            let swapped = mngr.create_node(swapped_op, vec![rhs.clone(), lhs.clone()]);
+            let swapped = ctx
+                .ast()
+                .create_node(swapped_op, vec![rhs.clone(), lhs.clone()]);
 
-            return LessTrivial.apply(&swapped, asserted, mngr);
+            return LessTrivial.apply(&swapped, asserted, ctx);
         }
 
         None
@@ -131,21 +128,21 @@ impl EquivalenceRule for GreaterTrivial {
 #[derive(Debug, Clone, Copy)]
 pub(super) struct EqualityTrivial;
 impl EquivalenceRule for EqualityTrivial {
-    fn apply(&self, node: &Node, _: &IndexSet<Node>, mngr: &mut NodeManager) -> Option<Node> {
+    fn apply(&self, node: &Node, _: &IndexSet<Node>, ctx: &mut Context) -> Option<Node> {
         if *node.kind() == NodeKind::Eq {
             debug_assert!(node.children().len() == 2);
             let lhs = node.children().first().unwrap();
             let rhs = node.children().last().unwrap();
 
             if lhs == rhs {
-                return Some(mngr.ttrue());
+                return Some(ctx.ast().ttrue());
             }
 
             if let (NodeKind::Int(i1), NodeKind::Int(i2)) = (lhs.kind(), rhs.kind()) {
                 if i1 == i2 {
-                    return Some(mngr.ttrue());
+                    return Some(ctx.ast().ttrue());
                 } else {
-                    return Some(mngr.ffalse());
+                    return Some(ctx.ast().ffalse());
                 }
             }
         }
@@ -162,21 +159,33 @@ impl EquivalenceRule for EqualityTrivial {
 #[derive(Debug, Clone, Copy)]
 pub(super) struct NotComparison;
 impl EquivalenceRule for NotComparison {
-    fn apply(&self, node: &Node, _: &IndexSet<Node>, mngr: &mut NodeManager) -> Option<Node> {
+    fn apply(&self, node: &Node, _: &IndexSet<Node>, ctx: &mut Context) -> Option<Node> {
         if let NodeKind::Not = *node.kind() {
             let child = node.children().first().unwrap();
             match child.kind() {
                 NodeKind::Lt => {
-                    return Some(mngr.create_node(NodeKind::Ge, child.children().to_vec()))
+                    return Some(
+                        ctx.ast()
+                            .create_node(NodeKind::Ge, child.children().to_vec()),
+                    )
                 }
                 NodeKind::Le => {
-                    return Some(mngr.create_node(NodeKind::Gt, child.children().to_vec()))
+                    return Some(
+                        ctx.ast()
+                            .create_node(NodeKind::Gt, child.children().to_vec()),
+                    )
                 }
                 NodeKind::Gt => {
-                    return Some(mngr.create_node(NodeKind::Le, child.children().to_vec()))
+                    return Some(
+                        ctx.ast()
+                            .create_node(NodeKind::Le, child.children().to_vec()),
+                    )
                 }
                 NodeKind::Ge => {
-                    return Some(mngr.create_node(NodeKind::Lt, child.children().to_vec()))
+                    return Some(
+                        ctx.ast()
+                            .create_node(NodeKind::Lt, child.children().to_vec()),
+                    )
                 }
                 _ => (),
             }
@@ -190,28 +199,28 @@ impl EquivalenceRule for NotComparison {
 #[derive(Debug, Clone, Copy)]
 pub(super) struct NormalizeIneq;
 impl EquivalenceRule for NormalizeIneq {
-    fn apply(&self, node: &Node, _: &IndexSet<Node>, mngr: &mut NodeManager) -> Option<Node> {
+    fn apply(&self, node: &Node, _: &IndexSet<Node>, ctx: &mut Context) -> Option<Node> {
         if let Some(normed) = normalize_ineq(node) {
             let mut new_children = Vec::new();
             for (k, v) in &normed.lhs.coeffs {
                 if *v == 0 {
                     continue;
                 }
-                let v_node = mngr.const_int(*v);
+                let v_node = ctx.ast().const_int(*v);
                 if *v == 1 {
                     new_children.push(k.clone());
                 } else {
-                    let mul = mngr.mul(vec![v_node, k.clone()]);
+                    let mul = ctx.ast().mul(vec![v_node, k.clone()]);
                     new_children.push(mul);
                 }
             }
-            let lhs = mngr.add(new_children);
-            let rhs = mngr.const_int(normed.rhs);
+            let lhs = ctx.ast().add(new_children);
+            let rhs = ctx.ast().const_int(normed.rhs);
             let new_node = if normed.pol() {
-                mngr.create_node(normed.op, vec![lhs, rhs])
+                ctx.ast().create_node(normed.op, vec![lhs, rhs])
             } else {
-                let t = mngr.create_node(normed.op, vec![lhs, rhs]);
-                mngr.not(t)
+                let t = ctx.ast().create_node(normed.op, vec![lhs, rhs]);
+                ctx.ast().not(t)
             };
             if new_node == *node {
                 None

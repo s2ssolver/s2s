@@ -1,9 +1,12 @@
 use indexmap::IndexSet;
 use itertools::Itertools;
 
-use crate::ast::{
-    utils::{reverse, PatternIterator},
-    Node, NodeKind, NodeManager,
+use crate::{
+    ast::{
+        utils::{reverse, PatternIterator},
+        Node, NodeKind,
+    },
+    context::Context,
 };
 
 use super::EquivalenceRule;
@@ -12,7 +15,7 @@ use super::EquivalenceRule;
 #[derive(Debug, Clone, Copy)]
 pub(super) struct TrivialPrefixof;
 impl EquivalenceRule for TrivialPrefixof {
-    fn apply(&self, node: &Node, _: &IndexSet<Node>, mngr: &mut NodeManager) -> Option<Node> {
+    fn apply(&self, node: &Node, _: &IndexSet<Node>, ctx: &mut Context) -> Option<Node> {
         if *node.kind() == NodeKind::PrefixOf {
             debug_assert!(node.children().len() == 2);
             let lhs = &node.children()[0];
@@ -31,7 +34,7 @@ impl EquivalenceRule for TrivialPrefixof {
                                 }
                             }
                             // If we reached the end of lhs, then lhs is a prefix of rhs.
-                            return Some(mngr.ttrue());
+                            return Some(ctx.ast().ttrue());
                         }
                         _ => {}
                     }
@@ -47,19 +50,14 @@ impl EquivalenceRule for TrivialPrefixof {
 #[derive(Debug, Clone, Copy)]
 pub(super) struct TrivialSuffixof;
 impl EquivalenceRule for TrivialSuffixof {
-    fn apply(
-        &self,
-        node: &Node,
-        asserted: &IndexSet<Node>,
-        mngr: &mut NodeManager,
-    ) -> Option<Node> {
+    fn apply(&self, node: &Node, asserted: &IndexSet<Node>, ctx: &mut Context) -> Option<Node> {
         if *node.kind() == NodeKind::SuffixOf {
             let lhs = &node.children()[0];
             let rhs = &node.children()[1];
-            let r_lhs = reverse(lhs, mngr);
-            let r_rhs = reverse(rhs, mngr);
-            let prefixof = &mngr.prefix_of(r_lhs, r_rhs);
-            return TrivialPrefixof.apply(prefixof, asserted, mngr);
+            let r_lhs = reverse(lhs, ctx);
+            let r_rhs = reverse(rhs, ctx);
+            let prefixof = &ctx.ast().prefix_of(r_lhs, r_rhs);
+            return TrivialPrefixof.apply(prefixof, asserted, ctx);
         }
         None
     }
@@ -71,7 +69,7 @@ impl EquivalenceRule for TrivialSuffixof {
 #[derive(Debug, Clone, Copy)]
 pub(super) struct TrivialContains;
 impl EquivalenceRule for TrivialContains {
-    fn apply(&self, node: &Node, _: &IndexSet<Node>, mngr: &mut NodeManager) -> Option<Node> {
+    fn apply(&self, node: &Node, _: &IndexSet<Node>, ctx: &mut Context) -> Option<Node> {
         if *node.kind() == NodeKind::Contains {
             let haystack = &node.children()[0];
             let needle = &node.children()[1];
@@ -85,11 +83,11 @@ impl EquivalenceRule for TrivialContains {
                             let needle = PatternIterator::new(needle).collect_vec();
 
                             if find_subvec(&haystack, &needle) {
-                                return Some(mngr.ttrue());
+                                return Some(ctx.ast().ttrue());
                             } else if haystack.iter().all(|s| s.is_const())
                                 && needle.iter().all(|s| s.is_const())
                             {
-                                return Some(mngr.ffalse());
+                                return Some(ctx.ast().ffalse());
                             }
                         }
                         _ => {}
@@ -106,12 +104,12 @@ impl EquivalenceRule for TrivialContains {
 #[derive(Debug, Clone, Copy)]
 pub(super) struct FactorOfEmptyString;
 impl EquivalenceRule for FactorOfEmptyString {
-    fn apply(&self, node: &Node, _: &IndexSet<Node>, mngr: &mut NodeManager) -> Option<Node> {
+    fn apply(&self, node: &Node, _: &IndexSet<Node>, ctx: &mut Context) -> Option<Node> {
         if *node.kind() == NodeKind::PrefixOf || *node.kind() == NodeKind::SuffixOf {
             let lhs = &node.children()[0];
             let rhs = &node.children()[1];
             if rhs.as_str_const().map(|s| s.is_empty()) == Some(true) {
-                let eq = mngr.eq(lhs.clone(), rhs.clone());
+                let eq = ctx.ast().eq(lhs.clone(), rhs.clone());
                 return Some(eq);
             }
         }
@@ -119,7 +117,7 @@ impl EquivalenceRule for FactorOfEmptyString {
             let container = &node.children()[0];
             let contains = &node.children()[1];
             if container.as_str_const().map(|s| s.is_empty()) == Some(true) {
-                let eq = mngr.eq(container.clone(), contains.clone());
+                let eq = ctx.ast().eq(container.clone(), contains.clone());
                 return Some(eq);
             }
         }

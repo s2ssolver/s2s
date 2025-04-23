@@ -38,7 +38,7 @@ impl IndependentVariableAssignment {
         lhs: &Node,
         rhs: &Node,
         pol: bool,
-        mngr: &mut NodeManager,
+        ctx: &mut Context,
     ) -> Option<VarSubstitution> {
         match (lhs.kind(), rhs.kind()) {
             (NodeKind::Variable(v), rhs_v) | (rhs_v, NodeKind::Variable(v))
@@ -50,9 +50,9 @@ impl IndependentVariableAssignment {
                         let rhs = if pol {
                             rhs.clone()
                         } else if s.is_empty() {
-                            mngr.const_str("a")
+                            ctx.ast().const_str("a")
                         } else {
-                            mngr.empty_string()
+                            ctx.ast().empty_string()
                         };
                         subs.add(v.clone(), rhs);
                         Some(subs)
@@ -62,9 +62,9 @@ impl IndependentVariableAssignment {
                         let rhs = if pol {
                             rhs.clone()
                         } else if *i != 0 {
-                            mngr.const_int(0)
+                            ctx.ast().const_int(0)
                         } else {
-                            mngr.const_int(1)
+                            ctx.ast().const_int(1)
                         };
                         subs.add(v.clone(), rhs);
                         Some(subs)
@@ -81,13 +81,13 @@ impl IndependentVariableAssignment {
         lhs: &Node,
         regex: &Regex,
         pol: bool,
-        mngr: &mut NodeManager,
+        ctx: &mut Context,
     ) -> Option<VarSubstitution> {
         match lhs.kind() {
             NodeKind::Variable(v) if self.independent(v) => {
                 let mut subs = VarSubstitution::default();
 
-                let rhs = match sample_regex(regex, mngr.re_builder(), 100, !pol) {
+                let rhs = match sample_regex(regex, ctx.re_builder(), 100, !pol) {
                     Some(w) => w,
                     None => {
                         log::warn!("Could not sample from\n{}", regex);
@@ -106,7 +106,7 @@ impl IndependentVariableAssignment {
                     debug_assert!(!regex.accepts(&rhs), "Regex: {} accepts '{}'", regex, rhs);
                 }
 
-                let rhs = mngr.const_string(rhs);
+                let rhs = ctx.ast().const_string(rhs);
                 subs.add(v.clone(), rhs);
                 return Some(subs);
             }
@@ -120,7 +120,7 @@ impl IndependentVariableAssignment {
         &self,
         atom: &Node,
         polarity: bool,
-        mngr: &mut NodeManager,
+        ctx: &mut Context,
     ) -> Option<VarSubstitution> {
         debug_assert!(atom.is_atomic(), "{} is not an atomic formula", atom);
         match atom.kind() {
@@ -128,9 +128,9 @@ impl IndependentVariableAssignment {
                 let mut subs = VarSubstitution::default();
                 if self.independent(v) {
                     if polarity {
-                        subs.add(v.clone(), mngr.ttrue());
+                        subs.add(v.clone(), ctx.ast().ttrue());
                     } else {
-                        subs.add(v.clone(), mngr.ffalse());
+                        subs.add(v.clone(), ctx.ast().ffalse());
                     }
                     return Some(subs);
                 }
@@ -138,7 +138,7 @@ impl IndependentVariableAssignment {
             NodeKind::Eq => {
                 let lhs = atom.children().first().unwrap();
                 let rhs = atom.children().last().unwrap();
-                if let Some(subs) = self.try_reduce_eq(lhs, rhs, polarity, mngr) {
+                if let Some(subs) = self.try_reduce_eq(lhs, rhs, polarity, ctx) {
                     return Some(subs);
                 }
             }
@@ -147,7 +147,7 @@ impl IndependentVariableAssignment {
                 let rhs = atom.children().last().unwrap();
 
                 if let NodeKind::Regex(re) = rhs.kind() {
-                    if let Some(subs) = self.try_reduce_reg_membership(lhs, re, polarity, mngr) {
+                    if let Some(subs) = self.try_reduce_reg_membership(lhs, re, polarity, ctx) {
                         return Some(subs);
                     }
                 } else {
@@ -171,7 +171,7 @@ impl IndependentVariableAssignment {
                         if self.independent(v) {
                             if polarity {
                                 let mut subs = VarSubstitution::default();
-                                let rhs = mngr.const_string(asstr.clone());
+                                let rhs = ctx.ast().const_string(asstr.clone());
                                 subs.add(v.clone(), rhs);
                                 return Some(subs);
                             } else {
@@ -194,15 +194,15 @@ impl EntailmentRule for IndependentVariableAssignment {
         node: &Node,
         _: &IndexSet<Node>,
         pol: bool,
-        mngr: &mut NodeManager,
+        ctx: &mut Context,
     ) -> Option<VarSubstitution> {
         if node.is_atomic() {
-            return self.apply_atom(node, pol, mngr);
+            return self.apply_atom(node, pol, ctx);
         }
         None
     }
 
-    fn init(&mut self, root: &Node, _: &mut NodeManager) {
+    fn init(&mut self, root: &Node, _: &mut Context) {
         self.vcount.clear();
         Self::count_variables(root, &mut self.vcount);
     }

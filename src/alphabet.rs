@@ -151,37 +151,37 @@ mod tests {
 
     use super::*;
     use crate::{
-        ast::{Node, NodeKind, NodeManager},
-        context::Sort,
+        ast::{Node, NodeKind},
+        context::{Context, Sort},
         preprocess::canonicalize,
     };
 
-    fn to_lit(node: &Node, mngr: &mut NodeManager) -> Literal {
-        match canonicalize(node, mngr).kind() {
+    fn to_lit(node: &Node, ctx: &mut Context) -> Literal {
+        match canonicalize(node, ctx).kind() {
             NodeKind::Literal(literal) => literal.clone(),
             _ => unreachable!(),
         }
     }
 
-    fn make_in_re(var: &str, mngr: &mut NodeManager) -> Literal {
-        let x = mngr
+    fn make_in_re(var: &str, ctx: &mut Context) -> Literal {
+        let x = ctx
             .new_var(var.to_string(), Sort::String)
-            .map(|v| mngr.var(v))
+            .map(|v| ctx.ast().variable(v))
             .unwrap();
-        let re = mngr.re_builder().to_re("foo".into());
-        let re = mngr.const_regex(re);
-        let inre = mngr.in_re(x, re);
-        to_lit(&inre, mngr)
+        let re = ctx.re_builder().to_re("foo".into());
+        let re = ctx.ast().const_regex(re);
+        let inre = ctx.ast().in_re(x, re);
+        to_lit(&inre, ctx)
     }
 
-    fn make_neq(lvar: &str, rvar: &str, mngr: &mut NodeManager) -> Literal {
-        let x = mngr.new_var(lvar.to_string(), Sort::String).unwrap();
-        let y = mngr.new_var(rvar.to_string(), Sort::String).unwrap();
-        let x = mngr.var(x);
-        let y = mngr.var(y);
-        let eq = mngr.eq(x, y);
-        let neq = mngr.not(eq);
-        to_lit(&neq, mngr)
+    fn make_neq(lvar: &str, rvar: &str, ctx: &mut Context) -> Literal {
+        let x = ctx.new_var(lvar.to_string(), Sort::String).unwrap();
+        let y = ctx.new_var(rvar.to_string(), Sort::String).unwrap();
+        let x = ctx.ast().variable(x);
+        let y = ctx.ast().variable(y);
+        let eq = ctx.ast().eq(x, y);
+        let neq = ctx.ast().not(eq);
+        to_lit(&neq, ctx)
     }
 
     #[test]
@@ -196,9 +196,9 @@ mod tests {
 
     #[test]
     fn test_addition_chars_single_in_re_only() {
-        let mut mngr = NodeManager::default();
+        let mut ctx = Context::default();
 
-        let inre = make_in_re("x", &mut mngr);
+        let inre = make_in_re("x", &mut ctx);
 
         let result = addition_chars_lits(&[inre]);
         assert_eq!(result, 1);
@@ -207,9 +207,9 @@ mod tests {
     #[test]
     fn test_addition_chars_single_in_re_neq() {
         // x in foo /\ x != y
-        let mut mngr = NodeManager::default();
-        let inre = make_in_re("x", &mut mngr);
-        let neq = make_neq("x", "y", &mut mngr);
+        let mut ctx = Context::default();
+        let inre = make_in_re("x", &mut ctx);
+        let neq = make_neq("x", "y", &mut ctx);
         let result = addition_chars_lits(&[inre, neq]);
         assert_eq!(result, 2); // 2 string vars, 1 inequality, no concat => min(2, 1+1) = 2 additional characters
     }
@@ -217,11 +217,11 @@ mod tests {
     #[test]
     fn test_addition_chars_single_neqs_more_vars() {
         // x != y /\ x != z /\ x != u
-        let mut mngr = NodeManager::default();
+        let mut ctx = Context::default();
 
-        let neq = make_neq("x", "y", &mut mngr);
-        let neq_2 = make_neq("y", "z", &mut mngr);
-        let neq_3 = make_neq("z", "u", &mut mngr);
+        let neq = make_neq("x", "y", &mut ctx);
+        let neq_2 = make_neq("y", "z", &mut ctx);
+        let neq_3 = make_neq("z", "u", &mut ctx);
         let result = addition_chars_lits(&[neq, neq_2, neq_3]);
         assert_eq!(result, 4); // 4 vars, 3 inequalities => min(4, 3+1) = 4 additional characters
     }
@@ -229,16 +229,16 @@ mod tests {
     #[test]
     fn test_addition_chars_only_neqs() {
         // x!=y /\ x != z /\ x != u /\ y != z /\ y != u /\ z != u
-        let mut mngr = NodeManager::default();
+        let mut ctx = Context::default();
 
-        let neq_xy = make_neq("x", "y", &mut mngr);
-        let neq_xz = make_neq("x", "z", &mut mngr);
-        let neq_xu = make_neq("x", "u", &mut mngr);
+        let neq_xy = make_neq("x", "y", &mut ctx);
+        let neq_xz = make_neq("x", "z", &mut ctx);
+        let neq_xu = make_neq("x", "u", &mut ctx);
 
-        let neq_yz = make_neq("y", "z", &mut mngr);
-        let neq_yu = make_neq("y", "u", &mut mngr);
+        let neq_yz = make_neq("y", "z", &mut ctx);
+        let neq_yu = make_neq("y", "u", &mut ctx);
 
-        let neq_zu = make_neq("z", "u", &mut mngr);
+        let neq_zu = make_neq("z", "u", &mut ctx);
 
         let result = addition_chars_lits(&[neq_xy, neq_xz, neq_xu, neq_yz, neq_yu, neq_zu]);
         assert_eq!(result, 4); // 4 vars, 6 inequalities => 4 additional characters
@@ -247,30 +247,30 @@ mod tests {
     #[test]
     fn test_addition_lc_wo_string() {
         // x * 5 + y * 3 + 2 = 10
-        let mut mngr = NodeManager::default();
-        let x = mngr
+        let mut ctx = Context::default();
+        let x = ctx
             .new_var("x".to_string(), Sort::Int)
-            .map(|v| mngr.var(v))
+            .map(|v| ctx.ast().variable(v))
             .unwrap();
-        let y = mngr
+        let y = ctx
             .new_var("y".to_string(), Sort::Int)
-            .map(|v| mngr.var(v))
+            .map(|v| ctx.ast().variable(v))
             .unwrap();
 
-        let const_5 = mngr.const_int(5);
-        let const_3 = mngr.const_int(3);
-        let const_2 = mngr.const_int(2);
+        let const_5 = ctx.ast().const_int(5);
+        let const_3 = ctx.ast().const_int(3);
+        let const_2 = ctx.ast().const_int(2);
 
-        let s1 = mngr.mul(vec![x.clone(), const_5]);
-        let s2 = mngr.mul(vec![y.clone(), const_3]);
-        let s3 = mngr.mul(vec![const_2]);
+        let s1 = ctx.ast().mul(vec![x.clone(), const_5]);
+        let s2 = ctx.ast().mul(vec![y.clone(), const_3]);
+        let s3 = ctx.ast().mul(vec![const_2]);
 
-        let lhs = mngr.add(vec![s1, s2, s3]);
+        let lhs = ctx.ast().add(vec![s1, s2, s3]);
 
-        let rhs = mngr.const_int(10);
-        let lc = mngr.eq(lhs, rhs);
+        let rhs = ctx.ast().const_int(10);
+        let lc = ctx.ast().eq(lhs, rhs);
 
-        let lit = to_lit(&lc, &mut mngr);
+        let lit = to_lit(&lc, &mut ctx);
 
         let result = addition_chars_lits(&[lit]);
         assert_eq!(result, 0); // only LC without string vars, no additional characters needed
@@ -278,31 +278,31 @@ mod tests {
 
     #[test]
     fn test_addition_lc_w_string() {
-        let mut mngr = NodeManager::default();
-        let x_len = mngr
+        let mut ctx = Context::default();
+        let x_len = ctx
             .new_var("x".to_string(), Sort::String)
-            .map(|v| mngr.var(v))
-            .map(|v| mngr.str_len(v))
+            .map(|v| ctx.ast().variable(v))
+            .map(|v| ctx.ast().str_len(v))
             .unwrap();
-        let y = mngr
+        let y = ctx
             .new_var("y".to_string(), Sort::Int)
-            .map(|v| mngr.var(v))
+            .map(|v| ctx.ast().variable(v))
             .unwrap();
 
-        let const_5 = mngr.const_int(5);
-        let const_3 = mngr.const_int(3);
-        let const_2 = mngr.const_int(2);
+        let const_5 = ctx.ast().const_int(5);
+        let const_3 = ctx.ast().const_int(3);
+        let const_2 = ctx.ast().const_int(2);
 
-        let s1 = mngr.mul(vec![x_len.clone(), const_5]);
-        let s2 = mngr.mul(vec![y.clone(), const_3]);
-        let s3 = mngr.mul(vec![const_2]);
+        let s1 = ctx.ast().mul(vec![x_len.clone(), const_5]);
+        let s2 = ctx.ast().mul(vec![y.clone(), const_3]);
+        let s3 = ctx.ast().mul(vec![const_2]);
 
-        let lhs = mngr.add(vec![s1, s2, s3]);
+        let lhs = ctx.ast().add(vec![s1, s2, s3]);
 
-        let rhs = mngr.const_int(10);
-        let lc = mngr.eq(lhs, rhs);
+        let rhs = ctx.ast().const_int(10);
+        let lc = ctx.ast().eq(lhs, rhs);
 
-        let lit = to_lit(&lc, &mut mngr);
+        let lit = to_lit(&lc, &mut ctx);
 
         let result = addition_chars_lits(&[lit]);
         assert_eq!(result, 1);
@@ -310,32 +310,32 @@ mod tests {
 
     #[test]
     fn test_addition_lc_two_strings() {
-        let mut mngr = NodeManager::default();
-        let x_len = mngr
+        let mut ctx = Context::default();
+        let x_len = ctx
             .new_var("x".to_string(), Sort::String)
-            .map(|v| mngr.var(v))
-            .map(|v| mngr.str_len(v))
+            .map(|v| ctx.ast().variable(v))
+            .map(|v| ctx.ast().str_len(v))
             .unwrap();
-        let y_len = mngr
+        let y_len = ctx
             .new_var("y".to_string(), Sort::String)
-            .map(|v| mngr.var(v))
-            .map(|v| mngr.str_len(v))
+            .map(|v| ctx.ast().variable(v))
+            .map(|v| ctx.ast().str_len(v))
             .unwrap();
 
-        let const_5 = mngr.const_int(5);
-        let const_3 = mngr.const_int(3);
-        let const_2 = mngr.const_int(2);
+        let const_5 = ctx.ast().const_int(5);
+        let const_3 = ctx.ast().const_int(3);
+        let const_2 = ctx.ast().const_int(2);
 
-        let s1 = mngr.mul(vec![x_len.clone(), const_5]);
-        let s2 = mngr.mul(vec![y_len.clone(), const_3]);
-        let s3 = mngr.mul(vec![const_2]);
+        let s1 = ctx.ast().mul(vec![x_len.clone(), const_5]);
+        let s2 = ctx.ast().mul(vec![y_len.clone(), const_3]);
+        let s3 = ctx.ast().mul(vec![const_2]);
 
-        let lhs = mngr.add(vec![s1, s2, s3]);
+        let lhs = ctx.ast().add(vec![s1, s2, s3]);
 
-        let rhs = mngr.const_int(10);
-        let lc = mngr.eq(lhs, rhs);
+        let rhs = ctx.ast().const_int(10);
+        let lc = ctx.ast().eq(lhs, rhs);
 
-        let lit = to_lit(&lc, &mut mngr);
+        let lit = to_lit(&lc, &mut ctx);
 
         let result = addition_chars_lits(&[lit]);
         assert_eq!(result, 1);
@@ -345,34 +345,34 @@ mod tests {
     fn test_addition_lc_two_strings_with_neq() {
         // x * 5 + y * 3 + 2 = 10 /\ x != y
 
-        let mut mngr = NodeManager::default();
-        let x_len = mngr
+        let mut ctx = Context::default();
+        let x_len = ctx
             .new_var("x".to_string(), Sort::String)
-            .map(|v| mngr.var(v))
-            .map(|v| mngr.str_len(v))
+            .map(|v| ctx.ast().variable(v))
+            .map(|v| ctx.ast().str_len(v))
             .unwrap();
-        let y_len = mngr
+        let y_len = ctx
             .new_var("y".to_string(), Sort::String)
-            .map(|v| mngr.var(v))
-            .map(|v| mngr.str_len(v))
+            .map(|v| ctx.ast().variable(v))
+            .map(|v| ctx.ast().str_len(v))
             .unwrap();
 
-        let const_5 = mngr.const_int(5);
-        let const_3 = mngr.const_int(3);
-        let const_2 = mngr.const_int(2);
+        let const_5 = ctx.ast().const_int(5);
+        let const_3 = ctx.ast().const_int(3);
+        let const_2 = ctx.ast().const_int(2);
 
-        let s1 = mngr.mul(vec![x_len.clone(), const_5]);
-        let s2 = mngr.mul(vec![y_len.clone(), const_3]);
-        let s3 = mngr.mul(vec![const_2]);
+        let s1 = ctx.ast().mul(vec![x_len.clone(), const_5]);
+        let s2 = ctx.ast().mul(vec![y_len.clone(), const_3]);
+        let s3 = ctx.ast().mul(vec![const_2]);
 
-        let lhs = mngr.add(vec![s1, s2, s3]);
+        let lhs = ctx.ast().add(vec![s1, s2, s3]);
 
-        let rhs = mngr.const_int(10);
-        let lc = mngr.eq(lhs, rhs);
+        let rhs = ctx.ast().const_int(10);
+        let lc = ctx.ast().eq(lhs, rhs);
 
-        let lit = to_lit(&lc, &mut mngr);
+        let lit = to_lit(&lc, &mut ctx);
 
-        let neq = make_neq("x", "y", &mut mngr);
+        let neq = make_neq("x", "y", &mut ctx);
 
         let result = addition_chars_lits(&[lit, neq]);
 
@@ -382,35 +382,35 @@ mod tests {
     #[test]
     fn test_addition_lc_three_strings_with_neq() {
         // x * 5 + y * 3 + 2 = 10 /\ x != y /\ y != z
-        let mut mngr = NodeManager::default();
-        let x_len = mngr
+        let mut ctx = Context::default();
+        let x_len = ctx
             .new_var("x".to_string(), Sort::String)
-            .map(|v| mngr.var(v))
-            .map(|v| mngr.str_len(v))
+            .map(|v| ctx.ast().variable(v))
+            .map(|v| ctx.ast().str_len(v))
             .unwrap();
-        let y_len = mngr
+        let y_len = ctx
             .new_var("y".to_string(), Sort::String)
-            .map(|v| mngr.var(v))
-            .map(|v| mngr.str_len(v))
+            .map(|v| ctx.ast().variable(v))
+            .map(|v| ctx.ast().str_len(v))
             .unwrap();
 
-        let const_5 = mngr.const_int(5);
-        let const_3 = mngr.const_int(3);
-        let const_2 = mngr.const_int(2);
+        let const_5 = ctx.ast().const_int(5);
+        let const_3 = ctx.ast().const_int(3);
+        let const_2 = ctx.ast().const_int(2);
 
-        let s1 = mngr.mul(vec![x_len.clone(), const_5]);
-        let s2 = mngr.mul(vec![y_len.clone(), const_3]);
-        let s3 = mngr.mul(vec![const_2]);
+        let s1 = ctx.ast().mul(vec![x_len.clone(), const_5]);
+        let s2 = ctx.ast().mul(vec![y_len.clone(), const_3]);
+        let s3 = ctx.ast().mul(vec![const_2]);
 
-        let lhs = mngr.add(vec![s1, s2, s3]);
+        let lhs = ctx.ast().add(vec![s1, s2, s3]);
 
-        let rhs = mngr.const_int(10);
-        let lc = mngr.eq(lhs, rhs);
+        let rhs = ctx.ast().const_int(10);
+        let lc = ctx.ast().eq(lhs, rhs);
 
-        let lit = to_lit(&lc, &mut mngr);
+        let lit = to_lit(&lc, &mut ctx);
 
-        let neq = make_neq("x", "y", &mut mngr);
-        let neq_2 = make_neq("y", "z", &mut mngr);
+        let neq = make_neq("x", "y", &mut ctx);
+        let neq_2 = make_neq("y", "z", &mut ctx);
 
         let result = addition_chars_lits(&[lit, neq, neq_2]);
         assert_eq!(result, 3);

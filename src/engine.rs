@@ -12,10 +12,10 @@ use crate::{
         get_entailed_literals,
         normal::to_nnf,
         smt::to_script,
-        Node, NodeKind, NodeManager, VarSubstitution,
+        Node, NodeKind, VarSubstitution,
     },
     bounds::{BoundInferer, InferringStrategy, LinearRefiner},
-    context::{Sort, Sorted},
+    context::{Context, Sort, Sorted},
     domain::Domain,
     interval::Interval,
     preprocess::{canonicalize, Preprocessor},
@@ -61,18 +61,18 @@ impl Engine {
 
     /// Solves the formula that has been asserted so far.
     /// Returns the result of the satisfiability check.
-    pub fn check(&mut self, mngr: &mut NodeManager) -> Result<(), Error> {
+    pub fn check(&mut self, ctx: &mut Context) -> Result<(), Error> {
         // Pop all assertions and build the formula
-        let fm = mngr.and(self.assertions.drain(..).collect());
+        let fm = ctx.ast().and(self.assertions.drain(..).collect());
 
         // Preprocess the formula
-        let (fm, subst) = self.preprocess(&fm, mngr)?;
+        let (fm, subst) = self.preprocess(&fm, ctx)?;
 
         // Solve the formula
-        let res = match self.solve(&fm, mngr)? {
+        let res = match self.solve(&fm, ctx)? {
             SolverAnswer::Sat(Some(model)) => {
                 // If SAT, apply the substitutions from preprocessing to the model
-                let model = subst.compose(model, mngr);
+                let model = subst.compose(model, ctx);
                 SolverAnswer::Sat(Some(model))
             }
             SolverAnswer::Sat(None) => SolverAnswer::Sat(Some(subst)),
@@ -98,15 +98,15 @@ impl Engine {
     fn preprocess(
         &mut self,
         fm: &Node,
-        mngr: &mut NodeManager,
+        ctx: &mut Context,
     ) -> Result<(Node, VarSubstitution), Error> {
         // Preprocess
 
-        let nnf = to_nnf(fm, mngr);
+        let nnf = to_nnf(fm, ctx);
 
         let mut preprocessor = Preprocessor::new(self.options.clone());
 
-        let preprocessed = preprocessor.apply(&nnf, mngr)?;
+        let preprocessed = preprocessor.apply(&nnf, ctx)?;
 
         // These are the substitutions applied by the preprocessor
         // We need to store them and re-apply them to the model of the preprocessed formula, to get the model of the original formula
@@ -119,14 +119,14 @@ impl Engine {
 
         // Canonicalize.
         // This brings the formula into a normal that the solver understands.
-        let canonical = canonicalize(&preprocessed, mngr);
+        let canonical = canonicalize(&preprocessed, ctx);
         log::debug!("Canonicalized formula: {}", canonical);
 
         Ok((canonical, prepr_subst))
     }
 
     /// Solves the given formula in canonical form.
-    fn solve(&mut self, fm: &Node, mngr: &mut NodeManager) -> Result<SolverAnswer, Error> {
+    fn solve(&mut self, fm: &Node, ctx: &mut Context) -> Result<SolverAnswer, Error> {
         // Early return if the formula is trivially sat/unsat
         if let NodeKind::Bool(v) = *fm.kind() {
             return Ok(if v {
@@ -145,7 +145,7 @@ impl Engine {
         let abstraction = build_abstraction(fm)?;
 
         // Initialize domain for all variables
-        let init_dom = match self.init_domain_approx(fm, mngr) {
+        let init_dom = match self.init_domain_approx(fm, ctx) {
             Some(bs) => bs,
             None => {
                 log::info!("No valid initial bounds. Unsat.");
@@ -171,7 +171,7 @@ impl Engine {
             fm.clone(),
             solver,
             abstraction.definitions().cloned().collect(),
-            mngr,
+            ctx,
         )
     }
 
@@ -188,12 +188,12 @@ impl Engine {
         fm: Node,
         mut solver: Solver,
         mut defs: Vec<LitDefinition>,
-        mngr: &mut NodeManager,
+        ctx: &mut Context,
     ) -> Result<SolverAnswer, Error> {
         let mut blocked = 0;
         loop {
             // Try to solve the current over-approximation. The first call only contains the skeleton.
-            match solver.solve(mngr)? {
+            match solver.solve(ctx)? {
                 SolverAnswer::Sat(h) => {
                     // SAT, check if the model is a solution for the original formula
                     let model = h.unwrap();
@@ -327,10 +327,10 @@ impl Engine {
     /// Initialize the domain of all variables in the formula.
     /// The domain is the range of values that a variable can take.
     /// The domain is encoded as the first step of the encoding.
-    fn _init_domain_exact(&self, fm: &Node, mngr: &mut NodeManager) -> Option<Domain> {
+    fn _init_domain_exact(&self, fm: &Node, ctx: &mut Context) -> Option<Domain> {
         let mut inferer = BoundInferer::default();
         for lit in get_entailed_literals(fm) {
-            inferer.add_literal(lit.clone(), mngr)
+            inferer.add_literal(lit.clone(), ctx)
         }
 
         let init_bounds = inferer.infer()?;
@@ -368,7 +368,7 @@ impl Engine {
     /// Initialize the domain of all variables in the formula.
     /// The domain is the range of values that a variable can take.
     /// The domain is encoded as the first step of the encoding.
-    fn init_domain_approx(&self, fm: &Node, _mngr: &mut NodeManager) -> Option<Domain> {
+    fn init_domain_approx(&self, fm: &Node, _ctx: &mut Context) -> Option<Domain> {
         let mut seen: IndexSet<Literal> = IndexSet::new();
         let mut refiner = LinearRefiner::default();
         for lit in get_entailed_literals(fm) {

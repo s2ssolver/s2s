@@ -1,7 +1,7 @@
 use indexmap::IndexSet;
 
-use crate::ast::{get_entailed, Node, NodeManager};
-use crate::context::Sorted;
+use crate::ast::{get_entailed, Node};
+use crate::context::{Context, Sorted};
 
 /// Removes all other occurrences of an entailed literals from the formula by replacing them with `true` or `false`.
 /// This is neither a simplification nor a rewrite rule, but an additional preprocessing step.
@@ -16,23 +16,23 @@ impl EliminateEntailed {
         self.entailed.contains(node)
     }
 
-    pub fn apply(&mut self, root: &Node, mngr: &mut NodeManager) -> Node {
+    pub fn apply(&mut self, root: &Node, ctx: &mut Context) -> Node {
         self.entailed = get_entailed(root);
-        self.apply_node(root, true, mngr)
+        self.apply_node(root, true, ctx)
     }
 
-    fn apply_node(&self, node: &Node, entailed: bool, mngr: &mut NodeManager) -> Node {
+    fn apply_node(&self, node: &Node, entailed: bool, ctx: &mut Context) -> Node {
         if node.sort().is_bool() && !entailed && self.occurrs_entailed(node) {
-            mngr.ttrue()
+            ctx.ast().ttrue()
         } else {
             // apply to children
             let kind = node.kind().clone();
             let children = node
                 .children()
                 .iter()
-                .map(|child| self.apply_node(child, entailed, mngr))
+                .map(|child| self.apply_node(child, entailed, ctx))
                 .collect();
-            mngr.create_node(kind, children)
+            ctx.ast().create_node(kind, children)
         }
     }
 }

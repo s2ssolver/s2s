@@ -6,7 +6,7 @@ use crate::{
         canonical::{Assignment, AtomKind, Literal},
         VarSubstitution,
     },
-    context::Sort,
+    context::{Context, Sort},
     domain::Domain,
 };
 use encoder::DefintionEncoder;
@@ -26,7 +26,7 @@ use rustsat_cadical::CaDiCaL;
 use crate::{
     abstraction::LitDefinition,
     alphabet::Alphabet,
-    ast::{Node, NodeManager},
+    ast::Node,
     sat::{to_cnf, PFormula},
 };
 
@@ -157,7 +157,7 @@ impl Solver {
     /// Solve the formula with the current bounds.
     /// The function encodes all definitions that have been added to the solver, adds the clauses to the SAT solver, and calls the SAT solver.
     /// Returns the result of the satisfiability check.
-    pub fn solve(&mut self, mngr: &mut NodeManager) -> Result<SolverAnswer, Error> {
+    pub fn solve(&mut self, ctx: &mut Context) -> Result<SolverAnswer, Error> {
         // Initialize the bounds
 
         let mut round = 0;
@@ -176,7 +176,7 @@ impl Solver {
                 self.defs.values().cloned(),
                 &bounds,
                 self.cadical.as_mut(),
-                mngr,
+                ctx,
             )?;
 
             log::info!(
@@ -201,7 +201,7 @@ impl Solver {
 
                         log::info!("Encoding is SAT");
                         //self.encoder.print_debug(&self.cadical);
-                        let subs = VarSubstitution::from_assignment(&assign, mngr);
+                        let subs = VarSubstitution::from_assignment(&assign, ctx);
                         return Ok(SolverAnswer::Sat(Some(subs)));
                     }
                     rustsat::solvers::SolverResult::Unsat => {
@@ -215,14 +215,14 @@ impl Solver {
                         log::debug!("Failed literals: {}", failed.iter().join(", "));
                         // Refine bounds. If bounds are at max, return UNSAT. Otherwise, continue with new bounds.
                         let fm = self
-                            .to_formula(mngr, &self.skeleton)
-                            .unwrap_or(mngr.ttrue());
+                            .to_formula(ctx, &self.skeleton)
+                            .unwrap_or(ctx.ast().ttrue());
                         match self.refiner.refine_bounds(
                             &failed,
                             &bounds,
                             &fm,
                             self.options.step,
-                            mngr,
+                            ctx,
                         ) {
                             refine::BoundRefinement::Refined(b) => {
                                 let clamped = self.clamp_bounds_in_dom(b);
@@ -286,34 +286,34 @@ impl Solver {
     /// For example, if the propositional formula is ``(a and b) or -c``, and the definitions are ``a -> L1``, ``b -> L2``, and ``-c -> -L3``,
     /// then the resulting formula is ``(L1 and L2) or -L3``.
     /// If the propositional formula contains literals that are not defined, then they are kept as Boolean literals.
-    fn to_formula(&self, mngr: &mut NodeManager, root: &PFormula) -> Option<Node> {
+    fn to_formula(&self, ctx: &mut Context, root: &PFormula) -> Option<Node> {
         match root {
             PFormula::And(vec) => {
                 let mut children = Vec::with_capacity(vec.len());
                 for child in vec {
-                    if let Some(node) = self.to_formula(mngr, child) {
+                    if let Some(node) = self.to_formula(ctx, child) {
                         children.push(node);
                     }
                 }
-                Some(mngr.and(children))
+                Some(ctx.ast().and(children))
             }
             PFormula::Or(vec) => {
                 let mut children = Vec::with_capacity(vec.len());
                 for child in vec {
-                    if let Some(node) = self.to_formula(mngr, child) {
+                    if let Some(node) = self.to_formula(ctx, child) {
                         children.push(node);
                     }
                 }
-                Some(mngr.or(children))
+                Some(ctx.ast().or(children))
             }
             PFormula::Lit(l) => {
                 if let Some(def) = self.defs.get(l) {
                     debug_assert!(def.defining() == *l);
-                    Some(mngr.literal(def.defined().clone()))
+                    Some(ctx.ast().literal(def.defined().clone()))
                 } else {
-                    let tvar = mngr.temp_var(Sort::Bool);
-                    let atom = mngr.atom(AtomKind::Boolvar(tvar));
-                    Some(mngr.literal(Literal::positive(atom)))
+                    let tvar = ctx.temp_var(Sort::Bool);
+                    let atom = ctx.ast().atom(AtomKind::Boolvar(tvar));
+                    Some(ctx.ast().literal(Literal::positive(atom)))
                 }
             }
         }

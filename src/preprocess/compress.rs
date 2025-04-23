@@ -5,7 +5,10 @@ use smt_str::{
     SmtChar,
 };
 
-use crate::ast::{Node, NodeKind, NodeManager};
+use crate::{
+    ast::{Node, NodeKind},
+    context::Context,
+};
 
 use super::complements::ReCompRemover;
 
@@ -15,27 +18,27 @@ pub struct RangeCompressor {
 }
 
 impl RangeCompressor {
-    pub fn compress(&mut self, node: &Node, mngr: &mut NodeManager) -> Node {
+    pub fn compress(&mut self, node: &Node, ctx: &mut Context) -> Node {
         // Try to get rid of complements first
-        let node = self.rewrite_complements(node, mngr, true);
+        let node = self.rewrite_complements(node, ctx, true);
         let partioning = self.partition_alphabet(&node);
 
-        self.compress_ranges(&node, &partioning, mngr)
+        self.compress_ranges(&node, &partioning, ctx)
     }
 
     /// Tries to remove the complements in regular constraints.
     /// For regex with positive polarity, this also rewrites complements of ranges as unions of ranges, meaning `comp([a-c])` becomes `[smt::min-(a-1)]|[(a+1)-smt::max]`.
     /// This is done to allow for more effective range compression.
     /// In negative polarity, compression is not sound and range complements are left as they are.
-    fn rewrite_complements(&mut self, node: &Node, mngr: &mut NodeManager, polarity: bool) -> Node {
+    fn rewrite_complements(&mut self, node: &Node, ctx: &mut Context, polarity: bool) -> Node {
         match node.kind() {
             NodeKind::InRe => {
                 debug_assert!(node.children().len() == 2);
                 if let NodeKind::Regex(regex) = node.children()[1].kind() {
-                    match self.comp_folder.apply(regex, mngr.re_builder(), polarity) {
+                    match self.comp_folder.apply(regex, ctx.re_builder(), polarity) {
                         Some(re) => {
-                            let re_node = mngr.const_regex(re);
-                            mngr.create_node(
+                            let re_node = ctx.ast().const_regex(re);
+                            ctx.ast().create_node(
                                 NodeKind::InRe,
                                 vec![node.children()[0].clone(), re_node],
                             )
@@ -51,18 +54,18 @@ impl RangeCompressor {
                 let children = node
                     .children()
                     .iter()
-                    .map(|child| self.rewrite_complements(child, mngr, !polarity))
+                    .map(|child| self.rewrite_complements(child, ctx, !polarity))
                     .collect();
-                mngr.create_node(kind, children)
+                ctx.ast().create_node(kind, children)
             }
             _ => {
                 let kind = node.kind().clone();
                 let children = node
                     .children()
                     .iter()
-                    .map(|child| self.rewrite_complements(child, mngr, polarity))
+                    .map(|child| self.rewrite_complements(child, ctx, polarity))
                     .collect();
-                mngr.create_node(kind, children)
+                ctx.ast().create_node(kind, children)
             }
         }
     }
@@ -71,12 +74,12 @@ impl RangeCompressor {
         &self,
         node: &Node,
         partitioning: &AlphabetPartition,
-        mngr: &mut NodeManager,
+        ctx: &mut Context,
     ) -> Node {
         match node.kind() {
             NodeKind::Regex(regex) => {
-                let compressed_re = self.compress_re_ranges(regex, partitioning, mngr.re_builder());
-                mngr.const_regex(compressed_re)
+                let compressed_re = self.compress_re_ranges(regex, partitioning, ctx.re_builder());
+                ctx.ast().const_regex(compressed_re)
             }
             // Cannot compress negated regular constraints, so we return the node as is
             // Since the formula is in NNF, this check is sufficient
@@ -84,9 +87,9 @@ impl RangeCompressor {
             _ => {
                 let mut new_children = Vec::with_capacity(node.children().len());
                 for c in node.children() {
-                    new_children.push(self.compress_ranges(c, partitioning, mngr));
+                    new_children.push(self.compress_ranges(c, partitioning, ctx));
                 }
-                mngr.create_node(node.kind().clone(), new_children)
+                ctx.ast().create_node(node.kind().clone(), new_children)
             }
         }
     }
@@ -240,17 +243,15 @@ mod test {
     use smt_str::{alphabet::CharRange, SmtChar};
 
     use crate::{
-        ast::{
-            testutils::{parse_equation, parse_pattern},
-            NodeManager,
-        },
+        ast::testutils::{parse_equation, parse_pattern},
+        context::Context,
         preprocess::compress::RangeCompressor,
     };
 
     #[test]
     fn partition_pattern() {
-        let mut mngr = NodeManager::default();
-        let p = parse_pattern("XabYabc", &mut mngr);
+        let mut ctx = Context::default();
+        let p = parse_pattern("XabYabc", &mut ctx);
 
         let compressor = RangeCompressor::default();
         let partitioning = compressor.partition_alphabet(&p);
@@ -262,8 +263,8 @@ mod test {
 
     #[test]
     fn partition_weq() {
-        let mut mngr = NodeManager::default();
-        let p = parse_equation("XabYabc", "abXcYd", &mut mngr);
+        let mut ctx = Context::default();
+        let p = parse_equation("XabYabc", "abXcYd", &mut ctx);
 
         let compressor = RangeCompressor::default();
         let partitioning = compressor.partition_alphabet(&p);
@@ -290,10 +291,10 @@ mod test {
 
     #[test]
     fn partition_re_union() {
-        let mut mngr = NodeManager::default();
+        let mut ctx = Context::default();
 
         // Can't do overlapping ranges because the builder will unify them
-        let re_builder = mngr.re_builder();
+        let re_builder = ctx.re_builder();
         let a_to_c = re_builder.range(CharRange::new('a', 'c'));
         let e_to_f = re_builder.range(CharRange::new('e', 'f'));
         let h_to_z = re_builder.range(CharRange::new('h', 'z'));
@@ -313,10 +314,10 @@ mod test {
 
     #[test]
     fn partition_re_concat() {
-        let mut mngr = NodeManager::default();
+        let mut ctx = Context::default();
 
         // Can't do overlapping ranges because the builder will unify them
-        let re_builder = mngr.re_builder();
+        let re_builder = ctx.re_builder();
         let a_to_z = re_builder.range(CharRange::new('a', 'z'));
         let e_to_x = re_builder.range(CharRange::new('e', 'x'));
         let h_to_z = re_builder.range(CharRange::new('h', 'z'));

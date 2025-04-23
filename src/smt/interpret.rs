@@ -1,22 +1,23 @@
 use crate::{
+    ast::Node,
+    context::Context,
     engine::Engine,
-    ast::{Node, NodeManager},
     smt::{Command, Script, ToSmt},
     Error, SolverAnswer, SolverOptions,
 };
 
 /// Interpreter for SMT-LIB scripts.
 pub struct Interpreter<'a> {
-    mngr: &'a mut NodeManager,
+    ctx: &'a mut Context,
     options: SolverOptions,
     engine: Engine,
 }
 
 impl<'a> Interpreter<'a> {
-    pub fn new(options: SolverOptions, mngr: &'a mut NodeManager) -> Self {
+    pub fn new(options: SolverOptions, ctx: &'a mut Context) -> Self {
         let engine = Engine::with_options(options.clone());
         Self {
-            mngr,
+            ctx,
             options,
             engine,
         }
@@ -59,9 +60,9 @@ impl<'a> Interpreter<'a> {
     }
 
     pub fn check_sat(&mut self) -> Result<SolverAnswer, Error> {
-        // let root = self.mngr.and(std::mem::take(&mut self.assertion_stack));
-        // self.engine.solve(&root, self.mngr)
-        self.engine.check(self.mngr)?;
+        // let root = self.ctx.ast().and(std::mem::take(&mut self.assertion_stack));
+        // self.engine.solve(&root, self.ctx)
+        self.engine.check(self.ctx)?;
         Ok(self.engine.get_result().clone())
     }
 }

@@ -21,7 +21,7 @@ impl EntailmentRule for LevisRule {
         node: &Node,
         asserted: &IndexSet<Node>,
         _: bool,
-        mngr: &mut NodeManager,
+        ctx: &mut Context,
     ) -> Option<VarSubstitution> {
         // This is only applicable if the node itself is asserted
         if !asserted.contains(node) {
@@ -32,15 +32,15 @@ impl EntailmentRule for LevisRule {
             let lhs = node.children().first().unwrap();
             let rhs = node.children().last().unwrap();
             if lhs.sort().is_string() && rhs.sort().is_string() {
-                if let Some(subs) = levis_step(lhs, rhs, mngr) {
+                if let Some(subs) = levis_step(lhs, rhs, ctx) {
                     return Some(subs);
                 } else {
-                    let lhs_rev = reverse(lhs, mngr);
-                    let rhs_rev = reverse(rhs, mngr);
-                    if let Some(mut subs) = levis_step(&lhs_rev, &rhs_rev, mngr) {
+                    let lhs_rev = reverse(lhs, ctx);
+                    let rhs_rev = reverse(rhs, ctx);
+                    if let Some(mut subs) = levis_step(&lhs_rev, &rhs_rev, ctx) {
                         // reverse subs
                         for (_, s) in subs.iter_mut() {
-                            *s = reverse(s, mngr);
+                            *s = reverse(s, ctx);
                         }
                         return Some(subs);
                     }
@@ -51,7 +51,7 @@ impl EntailmentRule for LevisRule {
     }
 }
 
-fn levis_step(lhs: &Node, rhs: &Node, mngr: &mut NodeManager) -> Option<VarSubstitution> {
+fn levis_step(lhs: &Node, rhs: &Node, ctx: &mut Context) -> Option<VarSubstitution> {
     /// Helper function to check if we have "a\beta = Y\alpha" or "Y\alpha = a\beta" and Y cannot be set to the empty string
     fn not_empty(constant: SmtChar, pattern: &PatternIterator) -> bool {
         let scnd = pattern.peek();
@@ -69,7 +69,7 @@ fn levis_step(lhs: &Node, rhs: &Node, mngr: &mut NodeManager) -> Option<VarSubst
     match (lhs_iter.peek(), rhs_iter.next()) {
         (Some(Symbol::Const(_)), Some(Symbol::Variable(v))) => {
             let mut prefix = SmtString::empty();
-            let v_node = mngr.var(v.clone());
+            let v_node = ctx.ast().variable(v.clone());
             while let Some(Symbol::Const(c)) = lhs_iter.next() {
                 if not_empty(c, &rhs_iter) {
                     prefix.push(c);
@@ -78,15 +78,15 @@ fn levis_step(lhs: &Node, rhs: &Node, mngr: &mut NodeManager) -> Option<VarSubst
                 }
             }
             if !prefix.is_empty() {
-                let prefix = mngr.const_string(prefix);
-                let sub = mngr.concat(vec![prefix, v_node.clone()]);
+                let prefix = ctx.ast().const_string(prefix);
+                let sub = ctx.ast().concat(vec![prefix, v_node.clone()]);
                 substitution.add(v.clone(), sub);
                 return Some(substitution);
             }
         }
         (Some(Symbol::Variable(_)), Some(Symbol::Const(_))) => {
             // flip lhs and rhs
-            return levis_step(rhs, lhs, mngr);
+            return levis_step(rhs, lhs, ctx);
         }
         _ => (),
     }
@@ -102,16 +102,16 @@ mod tests {
 
     #[test]
     fn test_levis_reducible_left_char() {
-        let mut mngr = NodeManager::default();
+        let mut ctx = Context::default();
         // Y must start with 'b'
-        let eq = parse_equation("YaX", "bX", &mut mngr);
+        let eq = parse_equation("YaX", "bX", &mut ctx);
         let asserted = indexset! {eq.clone()};
-        let res = LevisRule.apply(&eq, &asserted, true, &mut mngr);
+        let res = LevisRule.apply(&eq, &asserted, true, &mut ctx);
 
         match res {
             Some(got) => {
-                let got = got.apply(&eq, &mut mngr);
-                let expected = parse_equation("bYaX", "bX", &mut mngr);
+                let got = got.apply(&eq, &mut ctx);
+                let expected = parse_equation("bYaX", "bX", &mut ctx);
                 assert_eq!(got, expected, "\nExpected: {}, \nGot: {}", expected, got);
             }
             _ => unreachable!(),
@@ -120,16 +120,16 @@ mod tests {
 
     #[test]
     fn test_levis_reducible_left_word() {
-        let mut mngr = NodeManager::default();
+        let mut ctx = Context::default();
         // Y must start with 'b'
-        let eq = parse_equation("YaX", "fooX", &mut mngr);
+        let eq = parse_equation("YaX", "fooX", &mut ctx);
         let asserted = indexset! {eq.clone()};
-        let res = LevisRule.apply(&eq, &asserted, true, &mut mngr);
+        let res = LevisRule.apply(&eq, &asserted, true, &mut ctx);
 
         match res {
             Some(got) => {
-                let got = got.apply(&eq, &mut mngr);
-                let expected = parse_equation("fooYaX", "fooX", &mut mngr);
+                let got = got.apply(&eq, &mut ctx);
+                let expected = parse_equation("fooYaX", "fooX", &mut ctx);
                 assert_eq!(got, expected, "\nExpected: {}, \nGot: {}", expected, got);
             }
             _ => unreachable!(),
@@ -138,16 +138,16 @@ mod tests {
 
     #[test]
     fn test_levis_reducible_right_char() {
-        let mut mngr = NodeManager::default();
+        let mut ctx = Context::default();
         // Y must start with 'b'
-        let eq = parse_equation("bX", "YaX", &mut mngr);
+        let eq = parse_equation("bX", "YaX", &mut ctx);
         let asserted = indexset! {eq.clone()};
-        let res = LevisRule.apply(&eq, &asserted, true, &mut mngr);
+        let res = LevisRule.apply(&eq, &asserted, true, &mut ctx);
 
         match res {
             Some(got) => {
-                let got = got.apply(&eq, &mut mngr);
-                let expected = parse_equation("bX", "bYaX", &mut mngr);
+                let got = got.apply(&eq, &mut ctx);
+                let expected = parse_equation("bX", "bYaX", &mut ctx);
                 assert_eq!(got, expected, "\nExpected: {}, \nGot: {}", expected, got);
             }
             _ => unreachable!(),
@@ -156,16 +156,16 @@ mod tests {
 
     #[test]
     fn test_levis_reducible_right_word() {
-        let mut mngr = NodeManager::default();
+        let mut ctx = Context::default();
         // Y must start with 'b'
-        let eq = parse_equation("fooX", "YaX", &mut mngr);
+        let eq = parse_equation("fooX", "YaX", &mut ctx);
         let asserted = indexset! {eq.clone()};
-        let res = LevisRule.apply(&eq, &asserted, true, &mut mngr);
+        let res = LevisRule.apply(&eq, &asserted, true, &mut ctx);
 
         match res {
             Some(got) => {
-                let got = got.apply(&eq, &mut mngr);
-                let expected = parse_equation("fooX", "fooYaX", &mut mngr);
+                let got = got.apply(&eq, &mut ctx);
+                let expected = parse_equation("fooX", "fooYaX", &mut ctx);
                 assert_eq!(got, expected, "\nExpected: {}, \nGot: {}", expected, got);
             }
             _ => unreachable!(),
@@ -174,20 +174,20 @@ mod tests {
 
     #[test]
     fn test_levis_not_reducible_left() {
-        let mut mngr = NodeManager::default();
+        let mut ctx = Context::default();
         // Y could start with 'b' or be empty
-        let eq = parse_equation("YaX", "aX", &mut mngr);
-        let res = LevisRule.apply(&eq, &IndexSet::new(), true, &mut mngr);
+        let eq = parse_equation("YaX", "aX", &mut ctx);
+        let res = LevisRule.apply(&eq, &IndexSet::new(), true, &mut ctx);
 
         assert!(res.is_none());
     }
 
     #[test]
     fn test_levis_not_reducible_right() {
-        let mut mngr = NodeManager::default();
+        let mut ctx = Context::default();
         // Y could start with 'b' or be empty
-        let eq = parse_equation("aX", "YaX", &mut mngr);
-        let res = LevisRule.apply(&eq, &IndexSet::new(), true, &mut mngr);
+        let eq = parse_equation("aX", "YaX", &mut ctx);
+        let res = LevisRule.apply(&eq, &IndexSet::new(), true, &mut ctx);
 
         assert!(res.is_none());
     }

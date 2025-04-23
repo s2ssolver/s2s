@@ -8,8 +8,8 @@ use itertools::Itertools;
 
 use crate::{
     abstraction::LitDefinition,
-    ast::{canonical::Literal, Node, NodeKind, NodeManager},
-    context::Sorted,
+    ast::{canonical::Literal, Node, NodeKind},
+    context::{Context, Sorted},
     interval::{BoundValue, Interval},
 };
 
@@ -166,13 +166,13 @@ impl BoundRefiner {
         bounds: &Domain,
         fm: &Node,
         step: BoundStep,
-        mngr: &mut NodeManager,
+        ctx: &mut Context,
     ) -> BoundRefinement {
         // Find the small-model bounds of any combination of the literal
         let present_lits: IndexSet<Literal> =
             IndexSet::from_iter(literals.iter().map(|d| d.defined().clone()));
 
-        let smp_bounds = match self.small_mode_bounds_dnf(present_lits, fm, mngr) {
+        let smp_bounds = match self.small_mode_bounds_dnf(present_lits, fm, ctx) {
             Some(b) => b,
             None => return BoundRefinement::SmallModelReached, // No satisfying assignment
         };
@@ -280,7 +280,7 @@ impl BoundRefiner {
         &mut self,
         present_lits: IndexSet<Literal>,
         fm: &Node,
-        mngr: &mut NodeManager,
+        ctx: &mut Context,
     ) -> Option<Bounds> {
         // build the dnf of fm but only with the the given literals
 
@@ -316,7 +316,7 @@ impl BoundRefiner {
                 let mut inferer = BoundInferer::default();
 
                 for l in &cube.0 {
-                    inferer.add_literal(l.clone(), mngr);
+                    inferer.add_literal(l.clone(), ctx);
                 }
 
                 if let Some(bounds) = inferer.infer() {

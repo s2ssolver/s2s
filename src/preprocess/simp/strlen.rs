@@ -1,8 +1,8 @@
 use std::rc::Rc;
 
 use crate::{
-    ast::{Node, NodeKind, NodeManager, VarSubstitution},
-    context::{Sorted, Variable},
+    ast::{Node, NodeKind, VarSubstitution},
+    context::{Context, Sorted, Variable},
     interval::{BoundValue, Interval},
 };
 
@@ -19,14 +19,14 @@ use smallvec::smallvec;
 #[derive(Debug, Clone, Copy)]
 pub(super) struct ConstStringLength;
 impl EquivalenceRule for ConstStringLength {
-    fn apply(&self, node: &Node, _: &IndexSet<Node>, mngr: &mut NodeManager) -> Option<Node> {
+    fn apply(&self, node: &Node, _: &IndexSet<Node>, ctx: &mut Context) -> Option<Node> {
         if *node.kind() == NodeKind::Length {
             debug_assert!(node.children().len() == 1);
             let child = node.children().first().unwrap();
 
             if let NodeKind::String(s) = child.kind() {
                 let len = s.len() as i64;
-                return Some(mngr.const_int(len));
+                return Some(ctx.ast().const_int(len));
             }
         }
         None
@@ -37,7 +37,7 @@ impl EquivalenceRule for ConstStringLength {
 #[derive(Debug, Clone, Copy)]
 pub(super) struct StringLengthAddition;
 impl EquivalenceRule for StringLengthAddition {
-    fn apply(&self, node: &Node, _: &IndexSet<Node>, mngr: &mut NodeManager) -> Option<Node> {
+    fn apply(&self, node: &Node, _: &IndexSet<Node>, ctx: &mut Context) -> Option<Node> {
         if *node.kind() == NodeKind::Length {
             debug_assert!(node.children().len() == 1);
             let child = node.children().first().unwrap();
@@ -45,9 +45,9 @@ impl EquivalenceRule for StringLengthAddition {
             if child.kind() == &NodeKind::Concat {
                 let mut sum = Vec::with_capacity(child.children().len());
                 for c in child.children() {
-                    sum.push(mngr.str_len(c.clone()));
+                    sum.push(ctx.ast().str_len(c.clone()));
                 }
-                return Some(mngr.add(sum));
+                return Some(ctx.ast().add(sum));
             }
         }
         None
@@ -62,7 +62,7 @@ impl EquivalenceRule for StringLengthAddition {
 #[derive(Debug, Clone, Copy)]
 pub(super) struct LengthTrivial;
 impl EquivalenceRule for LengthTrivial {
-    fn apply(&self, node: &Node, _: &IndexSet<Node>, mngr: &mut NodeManager) -> Option<Node> {
+    fn apply(&self, node: &Node, _: &IndexSet<Node>, ctx: &mut Context) -> Option<Node> {
         match node.kind() {
             NodeKind::Eq | NodeKind::Lt | NodeKind::Le | NodeKind::Gt | NodeKind::Ge => {
                 let lhs = node.children().first().unwrap();
@@ -96,41 +96,41 @@ impl EquivalenceRule for LengthTrivial {
                             let (var, _) = ts.coeffs.iter().next().unwrap();
                             debug_assert!(*var.kind() == NodeKind::Length);
                             let ch = var.children().first().unwrap();
-                            let epsi = mngr.empty_string();
-                            return Some(mngr.eq(ch.clone(), epsi));
+                            let epsi = ctx.ast().empty_string();
+                            return Some(ctx.ast().eq(ch.clone(), epsi));
                         }
                         NodeKind::Eq if c < 0 && coeffs_positive => {
-                            return Some(mngr.ffalse());
+                            return Some(ctx.ast().ffalse());
                         }
                         NodeKind::Lt if c <= 0 && coeffs_positive => {
-                            return Some(mngr.ffalse());
+                            return Some(ctx.ast().ffalse());
                         }
                         NodeKind::Le if c < 0 && coeffs_positive => {
-                            return Some(mngr.ffalse());
+                            return Some(ctx.ast().ffalse());
                         }
                         NodeKind::Le if c == 0 && coeffs_positive => {
                             let lhs_new = ts
                                 .coeffs
                                 .iter()
-                                .map(|(n, v)| (n, mngr.const_int(*v)))
+                                .map(|(n, v)| (n, ctx.ast().const_int(*v)))
                                 .collect_vec()
                                 .into_iter()
-                                .map(|(n, v)| mngr.mul(vec![v, n.clone()]))
+                                .map(|(n, v)| ctx.ast().mul(vec![v, n.clone()]))
                                 .collect();
-                            let lhs_new = mngr.add(lhs_new);
-                            let rhs_new = mngr.const_int(0);
-                            let new_eq = mngr.eq(lhs_new, rhs_new);
+                            let lhs_new = ctx.ast().add(lhs_new);
+                            let rhs_new = ctx.ast().const_int(0);
+                            let new_eq = ctx.ast().eq(lhs_new, rhs_new);
                             return Some(new_eq);
                         }
                         NodeKind::Gt if c < 0 && coeffs_positive => {
-                            return Some(mngr.ttrue());
+                            return Some(ctx.ast().ttrue());
                         }
                         NodeKind::Ge if c <= 0 && coeffs_positive => {
-                            return Some(mngr.ttrue());
+                            return Some(ctx.ast().ttrue());
                         }
                         NodeKind::Ge if c == 0 && coeffs_positive => {
                             // This is a trivial constraint, we can remove it
-                            return Some(mngr.ttrue());
+                            return Some(ctx.ast().ttrue());
                         }
                         _ => (),
                     }
@@ -147,7 +147,7 @@ impl EquivalenceRule for LengthTrivial {
 #[allow(dead_code)]
 pub(super) struct LengthToReg;
 impl EquivalenceRule for LengthToReg {
-    fn apply(&self, node: &Node, _: &IndexSet<Node>, mngr: &mut NodeManager) -> Option<Node> {
+    fn apply(&self, node: &Node, _: &IndexSet<Node>, ctx: &mut Context) -> Option<Node> {
         let normed = normalize_ineq(node)?;
         if normed.lhs().coeffs.len() == 1 {
             // This is a constraint of the form `s|x| # rhs`, we can rewrite this as a regular constraint
@@ -179,7 +179,7 @@ impl EquivalenceRule for LengthToReg {
                 _ => return None,
             };
 
-            let builder = mngr.re_builder();
+            let builder = ctx.re_builder();
             let re = match op {
                 NodeKind::Lt => {
                     let u = r / s;
@@ -212,8 +212,8 @@ impl EquivalenceRule for LengthToReg {
                 }
                 _ => unreachable!(),
             };
-            let re = mngr.const_regex(re);
-            let inre = mngr.in_re(x.clone(), re);
+            let re = ctx.ast().const_regex(re);
+            let inre = ctx.ast().in_re(x.clone(), re);
             return Some(inre);
         }
 
@@ -228,7 +228,7 @@ impl EquivalenceRule for LengthToReg {
 pub(super) struct ZeroLengthEpsilon;
 
 impl ZeroLengthEpsilon {
-    fn apply(lhs: &Node, mngr: &mut NodeManager) -> Option<VarSubstitution> {
+    fn apply(lhs: &Node, ctx: &mut Context) -> Option<VarSubstitution> {
         // Collects all in the given node of sort string that need to be replaced by epsilon
         // Returns false if a variable is found that is not of sort string
         fn collect_vars(n: &Node, in_len: bool, vars: &mut IndexSet<Rc<Variable>>) -> bool {
@@ -281,7 +281,7 @@ impl ZeroLengthEpsilon {
         if collect_vars(lhs, false, &mut vars) && !vars.is_empty() {
             // set all variables to epsilon
             let mut subs = VarSubstitution::default();
-            let epsi = mngr.empty_string();
+            let epsi = ctx.ast().empty_string();
             for v in vars {
                 subs.add(v, epsi.clone());
             }
@@ -298,7 +298,7 @@ impl EntailmentRule for ZeroLengthEpsilon {
         node: &Node,
         asserted: &IndexSet<Node>,
         _: bool,
-        mngr: &mut NodeManager,
+        ctx: &mut Context,
     ) -> Option<VarSubstitution> {
         // This is only applicable if the node itself is asserted
         if !asserted.contains(node) {
@@ -312,8 +312,8 @@ impl EntailmentRule for ZeroLengthEpsilon {
                 let rhs = node.children().last().unwrap();
                 if lhs.sort().is_int() && rhs.sort().is_int() {
                     match (lhs.kind(), rhs.kind()) {
-                        (_, NodeKind::Int(0)) => return ZeroLengthEpsilon::apply(lhs, mngr),
-                        (NodeKind::Int(0), _) => return ZeroLengthEpsilon::apply(rhs, mngr),
+                        (_, NodeKind::Int(0)) => return ZeroLengthEpsilon::apply(lhs, ctx),
+                        (NodeKind::Int(0), _) => return ZeroLengthEpsilon::apply(rhs, ctx),
                         _ => (),
                     }
                 }
@@ -323,7 +323,7 @@ impl EntailmentRule for ZeroLengthEpsilon {
                 let lhs = node.children().first().unwrap();
                 let rhs = node.children().last().unwrap();
                 if let (NodeKind::Int(0), _) = (lhs.kind(), rhs.kind()) {
-                    return ZeroLengthEpsilon::apply(lhs, mngr);
+                    return ZeroLengthEpsilon::apply(lhs, ctx);
                 }
             }
             NodeKind::Ge => {
@@ -331,7 +331,7 @@ impl EntailmentRule for ZeroLengthEpsilon {
                 let lhs = node.children().first().unwrap();
                 let rhs = node.children().last().unwrap();
                 if let (NodeKind::Int(0), _) = (lhs.kind(), rhs.kind()) {
-                    return ZeroLengthEpsilon::apply(rhs, mngr);
+                    return ZeroLengthEpsilon::apply(rhs, ctx);
                 }
             }
             _ => (),
@@ -347,7 +347,7 @@ impl EntailmentRule for ZeroLengthEpsilon {
 pub(super) struct TrivialLenghtConstraints;
 
 impl EquivalenceRule for TrivialLenghtConstraints {
-    fn apply(&self, node: &Node, _: &IndexSet<Node>, mngr: &mut NodeManager) -> Option<Node> {
+    fn apply(&self, node: &Node, _: &IndexSet<Node>, ctx: &mut Context) -> Option<Node> {
         let normed = normalize_ineq(node)?;
 
         let all_str_len = normed
@@ -389,27 +389,27 @@ impl EquivalenceRule for TrivialLenghtConstraints {
             match normed.op() {
                 NodeKind::Lt if normed.pol() => {
                     if c <= range.lower() {
-                        return Some(mngr.ffalse());
+                        return Some(ctx.ast().ffalse());
                     }
                 }
                 NodeKind::Le if normed.pol() => {
                     if c < range.lower() {
-                        return Some(mngr.ffalse());
+                        return Some(ctx.ast().ffalse());
                     }
                 }
                 NodeKind::Eq if normed.pol() => {
                     if c < range.lower() || c > range.upper() {
-                        return Some(mngr.ffalse());
+                        return Some(ctx.ast().ffalse());
                     }
                 }
                 NodeKind::Ge if normed.pol() => {
                     if c > range.upper() {
-                        return Some(mngr.ffalse());
+                        return Some(ctx.ast().ffalse());
                     }
                 }
                 NodeKind::Gt if normed.pol() => {
                     if c >= range.upper() {
-                        return Some(mngr.ffalse());
+                        return Some(ctx.ast().ffalse());
                     }
                 }
                 _ => return None,

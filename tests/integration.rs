@@ -1,16 +1,16 @@
 use std::path::Path;
 
-use blastr::{ast::NodeManager, parse_script, smt::Interpreter, SolverOptions};
+use blastr::{ast::Context, parse_script, smt::Interpreter, SolverOptions};
 use test_generator::test_resources;
 
 #[test_resources("res/tests_sat/*.smt2")]
 fn test_sat(smt: &str) {
     let file = Path::new(smt);
     let smt = std::io::BufReader::new(std::fs::File::open(file).unwrap());
-    let mut mngr = NodeManager::default();
+    let mut ctx = Context::default();
     let options = SolverOptions::default();
-    let script = parse_script(smt, &mut mngr).unwrap();
-    let mut interpreter = Interpreter::new(options, &mut mngr);
+    let script = parse_script(smt, &mut ctx).unwrap();
+    let mut interpreter = Interpreter::new(options, &mut ctx);
 
     for a in script.iter_asserts() {
         interpreter.assert(a);
@@ -26,10 +26,10 @@ fn test_sat(smt: &str) {
 fn test_unsat(smt: &str) {
     let file = Path::new(smt);
     let smt = std::io::BufReader::new(std::fs::File::open(file).unwrap());
-    let mut mngr = NodeManager::default();
+    let mut ctx = Context::default();
     let options = SolverOptions::default();
-    let script = parse_script(smt, &mut mngr).unwrap();
-    let mut interpreter = Interpreter::new(options, &mut mngr);
+    let script = parse_script(smt, &mut ctx).unwrap();
+    let mut interpreter = Interpreter::new(options, &mut ctx);
 
     for a in script.iter_asserts() {
         interpreter.assert(a);

@@ -8,21 +8,15 @@ pub use ineq::WordInEquationEncoder;
 
 #[cfg(test)]
 mod testutils {
+    use crate::ast::canonical::{self, WordEquation};
     use crate::ast::{self, NodeKind};
-    use crate::ast::{
-        canonical::{self, WordEquation},
-        NodeManager,
-    };
+    use crate::context::Context;
     use crate::preprocess;
 
-    pub(crate) fn parse_simple_equation(
-        lhs: &str,
-        rhs: &str,
-        mngr: &mut NodeManager,
-    ) -> WordEquation {
-        mngr.set_optimize(false);
-        let node = ast::testutils::parse_equation(lhs, rhs, mngr);
-        let c = preprocess::canonicalize(&node, mngr);
+    pub(crate) fn parse_simple_equation(lhs: &str, rhs: &str, ctx: &mut Context) -> WordEquation {
+        ctx.ast().set_optimize(false);
+        let node = ast::testutils::parse_equation(lhs, rhs, ctx);
+        let c = preprocess::canonicalize(&node, ctx);
         match c.kind() {
             NodeKind::Literal(literal) => match literal.atom().kind() {
                 canonical::AtomKind::WordEquation(weq) => weq.clone(),

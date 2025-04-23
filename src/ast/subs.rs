@@ -5,9 +5,9 @@ use std::{
 
 use indexmap::IndexMap;
 
-use crate::context::Variable;
+use crate::context::{Context, Variable};
 
-use super::{canonical::Assignment, Node, NodeKind, NodeManager};
+use super::{canonical::Assignment, Node, NodeKind};
 
 /// A substitution that maps nodes to other nodes.
 ///
@@ -50,12 +50,12 @@ impl VarSubstitution {
     // Returns the composition of this substitution with another substitution.
     /// This has the same effect as applying this substitution first, and then applying the other substitution to the result.
     /// Applies the other substitution to all values in this substitution.
-    pub fn compose(&self, other: VarSubstitution, mngr: &mut NodeManager) -> Self {
+    pub fn compose(&self, other: VarSubstitution, ctx: &mut Context) -> Self {
         let mut subst = VarSubstitution::default();
 
         // Apply the other substitution to all values in this substitution.
         for (key, value) in self.iter() {
-            let new_value = other.apply(value, mngr);
+            let new_value = other.apply(value, ctx);
             subst.add(key.clone(), new_value);
         }
         // ensure that all keys in the other substitution are in the new substitution
@@ -87,7 +87,7 @@ impl VarSubstitution {
     }
 
     /// Apply the substitution to the given node.
-    pub fn apply(&self, node: &Node, mngr: &mut NodeManager) -> Node {
+    pub fn apply(&self, node: &Node, ctx: &mut Context) -> Node {
         // If the node is in the substitution map, return the corresponding value.
         // Because the substitution is an automorphism, recursion will terminate once the substitution is applied to a node.
         if let NodeKind::Variable(v) = node.kind() {
@@ -102,23 +102,23 @@ impl VarSubstitution {
         let children = node
             .children()
             .iter()
-            .map(|child| self.apply(child, mngr))
+            .map(|child| self.apply(child, ctx))
             .collect();
 
-        mngr.create_node(node.kind().clone(), children)
+        ctx.ast().create_node(node.kind().clone(), children)
     }
 
-    pub fn from_assignment(assignment: &Assignment, mngr: &mut NodeManager) -> Self {
+    pub fn from_assignment(assignment: &Assignment, ctx: &mut Context) -> Self {
         let mut subst = VarSubstitution::default();
         for (var, value) in assignment.iter() {
             let value = if let Some(true) = value.as_bool() {
-                mngr.ttrue()
+                ctx.ast().ttrue()
             } else if let Some(false) = value.as_bool() {
-                mngr.ffalse()
+                ctx.ast().ffalse()
             } else if let Some(str) = value.as_string() {
-                mngr.const_string(str.clone())
+                ctx.ast().const_string(str.clone())
             } else if let Some(int) = value.as_int() {
-                mngr.const_int(int)
+                ctx.ast().const_int(int)
             } else {
                 panic!("Unsupported value in assignment")
             };
@@ -154,31 +154,31 @@ mod tests {
 
     #[test]
     fn add_var_to_var() {
-        let mut mngr = NodeManager::default();
+        let mut ctx = Context::default();
         let mut subst = VarSubstitution::default();
 
-        let a = mngr.temp_var(Sort::Bool);
-        let b = mngr.temp_var(Sort::Bool);
+        let a = ctx.temp_var(Sort::Bool);
+        let b = ctx.temp_var(Sort::Bool);
 
-        let anode = mngr.var(a.clone());
-        let bnode = mngr.var(b.clone());
+        let anode = ctx.ast().variable(a.clone());
+        let bnode = ctx.ast().variable(b.clone());
         subst.add(a.clone(), bnode.clone());
 
-        assert_eq!(subst.apply(&anode, &mut mngr), bnode);
-        assert_eq!(subst.apply(&bnode, &mut mngr), bnode);
+        assert_eq!(subst.apply(&anode, &mut ctx), bnode);
+        assert_eq!(subst.apply(&bnode, &mut ctx), bnode);
     }
 
     #[test]
     fn compose_var_to_var() {
-        let mut mngr = NodeManager::default();
+        let mut ctx = Context::default();
 
-        let a = mngr.temp_var(Sort::Bool);
-        let b = mngr.temp_var(Sort::Bool);
-        let c = mngr.temp_var(Sort::Bool);
+        let a = ctx.temp_var(Sort::Bool);
+        let b = ctx.temp_var(Sort::Bool);
+        let c = ctx.temp_var(Sort::Bool);
 
-        let anode = mngr.var(a.clone());
-        let bnode = mngr.var(b.clone());
-        let cnode = mngr.var(c.clone());
+        let anode = ctx.ast().variable(a.clone());
+        let bnode = ctx.ast().variable(b.clone());
+        let cnode = ctx.ast().variable(c.clone());
 
         let mut subst1 = VarSubstitution::default();
         subst1.add(a.clone(), bnode.clone()); // a -> b
@@ -186,23 +186,23 @@ mod tests {
         let mut subst2 = VarSubstitution::default();
         subst2.add(b.clone(), cnode.clone()); // b -> c
 
-        let comp = subst1.compose(subst2, &mut mngr);
+        let comp = subst1.compose(subst2, &mut ctx);
 
-        assert_eq!(comp.apply(&anode, &mut mngr), cnode);
-        assert_eq!(comp.apply(&bnode, &mut mngr), cnode);
+        assert_eq!(comp.apply(&anode, &mut ctx), cnode);
+        assert_eq!(comp.apply(&bnode, &mut ctx), cnode);
     }
 
     #[test]
     fn compose_var_to_var_2() {
-        let mut mngr = NodeManager::default();
+        let mut ctx = Context::default();
 
-        let a = mngr.temp_var(Sort::Bool);
-        let b = mngr.temp_var(Sort::Bool);
-        let c = mngr.temp_var(Sort::Bool);
+        let a = ctx.temp_var(Sort::Bool);
+        let b = ctx.temp_var(Sort::Bool);
+        let c = ctx.temp_var(Sort::Bool);
 
-        let anode = mngr.var(a.clone());
-        let bnode = mngr.var(b.clone());
-        let cnode = mngr.var(c.clone());
+        let anode = ctx.ast().variable(a.clone());
+        let bnode = ctx.ast().variable(b.clone());
+        let cnode = ctx.ast().variable(c.clone());
 
         let mut subst1 = VarSubstitution::default();
         subst1.add(a.clone(), bnode.clone()); // a -> b
@@ -210,9 +210,9 @@ mod tests {
         let mut subst2 = VarSubstitution::default();
         subst2.add(b.clone(), cnode.clone()); // b -> c
 
-        let comp = subst2.compose(subst1, &mut mngr);
+        let comp = subst2.compose(subst1, &mut ctx);
 
-        assert_eq!(comp.apply(&anode, &mut mngr), bnode);
-        assert_eq!(comp.apply(&bnode, &mut mngr), cnode);
+        assert_eq!(comp.apply(&anode, &mut ctx), bnode);
+        assert_eq!(comp.apply(&bnode, &mut ctx), cnode);
     }
 }

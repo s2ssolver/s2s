@@ -5,13 +5,11 @@ use std::{ops::Neg, rc::Rc, time::Instant};
 use crate::{
     abstraction::LitDefinition,
     alphabet::Alphabet,
+    ast::canonical::{AssignedValue, Assignment, Literal},
+    context::Context,
     encode::{
         domain::{DomainEncoder, DomainEncoding},
         get_encoder, EncodeLiteral, EncodingError, EncodingResult, EncodingSink, LiteralEncoder,
-    },
-    ast::{
-        canonical::{AssignedValue, Assignment, Literal},
-        NodeManager,
     },
     sat::{nlit, plit, pvar, PVar},
 };
@@ -83,7 +81,7 @@ impl DefintionEncoder {
         defs: impl Iterator<Item = LitDefinition> + Clone,
         bounds: &Domain,
         cadical: &mut CaDiCaL<'static, 'static>,
-        mngr: &mut NodeManager,
+        ctx: &mut Context,
     ) -> Result<Vec<Lit>, EncodingError> {
         // INPUT: BOUNDS
 
@@ -111,7 +109,7 @@ impl DefintionEncoder {
             sink.clear_sub();
             sink.clear_assumptions();
             nclauses = sink.nclauses;
-            let lit_assumptions = self.encode_def(&def, bounds, &dom, mngr, &mut sink)?;
+            let lit_assumptions = self.encode_def(&def, bounds, &dom, ctx, &mut sink)?;
             assumptions.extend(lit_assumptions);
             log::info!(
                 "Encoded {} ({} clauses, {:?})",
@@ -129,7 +127,7 @@ impl DefintionEncoder {
         def: &LitDefinition,
         bounds: &Domain,
         dom: &DomainEncoding,
-        mngr: &mut NodeManager,
+        ctx: &mut Context,
         sink: &mut CadicalEncodingSink,
     ) -> Result<IndexSet<Lit>, EncodingError> {
         let lit = def.defined();
@@ -144,7 +142,7 @@ impl DefintionEncoder {
 
         sink.set_sub(sub);
 
-        self.get_encoder(lit, mngr).encode(bounds, dom, sink)?;
+        self.get_encoder(lit, ctx).encode(bounds, dom, sink)?;
 
         let mut assumptions = std::mem::take(&mut sink.assumptions);
 
@@ -160,10 +158,10 @@ impl DefintionEncoder {
         Ok(assumptions)
     }
 
-    fn get_encoder(&mut self, lit: &Literal, mngr: &mut NodeManager) -> &mut LiteralEncoder {
+    fn get_encoder(&mut self, lit: &Literal, ctx: &mut Context) -> &mut LiteralEncoder {
         if self.encoders.get(lit).is_none() {
             // Create new encoder
-            let encoder = get_encoder(lit, mngr).unwrap();
+            let encoder = get_encoder(lit, ctx).unwrap();
             self.encoders.insert(lit.clone(), encoder);
         }
         self.encoders.get_mut(lit).unwrap()

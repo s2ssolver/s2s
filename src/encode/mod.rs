@@ -1,11 +1,9 @@
 use std::fmt::Display;
 
 use crate::{
+    ast::canonical::{AtomKind, Literal, RegularConstraint},
+    context::Context,
     domain::Domain,
-    ast::{
-        canonical::{AtomKind, Literal, RegularConstraint},
-        NodeManager,
-    },
 };
 
 use self::{boolvar::BoolVarEncoder, domain::DomainEncoding, linear::MddEncoder};
@@ -122,18 +120,18 @@ pub enum LiteralEncoder {
     LinearEncode(MddEncoder),
 }
 
-pub fn get_encoder(lit: &Literal, mngr: &mut NodeManager) -> Result<LiteralEncoder, EncodingError> {
+pub fn get_encoder(lit: &Literal, ctx: &mut Context) -> Result<LiteralEncoder, EncodingError> {
     let pol = lit.polarity();
     let e = match lit.atom().kind() {
         AtomKind::Boolvar(v) => LiteralEncoder::BoolVar(BoolVarEncoder::new(v, pol)),
-        AtomKind::InRe(inre) => LiteralEncoder::NFAEncoder(build_inre_encoder(inre, pol, mngr)),
+        AtomKind::InRe(inre) => LiteralEncoder::NFAEncoder(build_inre_encoder(inre, pol, ctx)),
         AtomKind::WordEquation(weq) => LiteralEncoder::WeqEncode(equation::get_encoder(weq, pol)),
         AtomKind::FactorConstraint(rfc) => {
             // Right now, we cast it into a regular constraint
             log::warn!("Specialized encodings for regular factor constraints are not implemented yet. Casting to regular constraint.");
-            let re = rfc.as_regex(mngr);
+            let re = rfc.as_regex(ctx);
             let inre = RegularConstraint::new(rfc.of().clone(), re);
-            LiteralEncoder::NFAEncoder(build_inre_encoder(&inre, pol, mngr))
+            LiteralEncoder::NFAEncoder(build_inre_encoder(&inre, pol, ctx))
         }
         AtomKind::Linear(lc) => LiteralEncoder::LinearEncode(MddEncoder::new(lc.clone(), pol)),
     };

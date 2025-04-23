@@ -7,7 +7,10 @@ use smt_str::{
     SmtString,
 };
 
-use crate::{ast::NodeManager, context::Variable, interval::Interval};
+use crate::{
+    context::{Context, Variable},
+    interval::Interval,
+};
 
 use super::{Bounds, InferringStrategy};
 
@@ -32,13 +35,7 @@ pub(super) struct RegularBoundsInferer {
 }
 
 impl RegularBoundsInferer {
-    pub fn add_reg(
-        &mut self,
-        var: Rc<Variable>,
-        re: Regex,
-        polarity: bool,
-        mngr: &mut NodeManager,
-    ) {
+    pub fn add_reg(&mut self, var: Rc<Variable>, re: Regex, polarity: bool, ctx: &mut Context) {
         // cloning the regex is cheap, it is an Rc.
         self.regs.insert((var.clone(), re.clone(), polarity));
         if !self.conflict {
@@ -46,9 +43,9 @@ impl RegularBoundsInferer {
             let re_pol = if polarity {
                 re
             } else {
-                mngr.re_builder().comp(re)
+                ctx.re_builder().comp(re)
             };
-            let nfa = mngr.get_nfa(&re_pol);
+            let nfa = ctx.get_nfa(&re_pol);
             // TODO: Cache intersection, they are likely to be used in other inferrence steps too.
             match self.intersections.entry(var) {
                 indexmap::map::Entry::Occupied(o) => {
@@ -71,11 +68,11 @@ impl RegularBoundsInferer {
         var: Rc<Variable>,
         word: SmtString,
         pol: bool,
-        mngr: &mut NodeManager,
+        ctx: &mut Context,
     ) {
-        let builder = mngr.re_builder();
+        let builder = ctx.re_builder();
         let re = builder.to_re(word);
-        self.add_reg(var, re, pol, mngr);
+        self.add_reg(var, re, pol, ctx);
     }
 
     pub fn add_var_eq(&mut self, x: Rc<Variable>, y: Rc<Variable>, polarity: bool) {
@@ -247,13 +244,13 @@ mod tests {
 
     #[test]
     fn test_infer_single_re_finite() {
-        let mut mngr = NodeManager::default();
-        let rebuilder = mngr.re_builder();
+        let mut ctx = Context::default();
+        let rebuilder = ctx.re_builder();
         let re = rebuilder.to_re("aa".into());
-        let v = mngr.temp_var(Sort::String);
+        let v = ctx.temp_var(Sort::String);
 
         let mut inferer = RegularBoundsInferer::default();
-        inferer.add_reg(v.clone(), re, true, &mut mngr);
+        inferer.add_reg(v.clone(), re, true, &mut ctx);
 
         let bounds = inferer.infer().unwrap();
         assert_eq!(bounds.get(&v), Some(Interval::new(2, 2)));
@@ -261,15 +258,15 @@ mod tests {
 
     #[test]
     fn test_infer_single_re_star() {
-        let mut mngr = NodeManager::default();
-        let rebuilder = mngr.re_builder();
+        let mut ctx = Context::default();
+        let rebuilder = ctx.re_builder();
         let aa = rebuilder.to_re("aa".into());
         let re = rebuilder.star(aa);
 
-        let v = mngr.temp_var(Sort::String);
+        let v = ctx.temp_var(Sort::String);
 
         let mut inferer = RegularBoundsInferer::default();
-        inferer.add_reg(v.clone(), re, true, &mut mngr);
+        inferer.add_reg(v.clone(), re, true, &mut ctx);
 
         let bounds = inferer.infer().unwrap();
         assert_eq!(bounds.get(&v), Some(Interval::new(0, 2)));
@@ -277,19 +274,19 @@ mod tests {
 
     #[test]
     fn test_infer_intersection() {
-        let mut mngr = NodeManager::default();
-        let rebuilder = mngr.re_builder();
+        let mut ctx = Context::default();
+        let rebuilder = ctx.re_builder();
 
         let aa = rebuilder.to_re("aa".into());
         let re1 = rebuilder.star(aa.clone());
         let aaa = rebuilder.to_re("aaa".into());
         let re2 = rebuilder.star(aaa.clone());
 
-        let v = mngr.temp_var(Sort::String);
+        let v = ctx.temp_var(Sort::String);
 
         let mut inferer = RegularBoundsInferer::default();
-        inferer.add_reg(v.clone(), re1, true, &mut mngr);
-        inferer.add_reg(v.clone(), re2, true, &mut mngr);
+        inferer.add_reg(v.clone(), re1, true, &mut ctx);
+        inferer.add_reg(v.clone(), re2, true, &mut ctx);
 
         let bounds = inferer.infer().unwrap();
 
@@ -298,19 +295,19 @@ mod tests {
 
     #[test]
     fn test_infer_intersection_comp() {
-        let mut mngr = NodeManager::default();
-        let rebuilder = mngr.re_builder();
+        let mut ctx = Context::default();
+        let rebuilder = ctx.re_builder();
 
         let re2 = rebuilder.to_re("aaa".into());
         let re1 = rebuilder.star(re2.clone());
 
-        let v = mngr.temp_var(Sort::String);
+        let v = ctx.temp_var(Sort::String);
 
         let mut inferer = RegularBoundsInferer::default();
         // aaa^* but not aaa
 
-        inferer.add_reg(v.clone(), re1, true, &mut mngr);
-        inferer.add_reg(v.clone(), re2, false, &mut mngr);
+        inferer.add_reg(v.clone(), re1, true, &mut ctx);
+        inferer.add_reg(v.clone(), re2, false, &mut ctx);
 
         let bounds = inferer.infer().unwrap();
 
@@ -320,17 +317,17 @@ mod tests {
     #[test]
     fn test_infer_intersection_comp_2() {
         // (aaa)* and not(aaa) and not epsilon ==> smallest is aaaaaa, upper bound is 6
-        let mut mngr = NodeManager::default();
-        let rebuilder = mngr.re_builder();
+        let mut ctx = Context::default();
+        let rebuilder = ctx.re_builder();
         let re2 = rebuilder.to_re("aaa".into());
         let re1 = rebuilder.star(re2.clone());
         let epsi = rebuilder.epsilon();
-        let v = mngr.temp_var(Sort::String);
+        let v = ctx.temp_var(Sort::String);
 
         let mut inferer = RegularBoundsInferer::default();
-        inferer.add_reg(v.clone(), re1, true, &mut mngr);
-        inferer.add_reg(v.clone(), re2, false, &mut mngr);
-        inferer.add_reg(v.clone(), epsi, false, &mut mngr);
+        inferer.add_reg(v.clone(), re1, true, &mut ctx);
+        inferer.add_reg(v.clone(), re2, false, &mut ctx);
+        inferer.add_reg(v.clone(), epsi, false, &mut ctx);
 
         let bounds = inferer.infer().unwrap();
         assert_eq!(bounds.get(&v), Some(Interval::new(6, 6)));
@@ -338,18 +335,18 @@ mod tests {
 
     #[test]
     fn test_infer_intersection_empty() {
-        let mut mngr = NodeManager::default();
-        let rebuilder = mngr.re_builder();
+        let mut ctx = Context::default();
+        let rebuilder = ctx.re_builder();
 
         let re1 = rebuilder.to_re("aaaa".into());
         let aa = rebuilder.to_re("aa".into());
         let re2 = rebuilder.star(aa.clone());
 
-        let v = mngr.temp_var(Sort::String);
+        let v = ctx.temp_var(Sort::String);
 
         let mut inferer = RegularBoundsInferer::default();
-        inferer.add_reg(v.clone(), re1, true, &mut mngr);
-        inferer.add_reg(v.clone(), re2, false, &mut mngr);
+        inferer.add_reg(v.clone(), re1, true, &mut ctx);
+        inferer.add_reg(v.clone(), re2, false, &mut ctx);
 
         let bounds = inferer.infer();
 

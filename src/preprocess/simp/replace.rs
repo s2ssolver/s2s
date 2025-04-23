@@ -1,5 +1,5 @@
 use super::*;
-use crate::ast::{Node, NodeKind, NodeManager};
+use crate::ast::{Node, NodeKind};
 
 /// Idempency of replacement operation.
 /// - `replace(x, y, y) = x`
@@ -7,7 +7,7 @@ use crate::ast::{Node, NodeKind, NodeManager};
 #[derive(Debug, Clone, Copy)]
 pub(super) struct ReplaceIdem;
 impl EquivalenceRule for ReplaceIdem {
-    fn apply(&self, node: &Node, _: &IndexSet<Node>, _: &mut NodeManager) -> Option<Node> {
+    fn apply(&self, node: &Node, _: &IndexSet<Node>, _: &mut Context) -> Option<Node> {
         match node.kind() {
             NodeKind::Replace | NodeKind::ReplaceAll => {
                 debug_assert_eq!(node.children().len(), 3);
@@ -29,7 +29,7 @@ impl EquivalenceRule for ReplaceIdem {
 #[derive(Debug, Clone, Copy)]
 pub(super) struct ReplaceInEpsilon;
 impl EquivalenceRule for ReplaceInEpsilon {
-    fn apply(&self, node: &Node, _: &IndexSet<Node>, mngr: &mut NodeManager) -> Option<Node> {
+    fn apply(&self, node: &Node, _: &IndexSet<Node>, ctx: &mut Context) -> Option<Node> {
         match node.kind() {
             NodeKind::Replace | NodeKind::ReplaceAll => {
                 debug_assert_eq!(node.children().len(), 3);
@@ -42,7 +42,7 @@ impl EquivalenceRule for ReplaceInEpsilon {
                             if y.is_empty() {
                                 return Some(to);
                             } else {
-                                return Some(mngr.empty_string());
+                                return Some(ctx.ast().empty_string());
                             }
                         }
                     }
@@ -60,7 +60,7 @@ impl EquivalenceRule for ReplaceInEpsilon {
 #[derive(Debug, Clone, Copy)]
 pub(super) struct ReplaceSelf;
 impl EquivalenceRule for ReplaceSelf {
-    fn apply(&self, node: &Node, _: &IndexSet<Node>, _: &mut NodeManager) -> Option<Node> {
+    fn apply(&self, node: &Node, _: &IndexSet<Node>, _: &mut Context) -> Option<Node> {
         match node.kind() {
             NodeKind::Replace | NodeKind::ReplaceAll => {
                 debug_assert_eq!(node.children().len(), 3);
@@ -83,7 +83,7 @@ impl EquivalenceRule for ReplaceSelf {
 #[derive(Debug, Clone, Copy)]
 pub(super) struct ReplaceEpsilon;
 impl EquivalenceRule for ReplaceEpsilon {
-    fn apply(&self, node: &Node, _: &IndexSet<Node>, mngr: &mut NodeManager) -> Option<Node> {
+    fn apply(&self, node: &Node, _: &IndexSet<Node>, ctx: &mut Context) -> Option<Node> {
         match node.kind() {
             NodeKind::Replace | NodeKind::ReplaceAll => {
                 debug_assert_eq!(node.children().len(), 3);
@@ -97,7 +97,7 @@ impl EquivalenceRule for ReplaceEpsilon {
                                 return Some(in_);
                             }
                             NodeKind::Replace => {
-                                return Some(mngr.concat(vec![to, in_]));
+                                return Some(ctx.ast().concat(vec![to, in_]));
                             }
                             _ => unreachable!(),
                         }

@@ -1,8 +1,9 @@
 use indexmap::IndexSet;
 
 use crate::{
+    ast::{Node, NodeKind},
+    context::Context,
     interval::Interval,
-    ast::{Node, NodeKind, NodeManager},
     preprocess::simp::int::{normalize_ineq, LinearIntRealtion},
 };
 
@@ -18,7 +19,7 @@ use super::EquivalenceRule;
 pub(super) struct LinIntForward;
 
 impl LinIntForward {
-    fn apply(fact: &Node, other: &Node, mngr: &mut NodeManager) -> Option<Node> {
+    fn apply(fact: &Node, other: &Node, ctx: &mut Context) -> Option<Node> {
         let fact_norm = normalize_ineq(fact)?;
         let other_norm = normalize_ineq(other)?;
         // We check if they are
@@ -84,9 +85,9 @@ impl LinIntForward {
 
         if fact_norm.lhs() == other_norm.lhs() {
             if compare(fact_norm, other_norm)? {
-                return Some(mngr.ttrue());
+                return Some(ctx.ast().ttrue());
             } else {
-                return Some(mngr.ffalse());
+                return Some(ctx.ast().ffalse());
             }
         }
 
@@ -95,12 +96,7 @@ impl LinIntForward {
 }
 
 impl EquivalenceRule for LinIntForward {
-    fn apply(
-        &self,
-        node: &Node,
-        asserted: &IndexSet<Node>,
-        mngr: &mut NodeManager,
-    ) -> Option<Node> {
+    fn apply(&self, node: &Node, asserted: &IndexSet<Node>, ctx: &mut Context) -> Option<Node> {
         match node.kind() {
             NodeKind::Lt
             | NodeKind::Le
@@ -109,7 +105,7 @@ impl EquivalenceRule for LinIntForward {
             | NodeKind::Eq
             | NodeKind::Not => {
                 for fact in asserted.iter().filter(|a| *a != node) {
-                    if let Some(equiv) = LinIntForward::apply(fact, node, mngr) {
+                    if let Some(equiv) = LinIntForward::apply(fact, node, ctx) {
                         return Some(equiv);
                     }
                 }

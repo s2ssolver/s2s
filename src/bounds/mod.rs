@@ -19,14 +19,11 @@ use regular::RegularBoundsInferer;
 use smallvec::smallvec;
 
 use crate::{
-    ast::{
-        canonical::{
-            ArithOperator, AtomKind, LinearArithTerm, LinearConstraint, LinearSummand, Literal,
-            RegularConstraint, VariableTerm, WordEquation,
-        },
-        NodeManager,
+    ast::canonical::{
+        ArithOperator, AtomKind, LinearArithTerm, LinearConstraint, LinearSummand, Literal,
+        RegularConstraint, VariableTerm, WordEquation,
     },
-    context::{Sorted, Variable},
+    context::{Context, Sorted, Variable},
     interval::BoundValue,
 };
 
@@ -220,20 +217,20 @@ pub struct BoundInferer {
 }
 
 impl BoundInferer {
-    fn add_reg(&mut self, reg: &RegularConstraint, pol: bool, mngr: &mut NodeManager) {
+    fn add_reg(&mut self, reg: &RegularConstraint, pol: bool, ctx: &mut Context) {
         let v = reg.lhs().clone();
         let re = reg.re().clone();
-        self.reg.add_reg(v, re, pol, mngr);
+        self.reg.add_reg(v, re, pol, ctx);
     }
 
-    fn add_weq(&mut self, weq: &WordEquation, pol: bool, mngr: &mut NodeManager) {
+    fn add_weq(&mut self, weq: &WordEquation, pol: bool, ctx: &mut Context) {
         match weq {
             WordEquation::ConstantEquality(_, _) => (),
             WordEquation::VarEquality(l, r) => {
                 self.reg.add_var_eq(l.clone(), r.clone(), pol);
             }
             WordEquation::VarAssignment(l, r) => {
-                self.reg.add_const_eq(l.clone(), r.clone(), pol, mngr);
+                self.reg.add_const_eq(l.clone(), r.clone(), pol, ctx);
             }
             WordEquation::General(_, _) => {}
         }
@@ -248,7 +245,7 @@ impl BoundInferer {
 
     /// Adds a literal to the bounds inferer.
     /// This will add the literal to the set of literals for which we infer bounds.
-    pub fn add_literal(&mut self, lit: Literal, mngr: &mut NodeManager) {
+    pub fn add_literal(&mut self, lit: Literal, ctx: &mut Context) {
         self.literals.insert(lit.clone());
 
         self.conflict |= self.literals.contains(&lit.inverted());
@@ -257,19 +254,19 @@ impl BoundInferer {
         let pol = lit.polarity();
         match lit.atom().kind() {
             AtomKind::Boolvar(_) => (),
-            AtomKind::InRe(reg) => self.add_reg(reg, pol, mngr),
-            AtomKind::WordEquation(weq) => self.add_weq(weq, pol, mngr),
+            AtomKind::InRe(reg) => self.add_reg(reg, pol, ctx),
+            AtomKind::WordEquation(weq) => self.add_weq(weq, pol, ctx),
             AtomKind::FactorConstraint(rfac) => {
-                let re = rfac.as_regex(mngr);
-                self.reg.add_reg(rfac.of().clone(), re, pol, mngr);
+                let re = rfac.as_regex(ctx);
+                self.reg.add_reg(rfac.of().clone(), re, pol, ctx);
             }
             AtomKind::Linear(lc) => {
                 let lc = if pol { lc.clone() } else { lc.negate() };
 
-                if let Some(as_reg) = lc_to_reg(&lc, mngr) {
+                if let Some(as_reg) = lc_to_reg(&lc, ctx) {
                     // also add the same constraint as a regular constraint
                     // that can help to converge faster in some cases
-                    self.add_reg(&as_reg, true, mngr);
+                    self.add_reg(&as_reg, true, ctx);
                 }
 
                 self.add_linear_constraint(&lc)
@@ -364,7 +361,7 @@ impl BoundInferer {
     }
 }
 
-fn lc_to_reg(lc: &LinearConstraint, mngr: &mut NodeManager) -> Option<RegularConstraint> {
+fn lc_to_reg(lc: &LinearConstraint, ctx: &mut Context) -> Option<RegularConstraint> {
     if lc.lhs().len() == 1 {
         if let LinearSummand::Mult(VariableTerm::Len(x), s) = lc.lhs().iter().next().unwrap() {
             // This is a constraint of the form `s|x| # rhs`, we can rewrite this as a regular constraint
@@ -378,7 +375,7 @@ fn lc_to_reg(lc: &LinearConstraint, mngr: &mut NodeManager) -> Option<RegularCon
                 }
                 _ => return None,
             };
-            let builder = mngr.re_builder();
+            let builder = ctx.re_builder();
             let re = match op {
                 ArithOperator::Eq => {
                     if r % s == 0 {

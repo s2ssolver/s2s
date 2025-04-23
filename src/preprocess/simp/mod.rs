@@ -21,7 +21,10 @@ use std::fmt::Debug;
 use elim::EliminateEntailed;
 use indexmap::{IndexMap, IndexSet};
 
-use crate::ast::{get_entailed, Node, NodeKind, NodeManager, VarSubstitution};
+use crate::{
+    ast::{get_entailed, Node, NodeKind, VarSubstitution},
+    context::Context,
+};
 
 /// A rewrite rule that can be applied to a node locally.
 /// It returns a new node if the rule applies, or None if it does not.
@@ -33,7 +36,7 @@ trait EquivalenceRule: Debug {
     ///
     /// Additionally, the simplifier passes the set of currenly asserted nodes to the rule.
     /// The facts are the nodes that must be true for the current node to be true.
-    fn apply(&self, node: &Node, facts: &IndexSet<Node>, mngr: &mut NodeManager) -> Option<Node>;
+    fn apply(&self, node: &Node, facts: &IndexSet<Node>, ctx: &mut Context) -> Option<Node>;
 }
 
 /// A rewrite rule that infers a substitution from the given node, that can be applied globally.
@@ -54,12 +57,12 @@ trait EntailmentRule: Debug {
         node: &Node,
         facts: &IndexSet<Node>,
         pol: bool,
-        mngr: &mut NodeManager,
+        ctx: &mut Context,
     ) -> Option<VarSubstitution>;
 
     /// Initialize the rule with the given node manager and root node of the AST.
     /// This is always called before every call to [apply].
-    fn init(&mut self, _root: &Node, _mngr: &mut NodeManager) {}
+    fn init(&mut self, _root: &Node, _ctx: &mut Context) {}
 }
 
 pub struct SimpResult {
@@ -91,14 +94,14 @@ impl Simplifier {
     /// Apply the simplifier to the given node.
     /// The simplifier performs at most `max_passes` passes over the node.
     /// It returns a [SimpResult] containing the simplified node and the substitutions that have been applied to the root node.
-    pub fn apply(mut self, node: &Node, max_passes: usize, mngr: &mut NodeManager) -> SimpResult {
+    pub fn apply(mut self, node: &Node, max_passes: usize, ctx: &mut Context) -> SimpResult {
         let mut current = node.clone();
 
         let mut last_size = current.size();
         let mut pass = 0;
 
         while pass < max_passes || current.size() < last_size {
-            match self.pass(&current, mngr) {
+            match self.pass(&current, ctx) {
                 Some(rw) => {
                     current = rw;
                 }
@@ -124,7 +127,7 @@ impl Simplifier {
     /// This method applies the rules in the order they were added to the rewriter.
     /// It first applies the rules to the children of the node and then to the node itself.
     /// A single pass calls every rule once for every node in the AST.
-    fn pass(&mut self, node: &Node, mngr: &mut NodeManager) -> Option<Node> {
+    fn pass(&mut self, node: &Node, ctx: &mut Context) -> Option<Node> {
         // First remove all non-entailed occurrences of entailed literals
         // This is neither a EquivalenceRule nor an EntailmentRule, but a simplification step that we do first.
         // If a literal is entailed, then this replaces all other occurrences of the literal with `true`.
@@ -134,11 +137,11 @@ impl Simplifier {
         // Otherwise we might miss some rewrites
         self.rewrite_cache.clear();
 
-        let mut simped_node = lit_eliminator.apply(node, mngr);
+        let mut simped_node = lit_eliminator.apply(node, ctx);
 
         // Apply equivalence rules
         let mut applied = false;
-        simped_node = match self.pass_equivalence(&simped_node, &Vec::new(), mngr) {
+        simped_node = match self.pass_equivalence(&simped_node, &Vec::new(), ctx) {
             Some(rw) => {
                 applied = true;
                 rw
@@ -147,7 +150,7 @@ impl Simplifier {
         };
 
         // Apply entailment rules
-        if let Some(rw) = self.pass_entailment(&simped_node, mngr) {
+        if let Some(rw) = self.pass_entailment(&simped_node, ctx) {
             applied = true;
             simped_node = rw;
         }
@@ -159,12 +162,7 @@ impl Simplifier {
         }
     }
 
-    fn pass_equivalence(
-        &mut self,
-        node: &Node,
-        path: &[&Node],
-        mngr: &mut NodeManager,
-    ) -> Option<Node> {
+    fn pass_equivalence(&mut self, node: &Node, path: &[&Node], ctx: &mut Context) -> Option<Node> {
         if let Some(rw) = self.rewrite_cache.get(node) {
             return Some(rw.clone());
         }
@@ -177,7 +175,7 @@ impl Simplifier {
         path_ch.push(node);
 
         for child in node.children() {
-            match self.pass_equivalence(child, &path_ch, mngr) {
+            match self.pass_equivalence(child, &path_ch, ctx) {
                 Some(new_child) => {
                     applied_children.push(new_child.clone());
                     applied = true;
@@ -188,7 +186,7 @@ impl Simplifier {
 
         // Apply all rules to node
         let mut new_node = if applied {
-            mngr.create_node(node.kind().clone(), applied_children)
+            ctx.ast().create_node(node.kind().clone(), applied_children)
         } else {
             node.clone()
         };
@@ -214,7 +212,7 @@ impl Simplifier {
         // asserted.remove(node);
 
         for rule in self.equiv_rules.iter() {
-            if let Some(rw) = rule.apply(&new_node, &facts, mngr) {
+            if let Some(rw) = rule.apply(&new_node, &facts, ctx) {
                 log::debug!("({:?}) {} ==> {}", rule, new_node, rw);
                 new_node = rw;
                 applied = true;
@@ -230,16 +228,16 @@ impl Simplifier {
         }
     }
 
-    fn pass_entailment(&mut self, node: &Node, mngr: &mut NodeManager) -> Option<Node> {
+    fn pass_entailment(&mut self, node: &Node, ctx: &mut Context) -> Option<Node> {
         fn find_subs(
             rules: &mut [Box<dyn EntailmentRule>],
             node: &Node,
             asserted: &IndexSet<Node>,
             pol: bool,
-            mngr: &mut NodeManager,
+            ctx: &mut Context,
         ) -> Option<VarSubstitution> {
             for rule in rules.iter_mut() {
-                if let Some(sub) = rule.apply(node, asserted, pol, mngr) {
+                if let Some(sub) = rule.apply(node, asserted, pol, ctx) {
                     if !sub.is_identity() && !sub.is_empty() {
                         log::debug!("({:?}) inferred {}", rule, sub);
                         return Some(sub);
@@ -253,7 +251,7 @@ impl Simplifier {
             };
 
             for child in node.children() {
-                if let Some(sub) = find_subs(rules, child, asserted, pol, mngr) {
+                if let Some(sub) = find_subs(rules, child, asserted, pol, ctx) {
                     return Some(sub);
                 }
             }
@@ -265,17 +263,17 @@ impl Simplifier {
         let mut new_node = node.clone();
         // initialize the rules with the current node
         for rule in self.entail_rules.iter_mut() {
-            rule.init(node, mngr);
+            rule.init(node, ctx);
         }
         let mut facts = get_entailed(&new_node);
-        while let Some(sub) = find_subs(&mut self.entail_rules, &new_node, &facts, true, mngr) {
-            new_node = sub.apply(&new_node, mngr);
+        while let Some(sub) = find_subs(&mut self.entail_rules, &new_node, &facts, true, ctx) {
+            new_node = sub.apply(&new_node, ctx);
 
             self.applied_subs.push(sub);
             applied = true;
             // reinitialize the rules with the new node
             for rule in self.entail_rules.iter_mut() {
-                rule.init(&new_node, mngr);
+                rule.init(&new_node, ctx);
             }
             // update the asserted set
             facts = get_entailed(&new_node);

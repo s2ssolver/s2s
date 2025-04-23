@@ -2,8 +2,8 @@
 
 use indexmap::IndexSet;
 
-use crate::ast::{Node, NodeKind, NodeManager, VarSubstitution};
-use crate::context::Sorted;
+use crate::ast::{Node, NodeKind, VarSubstitution};
+use crate::context::{Context, Sorted};
 
 use super::EntailmentRule;
 
@@ -17,7 +17,7 @@ impl EntailmentRule for EntailedBooleanVars {
         node: &Node,
         asserted: &IndexSet<Node>,
         _pol: bool,
-        mngr: &mut NodeManager,
+        ctx: &mut Context,
     ) -> Option<VarSubstitution> {
         // This is only applicable if the node itself is asserted
         if !asserted.contains(node) {
@@ -27,7 +27,7 @@ impl EntailmentRule for EntailedBooleanVars {
         for a in asserted {
             if let NodeKind::Variable(v) = a.kind() {
                 if v.sort().is_bool() && subs.get(v).is_none() {
-                    subs.add(v.clone(), mngr.ttrue());
+                    subs.add(v.clone(), ctx.ast().ttrue());
                     return Some(subs);
                 }
             } else if NodeKind::Not == *node.kind() {
@@ -35,7 +35,7 @@ impl EntailmentRule for EntailedBooleanVars {
                 let child = node.children().first().unwrap();
                 if let NodeKind::Variable(v) = child.kind() {
                     if v.sort().is_bool() && subs.get(v).is_none() {
-                        subs.add(v.clone(), mngr.ffalse());
+                        subs.add(v.clone(), ctx.ast().ffalse());
                         return Some(subs);
                     }
                 }
@@ -61,7 +61,7 @@ impl EntailmentRule for EntailedAssigments {
         node: &Node,
         asserted: &IndexSet<Node>,
         _pol: bool,
-        _: &mut NodeManager,
+        _: &mut Context,
     ) -> Option<VarSubstitution> {
         // This is only applicable if the node itself is asserted
         if !asserted.contains(node) {

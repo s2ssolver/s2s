@@ -418,20 +418,19 @@ mod test {
     use super::*;
 
     use crate::{
-        ast::NodeManager,
-        context::Sort,
+        context::{Context, Sort},
         encode::{domain::DomainEncoder, EncodingResult, ResultSink},
         interval::Interval,
     };
 
     fn solve_with_bounds(re: Regex, pol: bool, ubounds: &[usize]) -> Option<SolverResult> {
-        let mut mngr = NodeManager::default();
-        let var = mngr.temp_var(Sort::String);
+        let mut ctx = Context::default();
+        let var = ctx.temp_var(Sort::String);
 
         let alph = re.alphabet().as_ref().clone();
         let alph = Rc::new(alph);
 
-        let nfa = mngr.get_nfa(&re);
+        let nfa = ctx.get_nfa(&re);
 
         let mut bounds = Domain::default();
 
@@ -478,9 +477,9 @@ mod test {
 
     #[test]
     fn var_in_epsi() {
-        let mut mngr = NodeManager::default();
+        let mut ctx = Context::default();
 
-        let re = mngr.re_builder().epsilon();
+        let re = ctx.re_builder().epsilon();
 
         assert_eq!(
             solve_with_bounds(re, true, &[1]),
@@ -490,9 +489,9 @@ mod test {
 
     #[test]
     fn var_in_none() {
-        let mut mngr = NodeManager::default();
+        let mut ctx = Context::default();
 
-        let re = mngr.re_builder().none();
+        let re = ctx.re_builder().none();
 
         assert_eq!(
             solve_with_bounds(re, true, &[10]),
@@ -502,9 +501,9 @@ mod test {
 
     #[test]
     fn var_in_const_no_concat() {
-        let mut mngr = NodeManager::default();
+        let mut ctx = Context::default();
 
-        let re = mngr.re_builder().to_re("foo".into());
+        let re = ctx.re_builder().to_re("foo".into());
 
         assert_eq!(
             solve_with_bounds(re, true, &[7]),
@@ -514,9 +513,9 @@ mod test {
 
     #[test]
     fn var_in_const_concat() {
-        let mut mngr = NodeManager::default();
+        let mut ctx = Context::default();
 
-        let builder = mngr.re_builder();
+        let builder = ctx.re_builder();
 
         let args = smallvec![builder.to_re("foo".into()), builder.to_re("bar".into())];
         let re = builder.concat(args);
