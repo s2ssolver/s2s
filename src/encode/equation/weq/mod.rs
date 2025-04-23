@@ -8,8 +8,8 @@ pub use ineq::WordInEquationEncoder;
 
 #[cfg(test)]
 mod testutils {
-    use crate::node::{self, NodeKind};
-    use crate::node::{
+    use crate::ast::{self, NodeKind};
+    use crate::ast::{
         canonical::{self, WordEquation},
         NodeManager,
     };
@@ -21,7 +21,7 @@ mod testutils {
         mngr: &mut NodeManager,
     ) -> WordEquation {
         mngr.set_optimize(false);
-        let node = node::testutils::parse_equation(lhs, rhs, mngr);
+        let node = ast::testutils::parse_equation(lhs, rhs, mngr);
         let c = preprocess::canonicalize(&node, mngr);
         match c.kind() {
             NodeKind::Literal(literal) => match literal.atom().kind() {

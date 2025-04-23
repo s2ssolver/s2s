@@ -5,8 +5,9 @@ use rustsat::solvers::Solve;
 use rustsat_cadical::CaDiCaL;
 
 use crate::{
+    ast::canonical::Assignment,
+    context::Variable,
     domain::Domain,
-    node::{canonical::Assignment, Variable},
     sat::{plit, pvar, PVar},
 };
 

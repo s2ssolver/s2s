@@ -3,8 +3,8 @@ use std::{fmt::Display, rc::Rc};
 use indexmap::IndexMap;
 
 use crate::{
+    context::{Sorted, Variable},
     interval::Interval,
-    node::{Sorted, Variable},
 };
 
 /// The Domain of a variable
@@ -215,7 +215,8 @@ impl Display for Domain {
 
 #[cfg(test)]
 mod test {
-    use crate::node::Sort;
+
+    use crate::context::Sort;
 
     use super::*;
 

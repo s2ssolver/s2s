@@ -8,9 +8,9 @@ use std::{
 use rustsat::clause;
 
 use crate::{
+    context::Variable,
     domain::Domain,
     encode::{domain::DomainEncoding, EncodeLiteral, EncodingError, EncodingSink, LAMBDA},
-    node::Variable,
     sat::{nlit, plit, pvar, PVar},
 };
 

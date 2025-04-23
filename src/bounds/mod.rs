@@ -19,14 +19,15 @@ use regular::RegularBoundsInferer;
 use smallvec::smallvec;
 
 use crate::{
-    interval::BoundValue,
-    node::{
+    ast::{
         canonical::{
             ArithOperator, AtomKind, LinearArithTerm, LinearConstraint, LinearSummand, Literal,
             RegularConstraint, VariableTerm, WordEquation,
         },
-        NodeManager, Sorted, Variable,
+        NodeManager,
     },
+    context::{Sorted, Variable},
+    interval::BoundValue,
 };
 
 use crate::interval::Interval;

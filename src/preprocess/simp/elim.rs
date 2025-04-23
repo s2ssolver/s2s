@@ -1,6 +1,7 @@
 use indexmap::IndexSet;
 
-use crate::node::{get_entailed, Node, NodeManager, Sorted};
+use crate::ast::{get_entailed, Node, NodeManager};
+use crate::context::Sorted;
 
 /// Removes all other occurrences of an entailed literals from the formula by replacing them with `true` or `false`.
 /// This is neither a simplification nor a rewrite rule, but an additional preprocessing step.

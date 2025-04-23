@@ -7,10 +7,7 @@ use smt_str::{
     SmtString,
 };
 
-use crate::{
-    interval::Interval,
-    node::{NodeManager, Variable},
-};
+use crate::{ast::NodeManager, context::Variable, interval::Interval};
 
 use super::{Bounds, InferringStrategy};
 
@@ -244,7 +241,7 @@ impl InferringStrategy for RegularBoundsInferer {
 
 #[cfg(test)]
 mod tests {
-    use crate::node::Sort;
+    use crate::context::Sort;
 
     use super::*;
 

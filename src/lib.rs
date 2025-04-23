@@ -18,11 +18,12 @@ mod interval;
 mod encode;
 mod error;
 
+pub mod ast;
 mod engine;
-pub mod node;
 mod preprocess;
 mod sat;
 
+pub(crate) mod context;
 pub mod smt;
 mod solver;
 
@@ -30,8 +31,8 @@ use std::{io::BufRead, time::Instant};
 
 pub use error::PublicError as Error;
 
+use ast::NodeManager;
 pub use engine::Engine as Blastr;
-use node::NodeManager;
 use smt::{Interpreter, Script};
 pub use solver::{SolverAnswer, SolverOptions};
 

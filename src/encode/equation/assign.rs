@@ -8,9 +8,9 @@ use rustsat::types::Clause;
 use smt_str::SmtString;
 
 use crate::{
+    context::Variable,
     domain::Domain,
     encode::{domain::DomainEncoding, EncodeLiteral, EncodingError, EncodingSink, LAMBDA},
-    node::Variable,
     sat::{nlit, plit, pvar},
 };
 

@@ -1,6 +1,6 @@
 use std::fmt::Display;
 
-use crate::node::{NodeKind, Sorted};
+use crate::{ast::NodeKind, context::Sorted};
 
 use super::*;
 

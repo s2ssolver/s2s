@@ -1,5 +1,5 @@
 use super::*;
-use crate::node::{Node, NodeKind, NodeManager};
+use crate::ast::{Node, NodeKind, NodeManager};
 
 /// Rewrites `substr(w, s, l)` to `w[s:s+l]` if w is a constant strings and s and l are constant integers.
 #[derive(Debug, Clone, Copy)]

@@ -8,7 +8,7 @@ use super::word::WordSetEncoding;
 use crate::{
     domain::Domain,
     encode::{domain::DomainEncoding, EncodeLiteral, EncodingError, EncodingSink},
-    node::canonical::{Pattern, Symbol, WordEquation},
+    ast::canonical::{Pattern, Symbol, WordEquation},
 };
 
 pub struct WordEquationEncoder {
@@ -160,7 +160,7 @@ mod tests {
             ResultSink,
         },
         interval::Interval,
-        node::{
+        ast::{
             canonical::{Assignment, WordEquation},
             NodeManager,
         },

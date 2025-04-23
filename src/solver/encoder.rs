@@ -9,7 +9,7 @@ use crate::{
         domain::{DomainEncoder, DomainEncoding},
         get_encoder, EncodeLiteral, EncodingError, EncodingResult, EncodingSink, LiteralEncoder,
     },
-    node::{
+    ast::{
         canonical::{AssignedValue, Assignment, Literal},
         NodeManager,
     },

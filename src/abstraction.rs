@@ -7,7 +7,7 @@ use indexmap::IndexMap;
 use rustsat::types::Lit;
 
 use crate::{
-    node::{
+    ast::{
         canonical::{Atom, Literal},
         error::NodeError,
         Node, NodeKind,

@@ -27,7 +27,7 @@ pub fn reverse(node: &Node, mngr: &mut NodeManager) -> Node {
 
 #[cfg(test)]
 mod test {
-    use crate::node::{testutils::parse_pattern, NodeManager};
+    use crate::ast::{testutils::parse_pattern, NodeManager};
 
     #[test]
     fn revers_concat() {

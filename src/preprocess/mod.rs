@@ -10,7 +10,7 @@ mod simp;
 use std::time::Instant;
 
 use crate::{
-    node::{error::NodeError, normal::to_nnf, Node, NodeManager, VarSubstitution},
+    ast::{error::NodeError, normal::to_nnf, Node, NodeManager, VarSubstitution},
     SolverOptions,
 };
 pub use canonicalize::canonicalize;

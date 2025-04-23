@@ -7,12 +7,10 @@ use rustsat_cadical::CaDiCaL;
 use smt_str::SmtString;
 
 use crate::{
+    ast::canonical::{Pattern, Symbol},
+    context::Variable,
     domain::Domain,
     encode::{domain::DomainEncoding, EncodingSink, LAMBDA},
-    node::{
-        canonical::{Pattern, Symbol},
-        Variable,
-    },
     sat::{nlit, plit, pvar, PVar},
 };
 

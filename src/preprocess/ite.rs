@@ -4,7 +4,8 @@ use std::rc::Rc;
 
 use indexmap::IndexMap;
 
-use crate::node::{Node, NodeKind, NodeManager, Sorted, Variable};
+use crate::ast::{Node, NodeKind, NodeManager};
+use crate::context::{Sorted, Variable};
 
 #[derive(Default)]
 pub struct ITEHandler {
@@ -158,7 +159,7 @@ impl ITEHandler {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::node::NodeKind;
+    use crate::ast::NodeKind;
 
     fn setup() -> NodeManager {
         NodeManager::default()

@@ -1,6 +1,6 @@
 use indexmap::IndexSet;
 
-use crate::node::{Node, NodeKind, NodeManager};
+use crate::ast::{Node, NodeKind, NodeManager};
 
 use super::EquivalenceRule;
 
@@ -276,7 +276,7 @@ impl EquivalenceRule for EqualityTrivial {
 #[cfg(test)]
 mod tests {
 
-    use crate::node::Sort;
+    use crate::context::Sort;
 
     use super::*;
 

@@ -4,8 +4,9 @@ use std::{collections::VecDeque, rc::Rc};
 
 use indexmap::IndexSet;
 
+use crate::context::{Sorted, Variable};
 use crate::{
-    node::{Node, NodeKind, NodeManager, Sorted, VarSubstitution, Variable},
+    ast::{Node, NodeKind, NodeManager, VarSubstitution},
     SolverOptions,
 };
 

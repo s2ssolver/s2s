@@ -2,7 +2,7 @@ mod nfa;
 
 pub use nfa::NFAEncoder;
 
-use crate::node::{canonical::RegularConstraint, NodeManager};
+use crate::ast::{canonical::RegularConstraint, NodeManager};
 
 pub fn build_inre_encoder(
     inre: &RegularConstraint,

@@ -2,7 +2,7 @@ use std::fmt::Display;
 
 use crate::{
     domain::Domain,
-    node::{
+    ast::{
         canonical::{AtomKind, Literal, RegularConstraint},
         NodeManager,
     },

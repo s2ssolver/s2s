@@ -8,8 +8,9 @@ use itertools::Itertools;
 
 use crate::{
     abstraction::LitDefinition,
+    ast::{canonical::Literal, Node, NodeKind, NodeManager},
+    context::Sorted,
     interval::{BoundValue, Interval},
-    node::{canonical::Literal, Node, NodeKind, NodeManager, Sorted},
 };
 
 use crate::bounds::{BoundInferer, Bounds};

@@ -1,6 +1,6 @@
 use crate::{
     engine::Engine,
-    node::{Node, NodeManager},
+    ast::{Node, NodeManager},
     smt::{Command, Script, ToSmt},
     Error, SolverAnswer, SolverOptions,
 };

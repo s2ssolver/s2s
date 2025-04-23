@@ -5,13 +5,14 @@ use rustsat_cadical::CaDiCaL;
 
 use super::DomainEncoding;
 
+use crate::context::{Sort, Sorted, Variable};
 use crate::domain::Domain;
 use crate::encode::EncodingSink;
 use crate::interval::Interval;
 use crate::sat::{plit, PVar};
 use crate::{
+    ast::canonical::Assignment,
     encode::{card::IncrementalEO, EncodingResult},
-    node::{canonical::Assignment, Sort, Sorted, Variable},
     sat::pvar,
 };
 use rustsat::solvers::Solve;

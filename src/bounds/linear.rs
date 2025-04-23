@@ -5,13 +5,11 @@ use std::rc::Rc;
 use indexmap::{IndexMap, IndexSet};
 
 use crate::{
-    interval::{BoundValue, Interval},
-    node::{
-        canonical::{
-            ArithOperator, LinearArithTerm, LinearConstraint, LinearSummand, Symbol, WordEquation,
-        },
-        Sorted, Variable,
+    ast::canonical::{
+        ArithOperator, LinearArithTerm, LinearConstraint, LinearSummand, Symbol, WordEquation,
     },
+    context::{Sorted, Variable},
+    interval::{BoundValue, Interval},
 };
 
 use super::{Bounds, InferringStrategy};

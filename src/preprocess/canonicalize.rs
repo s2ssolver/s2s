@@ -1,13 +1,14 @@
 //! Conversion of nodes into canonical form.
 //! TODO: This needs major refactoring.
 
-use crate::node::{
+use crate::ast::{
     canonical::{
         ArithOperator, Atom, AtomKind, LinearArithTerm, LinearConstraint, LinearSummand, Literal,
         Pattern, RegularConstraint, RegularFactorConstraint, Symbol, WordEquation,
     },
-    Node, NodeKind, NodeManager, Sort, Sorted, Variable,
+    Node, NodeKind, NodeManager,
 };
+use crate::context::{Sort, Sorted, Variable};
 
 use indexmap::IndexMap;
 

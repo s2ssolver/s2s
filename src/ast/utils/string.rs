@@ -2,7 +2,7 @@ use std::{fmt::Display, rc::Rc};
 
 use smt_str::{SmtChar, SmtString};
 
-use crate::node::{Node, NodeKind, NodeManager, Sorted, Variable};
+use crate::ast::{Node, NodeKind, NodeManager, Sorted, Variable};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Symbol {
@@ -243,7 +243,7 @@ pub fn const_suffix(node: &Node) -> Option<SmtString> {
 
 #[cfg(test)]
 mod tests {
-    use crate::node::{NodeManager, Sort};
+    use crate::ast::{NodeManager, Sort};
 
     use super::*;
 

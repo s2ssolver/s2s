@@ -14,7 +14,7 @@ use rustsat_cadical::CaDiCaL;
 pub use string::StringDomain;
 use string::StringDomainEncoder;
 
-use crate::{alphabet::Alphabet, domain::Domain, node::canonical::Assignment};
+use crate::{alphabet::Alphabet, domain::Domain, ast::canonical::Assignment};
 
 use super::EncodingSink;
 

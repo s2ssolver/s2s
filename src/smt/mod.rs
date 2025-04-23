@@ -19,7 +19,8 @@ pub use script::*;
 pub use interpret::Interpreter;
 use smt2parser::concrete::SyntaxBuilder;
 
-use crate::node::{Node, NodeKind, NodeManager, Sort, Sorted, VarSubstitution};
+use crate::ast::{Node, NodeKind, NodeManager, VarSubstitution};
+use crate::context::{Sort, Sorted};
 
 pub fn parse_script(
     smt: impl std::io::BufRead,

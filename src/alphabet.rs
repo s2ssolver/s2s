@@ -3,9 +3,12 @@ use std::rc::Rc;
 use indexmap::IndexSet;
 use smt_str::SmtChar;
 
-use crate::node::{
-    canonical::{util::partition_by_vars, AtomKind, Literal},
-    get_literals, Node, Sorted,
+use crate::{
+    ast::{
+        canonical::{util::partition_by_vars, AtomKind, Literal},
+        get_literals, Node,
+    },
+    context::Sorted,
 };
 
 pub use smt_str::alphabet::Alphabet;
@@ -148,7 +151,8 @@ mod tests {
 
     use super::*;
     use crate::{
-        node::{Node, NodeKind, NodeManager, Sort},
+        ast::{Node, NodeKind, NodeManager},
+        context::Sort,
         preprocess::canonicalize,
     };
 

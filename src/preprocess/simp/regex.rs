@@ -1,6 +1,6 @@
 use smt_str::re::{deriv::DerivativeBuilder, ReOp};
 
-use crate::node::{
+use crate::ast::{
     utils::{reverse, PatternIterator, Symbol},
     Node, NodeKind, NodeManager,
 };

@@ -1,8 +1,11 @@
 use smt_str::{SmtChar, SmtString};
 
-use crate::node::{
-    utils::{reverse, PatternIterator, Symbol},
-    NodeKind, Sorted,
+use crate::{
+    ast::{
+        utils::{reverse, PatternIterator, Symbol},
+        NodeKind,
+    },
+    context::Sorted,
 };
 
 use super::*;
@@ -95,7 +98,7 @@ mod tests {
     use indexmap::indexset;
 
     use super::*;
-    use crate::node::testutils::parse_equation;
+    use crate::ast::testutils::parse_equation;
 
     #[test]
     fn test_levis_reducible_left_char() {

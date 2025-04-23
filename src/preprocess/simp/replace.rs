@@ -1,5 +1,5 @@
 use super::*;
-use crate::node::{Node, NodeKind, NodeManager};
+use crate::ast::{Node, NodeKind, NodeManager};
 
 /// Idempency of replacement operation.
 /// - `replace(x, y, y) = x`

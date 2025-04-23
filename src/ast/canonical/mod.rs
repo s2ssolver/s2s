@@ -6,7 +6,7 @@ use std::{
 
 use indexmap::IndexSet;
 
-use crate::node::Variable;
+use crate::context::Variable;
 
 mod assignment;
 

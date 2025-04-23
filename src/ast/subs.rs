@@ -5,7 +5,9 @@ use std::{
 
 use indexmap::IndexMap;
 
-use super::{canonical::Assignment, Node, NodeKind, NodeManager, Variable};
+use crate::context::Variable;
+
+use super::{canonical::Assignment, Node, NodeKind, NodeManager};
 
 /// A substitution that maps nodes to other nodes.
 ///
@@ -146,7 +148,7 @@ impl Display for VarSubstitution {
 #[cfg(test)]
 mod tests {
 
-    use crate::node::Sort;
+    use crate::context::Sort;
 
     use super::*;
 

@@ -2,7 +2,8 @@
 
 use indexmap::IndexSet;
 
-use crate::node::{Node, NodeKind, NodeManager, Sorted, VarSubstitution};
+use crate::ast::{Node, NodeKind, NodeManager, VarSubstitution};
+use crate::context::Sorted;
 
 use super::EntailmentRule;
 

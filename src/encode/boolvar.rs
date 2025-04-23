@@ -3,8 +3,8 @@ use std::rc::Rc;
 use rustsat::instances::Cnf;
 
 use crate::{
+    context::{Sorted, Variable},
     domain::Domain,
-    node::{Sorted, Variable},
     sat::{nlit, plit},
 };
 

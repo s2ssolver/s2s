@@ -1,12 +1,10 @@
 use std::rc::Rc;
 
-use crate::node::error::NodeError;
-use crate::node::Node;
-use crate::node::NodeKind;
-use crate::node::NodeManager;
-use crate::node::Sort;
-use crate::node::Sorted;
-use crate::node::Variable;
+use crate::ast::error::NodeError;
+use crate::ast::Node;
+use crate::ast::NodeKind;
+use crate::ast::NodeManager;
+use crate::context::{Sort, Sorted, Variable};
 use num_bigint::BigUint;
 use num_traits::cast::ToPrimitive;
 
@@ -525,7 +523,7 @@ mod tests {
     use smt2parser::concrete::SyntaxBuilder;
     use smt_str::SmtString;
 
-    use crate::{node::NodeManager, smt::Script};
+    use crate::{ast::NodeManager, smt::Script};
 
     use super::*;
 

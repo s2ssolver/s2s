@@ -2,7 +2,7 @@ use smallvec::smallvec;
 use smt_str::re::Regex;
 
 use super::*;
-use crate::node::{Node, NodeKind, NodeManager};
+use crate::ast::{Node, NodeKind, NodeManager};
 
 /// Folds `to_int(s)` where `s` is a constant string to an integer constant.
 #[derive(Debug, Clone, Copy)]
@@ -142,7 +142,8 @@ mod tests {
     use indexmap::IndexSet;
 
     use crate::{
-        node::{NodeManager, Sort},
+        ast::NodeManager,
+        context::Sort,
         preprocess::simp::{str_int::VarEqConstantToInt, EquivalenceRule},
     };
 

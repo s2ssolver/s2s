@@ -4,7 +4,8 @@ use std::{
 };
 
 use crate::{
-    node::{Node, Sorted, Variable},
+    ast::Node,
+    context::{Sorted, Variable},
     smt::escapce_smt_identifier_name,
 };
 

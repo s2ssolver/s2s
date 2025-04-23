@@ -1,8 +1,9 @@
 use std::rc::Rc;
 
 use crate::{
+    ast::{Node, NodeKind, NodeManager, VarSubstitution},
+    context::{Sorted, Variable},
     interval::{BoundValue, Interval},
-    node::{Node, NodeKind, NodeManager, Sorted, VarSubstitution, Variable},
 };
 
 use super::{

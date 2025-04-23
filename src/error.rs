@@ -1,6 +1,6 @@
 use thiserror::Error;
 
-use crate::{encode::EncodingError, node::error::NodeError, smt::AstError};
+use crate::{ast::error::NodeError, encode::EncodingError, smt::AstError};
 
 #[derive(Error, Debug)]
 #[error(transparent)]

@@ -1,7 +1,7 @@
 use indexmap::IndexSet;
 use itertools::Itertools;
 
-use crate::node::{
+use crate::ast::{
     utils::{reverse, PatternIterator},
     Node, NodeKind, NodeManager,
 };

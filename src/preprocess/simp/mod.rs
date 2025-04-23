@@ -21,7 +21,7 @@ use std::fmt::Debug;
 use elim::EliminateEntailed;
 use indexmap::{IndexMap, IndexSet};
 
-use crate::node::{get_entailed, Node, NodeKind, NodeManager, VarSubstitution};
+use crate::ast::{get_entailed, Node, NodeKind, NodeManager, VarSubstitution};
 
 /// A rewrite rule that can be applied to a node locally.
 /// It returns a new node if the rule applies, or None if it does not.

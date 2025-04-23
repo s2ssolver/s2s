@@ -3,12 +3,10 @@ use std::{cell::RefCell, collections::VecDeque, hash::Hash, rc::Rc};
 use indexmap::{IndexMap, IndexSet};
 use rustsat::types::Clause;
 
+use crate::context::*;
 use crate::{
+    ast::canonical::{ArithOperator, LinearConstraint, LinearSummand},
     domain::Domain,
-    node::{
-        canonical::{ArithOperator, LinearConstraint, LinearSummand},
-        Sorted,
-    },
     sat::{nlit, plit, pvar, PVar},
 };
 

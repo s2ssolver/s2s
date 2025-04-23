@@ -2,11 +2,12 @@ use core::panic;
 use std::{rc::Rc, time::Instant};
 
 use crate::{
-    domain::Domain,
-    node::{
+    ast::{
         canonical::{Assignment, AtomKind, Literal},
-        Sort, VarSubstitution,
+        VarSubstitution,
     },
+    context::Sort,
+    domain::Domain,
 };
 use encoder::DefintionEncoder;
 
@@ -25,7 +26,7 @@ use rustsat_cadical::CaDiCaL;
 use crate::{
     abstraction::LitDefinition,
     alphabet::Alphabet,
-    node::{Node, NodeManager},
+    ast::{Node, NodeManager},
     sat::{to_cnf, PFormula},
 };
 

@@ -1,7 +1,12 @@
+use std::rc::Rc;
+
 use super::*;
-use crate::node::{
-    utils::{reverse, PatternIterator, Symbol},
-    Node, NodeKind, NodeManager, Sorted,
+use crate::{
+    ast::{
+        utils::{reverse, PatternIterator, Symbol},
+        Node, NodeKind, NodeManager,
+    },
+    context::{Sorted, Variable},
 };
 use indexmap::IndexMap;
 use num_integer::Integer;
@@ -115,7 +120,7 @@ impl EquivalenceRule for LengthReasoning {
             let lhs_iter = PatternIterator::new(lhs);
             let rhs_iter = PatternIterator::new(rhs);
 
-            let mut coeffs: IndexMap<std::rc::Rc<crate::node::Variable>, i32> = IndexMap::new();
+            let mut coeffs: IndexMap<Rc<Variable>, i32> = IndexMap::new();
             let mut r: i32 = 0;
 
             for s in lhs_iter {
@@ -279,7 +284,7 @@ fn last_char(node: &Node) -> Option<SmtChar> {
 
 #[cfg(test)]
 mod tests {
-    use crate::node::testutils::parse_equation;
+    use crate::ast::testutils::parse_equation;
 
     use super::*;
 

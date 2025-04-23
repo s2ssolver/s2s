@@ -12,9 +12,9 @@ use rustsat::{clause, instances::Cnf, types::Clause};
 use smt_str::automata::{StateId, StateNotFound, TransitionType, NFA};
 
 use crate::{
+    context::Variable,
     domain::Domain,
     encode::{domain::DomainEncoding, EncodeLiteral, EncodingError, EncodingSink, LAMBDA},
-    node::Variable,
     sat::{nlit, plit, pvar, PVar},
 };
 
@@ -418,9 +418,10 @@ mod test {
     use super::*;
 
     use crate::{
+        ast::NodeManager,
+        context::Sort,
         encode::{domain::DomainEncoder, EncodingResult, ResultSink},
         interval::Interval,
-        node::{NodeManager, Sort},
     };
 
     fn solve_with_bounds(re: Regex, pol: bool, ubounds: &[usize]) -> Option<SolverResult> {

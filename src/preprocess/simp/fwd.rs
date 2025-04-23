@@ -2,7 +2,7 @@ use indexmap::IndexSet;
 
 use crate::{
     interval::Interval,
-    node::{Node, NodeKind, NodeManager},
+    ast::{Node, NodeKind, NodeManager},
     preprocess::simp::int::{normalize_ineq, LinearIntRealtion},
 };
 

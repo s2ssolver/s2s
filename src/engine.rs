@@ -4,10 +4,7 @@ use smt_str::re::{ReOp, Regex};
 use crate::{
     abstraction::{build_abstraction, LitDefinition},
     alphabet,
-    bounds::{BoundInferer, InferringStrategy, LinearRefiner},
-    domain::Domain,
-    interval::Interval,
-    node::{
+    ast::{
         canonical::{
             ArithOperator, Assignment, AtomKind, LinearArithTerm, LinearConstraint, Literal,
             WordEquation,
@@ -15,8 +12,12 @@ use crate::{
         get_entailed_literals,
         normal::to_nnf,
         smt::to_script,
-        Node, NodeKind, NodeManager, Sort, Sorted, VarSubstitution,
+        Node, NodeKind, NodeManager, VarSubstitution,
     },
+    bounds::{BoundInferer, InferringStrategy, LinearRefiner},
+    context::{Sort, Sorted},
+    domain::Domain,
+    interval::Interval,
     preprocess::{canonicalize, Preprocessor},
     solver::Solver,
     SolverAnswer, SolverOptions,

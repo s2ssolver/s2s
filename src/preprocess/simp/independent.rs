@@ -4,7 +4,8 @@ use std::rc::Rc;
 
 use smt_str::{re::Regex, sampling::sample_regex};
 
-use crate::node::{NodeKind, Variable};
+use crate::ast::NodeKind;
+use crate::context::Variable;
 
 use super::*;
 

@@ -11,7 +11,7 @@ use crate::{
         card::IncrementalALO, domain::DomainEncoding, EncodeLiteral, EncodingError, EncodingResult,
         EncodingSink, LAMBDA,
     },
-    node::canonical::{Pattern, Symbol, WordEquation},
+    ast::canonical::{Pattern, Symbol, WordEquation},
     sat::{nlit, pvar},
 };
 
@@ -191,7 +191,7 @@ mod tests {
             ResultSink,
         },
         interval::Interval,
-        node::{
+        ast::{
             canonical::{Assignment, WordEquation},
             NodeManager,
         },

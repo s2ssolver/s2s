@@ -8,10 +8,8 @@ use smt_str::{
     SmtString,
 };
 
-use super::{
-    canonical::{Atom, AtomKind, Literal},
-    Sort, Sorted, Variable,
-};
+use super::canonical::{Atom, AtomKind, Literal};
+use crate::context::{Sort, Sorted, Variable};
 
 use super::{error::NodeError, Node, NodeKind, OwnedNode};
 

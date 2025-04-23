@@ -8,7 +8,8 @@ use indexmap::IndexSet;
 use smt_str::re::Regex;
 use smt_str::{SmtChar, SmtString};
 
-use crate::node::{NodeManager, Sort, Sorted, Variable};
+use crate::ast::NodeManager;
+use crate::context::{Sort, Sorted, Variable};
 use smallvec::smallvec;
 
 /// Represents a pattern symbol, which can be either a constant word or a variable.

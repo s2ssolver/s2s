@@ -112,7 +112,7 @@ pub fn to_nnf(node: &Node, mngr: &mut NodeManager) -> Node {
 #[cfg(test)]
 mod tests {
 
-    use crate::node::Sort;
+    use crate::context::Sort;
 
     use super::*;
 

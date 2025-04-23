@@ -5,7 +5,7 @@ use smt_str::{
     SmtChar,
 };
 
-use crate::node::{Node, NodeKind, NodeManager};
+use crate::ast::{Node, NodeKind, NodeManager};
 
 use super::complements::ReCompRemover;
 
@@ -240,7 +240,7 @@ mod test {
     use smt_str::{alphabet::CharRange, SmtChar};
 
     use crate::{
-        node::{
+        ast::{
             testutils::{parse_equation, parse_pattern},
             NodeManager,
         },

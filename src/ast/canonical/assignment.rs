@@ -5,7 +5,10 @@ use std::{fmt::Display, rc::Rc};
 use indexmap::IndexMap;
 use smt_str::SmtString;
 
-use crate::node::{Node, NodeKind, Sort, Sorted, VarSubstitution, Variable};
+use crate::{
+    ast::{Node, NodeKind, VarSubstitution},
+    context::{Sort, Sorted, Variable},
+};
 
 use super::{
     ArithOperator, Atom, AtomKind, FactorConstraintType, LinearArithTerm, LinearConstraint,

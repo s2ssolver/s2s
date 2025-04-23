@@ -11,12 +11,13 @@ use smt_str::{SmtChar, SmtString};
 use crate::encode::EncodingSink;
 use crate::{
     alphabet::Alphabet,
+    ast::canonical::Assignment,
+    context::{Sort, Sorted, Variable},
     domain::Domain,
     encode::{
         card::{exactly_one, IncrementalEO},
         EncodingResult, LAMBDA,
     },
-    node::{canonical::Assignment, Sort, Sorted, Variable},
     sat::{nlit, plit, pvar, PVar},
 };
 
@@ -323,10 +324,11 @@ mod tests {
 
     use crate::{
         alphabet::Alphabet,
+        ast::NodeManager,
+        context::Sort,
         domain::Domain,
         encode::{domain::DomainEncoding, ResultSink, LAMBDA},
         interval::Interval,
-        node::{NodeManager, Sort},
     };
     use rustsat::solvers::Solve;
 
