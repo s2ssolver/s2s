@@ -33,6 +33,7 @@ pub use error::PublicError as Error;
 pub use engine::Engine as Blastr;
 use node::NodeManager;
 use smt::{Interpreter, Script};
+pub use solver::BoundStep;
 pub use solver::{SolverAnswer, SolverOptions};
 
 /// Solves an SMT problem over the theory of strings.

@@ -2,7 +2,7 @@ use std::{path::Path, process::exit, time::Instant};
 
 use clap::Parser as ClapParser;
 
-use blastr::{solve_smt, SolverOptions};
+use blastr::{solve_smt, BoundStep, SolverOptions};
 
 /// The command line interface for the solver
 #[derive(ClapParser, Debug)]
@@ -31,6 +31,14 @@ struct Args {
     /// The minimal initial variable bound to start the search with
     #[arg(long, short = 'b')]
     init_bound: Option<i32>,
+
+    /// The step size. Must be one of the following:
+    ///
+    /// - `+<C>` where <C> is a positive integer: Relaxes bounds with constant <C>
+    /// - `square`: Jumps to next perfect square
+    /// - `double`: Doubles the bounds
+    #[arg(long)]
+    step: Option<String>,
 
     /// If set, returns `unsat` instead of `unknown` if the maximum bound set by `max_bound` is reached
     #[arg(long)]
@@ -93,6 +101,16 @@ fn convert_options(options: &Args) -> SolverOptions {
     if options.unsat_on_max_bound {
         opts.unsat_on_max_bound = true;
     }
+    if let Some(bs) = &options.step {
+        let step = match parse_step(&bs) {
+            Some(step) => step,
+            None => {
+                log::warn!("Invalid bound step: {}. Falling back to default", bs);
+                BoundStep::default()
+            }
+        };
+        opts.step = step;
+    }
     if let Some(b) = options.init_bound {
         opts.init_upper_bound = b;
     }
@@ -103,4 +121,21 @@ fn convert_options(options: &Args) -> SolverOptions {
         opts.get_model = true;
     }
     opts
+}
+
+fn parse_step(f: &str) -> Option<BoundStep> {
+    if f.starts_with("+") {
+        match usize::from_str_radix(&f.chars().skip(1).collect::<String>(), 10) {
+            Ok(offset) => Some(BoundStep::ConstantOffset(offset)),
+            Err(_) => None,
+        }
+    } else {
+        if f == "square" {
+            Some(BoundStep::NextSquare)
+        } else if f == "double" {
+            Some(BoundStep::Double)
+        } else {
+            None
+        }
+    }
 }

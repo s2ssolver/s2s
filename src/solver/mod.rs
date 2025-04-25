@@ -1,3 +1,7 @@
+mod encoder;
+mod options;
+mod refine;
+
 use core::panic;
 use std::{rc::Rc, time::Instant};
 
@@ -15,6 +19,7 @@ use itertools::Itertools;
 
 pub use options::SolverOptions;
 use refine::BoundRefiner;
+pub use refine::BoundStep;
 use rustsat::types::Lit;
 use rustsat::{
     encodings::CollectClauses,
@@ -30,10 +35,6 @@ use crate::{
 };
 
 use crate::error::PublicError as Error;
-
-mod encoder;
-mod options;
-mod refine;
 
 /// The result of a satisfiability check.
 /// Can be either of
