@@ -53,11 +53,12 @@ impl Preprocessor {
         // ensure we are still in NNF
         new_root = to_nnf(&new_root, mngr);
 
-        let t = Instant::now();
-        let mut compressor = RangeCompressor::default();
-        new_root = compressor.compress(&new_root, mngr);
-        log::debug!("Compressed formula in {:?}", t.elapsed());
-        log::debug!("Compressed formula: {}", new_root);
+        if self.options.compress {
+            let t = Instant::now();
+            new_root = self.range_compression(&new_root, mngr);
+            log::debug!("Compressed formula in {:?}", t.elapsed());
+            log::debug!("Compressed formula: {}", new_root);
+        }
 
         Ok(new_root)
     }
@@ -83,6 +84,11 @@ impl Preprocessor {
         }
 
         guessed.node
+    }
+
+    fn range_compression(&mut self, root: &Node, mngr: &mut NodeManager) -> Node {
+        let mut compressor = RangeCompressor::default();
+        compressor.compress(&root, mngr)
     }
 
     pub fn applied_substitutions(&self) -> &VarSubstitution {

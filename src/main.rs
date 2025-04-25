@@ -16,6 +16,10 @@ struct Args {
     #[arg(long)]
     skip_guessing: bool,
 
+    /// Skip the compression of char ranges in regular expressions
+    #[arg(long)]
+    skip_compression: bool,
+
     /// If this is set to true, the solver will not actually solve the instance, but terminate after preprocessing.
     #[arg(long)]
     dry: bool,
@@ -82,6 +86,9 @@ fn convert_options(options: &Args) -> SolverOptions {
     }
     if options.skip_guessing {
         opts.guess_bools = false;
+    }
+    if options.skip_compression {
+        opts.compress = false;
     }
     if options.unsat_on_max_bound {
         opts.unsat_on_max_bound = true;
