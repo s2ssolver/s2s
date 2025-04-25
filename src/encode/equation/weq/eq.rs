@@ -270,7 +270,7 @@ mod tests {
     #[test]
     fn empty_eq() {
         let mut ctx = Context::default();
-        ctx.ast().set_optimize(false);
+        ctx.ast().set_simplify(false);
         let eq = parse_simple_equation("", "", &mut ctx);
         assert_sat(&eq, &[1], &mut ctx)
     }
@@ -278,7 +278,7 @@ mod tests {
     #[test]
     fn const_equality_sat() {
         let mut ctx = Context::default();
-        ctx.ast().set_optimize(false);
+        ctx.ast().set_simplify(false);
         let eq = parse_simple_equation("foo", "foo", &mut ctx);
         assert_sat(&eq, &[1], &mut ctx);
     }

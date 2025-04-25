@@ -14,10 +14,9 @@ mod testutils {
     use crate::context::Context;
     use crate::ir::{Atom, Pattern};
     use crate::ir::{Symbol, WordEquation};
-    use crate::preprocess;
 
     pub(crate) fn parse_simple_equation(lhs: &str, rhs: &str, ctx: &mut Context) -> WordEquation {
-        ctx.ast().set_optimize(false);
+        ctx.ast().set_simplify(false);
         let node = ast::testutils::parse_equation(lhs, rhs, ctx);
         if let Atom::WordEquation(weq) = ctx.to_ir(&node).unwrap().atom().as_ref() {
             weq.clone()

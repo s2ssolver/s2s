@@ -176,7 +176,7 @@ impl AstBuilder {
 
     /// Set the optimization flag
     #[cfg(test)]
-    pub(crate) fn set_optimize(&mut self, optimize: bool) {
+    pub(crate) fn set_simplify(&mut self, optimize: bool) {
         self.simplify = optimize;
     }
 

@@ -286,6 +286,7 @@ mod tests {
     #[test]
     fn test_strip_common_prefix_with_constants() {
         let mut ctx = Context::default();
+        ctx.ast().set_simplify(false);
 
         let equation = parse_equation("abx", "aby", &mut ctx);
         let result = StripLCP.apply(&equation, &IndexSet::new(), &mut ctx);

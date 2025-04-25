@@ -198,7 +198,7 @@ mod tests {
     #[test]
     fn test_to_bnf_nested() {
         let mut ctx = Context::default();
-        ctx.ast().set_optimize(false);
+        ctx.ast().set_simplify(false);
 
         let va = ctx.temp_var(Sort::Bool);
         let vb = ctx.temp_var(Sort::Bool);
