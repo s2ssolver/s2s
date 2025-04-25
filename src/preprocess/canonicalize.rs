@@ -135,16 +135,18 @@ impl Canonicalizer {
 
         if *node.kind() == NodeKind::Not {
             let atom = node.children().first().unwrap();
-            let catom = self.canonicalize_atom(atom, ctx)?;
+            let atom_canonical = self.canonicalize_atom(atom, ctx)?;
 
             match atom.kind() {
-                NodeKind::Contains | NodeKind::PrefixOf | NodeKind::SuffixOf
-                    if !ctx.to_ir(&catom).is_some() =>
-                {
-                    // Unsupported: These introduce universal quantifiers when negated
-                    return None;
+                NodeKind::Contains | NodeKind::PrefixOf | NodeKind::SuffixOf => {
+                    if let NodeKind::Eq = atom_canonical.kind() {
+                        // Unsupported: These introduce universal quantifiers when negated
+                        None
+                    } else {
+                        Some(ctx.ast().not(atom_canonical))
+                    }
                 }
-                _ => Some(ctx.ast().not(catom)),
+                _ => Some(ctx.ast().not(atom_canonical)),
             }
         } else {
             let catom = self.canonicalize_atom(node, ctx)?;
@@ -215,7 +217,7 @@ impl Canonicalizer {
                 self.define_with_var(of, ctx)
             };
             let v = ctx.ast().variable(v);
-            Some(ctx.ast().prefix_of(v, prefix.clone()))
+            Some(ctx.ast().prefix_of(prefix.clone(), v))
         } else {
             // Otherwise, rewrite as a word equation: There exists some t, u such that  r = t ++ s ++ u
             let t = ctx.temp_var(Sort::String);
@@ -242,7 +244,7 @@ impl Canonicalizer {
                 self.define_with_var(of, ctx)
             };
             let v = ctx.ast().variable(v);
-            Some(ctx.ast().suffix_of(v, suffix.clone()))
+            Some(ctx.ast().suffix_of(suffix.clone(), v))
         } else {
             // Otherwise, rewrite as a word equation: There exists some  u such that  r = t ++ suffix
             let t = ctx.temp_var(Sort::String);

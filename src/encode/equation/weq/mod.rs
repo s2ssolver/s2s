@@ -19,8 +19,7 @@ mod testutils {
     pub(crate) fn parse_simple_equation(lhs: &str, rhs: &str, ctx: &mut Context) -> WordEquation {
         ctx.ast().set_optimize(false);
         let node = ast::testutils::parse_equation(lhs, rhs, ctx);
-        let c = preprocess::canonicalize(&node, ctx);
-        if let Atom::WordEquation(weq) = ctx.to_ir(&c).unwrap().atom().as_ref() {
+        if let Atom::WordEquation(weq) = ctx.to_ir(&node).unwrap().atom().as_ref() {
             weq.clone()
         } else {
             unreachable!()
