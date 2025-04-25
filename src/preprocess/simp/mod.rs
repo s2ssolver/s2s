@@ -1,14 +1,13 @@
 //! Simplification module
-//!
 
-mod boolean;
 mod elim;
 mod entailed;
 mod factors;
+mod folding;
 mod fwd;
 mod independent;
 mod int;
-pub mod levis;
+mod levis;
 mod regex;
 mod replace;
 mod str_int;
@@ -290,17 +289,9 @@ impl Simplifier {
 impl Default for Simplifier {
     fn default() -> Self {
         let equiv_rules: Vec<Box<dyn EquivalenceRule>> = vec![
-            Box::new(boolean::OrAssocFlatten),
-            Box::new(boolean::AndAssocFlatten),
-            Box::new(boolean::AndConst),
-            Box::new(boolean::AndIdem),
-            Box::new(boolean::AndComp),
-            Box::new(boolean::OrConst),
-            Box::new(boolean::OrIdem),
-            Box::new(boolean::OrComp),
-            Box::new(boolean::NotConst),
-            Box::new(boolean::NotDoubleNegation),
-            Box::new(boolean::EqualityTrivial),
+            Box::new(folding::FoldBoolConsts),
+            Box::new(folding::FoldIntConsts),
+            Box::new(folding::FoldStringConsts),
             Box::new(regex::InReConstantLhs),
             Box::new(regex::InReTrivial),
             Box::new(regex::InReEquation),

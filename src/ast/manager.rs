@@ -1,10 +1,10 @@
 use std::rc::Rc;
 
-use indexmap::IndexMap;
+use indexmap::{IndexMap, IndexSet};
 
 use smt_str::{re::Regex, SmtString};
 
-use crate::context::{Sorted, Variable};
+use crate::context::{Sort, Sorted, Variable};
 
 use super::{Node, NodeKind, OwnedNode};
 
@@ -19,7 +19,7 @@ pub struct AstBuilder {
     node_registry: IndexMap<NodeKey, Node>,
 
     /// If false, will perform no optimizations
-    optimize: bool,
+    simplify: bool,
 }
 
 impl Default for AstBuilder {
@@ -27,7 +27,7 @@ impl Default for AstBuilder {
         Self {
             next_id: 0,
             node_registry: IndexMap::new(),
-            optimize: true,
+            simplify: true,
         }
     }
 }
@@ -177,7 +177,7 @@ impl AstBuilder {
     /// Set the optimization flag
     #[cfg(test)]
     pub(crate) fn set_optimize(&mut self, optimize: bool) {
-        self.optimize = optimize;
+        self.simplify = optimize;
     }
 
     /// Delete all nodes with reference count of 1
@@ -189,12 +189,11 @@ impl AstBuilder {
             }
         }
         log::trace!("GC: Removing {} nodes", to_remove.len());
-        // for key in to_remove {
-        //     // Remove the node from the pattern registry
-        //     self.patterns.remove(&self.node_registry[&key]);
-        //     // Remove the node from the node registry
-        //     self.node_registry.remove(&key);
-        // }
+        for _key in to_remove {
+            // Remove the node from the node registry
+            log::warn!("GC disabled")
+            // self.node_registry.remove(&key);
+        }
     }
 
     /* Constructions */
@@ -216,64 +215,97 @@ impl AstBuilder {
         self.intern_node(NodeKind::Bool(true), vec![])
     }
 
-    /// Boolean conjunction
+    /// Boolean conjunction.
+    ///
+    /// ## Simplifications
+    /// If `simplify` is enabled, performs the following simplifications:
+    /// - Removes all duplicates
+    /// - Remove all `true` node
+    /// - Return `false` upon `false` node
+    /// - Return `false` if conjunction contains node and its negation
+    /// - Flattens nested conjunctions
+    /// - Returns `true` if the (simplified) arguments are empty
     pub fn and(&mut self, rs: Vec<Node>) -> Node {
-        // Do minor simplifications and flatten the conjunction
-        let mut cleaned = Vec::with_capacity(rs.len());
-        if self.optimize {
+        if self.simplify {
+            let mut simped = IndexSet::with_capacity(rs.len());
             for r in rs {
                 if let NodeKind::Bool(false) = r.kind() {
                     return self.ffalse();
-                } else if let NodeKind::And = r.kind() {
-                    cleaned.extend(r.children().to_vec())
                 } else if let NodeKind::Bool(true) = r.kind() {
                     continue;
+                } else if let NodeKind::And = r.kind() {
+                    simped.extend(r.children().to_vec())
                 } else {
-                    cleaned.push(r)
+                    // check if we have seen the negation
+                    let negated = self.not(r.clone());
+                    if simped.contains(&negated) {
+                        return self.ffalse();
+                    } else {
+                        simped.insert(r);
+                    }
                 }
             }
+            match simped.len() {
+                0 => self.ttrue(),
+                1 => simped[0].clone(),
+                _ => self.intern_node(NodeKind::And, simped.into_iter().collect()),
+            }
         } else {
-            cleaned = rs;
-        }
-
-        match cleaned.len() {
-            0 => self.ttrue(),
-            1 => cleaned[0].clone(),
-            _ => self.intern_node(NodeKind::And, cleaned),
+            self.intern_node(NodeKind::And, rs)
         }
     }
 
-    /// Boolean disjunction
+    /// Boolean conjunction.
+    ///
+    /// ## Simplifications
+    /// If `simplify` is enabled, performs the following simplifications:
+    /// - Removes all duplicates
+    /// - Remove all `false` node
+    /// - Return `true` upon `true` node
+    /// - Return `true` if conjunction contains node and its negation
+    /// - Flattens nested disjunctions
+    /// - Returns `false` if the (simplified) arguments are empty
     pub fn or(&mut self, rs: Vec<Node>) -> Node {
-        // Do minor simplifications and flatten the disjunction
-        let mut cleaned = Vec::with_capacity(rs.len());
-
-        if self.optimize {
+        if self.simplify {
+            let mut simped = IndexSet::with_capacity(rs.len());
             for r in rs {
-                if let NodeKind::Bool(false) = r.kind() {
+                if let NodeKind::Bool(true) = r.kind() {
+                    return self.ttrue();
+                } else if let NodeKind::Bool(false) = r.kind() {
                     continue;
                 } else if let NodeKind::Or = r.kind() {
-                    cleaned.extend(r.children().to_vec())
-                } else if let NodeKind::Bool(true) = r.kind() {
-                    return self.ttrue();
+                    simped.extend(r.children().to_vec())
                 } else {
-                    cleaned.push(r)
+                    // check if we have seen the negation
+                    let negated = self.not(r.clone());
+                    if simped.contains(&negated) {
+                        return self.ttrue();
+                    } else {
+                        simped.insert(r);
+                    }
                 }
             }
+            match simped.len() {
+                0 => self.ffalse(),
+                1 => simped[0].clone(),
+                _ => self.intern_node(NodeKind::Or, simped.into_iter().collect()),
+            }
         } else {
-            cleaned = rs;
-        }
-
-        match cleaned.len() {
-            0 => self.ffalse(),
-            1 => cleaned[0].clone(),
-            _ => self.intern_node(NodeKind::Or, cleaned),
+            self.intern_node(NodeKind::Or, rs)
         }
     }
 
     /// Boolean negation
+    ///
+    /// ## Simplifications
+    /// If `simplify` is enabled, performs the following simplifications:
+    /// - Returns `false` if node is `true`
+    /// - Returns `true` if node is `false`
+    /// - Eliminates double-negations
+    /// - Flips the operator for lienar constraints instead of nesting in a `not` node
+    /// - Replaces `not (=> a b)` with `(=> b a)`
     pub fn not(&mut self, r: Node) -> Node {
-        if self.optimize {
+        if self.simplify {
             match r.kind() {
                 NodeKind::Bool(false) => self.ttrue(),
                 NodeKind::Bool(true) => self.ffalse(),
@@ -316,8 +348,13 @@ impl AstBuilder {
     }
 
     /// Boolean implication
+    ///
+    /// ## Simplifications
+    /// If `simplify` is enabled, performs the following simplifications:
+    /// - Returns `true` if `l` is `false`
+    /// - Return `r` if `l` is `true`
     pub fn imp(&mut self, l: Node, r: Node) -> Node {
-        if self.optimize {
+        if self.simplify {
             if let Some(b) = l.as_bool_const() {
                 if b {
                     return r;
@@ -341,10 +378,40 @@ impl AstBuilder {
     /* Equality */
 
     /// Equality
+    ///
+    /// ## Simplifications
+    /// If `simplify` is enabled, performs the following simplifications:
+    /// - Returns `true` if `l` and `r` are equal
+    /// - Returns `false` if `l` and `r` are constants and not equal
     pub fn eq(&mut self, l: Node, r: Node) -> Node {
-        if l == r && self.optimize {
-            return self.ttrue();
+        if self.simplify {
+            if l == r {
+                return self.ttrue();
+            } else {
+                match (l.sort(), r.sort()) {
+                    (Sort::String, Sort::String) => {
+                        if let (Some(lc), Some(rc)) = (l.as_str_const(), r.as_str_const()) {
+                            return if lc == rc {
+                                self.ttrue()
+                            } else {
+                                self.ffalse()
+                            };
+                        }
+                    }
+                    (Sort::Int, Sort::Int) => {
+                        if let (Some(lc), Some(rc)) = (l.as_int_const(), r.as_int_const()) {
+                            return if lc == rc {
+                                self.ttrue()
+                            } else {
+                                self.ffalse()
+                            };
+                        }
+                    }
+                    _ => todo!(),
+                }
+            }
         }
+
         self.intern_node(NodeKind::Eq, vec![l, r])
     }
 
