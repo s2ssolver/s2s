@@ -14,7 +14,7 @@ use rustsat_cadical::CaDiCaL;
 pub use string::StringDomain;
 use string::StringDomainEncoder;
 
-use crate::{alphabet::Alphabet, domain::Domain, ast::canonical::Assignment};
+use crate::{alphabet::Alphabet, ast::VarSubstitution, context::Context, domain::Domain};
 
 use super::EncodingSink;
 
@@ -62,12 +62,10 @@ impl DomainEncoding {
         &self.alphabet
     }
 
-    pub fn get_model(&self, solver: &CaDiCaL) -> Assignment {
-        let mut model = self.string.get_model(solver, &self.dom);
-        let overwrite = model.extend(&self.int.get_model(solver));
-        assert!(overwrite == 0);
-        let overwrite = model.extend(&self.bool.get_model(solver));
-        assert!(overwrite == 0);
+    pub fn get_model(&self, solver: &CaDiCaL, ctx: &mut Context) -> VarSubstitution {
+        let mut model = self.string.get_model(solver, &self.dom, ctx);
+        model.extend(&self.int.get_model(solver, ctx));
+        model.extend(&self.bool.get_model(solver, ctx));
         model
     }
 }

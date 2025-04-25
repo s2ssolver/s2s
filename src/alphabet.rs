@@ -4,11 +4,9 @@ use indexmap::IndexSet;
 use smt_str::SmtChar;
 
 use crate::{
-    ast::{
-        canonical::{util::partition_by_vars, AtomKind, Literal},
-        get_literals, Node,
-    },
-    context::Sorted,
+    ast::{get_literals, Node},
+    context::{Context, Sorted},
+    ir::{util::partition_by_vars, Atom, Literal},
 };
 
 pub use smt_str::alphabet::Alphabet;
@@ -17,10 +15,10 @@ pub use smt_str::alphabet::Alphabet;
 /// Returns an [Alphabet] that is large enough such that if the formula is satisfiable
 /// in any super-alphabet of the inferred alphabet, then it is satisfiable in the inferred alphabet.
 /// The formula must be in normal form.
-pub fn infer(fm: &Node) -> Rc<Alphabet> {
-    let mut inferred_alphabet = alphabet_of(fm);
+pub fn infer(fm: &Node, ctx: &mut Context) -> Rc<Alphabet> {
+    let mut inferred_alphabet = alphabet_of(fm, ctx);
     let complement_alphabet = inferred_alphabet.complement();
-    let num_additional_chars = additional_chars(fm);
+    let num_additional_chars = additional_chars(fm, ctx);
 
     complement_alphabet
         .iter()
@@ -43,11 +41,13 @@ pub fn infer(fm: &Node) -> Rc<Alphabet> {
 
 /// Returns the alphabet of constants in the formula.
 /// The alphabet is not canonicalized.
-fn alphabet_of(fm: &Node) -> Alphabet {
+fn alphabet_of(fm: &Node, ctx: &mut Context) -> Alphabet {
     let mut alph = Alphabet::default();
     for l in get_literals(fm) {
-        for c in constants_of(&l) {
-            alph.insert_char(c);
+        if let Some(ir) = ctx.to_ir(&l) {
+            for c in constants_of(&ir) {
+                alph.insert_char(c);
+            }
         }
     }
 
@@ -56,21 +56,20 @@ fn alphabet_of(fm: &Node) -> Alphabet {
 
 fn constants_of(lit: &Literal) -> IndexSet<SmtChar> {
     let atom = lit.atom();
-    match atom.kind() {
-        AtomKind::Boolvar(_) => IndexSet::new(),
-        AtomKind::WordEquation(weq) => weq.constants(),
-        AtomKind::InRe(inre) => inre.re().alphabet().iter().collect(),
-        AtomKind::FactorConstraint(rfc) => rfc.rhs().iter().copied().collect(),
-        AtomKind::Linear(_) => IndexSet::new(),
+    match atom.as_ref() {
+        Atom::Boolvar(_) | Atom::True | Atom::False | Atom::Linear(_) => IndexSet::new(),
+        Atom::WordEquation(weq) => weq.constants(),
+        Atom::InRe(inre) => inre.re().alphabet().iter().collect(),
+        Atom::FactorConstraint(rfc) => rfc.rhs().iter().copied().collect(),
     }
 }
 
 /// Returns the number of additional characters we need to the alphabet in order to stay equisatisfiable.
-fn additional_chars(fm: &Node) -> usize {
+fn additional_chars(fm: &Node, ctx: &mut Context) -> usize {
     // Partition the literals based on variable dependencies
 
     // Cloning is cheap, because all atoms are reference counted pointers
-    let lits = Vec::from_iter(get_literals(fm));
+    let lits = Vec::from_iter(get_literals(fm).into_iter().filter_map(|n| ctx.to_ir(&n)));
     let parts = partition_by_vars(&lits);
 
     // For each partition, compute the number of characters needed to encode the partition and take the maximum
@@ -97,29 +96,30 @@ fn addition_chars_lits(lits: &[Literal]) -> usize {
 
     for lit in lits {
         let pol = lit.polarity();
-        match lit.atom().kind() {
-            AtomKind::Boolvar(_) => (),
-            AtomKind::InRe(in_re) => {
-                string_vars.insert(in_re.lhs().clone());
+        match lit.atom().as_ref() {
+            Atom::Boolvar(_) => (),
+            Atom::InRe(in_re) => {
+                string_vars.extend(in_re.lhs().variables());
                 contains_inre = true;
             }
-            AtomKind::WordEquation(weq) => {
+            Atom::WordEquation(weq) => {
                 string_vars.extend(weq.variables());
                 contains_eq |= weq.is_proper();
                 if !pol {
                     num_ineqs += 1;
                 }
             }
-            AtomKind::FactorConstraint(fc) => {
-                string_vars.insert(fc.of().clone());
+            Atom::FactorConstraint(fc) => {
+                string_vars.extend(fc.of().variables());
                 contains_inre = true;
             }
-            AtomKind::Linear(lc) => {
+            Atom::Linear(lc) => {
                 // Can contain string vars, but if they don't occur in the other literals, we need at most one character to account for all possible lengths
                 if lc.variables().iter().any(|v| v.sort().is_string()) {
                     contains_lc = true;
                 }
             }
+            Atom::True | Atom::False => todo!("Not canonical"),
         }
     }
 
@@ -151,15 +151,14 @@ mod tests {
 
     use super::*;
     use crate::{
-        ast::{Node, NodeKind},
+        ast::Node,
         context::{Context, Sort},
-        preprocess::canonicalize,
     };
 
     fn to_lit(node: &Node, ctx: &mut Context) -> Literal {
-        match canonicalize(node, ctx).kind() {
-            NodeKind::Literal(literal) => literal.clone(),
-            _ => unreachable!(),
+        match ctx.to_ir(node) {
+            Some(ir) => ir,
+            None => panic!("Could not convert {} to literal", node),
         }
     }
 

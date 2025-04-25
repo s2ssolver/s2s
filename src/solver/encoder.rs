@@ -5,14 +5,16 @@ use std::{ops::Neg, rc::Rc, time::Instant};
 use crate::{
     abstraction::LitDefinition,
     alphabet::Alphabet,
-    ast::canonical::{AssignedValue, Assignment, Literal},
+    ast::{NodeKind, VarSubstitution},
     context::Context,
     encode::{
         domain::{DomainEncoder, DomainEncoding},
         get_encoder, EncodeLiteral, EncodingError, EncodingResult, EncodingSink, LiteralEncoder,
     },
+    ir::Literal,
     sat::{nlit, plit, pvar, PVar},
 };
+
 use indexmap::{IndexMap, IndexSet};
 use rustsat::solvers::Solve;
 use rustsat::{clause, types::Lit};
@@ -130,7 +132,7 @@ impl DefintionEncoder {
         ctx: &mut Context,
         sink: &mut CadicalEncodingSink,
     ) -> Result<IndexSet<Lit>, EncodingError> {
-        let lit = def.defined();
+        let lit = def.defined_lit();
         let defining = def.defining();
 
         let probe_var = {
@@ -184,11 +186,11 @@ impl DefintionEncoder {
 
     /// Blocks the assignment of the given substitution.
     /// Returns the CNF encoding of the blocked assignment.
-    pub fn block_assignment(&self, asn: &Assignment) -> EncodingResult {
+    pub fn block_assignment(&self, asn: &VarSubstitution) -> EncodingResult {
         let mut res = EncodingResult::empty();
         for (var, val) in asn.iter() {
-            match val {
-                AssignedValue::String(w) => {
+            match val.kind() {
+                NodeKind::String(w) => {
                     let mut clause = Clause::with_capacity(w.len());
                     for (i, c) in w.iter().enumerate() {
                         if let Some(x) = self.domain_encoder.encoding().string().get_sub(var, i, *c)
@@ -202,12 +204,12 @@ impl DefintionEncoder {
                     }
                     res.add_clause(clause);
                 }
-                AssignedValue::Int(i) => {
+                NodeKind::Int(i) => {
                     if let Some(x) = self.domain_encoder.encoding().int().get(var, *i) {
                         res.add_clause(clause![nlit(x)]);
                     }
                 }
-                AssignedValue::Bool(b) => {
+                NodeKind::Bool(b) => {
                     if let Some(x) = self.domain_encoder.encoding().bool().get(var) {
                         if *b {
                             // must not be true
@@ -218,14 +220,15 @@ impl DefintionEncoder {
                         }
                     }
                 }
+                _ => panic!("Not an assignment"),
             }
         }
         res
     }
 
     /// Returns the model of the current assignment.
-    pub fn get_model(&self, solver: &CaDiCaL) -> Assignment {
-        self.domain_encoder.encoding().get_model(solver)
+    pub fn get_model(&self, solver: &CaDiCaL, ctx: &mut Context) -> VarSubstitution {
+        self.domain_encoder.encoding().get_model(solver, ctx)
     }
 
     #[allow(dead_code)]

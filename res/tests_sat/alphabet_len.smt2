@@ -3,4 +3,3 @@
 (assert (= (str.len s2) (str.len s1)))
 (assert  (not (= s1 s2)))
 (check-sat)
-(get-model)

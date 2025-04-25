@@ -182,20 +182,18 @@ impl Pattern {
         self.symbols.push(symbol)
     }
 
-    pub fn push_var(&mut self, var: Rc<Variable>) -> &mut Self {
+    pub fn push_var(&mut self, var: Rc<Variable>) {
         debug_assert!(
             var.sort() == Sort::String,
             "Variables in patterns must be of sort String"
         );
         self.push(Symbol::Variable(var.clone()));
-        self
     }
 
-    pub fn push_word(&mut self, word: &str) -> &mut Self {
-        for c in word.chars() {
-            self.push(Symbol::Constant(c.into()));
+    pub fn push_word(&mut self, word: &SmtString) {
+        for c in word.iter() {
+            self.push(Symbol::Constant(*c));
         }
-        self
     }
 
     pub fn concat(&mut self, other: Self) {
@@ -510,18 +508,18 @@ impl WordEquation {
 /// Represents a regular constraint, i.e. a pattern and a regular expression.
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub struct RegularConstraint {
-    lhs: Rc<Variable>,
+    lhs: Rc<Pattern>,
     re: Regex,
 }
 
 impl RegularConstraint {
     /// Creates a new regular constraint from a pattern and a regular expression.
-    pub fn new(lhs: Rc<Variable>, re: Regex) -> Self {
+    pub fn new(lhs: Rc<Pattern>, re: Regex) -> Self {
         Self { lhs, re }
     }
 
     /// Returns the left-hand side of the regular constraint.
-    pub fn lhs(&self) -> &Rc<Variable> {
+    pub fn lhs(&self) -> &Rc<Pattern> {
         &self.lhs
     }
 
@@ -547,30 +545,30 @@ pub enum FactorConstraintType {
 /// Represents a constraint that enforces that a pattern is a prefix, suffix of another pattern or contains another pattern.
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub struct RegularFactorConstraint {
-    of: Rc<Variable>,
+    of: Rc<Pattern>,
     rhs: SmtString,
     typ: FactorConstraintType,
 }
 impl RegularFactorConstraint {
     /// Creates a new prefix of constraint from two patterns.
-    fn new(lhs: Rc<Variable>, rhs: SmtString, typ: FactorConstraintType) -> Self {
+    fn new(lhs: Rc<Pattern>, rhs: SmtString, typ: FactorConstraintType) -> Self {
         Self { of: lhs, rhs, typ }
     }
 
-    pub fn prefix(lhs: Rc<Variable>, rhs: SmtString) -> Self {
+    pub fn prefix(lhs: Rc<Pattern>, rhs: SmtString) -> Self {
         Self::new(lhs, rhs, FactorConstraintType::Prefix)
     }
 
-    pub fn suffix(lhs: Rc<Variable>, rhs: SmtString) -> Self {
+    pub fn suffix(lhs: Rc<Pattern>, rhs: SmtString) -> Self {
         Self::new(lhs, rhs, FactorConstraintType::Suffix)
     }
 
-    pub fn contains(lhs: Rc<Variable>, rhs: SmtString) -> Self {
+    pub fn contains(lhs: Rc<Pattern>, rhs: SmtString) -> Self {
         Self::new(lhs, rhs, FactorConstraintType::Contains)
     }
 
     /// Returns the prefix of the prefix of constraint.
-    pub fn of(&self) -> &Rc<Variable> {
+    pub fn of(&self) -> &Rc<Pattern> {
         &self.of
     }
 

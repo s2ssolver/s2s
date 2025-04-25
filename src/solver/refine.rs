@@ -8,7 +8,7 @@ use itertools::Itertools;
 
 use crate::{
     abstraction::LitDefinition,
-    ast::{canonical::Literal, Node, NodeKind},
+    ast::{Node, NodeKind},
     context::{Context, Sorted},
     interval::{BoundValue, Interval},
 };
@@ -142,7 +142,7 @@ pub enum BoundRefinement {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct Cube(IndexSet<Literal>);
+struct Cube(IndexSet<Node>);
 
 impl Hash for Cube {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
@@ -169,8 +169,8 @@ impl BoundRefiner {
         ctx: &mut Context,
     ) -> BoundRefinement {
         // Find the small-model bounds of any combination of the literal
-        let present_lits: IndexSet<Literal> =
-            IndexSet::from_iter(literals.iter().map(|d| d.defined().clone()));
+        let present_lits: IndexSet<Node> =
+            IndexSet::from_iter(literals.iter().map(|d| d.defined_node().clone()));
 
         let smp_bounds = match self.small_mode_bounds_dnf(present_lits, fm, ctx) {
             Some(b) => b,
@@ -185,7 +185,7 @@ impl BoundRefiner {
         // Update the bounds of the variables in literals based on the step function but clamp to the small-model bounds
         let vars = literals
             .iter()
-            .flat_map(|l| l.defined().variables())
+            .flat_map(|l| l.defined_lit().variables())
             .collect::<IndexSet<_>>();
         for v in vars {
             // Check if the variable is bounded
@@ -278,13 +278,13 @@ impl BoundRefiner {
 
     fn small_mode_bounds_dnf(
         &mut self,
-        present_lits: IndexSet<Literal>,
+        present_lits: IndexSet<Node>,
         fm: &Node,
         ctx: &mut Context,
     ) -> Option<Bounds> {
         // build the dnf of fm but only with the the given literals
 
-        let dnf = Self::build_dnf(&present_lits, fm);
+        let dnf = Self::build_dnf(&present_lits, fm, ctx);
         log::info!("DNF has {} cubes", dnf.len());
         log::trace!(
             "DNF: \n{}",
@@ -316,7 +316,14 @@ impl BoundRefiner {
                 let mut inferer = BoundInferer::default();
 
                 for l in &cube.0 {
-                    inferer.add_literal(l.clone(), ctx);
+                    // TODO: this lookup is unncessary because we already know the define IR-literal
+                    // The conversion to DNF should retain the information instead of only working on Nodes
+                    if let Some(lit) = ctx.to_ir(l) {
+                        inferer.add_literal(lit.clone(), ctx);
+                    } else {
+                        // Should not happen
+                        log::warn!("Encountered unsupported literal: {}", l)
+                    }
                 }
 
                 if let Some(bounds) = inferer.infer() {
@@ -332,12 +339,12 @@ impl BoundRefiner {
         Self::max_smp_of(alternatives)
     }
 
-    fn build_dnf(literals: &IndexSet<Literal>, fm: &Node) -> IndexSet<Cube> {
+    fn build_dnf(present_lits: &IndexSet<Node>, fm: &Node, ctx: &mut Context) -> IndexSet<Cube> {
         match fm.kind() {
             NodeKind::And => {
                 let mut dnf = indexset![Cube(IndexSet::new())];
                 for child in fm.children() {
-                    let child_dnf = Self::build_dnf(literals, child);
+                    let child_dnf = Self::build_dnf(present_lits, child, ctx);
                     // build the cross product
                     let mut new_dnf = IndexSet::new();
                     for cube in dnf.into_iter() {
@@ -345,8 +352,8 @@ impl BoundRefiner {
                             let mut new_cube = cube.clone();
                             let mut conflict = false;
                             for l in &ccube.0 {
-                                if new_cube.0.contains(&l.flip_polarity()) {
-                                    // conflicting literals
+                                if new_cube.0.contains(&ctx.ast().not(l.clone())) {
+                                    // Literal and its negation => conflict
                                     conflict = true;
                                     break;
                                 }
@@ -364,18 +371,18 @@ impl BoundRefiner {
             NodeKind::Or => {
                 let mut dnf = IndexSet::new();
                 for child in fm.children() {
-                    let child_dnf = Self::build_dnf(literals, child);
+                    let child_dnf = Self::build_dnf(present_lits, child, ctx);
                     dnf.extend(child_dnf);
                 }
                 dnf
             }
-            NodeKind::Literal(l) => {
-                let c = if literals.contains(l) {
-                    IndexSet::from_iter(vec![l.clone()])
+            _ if fm.is_literal() => {
+                let cube = if present_lits.contains(fm) {
+                    indexset! {fm.clone()}
                 } else {
-                    IndexSet::new()
+                    indexset! {}
                 };
-                indexset![Cube(c)]
+                indexset! {Cube(cube)}
             }
             NodeKind::Bool(true) => indexset![Cube(IndexSet::new())],
             NodeKind::Bool(false) => indexset![],

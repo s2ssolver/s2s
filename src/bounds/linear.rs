@@ -5,11 +5,9 @@ use std::rc::Rc;
 use indexmap::{IndexMap, IndexSet};
 
 use crate::{
-    ast::canonical::{
-        ArithOperator, LinearArithTerm, LinearConstraint, LinearSummand, Symbol, WordEquation,
-    },
     context::{Sorted, Variable},
     interval::{BoundValue, Interval},
+    ir::{LIAConstraint, LIAOp, LIATerm, LinearSummand, Symbol, WordEquation},
 };
 
 use super::{Bounds, InferringStrategy};
@@ -18,22 +16,20 @@ use super::{Bounds, InferringStrategy};
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct LinearRefiner {
     /// The linear constraints to refine the bounds with. Wrapped in an Rc to make cloning cheap.
-    linears: IndexSet<Rc<LinearConstraint>>,
+    linears: IndexSet<Rc<LIAConstraint>>,
     conflict: bool,
 }
 
 impl LinearRefiner {
     /// Adds a linear constraint to the refiner.
-    pub fn add_linear(&mut self, mut linear: LinearConstraint) {
+    pub fn add_linear(&mut self, mut linear: LIAConstraint) {
         // canonicalize the linear constraint before adding it
         linear.canonicalize();
         match linear.operator() {
-            ArithOperator::Ineq | ArithOperator::Eq => {
-                let leq =
-                    LinearConstraint::new(linear.lhs().clone(), ArithOperator::Leq, linear.rhs());
-                let geq =
-                    LinearConstraint::new(linear.lhs().clone(), ArithOperator::Geq, linear.rhs());
-                if linear.operator() == ArithOperator::Ineq {
+            LIAOp::Ineq | LIAOp::Eq => {
+                let leq = LIAConstraint::new(linear.lhs().clone(), LIAOp::Leq, linear.rhs());
+                let geq = LIAConstraint::new(linear.lhs().clone(), LIAOp::Geq, linear.rhs());
+                if linear.operator() == LIAOp::Ineq {
                     // can only check for conflicts if the operator is an inequality
                     // if both the leq and the geq are present, we have a conflict because then lhs = rhs and lhs != rhs.
                     if self.linears.contains(&Rc::new(leq)) && self.linears.contains(&Rc::new(geq))
@@ -46,10 +42,7 @@ impl LinearRefiner {
                     self.add_linear(geq);
                 }
             }
-            ArithOperator::Leq
-            | ArithOperator::Less
-            | ArithOperator::Geq
-            | ArithOperator::Greater => {
+            LIAOp::Leq | LIAOp::Less | LIAOp::Geq | LIAOp::Greater => {
                 let flipped = linear.negate();
                 if self.linears.contains(&Rc::new(flipped)) {
                     self.conflict = true;
@@ -104,7 +97,7 @@ impl LinearRefiner {
         false
     }
 
-    fn refinement_step(&self, bounds: &Bounds, linear: &LinearConstraint) -> Option<Bounds> {
+    fn refinement_step(&self, bounds: &Bounds, linear: &LIAConstraint) -> Option<Bounds> {
         let mut new_bounds = bounds.clone();
         let mut changed = false;
         log::trace!("Refining step: {} w.r.t. {}", bounds, linear);
@@ -112,10 +105,10 @@ impl LinearRefiner {
             let (op, term, divisor) = self.solve_for(linear, &var);
             log::trace!("\t {} {} ({}) / {}", var, op, term, divisor);
             match op {
-                ArithOperator::Less | ArithOperator::Leq => {
+                LIAOp::Less | LIAOp::Leq => {
                     if let BoundValue::Num(largest) = self.eval_largest(&term, bounds) {
                         if let Some(dived) = largest.checked_div(divisor as i32) {
-                            let dived = if ArithOperator::Less == op {
+                            let dived = if LIAOp::Less == op {
                                 BoundValue::Num(dived - 1)
                             } else {
                                 BoundValue::Num(dived)
@@ -128,10 +121,10 @@ impl LinearRefiner {
                         }
                     }
                 }
-                ArithOperator::Greater | ArithOperator::Geq => {
+                LIAOp::Greater | LIAOp::Geq => {
                     if let BoundValue::Num(smallest) = self.eval_smallest(&term, bounds) {
                         if let Some(dived) = smallest.checked_div(divisor as i32) {
-                            let dived = if ArithOperator::Greater == op {
+                            let dived = if LIAOp::Greater == op {
                                 BoundValue::Num(dived + 1)
                             } else {
                                 BoundValue::Num(dived)
@@ -159,13 +152,9 @@ impl LinearRefiner {
     /// Returns a tuple `(op, term, divisor)`` such that the given constraint is equivalend to
     /// `var op (term / divisor)`.
     /// The divisor is always positive.
-    fn solve_for(
-        &self,
-        lc: &LinearConstraint,
-        var: &Rc<Variable>,
-    ) -> (ArithOperator, LinearArithTerm, usize) {
+    fn solve_for(&self, lc: &LIAConstraint, var: &Rc<Variable>) -> (LIAOp, LIATerm, usize) {
         let mut divisor = 0;
-        let mut dividend = LinearArithTerm::from_const(lc.rhs());
+        let mut dividend = LIATerm::from_const(lc.rhs());
         for t in lc.lhs().iter() {
             match t {
                 LinearSummand::Const(_) => dividend.add_summand(t.flip_sign()),
@@ -177,8 +166,8 @@ impl LinearRefiner {
         if divisor < 0 {
             // If we have an inequality and the divisor is negative, we need to 'flip' the operator.
             let op = match lc.operator() {
-                ArithOperator::Eq => ArithOperator::Eq,
-                ArithOperator::Ineq => ArithOperator::Ineq,
+                LIAOp::Eq => LIAOp::Eq,
+                LIAOp::Ineq => LIAOp::Ineq,
                 _ => lc.operator().flip(),
             };
             // We also need to negate both the divisor and the dividend to make the division positive.
@@ -216,7 +205,7 @@ impl LinearRefiner {
     }
 
     /// Evaluates the smallest possible value of the given term under the given bounds.
-    fn eval_smallest(&self, term: &LinearArithTerm, bounds: &Bounds) -> BoundValue {
+    fn eval_smallest(&self, term: &LIATerm, bounds: &Bounds) -> BoundValue {
         let mut smallest = 0;
         for t in term.iter() {
             match t {
@@ -258,7 +247,7 @@ impl LinearRefiner {
     }
 
     /// Evaluates the largest possible value of the given term under the given bounds.
-    fn eval_largest(&self, term: &LinearArithTerm, bounds: &Bounds) -> BoundValue {
+    fn eval_largest(&self, term: &LIATerm, bounds: &Bounds) -> BoundValue {
         let mut largest = 0;
         for t in term.iter() {
             match t {
@@ -307,7 +296,7 @@ impl LinearRefiner {
 /// Derives a linear constraint from a word equation.
 /// Every assignment of the variables that satisfies the word equation also satisfies the linear constraint.
 /// The other way around is not necessarily true.
-pub fn length_abstraction(weq: &WordEquation) -> LinearConstraint {
+pub fn length_abstraction(weq: &WordEquation) -> LIAConstraint {
     let mut var_occurrences = IndexMap::new();
     let mut constant_counter = 0;
     let lhs = weq.lhs();
@@ -335,11 +324,11 @@ pub fn length_abstraction(weq: &WordEquation) -> LinearConstraint {
         }
     }
 
-    let mut lhs = LinearArithTerm::new();
+    let mut lhs = LIATerm::new();
     for (v, c) in var_occurrences {
         lhs.add_summand(LinearSummand::len_variable(v.clone(), c));
     }
-    LinearConstraint::new(lhs, ArithOperator::Eq, constant_counter)
+    LIAConstraint::new(lhs, LIAOp::Eq, constant_counter)
 }
 
 impl InferringStrategy for LinearRefiner {
@@ -374,7 +363,7 @@ impl InferringStrategy for LinearRefiner {
 //                 return None;
 //             }
 
-//             let mut lhs = LinearArithTerm::new();
+//             let mut lhs = LIATerm::new();
 //             let mut rhs = 0;
 
 //             for x in re.get_pattern().iter() {
@@ -402,7 +391,7 @@ impl InferringStrategy for LinearRefiner {
 //     /// The constraint is of the form `lhs >= rhs`, where `lhs` is the length of the pattern (i.e., the sum of the lenght all variable occurrences plus the length of the constant symbols) and `rhs` is the shortest path from the initial state to a final state in the automaton.
 //     pub fn from_regular_constraint_lower(re: &RegularConstraint) -> Self {
 //         let automaton = re.get_automaton().unwrap();
-//         let mut lhs = LinearArithTerm::new();
+//         let mut lhs = LIATerm::new();
 //         let mut rhs = 0;
 
 //         for x in re.get_pattern().iter() {
@@ -424,8 +413,8 @@ impl InferringStrategy for LinearRefiner {
 //     }
 // }
 
-// impl From<(LinearArithTerm, LinearArithTerm, LinearOperator)> for LinearConstraint {
-//     fn from(value: (LinearArithTerm, LinearArithTerm, LinearOperator)) -> Self {
+// impl From<(LIATerm, LIATerm, LinearOperator)> for LIAConstraint {
+//     fn from(value: (LIATerm, LIATerm, LinearOperator)) -> Self {
 //         let lhs = value.0;
 //         let rhs = value.1;
 //         let typ = value.2;

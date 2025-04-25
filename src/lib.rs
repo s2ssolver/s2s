@@ -24,6 +24,7 @@ mod preprocess;
 mod sat;
 
 pub(crate) mod context;
+pub mod ir;
 pub mod smt;
 mod solver;
 
@@ -31,7 +32,8 @@ use std::{io::BufRead, time::Instant};
 
 pub use error::PublicError as Error;
 
-use context::Context;
+pub use context::Context;
+
 pub use engine::Engine as Blastr;
 use smt::{Interpreter, Script};
 pub use solver::{SolverAnswer, SolverOptions};

@@ -103,12 +103,12 @@ impl Display for LinearSummand {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default, Hash)]
-pub struct LinearArithTerm {
+pub struct LIATerm {
     factors: Vec<LinearSummand>,
     canonical: bool,
 }
 
-impl LinearArithTerm {
+impl LIATerm {
     pub fn new() -> Self {
         Self {
             factors: vec![],
@@ -169,7 +169,7 @@ impl LinearArithTerm {
     /// It is linear if and only if one side of the multiplication is a constant.
     /// If the multiplication is not linear, `None` is returned.
     pub fn multiply(left: Self, right: Self) -> Option<Self> {
-        let mut res = LinearArithTerm::new();
+        let mut res = LIATerm::new();
         for l in left.iter() {
             for r in right.iter() {
                 // multiply l and r
@@ -337,7 +337,7 @@ impl LinearArithTerm {
     }
 }
 
-impl Index<usize> for LinearArithTerm {
+impl Index<usize> for LIATerm {
     type Output = LinearSummand;
 
     fn index(&self, index: usize) -> &Self::Output {
@@ -346,7 +346,7 @@ impl Index<usize> for LinearArithTerm {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum ArithOperator {
+pub enum LIAOp {
     Eq,
     Ineq,
     Leq,
@@ -354,15 +354,15 @@ pub enum ArithOperator {
     Geq,
     Greater,
 }
-impl ArithOperator {
+impl LIAOp {
     pub fn eval(&self, lhs: i64, rhs: i64) -> bool {
         match self {
-            ArithOperator::Eq => lhs == rhs,
-            ArithOperator::Ineq => lhs != rhs,
-            ArithOperator::Leq => lhs <= rhs,
-            ArithOperator::Less => lhs < rhs,
-            ArithOperator::Geq => lhs >= rhs,
-            ArithOperator::Greater => lhs > rhs,
+            LIAOp::Eq => lhs == rhs,
+            LIAOp::Ineq => lhs != rhs,
+            LIAOp::Leq => lhs <= rhs,
+            LIAOp::Less => lhs < rhs,
+            LIAOp::Geq => lhs >= rhs,
+            LIAOp::Greater => lhs > rhs,
         }
     }
 
@@ -374,27 +374,27 @@ impl ArithOperator {
     /// - `a = b` stays `a = b` and `a != b` stays `a != b`
     pub fn flip(&self) -> Self {
         match self {
-            ArithOperator::Eq => ArithOperator::Eq,
-            ArithOperator::Ineq => ArithOperator::Ineq,
-            ArithOperator::Leq => ArithOperator::Geq,
-            ArithOperator::Less => ArithOperator::Greater,
-            ArithOperator::Geq => ArithOperator::Leq,
-            ArithOperator::Greater => ArithOperator::Less,
+            LIAOp::Eq => LIAOp::Eq,
+            LIAOp::Ineq => LIAOp::Ineq,
+            LIAOp::Leq => LIAOp::Geq,
+            LIAOp::Less => LIAOp::Greater,
+            LIAOp::Geq => LIAOp::Leq,
+            LIAOp::Greater => LIAOp::Less,
         }
     }
 }
 
 /// A linear constraint
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct LinearConstraint {
-    lhs: LinearArithTerm,
+pub struct LIAConstraint {
+    lhs: LIATerm,
     rhs: i64,
-    typ: ArithOperator,
+    typ: LIAOp,
     is_canonical: bool,
 }
 
-impl LinearConstraint {
-    pub fn new(lhs: LinearArithTerm, typ: ArithOperator, rhs: i64) -> Self {
+impl LIAConstraint {
+    pub fn new(lhs: LIATerm, typ: LIAOp, rhs: i64) -> Self {
         Self {
             lhs,
             rhs,
@@ -403,13 +403,13 @@ impl LinearConstraint {
         }
     }
 
-    pub fn lhs(&self) -> &LinearArithTerm {
+    pub fn lhs(&self) -> &LIATerm {
         &self.lhs
     }
     pub fn rhs(&self) -> i64 {
         self.rhs
     }
-    pub fn operator(&self) -> ArithOperator {
+    pub fn operator(&self) -> LIAOp {
         self.typ
     }
 
@@ -435,14 +435,14 @@ impl LinearConstraint {
     /// - `a > b` becomes `a <= b`
     pub fn negate(&self) -> Self {
         let new_op = match self.typ {
-            ArithOperator::Eq => ArithOperator::Ineq,
-            ArithOperator::Ineq => ArithOperator::Eq,
-            ArithOperator::Leq => ArithOperator::Greater,
-            ArithOperator::Less => ArithOperator::Geq,
-            ArithOperator::Geq => ArithOperator::Less,
-            ArithOperator::Greater => ArithOperator::Leq,
+            LIAOp::Eq => LIAOp::Ineq,
+            LIAOp::Ineq => LIAOp::Eq,
+            LIAOp::Leq => LIAOp::Greater,
+            LIAOp::Less => LIAOp::Geq,
+            LIAOp::Geq => LIAOp::Less,
+            LIAOp::Greater => LIAOp::Leq,
         };
-        let mut negated = LinearConstraint::new(self.lhs.clone(), new_op, self.rhs);
+        let mut negated = LIAConstraint::new(self.lhs.clone(), new_op, self.rhs);
         negated.is_canonical = self.is_canonical;
         negated
     }
@@ -457,7 +457,7 @@ impl LinearConstraint {
         }
         self.lhs.canonicalize();
         let mut rhs_new = self.rhs;
-        let mut lhs_new = LinearArithTerm::new();
+        let mut lhs_new = LIATerm::new();
         for f in self.lhs.iter() {
             match f {
                 LinearSummand::Mult(_, _) => lhs_new.add_summand(f.clone()),
@@ -465,7 +465,7 @@ impl LinearConstraint {
             }
         }
         self.lhs = if lhs_new.is_empty() {
-            LinearArithTerm::from_const(0)
+            LIATerm::from_const(0)
         } else {
             lhs_new
         };
@@ -477,7 +477,7 @@ impl LinearConstraint {
 
 /* Pretty Printing */
 
-impl Display for LinearArithTerm {
+impl Display for LIATerm {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let mut first = true;
         for t in self.factors.iter() {
@@ -491,20 +491,20 @@ impl Display for LinearArithTerm {
     }
 }
 
-impl Display for ArithOperator {
+impl Display for LIAOp {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            ArithOperator::Eq => write!(f, "="),
-            ArithOperator::Ineq => write!(f, "!="),
-            ArithOperator::Leq => write!(f, "<="),
-            ArithOperator::Less => write!(f, "<"),
-            ArithOperator::Geq => write!(f, ">="),
-            ArithOperator::Greater => write!(f, ">"),
+            LIAOp::Eq => write!(f, "="),
+            LIAOp::Ineq => write!(f, "!="),
+            LIAOp::Leq => write!(f, "<="),
+            LIAOp::Less => write!(f, "<"),
+            LIAOp::Geq => write!(f, ">="),
+            LIAOp::Greater => write!(f, ">"),
         }
     }
 }
 
-impl Display for LinearConstraint {
+impl Display for LIAConstraint {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{} {} {}", self.lhs, self.typ, self.rhs)
     }
@@ -512,15 +512,15 @@ impl Display for LinearConstraint {
 
 // TODO: Needs testing!
 
-impl Arbitrary for ArithOperator {
+impl Arbitrary for LIAOp {
     fn arbitrary(g: &mut quickcheck::Gen) -> Self {
         match u8::arbitrary(g) % 6 {
-            0 => ArithOperator::Eq,
-            1 => ArithOperator::Ineq,
-            2 => ArithOperator::Leq,
-            3 => ArithOperator::Less,
-            4 => ArithOperator::Geq,
-            5 => ArithOperator::Greater,
+            0 => LIAOp::Eq,
+            1 => LIAOp::Ineq,
+            2 => LIAOp::Leq,
+            3 => LIAOp::Less,
+            4 => LIAOp::Geq,
+            5 => LIAOp::Greater,
             _ => unreachable!(),
         }
     }
@@ -532,7 +532,7 @@ mod tests {
     use quickcheck_macros::quickcheck;
 
     #[quickcheck]
-    fn test_operator_flip_flip(op: ArithOperator) -> bool {
+    fn test_operator_flip_flip(op: LIAOp) -> bool {
         op.flip().flip() == op
     }
 }

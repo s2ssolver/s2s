@@ -184,7 +184,6 @@ impl RangeCompressor {
         match node.kind() {
             NodeKind::String(s) => self.word_to_partitioning(s.iter().copied()),
             NodeKind::Regex(regex) => self.partition_re_alphabet(regex),
-            NodeKind::Literal(_) => unreachable!(),
             _ => {
                 let mut res = AlphabetPartition::default();
                 for c in node.children() {

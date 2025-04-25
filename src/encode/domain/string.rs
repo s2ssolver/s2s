@@ -8,10 +8,11 @@ use rustsat::{clause, types::Lit};
 use rustsat_cadical::CaDiCaL;
 use smt_str::{SmtChar, SmtString};
 
+use crate::ast::VarSubstitution;
+use crate::context::Context;
 use crate::encode::EncodingSink;
 use crate::{
     alphabet::Alphabet,
-    ast::canonical::Assignment,
     context::{Sort, Sorted, Variable},
     domain::Domain,
     encode::{
@@ -102,7 +103,12 @@ impl StringDomain {
         assert!(ok.is_none(), "Length {} already set for {}", len, var);
     }
 
-    pub(crate) fn get_model(&self, solver: &CaDiCaL, bounds: &Domain) -> Assignment {
+    pub(crate) fn get_model(
+        &self,
+        solver: &CaDiCaL,
+        bounds: &Domain,
+        ctx: &mut Context,
+    ) -> VarSubstitution {
         let mut subs: IndexMap<Rc<Variable>, Vec<Option<SmtChar>>> = IndexMap::new();
         // initialize substitutions
         let vars = self.iter_substitutions().map(|(var, _, _, _)| var).unique();
@@ -129,7 +135,7 @@ impl StringDomain {
                 sub[pos] = Some(chr);
             }
         }
-        let mut model = Assignment::default();
+        let mut model = VarSubstitution::default();
         for (var, sub) in subs.into_iter() {
             let mut s: Vec<SmtChar> = vec![];
             for c in sub.iter() {
@@ -140,7 +146,7 @@ impl StringDomain {
                 }
             }
             let s = s.into_iter().collect::<SmtString>();
-            model.assign(var, s);
+            model.add(var, ctx.ast().const_string(s));
         }
         model
     }
@@ -421,13 +427,13 @@ mod tests {
         }
 
         // This will panic if the substitution is not valid
-        let subs = encoding.get_model(&solver);
+        let subs = encoding.get_model(&solver, &mut ctx);
         assert!(
             subs.get(&var).is_some(),
             "No substitution found (length is {})",
             len
         );
-        let sub = subs.get(&var).and_then(|v| v.as_string()).unwrap();
+        let sub = subs.get(&var).and_then(|v| v.as_str_const()).unwrap();
         assert!(sub.len() == len as usize, "Substitution is too long");
         TestResult::passed()
     }

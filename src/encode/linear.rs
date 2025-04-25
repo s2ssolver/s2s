@@ -5,8 +5,8 @@ use rustsat::types::Clause;
 
 use crate::context::*;
 use crate::{
-    ast::canonical::{ArithOperator, LinearConstraint, LinearSummand},
     domain::Domain,
+    ir::{LIAConstraint, LIAOp, LinearSummand},
     sat::{nlit, plit, pvar, PVar},
 };
 
@@ -14,7 +14,7 @@ use super::{domain::DomainEncoding, EncodeLiteral, EncodingError, EncodingSink};
 
 /// Encodes linear constraints by using multi-valued decision diagrams.
 pub struct MddEncoder {
-    linear: LinearConstraint,
+    linear: LIAConstraint,
 
     /// The current round of encoding (starting at 1). Used to avoid encoding the same constraint multiple times.
     /// Is 0 when the encoder is reset.
@@ -26,7 +26,7 @@ pub struct MddEncoder {
 }
 
 impl MddEncoder {
-    pub fn new(linear: LinearConstraint, pol: bool) -> Self {
+    pub fn new(linear: LIAConstraint, pol: bool) -> Self {
         let mut linear = if pol { linear } else { linear.negate() };
         linear.canonicalize();
 
@@ -75,12 +75,12 @@ impl MddEncoder {
         let rhs = self.linear.rhs();
 
         match self.linear.operator() {
-            ArithOperator::Eq => min <= rhs && rhs <= max,
-            ArithOperator::Ineq => !(min == rhs && max == rhs),
-            ArithOperator::Leq => min <= rhs,
-            ArithOperator::Less => min < rhs,
-            ArithOperator::Geq => max >= rhs,
-            ArithOperator::Greater => max > rhs,
+            LIAOp::Eq => min <= rhs && rhs <= max,
+            LIAOp::Ineq => !(min == rhs && max == rhs),
+            LIAOp::Leq => min <= rhs,
+            LIAOp::Less => min < rhs,
+            LIAOp::Geq => max >= rhs,
+            LIAOp::Greater => max > rhs,
         }
     }
 
@@ -89,12 +89,12 @@ impl MddEncoder {
         let rhs = self.linear.rhs();
 
         match self.linear.operator() {
-            ArithOperator::Eq => val == rhs,
-            ArithOperator::Ineq => val != rhs,
-            ArithOperator::Leq => val <= rhs,
-            ArithOperator::Less => val < rhs,
-            ArithOperator::Geq => val >= rhs,
-            ArithOperator::Greater => val > rhs,
+            LIAOp::Eq => val == rhs,
+            LIAOp::Ineq => val != rhs,
+            LIAOp::Leq => val <= rhs,
+            LIAOp::Less => val < rhs,
+            LIAOp::Geq => val >= rhs,
+            LIAOp::Greater => val > rhs,
         }
     }
 }

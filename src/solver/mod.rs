@@ -2,10 +2,7 @@ use core::panic;
 use std::{rc::Rc, time::Instant};
 
 use crate::{
-    ast::{
-        canonical::{Assignment, AtomKind, Literal},
-        VarSubstitution,
-    },
+    ast::VarSubstitution,
     context::{Context, Sort},
     domain::Domain,
 };
@@ -197,11 +194,9 @@ impl Solver {
                 Ok(res) => match res {
                     rustsat::solvers::SolverResult::Sat => {
                         // If SAT, check if model is a solution for the original formula.
-                        let assign = self.encoder.get_model(&self.cadical);
-
+                        let subs = self.encoder.get_model(&self.cadical, ctx);
                         log::info!("Encoding is SAT");
                         //self.encoder.print_debug(&self.cadical);
-                        let subs = VarSubstitution::from_assignment(&assign, ctx);
                         return Ok(SolverAnswer::Sat(Some(subs)));
                     }
                     rustsat::solvers::SolverResult::Unsat => {
@@ -259,7 +254,7 @@ impl Solver {
     /// Blocks an assignment by adding a clause to the SAT solver that excludes the assignment.
     /// This block all assignments for each variable indepenently, not the assignment as a whole.
     /// That is, if the assignment is `x -> abc` and `y -> def`, the both "x = abc" and "y = def" are blocked for every solution.
-    pub fn block(&mut self, asn: &Assignment) {
+    pub fn block(&mut self, asn: &VarSubstitution) {
         let (clauses, _) = self.encoder.block_assignment(asn).into_inner();
         self.cadical.add_cnf(clauses).unwrap();
     }
@@ -309,11 +304,11 @@ impl Solver {
             PFormula::Lit(l) => {
                 if let Some(def) = self.defs.get(l) {
                     debug_assert!(def.defining() == *l);
-                    Some(ctx.ast().literal(def.defined().clone()))
+                    Some(def.defined_node().clone())
                 } else {
+                    // Just insert a temp variable as a placeholder
                     let tvar = ctx.temp_var(Sort::Bool);
-                    let atom = ctx.ast().atom(AtomKind::Boolvar(tvar));
-                    Some(ctx.ast().literal(Literal::positive(atom)))
+                    Some(ctx.ast().variable(tvar))
                 }
             }
         }

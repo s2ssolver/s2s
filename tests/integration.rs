@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use blastr::{ast::Context, parse_script, smt::Interpreter, SolverOptions};
+use blastr::{parse_script, smt::Interpreter, Context, SolverOptions};
 use test_generator::test_resources;
 
 #[test_resources("res/tests_sat/*.smt2")]

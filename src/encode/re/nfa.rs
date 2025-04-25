@@ -359,10 +359,10 @@ impl EncodeLiteral for NFAEncoder {
 }
 
 impl NFAEncoder {
-    pub(super) fn new(var: &Rc<Variable>, nfa: Rc<NFA>, pol: bool) -> Self {
+    pub(super) fn new(var: Rc<Variable>, nfa: Rc<NFA>, pol: bool) -> Self {
         let delta_inv = precompute_delta_inv(&nfa).unwrap();
         Self {
-            var: var.clone(),
+            var: var,
             nfa,
             delta_inv,
             sign: pol,
@@ -434,7 +434,7 @@ mod test {
 
         let mut bounds = Domain::default();
 
-        let mut encoder = NFAEncoder::new(&var, nfa, pol);
+        let mut encoder = NFAEncoder::new(var.clone(), nfa, pol);
         let mut dom_encoder = DomainEncoder::new(alph);
         let mut solver = CaDiCaL::default();
 
@@ -457,8 +457,8 @@ mod test {
                     let assm = assms.into_iter().collect::<Vec<_>>();
                     result = solver.solve_assumps(&assm).ok();
                     if let Some(rustsat::solvers::SolverResult::Sat) = result {
-                        let _model = dom_encoder.encoding().get_model(&solver);
-                        let var_model = _model.get(&var).unwrap().as_string().unwrap();
+                        let _model = dom_encoder.encoding().get_model(&solver, &mut ctx);
+                        let var_model = _model.get(&var).unwrap().as_str_const().unwrap();
                         assert!(
                             re.accepts(&var_model.clone()),
                             "Model `{}` does not match regex `{}`",

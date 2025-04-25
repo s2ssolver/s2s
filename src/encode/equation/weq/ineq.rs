@@ -6,12 +6,12 @@ use super::matching::MatchEncoder;
 use super::word::WordSetEncoding;
 
 use crate::{
-    ast::canonical::{Pattern, Symbol, WordEquation},
     domain::Domain,
     encode::{
         card::IncrementalALO, domain::DomainEncoding, EncodeLiteral, EncodingError, EncodingResult,
         EncodingSink, LAMBDA,
     },
+    ir::{Pattern, Symbol, WordEquation},
     sat::{nlit, pvar},
 };
 
@@ -185,14 +185,16 @@ mod tests {
 
     use crate::{
         alphabet::Alphabet,
-        ast::canonical::{Assignment, WordEquation},
+        ast::VarSubstitution,
         context::Context,
         domain::Domain,
         encode::{
-            domain::DomainEncoder, equation::weq::testutils::parse_simple_equation, EncodeLiteral,
-            ResultSink,
+            domain::DomainEncoder,
+            equation::weq::testutils::{is_solution, parse_simple_equation},
+            EncodeLiteral, ResultSink,
         },
         interval::Interval,
+        ir::WordEquation,
         sat::plit,
     };
 
@@ -200,7 +202,11 @@ mod tests {
 
     use rustsat::solvers::{Solve, SolveIncremental, SolverResult};
 
-    fn solve_with_bounds(eq: &WordEquation, bounds: &[usize]) -> Option<Assignment> {
+    fn solve_with_bounds(
+        eq: &WordEquation,
+        bounds: &[usize],
+        ctx: &mut Context,
+    ) -> Option<VarSubstitution> {
         let mut alphabet: Alphabet = Alphabet::from_iter(eq.constants().iter().copied());
         alphabet.insert(CharRange::new('a', 'z'));
         let alphabet = Rc::new(alphabet);
@@ -260,7 +266,7 @@ mod tests {
                         }
                         assert!(found);
                     }
-                    let subs = domain.encoding().get_model(&cadical);
+                    let subs = domain.encoding().get_model(&cadical, ctx);
                     return Some(subs);
                 }
                 Some(_) => continue,
@@ -270,11 +276,11 @@ mod tests {
         None
     }
 
-    fn assert_sat(eq: &WordEquation, bounds: &[usize]) {
-        match solve_with_bounds(eq, bounds) {
+    fn assert_sat(eq: &WordEquation, bounds: &[usize], ctx: &mut Context) {
+        match solve_with_bounds(eq, bounds, ctx) {
             Some(sol) => {
                 assert!(
-                    !sol.satisfies_word_equation(eq).unwrap_or(false),
+                    !is_solution(eq, &sol),
                     "Returned substitution\n\t{}\nis not a solution for\n\t!({})",
                     sol,
                     eq
@@ -284,8 +290,8 @@ mod tests {
         }
     }
 
-    fn assert_unsat(eq: &WordEquation, bounds: &[usize]) {
-        if let Some(sol) = solve_with_bounds(eq, bounds) {
+    fn assert_unsat(eq: &WordEquation, bounds: &[usize], ctx: &mut Context) {
+        if let Some(sol) = solve_with_bounds(eq, bounds, ctx) {
             panic!("Expected UNSAT, got solution: {}", sol);
         }
     }
@@ -294,94 +300,94 @@ mod tests {
     fn const_assignment() {
         let mut ctx = Context::default();
         let eq = parse_simple_equation("X", "abc", &mut ctx);
-        assert_sat(&eq, &[1]);
-        assert_sat(&eq, &[3]);
+        assert_sat(&eq, &[1], &mut ctx);
+        assert_sat(&eq, &[3], &mut ctx);
     }
 
     #[test]
     fn empty_eq() {
         let mut ctx = Context::default();
         let eq = parse_simple_equation("", "", &mut ctx);
-        assert_unsat(&eq, &[1]);
+        assert_unsat(&eq, &[1], &mut ctx);
     }
 
     #[test]
     fn const_equality_sat() {
         let mut ctx = Context::default();
         let eq = parse_simple_equation("foo", "foo", &mut ctx);
-        assert_unsat(&eq, &[1]);
+        assert_unsat(&eq, &[1], &mut ctx);
     }
 
     #[test]
     fn const_equality_unsat() {
         let mut ctx = Context::default();
         let eq = parse_simple_equation("foo", "bar", &mut ctx);
-        assert_sat(&eq, &[1, 2, 5, 10]);
+        assert_sat(&eq, &[1, 2, 5, 10], &mut ctx);
     }
 
     #[test]
     fn const_equality_prefixes_unsat() {
         let mut ctx = Context::default();
         let eq = parse_simple_equation("foo", "foofoo", &mut ctx);
-        assert_sat(&eq, &[1, 2, 5, 10]);
+        assert_sat(&eq, &[1, 2, 5, 10], &mut ctx);
     }
 
     #[test]
     fn var_equality_trivial() {
         let mut ctx = Context::default();
         let eq = parse_simple_equation("X", "X", &mut ctx);
-        assert_unsat(&eq, &[0]);
-        assert_unsat(&eq, &[1, 2, 5, 10]);
+        assert_unsat(&eq, &[0], &mut ctx);
+        assert_unsat(&eq, &[1, 2, 5, 10], &mut ctx);
     }
 
     #[test]
     fn var_equality() {
         let mut ctx = Context::default();
         let eq = parse_simple_equation("X", "Y", &mut ctx);
-        assert_unsat(&eq, &[0]);
-        assert_sat(&eq, &[1]);
+        assert_unsat(&eq, &[0], &mut ctx);
+        assert_sat(&eq, &[1], &mut ctx);
     }
 
     #[test]
     fn var_equality_commute() {
         let mut ctx = Context::default();
         let eq = parse_simple_equation("XY", "YX", &mut ctx);
-        assert_unsat(&eq, &[0]);
-        assert_sat(&eq, &[1, 2, 5, 10]);
+        assert_unsat(&eq, &[0], &mut ctx);
+        assert_sat(&eq, &[1, 2, 5, 10], &mut ctx);
     }
 
     #[test]
     fn concat_two_vars_const() {
         let mut ctx = Context::default();
         let eq = parse_simple_equation("XY", "abc", &mut ctx);
-        assert_sat(&eq, &[0]);
-        assert_sat(&eq, &[1]);
-        assert_sat(&eq, &[1, 2, 3]);
+        assert_sat(&eq, &[0], &mut ctx);
+        assert_sat(&eq, &[1], &mut ctx);
+        assert_sat(&eq, &[1, 2, 3], &mut ctx);
     }
 
     #[test]
     fn simple_eq_1() {
         let mut ctx = Context::default();
         let eq = parse_simple_equation("aXc", "abc", &mut ctx);
-        assert_sat(&eq, &[0]);
-        assert_sat(&eq, &[1]);
-        assert_sat(&eq, &[1, 2, 3]);
+        assert_sat(&eq, &[0], &mut ctx);
+        assert_sat(&eq, &[1], &mut ctx);
+        assert_sat(&eq, &[1, 2, 3], &mut ctx);
     }
 
     #[test]
     fn simple_eq_2() {
         let mut ctx = Context::default();
         let eq = parse_simple_equation("aXc", "abbbbc", &mut ctx);
-        assert_sat(&eq, &[1]);
-        assert_sat(&eq, &[3]);
-        assert_sat(&eq, &[2, 4]);
-        assert_sat(&eq, &[4]);
+        assert_sat(&eq, &[1], &mut ctx);
+        assert_sat(&eq, &[3], &mut ctx);
+        assert_sat(&eq, &[2, 4], &mut ctx);
+        assert_sat(&eq, &[4], &mut ctx);
     }
 
     #[test]
     fn simple_eq_3() {
         let mut ctx = Context::default();
         let eq = parse_simple_equation("aXb", "YXb", &mut ctx);
-        assert_sat(&eq, &[1]);
+        assert_sat(&eq, &[1], &mut ctx);
     }
 }

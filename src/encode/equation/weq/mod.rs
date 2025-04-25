@@ -8,21 +8,45 @@ pub use ineq::WordInEquationEncoder;
 
 #[cfg(test)]
 mod testutils {
-    use crate::ast::canonical::{self, WordEquation};
-    use crate::ast::{self, NodeKind};
+    use smt_str::SmtString;
+
+    use crate::ast::{self, VarSubstitution};
     use crate::context::Context;
+    use crate::ir::{Atom, Pattern};
+    use crate::ir::{Symbol, WordEquation};
     use crate::preprocess;
 
     pub(crate) fn parse_simple_equation(lhs: &str, rhs: &str, ctx: &mut Context) -> WordEquation {
         ctx.ast().set_optimize(false);
         let node = ast::testutils::parse_equation(lhs, rhs, ctx);
         let c = preprocess::canonicalize(&node, ctx);
-        match c.kind() {
-            NodeKind::Literal(literal) => match literal.atom().kind() {
-                canonical::AtomKind::WordEquation(weq) => weq.clone(),
-                _ => unreachable!(),
-            },
-            x => unreachable!("Expected a literal but got {x}"),
+        if let Atom::WordEquation(weq) = ctx.to_ir(&c).unwrap().atom().as_ref() {
+            weq.clone()
+        } else {
+            unreachable!()
+        }
+    }
+
+    fn apply_sub(p: &Pattern, sol: &VarSubstitution) -> Option<SmtString> {
+        let mut res = SmtString::empty();
+        for s in p.symbols() {
+            match s {
+                Symbol::Constant(c) => res.push(*c),
+                Symbol::Variable(v) => {
+                    let sub = sol.get(v)?.as_str_const()?;
+                    res.append(&sub);
+                }
+            }
+        }
+        Some(res)
+    }
+
+    pub(crate) fn is_solution(eq: &WordEquation, sol: &VarSubstitution) -> bool {
+        let lhs_const = apply_sub(&eq.lhs(), &sol);
+        let rhs_const = apply_sub(&eq.rhs(), &sol);
+        match (lhs_const, rhs_const) {
+            (Some(l), Some(r)) => l == r,
+            _ => false,
         }
     }
 }

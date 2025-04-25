@@ -1,17 +1,12 @@
-use std::{
-    fmt::{self, Display, Formatter},
-    rc::Rc,
-};
+use std::fmt::{self, Display, Formatter};
 
 use indexmap::IndexMap;
 use rustsat::types::Lit;
 
 use crate::{
-    ast::{
-        canonical::{Atom, Literal},
-        error::NodeError,
-        Node, NodeKind,
-    },
+    ast::{error::NodeError, Node, NodeKind},
+    context::Context,
+    ir::Literal,
     sat::{nlit, plit, pvar, PFormula, PVar},
 };
 
@@ -20,22 +15,37 @@ use crate::{
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct LitDefinition {
     defining: Lit,
-    defined: Literal,
+    // The IR representation
+    literal: Literal,
+    // The node representation
+    node: Node,
 }
 
 impl LitDefinition {
+    pub fn new(defining: Lit, node: Node, literal: Literal) -> Self {
+        Self {
+            defining,
+            node,
+            literal,
+        }
+    }
+
     pub fn defining(&self) -> Lit {
         self.defining
     }
 
-    pub fn defined(&self) -> &Literal {
-        &self.defined
+    pub fn defined_lit(&self) -> &Literal {
+        &self.literal
+    }
+
+    pub fn defined_node(&self) -> &Node {
+        &self.node
     }
 }
 
 impl Display for LitDefinition {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "{} -> {}", self.defining, self.defined)
+        write!(f, "{} -> {}", self.defining, self.literal)
     }
 }
 
@@ -49,7 +59,7 @@ impl Display for Abstraction {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.skeleton)?;
         for def in &self.definitions {
-            write!(f, "\n{} -> {}", def.defining, def.defined)?;
+            write!(f, "\n{} -> {}", def.defining, def.literal)?;
         }
         Ok(())
     }
@@ -89,19 +99,19 @@ impl Polarity {
     }
 }
 
-pub fn build_abstraction(node: &Node) -> Result<Abstraction, NodeError> {
+pub fn build_abstraction(node: &Node, ctx: &mut Context) -> Result<Abstraction, NodeError> {
     // Helper function to recursively abstract a node.
     // If an atomical node is encountered, checks if it is already defined, otherwise defines it.
     fn do_abstract(
         fm: &Node,
-        atom_defs: &mut IndexMap<Rc<Atom>, (PVar, Polarity)>,
-        undefs: &mut IndexMap<Node, PVar>, // Nodes that cannot be defined as canonical literals
+        atom_defs: &mut IndexMap<Node, (PVar, Polarity)>,
+        ctx: &mut Context,
     ) -> Result<PFormula, NodeError> {
         match fm.kind() {
             NodeKind::And | NodeKind::Or => {
                 let mut ps = Vec::new();
                 for c in fm.children() {
-                    ps.push(do_abstract(c, atom_defs, undefs)?);
+                    ps.push(do_abstract(c, atom_defs, ctx)?);
                 }
                 let res = match fm.kind() {
                     NodeKind::Or => PFormula::Or(ps),
@@ -110,75 +120,58 @@ pub fn build_abstraction(node: &Node) -> Result<Abstraction, NodeError> {
                 };
                 Ok(res)
             }
-            NodeKind::Literal(lit) => {
-                let atom = lit.atom();
-                let pol = if lit.polarity() {
-                    Polarity::Positive
-                } else {
-                    Polarity::Negative
-                };
-                let v = if let Some((v, dpol)) = atom_defs.get_mut(atom) {
-                    if *dpol != pol {
-                        *dpol = Polarity::Both;
-                    }
-                    *v
-                } else {
-                    let v = pvar();
-                    atom_defs.insert(atom.clone(), (v, pol));
-                    v
-                };
-                Ok(if lit.polarity() {
-                    PFormula::plit(v)
-                } else {
-                    PFormula::nlit(v)
-                })
-            }
-            NodeKind::Not => {
-                // this is an unsupported negated atom: we need to add a Boolean var which does not define a canonical literal
-                let atom = &fm.children()[0];
-                debug_assert!(atom.is_atomic());
-                let v = if let Some(v) = undefs.get(atom) {
-                    *v
-                } else {
-                    let v = pvar();
-                    undefs.insert(atom.clone(), v);
-                    v
-                };
-                Ok(PFormula::nlit(v))
-            }
             _ => {
-                // this is an unsupported atom: we need to add a Boolean var which does not define a canonical literal
-                assert!(fm.is_atomic(), "Unsupported node: {}", fm);
-                let v = if let Some(v) = undefs.get(fm) {
-                    *v
+                if fm.is_literal() {
+                    let (pol, atom) = if fm.is_atomic() {
+                        (Polarity::Positive, fm)
+                    } else {
+                        (Polarity::Negative, &fm[0])
+                    };
+                    debug_assert!(atom.is_atomic());
+
+                    // Check if we have defined this atom before and re-use the defining variable
+                    // Otherwise create new one
+                    let defining_var = if let Some((v, dpol)) = atom_defs.get_mut(atom) {
+                        if *dpol != pol {
+                            *dpol = Polarity::Both
+                        }
+                        *v
+                    } else {
+                        let v = pvar();
+                        atom_defs.insert(atom.clone(), (v, pol));
+                        v
+                    };
+                    Ok(if pol == Polarity::Positive {
+                        PFormula::plit(defining_var)
+                    } else {
+                        PFormula::nlit(defining_var)
+                    })
                 } else {
-                    let v = pvar();
-                    undefs.insert(fm.clone(), v);
-                    v
-                };
-                Ok(PFormula::nlit(v))
+                    Err(NodeError::NotInNegationNormalForm(fm.clone()))
+                }
             }
         }
     }
     let mut atom_defs = IndexMap::new();
-    let mut undefs = IndexMap::new();
-    let skeleton = do_abstract(node, &mut atom_defs, &mut undefs)?;
+    let skeleton = do_abstract(node, &mut atom_defs, ctx)?;
     let mut defs = Vec::with_capacity(atom_defs.len());
     for (atom, (v, pol)) in atom_defs {
-        if pol.positive() {
-            let def = LitDefinition {
-                defining: plit(v),
-                defined: Literal::positive(atom.clone()),
-            };
-            defs.push(def);
-        }
-
-        if pol.negative() {
-            let def: LitDefinition = LitDefinition {
-                defining: nlit(v),
-                defined: Literal::negative(atom.clone()),
-            };
-            defs.push(def);
+        // check if this atom it supported
+        if let Some(lit) = ctx.to_ir(&atom) {
+            assert!(lit.polarity());
+            if pol.positive() {
+                let def = LitDefinition::new(plit(v), atom.clone(), lit.clone());
+                defs.push(def);
+            }
+            if pol.negative() {
+                let negated = ctx.ast().not(atom);
+                let def: LitDefinition = LitDefinition::new(nlit(v), negated, lit.flip_polarity());
+                defs.push(def);
+            }
+        } else {
+            // TODO: in the future I would like this check to but done in the engine rather than in the abstraction
+            // The abstraction should not have to know which atoms/literals are support and whic aren't
+            log::warn!("Ignoring: {}, unsupported", atom)
         }
     }
     Ok(Abstraction::new(skeleton, defs))

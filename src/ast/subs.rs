@@ -7,7 +7,7 @@ use indexmap::IndexMap;
 
 use crate::context::{Context, Variable};
 
-use super::{canonical::Assignment, Node, NodeKind};
+use super::{Node, NodeKind};
 
 /// A substitution that maps nodes to other nodes.
 ///
@@ -39,6 +39,14 @@ impl VarSubstitution {
             panic!("Variable already in substitution");
         }
         self.insert(key, value);
+    }
+
+    /// Adds all key-value pairs in other to this substitution.
+    /// Panics if a key exists in both.
+    pub fn extend(&mut self, other: &Self) {
+        for (k, v) in other.iter() {
+            self.add(k.clone(), v.clone());
+        }
     }
 
     /// Get the value for the given key.
@@ -106,25 +114,6 @@ impl VarSubstitution {
             .collect();
 
         ctx.ast().create_node(node.kind().clone(), children)
-    }
-
-    pub fn from_assignment(assignment: &Assignment, ctx: &mut Context) -> Self {
-        let mut subst = VarSubstitution::default();
-        for (var, value) in assignment.iter() {
-            let value = if let Some(true) = value.as_bool() {
-                ctx.ast().ttrue()
-            } else if let Some(false) = value.as_bool() {
-                ctx.ast().ffalse()
-            } else if let Some(str) = value.as_string() {
-                ctx.ast().const_string(str.clone())
-            } else if let Some(int) = value.as_int() {
-                ctx.ast().const_int(int)
-            } else {
-                panic!("Unsupported value in assignment")
-            };
-            subst.add(var.clone(), value);
-        }
-        subst
     }
 
     pub fn iter(&self) -> impl Iterator<Item = (&Rc<Variable>, &Node)> {

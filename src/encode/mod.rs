@@ -1,9 +1,9 @@
 use std::fmt::Display;
 
 use crate::{
-    ast::canonical::{AtomKind, Literal, RegularConstraint},
     context::Context,
     domain::Domain,
+    ir::{Atom, Literal, RegularConstraint},
 };
 
 use self::{boolvar::BoolVarEncoder, domain::DomainEncoding, linear::MddEncoder};
@@ -122,18 +122,19 @@ pub enum LiteralEncoder {
 
 pub fn get_encoder(lit: &Literal, ctx: &mut Context) -> Result<LiteralEncoder, EncodingError> {
     let pol = lit.polarity();
-    let e = match lit.atom().kind() {
-        AtomKind::Boolvar(v) => LiteralEncoder::BoolVar(BoolVarEncoder::new(v, pol)),
-        AtomKind::InRe(inre) => LiteralEncoder::NFAEncoder(build_inre_encoder(inre, pol, ctx)),
-        AtomKind::WordEquation(weq) => LiteralEncoder::WeqEncode(equation::get_encoder(weq, pol)),
-        AtomKind::FactorConstraint(rfc) => {
+    let e = match lit.atom().as_ref() {
+        Atom::Boolvar(v) => LiteralEncoder::BoolVar(BoolVarEncoder::new(v, pol)),
+        Atom::InRe(inre) => LiteralEncoder::NFAEncoder(build_inre_encoder(inre, pol, ctx)),
+        Atom::WordEquation(weq) => LiteralEncoder::WeqEncode(equation::get_encoder(weq, pol)),
+        Atom::FactorConstraint(rfc) => {
             // Right now, we cast it into a regular constraint
             log::warn!("Specialized encodings for regular factor constraints are not implemented yet. Casting to regular constraint.");
             let re = rfc.as_regex(ctx);
             let inre = RegularConstraint::new(rfc.of().clone(), re);
             LiteralEncoder::NFAEncoder(build_inre_encoder(&inre, pol, ctx))
         }
-        AtomKind::Linear(lc) => LiteralEncoder::LinearEncode(MddEncoder::new(lc.clone(), pol)),
+        Atom::Linear(lc) => LiteralEncoder::LinearEncode(MddEncoder::new(lc.clone(), pol)),
+        Atom::True | Atom::False => return Err(EncodingError::new("Not canonical")),
     };
     Ok(e)
 }

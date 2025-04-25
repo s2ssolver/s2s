@@ -6,12 +6,16 @@ use std::{
 };
 
 use indexmap::IndexMap;
+
 use smt_str::{
     automata::{compile, NFA},
     re::Regex,
 };
 
-use crate::ast::AstBuilder;
+use crate::{
+    ast::{AstBuilder, Node},
+    ir::{self, Literal},
+};
 
 /// The SMT-LIB sorts.
 /// Currently, only Int, String, and Bool are supported.
@@ -122,6 +126,9 @@ pub struct Context {
     nfas: IndexMap<Regex, Rc<NFA>>,
     /// The instance of the AST builder valid for this context
     ast_builder: AstBuilder,
+
+    /// Caches conversions from nodes to literals
+    ir_cache: IndexMap<Node, Option<Literal>>,
 }
 
 impl Context {
@@ -218,5 +225,17 @@ impl Context {
     /// Returns the [AstBuilder] valid for this context
     pub fn ast(&mut self) -> &mut AstBuilder {
         &mut self.ast_builder
+    }
+
+    /// Converts a node to a literal in IR.
+    /// Caches the results
+    pub fn to_ir(&mut self, node: &Node) -> Option<Literal> {
+        if let Some(ok) = self.ir_cache.get(node) {
+            ok.clone()
+        } else {
+            let converted = ir::convert_to_ir(node);
+            self.ir_cache.insert(node.clone(), converted.clone());
+            converted
+        }
     }
 }

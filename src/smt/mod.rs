@@ -93,7 +93,6 @@ impl ToSmt for NodeKind {
             NodeKind::Le => "<=".to_string(),
             NodeKind::Gt => ">".to_string(),
             NodeKind::Ge => ">=".to_string(),
-            NodeKind::Literal(_) => unreachable!(),
         }
     }
 }

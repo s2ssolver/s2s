@@ -78,7 +78,6 @@ impl<'a> Converter<'a> {
         match self.ctx.new_var(symbol, sort) {
             Ok(v) => Ok(v),
             Err(ContextError::AlreadyDeclared(s, _, _)) => Err(AstError::AlreadyDeclared(s)),
-            _ => unreachable!(),
         }
     }
 

@@ -5,8 +5,8 @@ use rustsat::solvers::Solve;
 use rustsat_cadical::CaDiCaL;
 
 use crate::{
-    ast::canonical::Assignment,
-    context::Variable,
+    ast::VarSubstitution,
+    context::{Context, Variable},
     domain::Domain,
     sat::{plit, pvar, PVar},
 };
@@ -36,16 +36,14 @@ impl BoolDomain {
         self.var_map.get(var).cloned()
     }
 
-    pub(crate) fn get_model(&self, solver: &CaDiCaL) -> Assignment {
-        let mut model = Assignment::default();
+    pub(crate) fn get_model(&self, solver: &CaDiCaL, ctx: &mut Context) -> VarSubstitution {
+        let mut model = VarSubstitution::default();
         let sol = solver.full_solution().expect("No solution found");
         for (var, v) in self.iter() {
             if sol.lit_value(plit(*v)).to_bool_with_def(false) {
-                let ok = model.assign(var.clone(), true);
-                assert!(ok.is_none());
+                model.add(var.clone(), ctx.ast().ttrue());
             } else {
-                let ok = model.assign(var.clone(), false);
-                assert!(ok.is_none());
+                model.add(var.clone(), ctx.ast().ffalse());
             }
         }
         model

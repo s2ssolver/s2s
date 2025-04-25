@@ -10,6 +10,7 @@
 
 mod linear;
 mod regular;
+use core::panic;
 use std::{fmt::Display, rc::Rc};
 
 use indexmap::{IndexMap, IndexSet};
@@ -19,12 +20,12 @@ use regular::RegularBoundsInferer;
 use smallvec::smallvec;
 
 use crate::{
-    ast::canonical::{
-        ArithOperator, AtomKind, LinearArithTerm, LinearConstraint, LinearSummand, Literal,
-        RegularConstraint, VariableTerm, WordEquation,
-    },
     context::{Context, Sorted, Variable},
     interval::BoundValue,
+    ir::{
+        Atom, LIAConstraint, LIAOp, LIATerm, LinearSummand, Literal, Pattern, RegularConstraint,
+        VariableTerm, WordEquation,
+    },
 };
 
 use crate::interval::Interval;
@@ -133,11 +134,15 @@ struct FragmentFinder {
 impl FragmentFinder {
     pub fn and(&mut self, lit: &Literal) {
         let pol = lit.polarity();
-        match lit.atom().kind() {
-            AtomKind::InRe(inre) => {
-                self.in_re_vars.insert(inre.lhs().clone());
+        match lit.atom().as_ref() {
+            Atom::InRe(inre) => {
+                if let Some(v) = inre.lhs().as_variable() {
+                    self.in_re_vars.insert(v);
+                } else {
+                    panic!("Not in canonical form: {}", inre)
+                }
             }
-            AtomKind::WordEquation(weq) => {
+            Atom::WordEquation(weq) => {
                 if !pol {
                     for v in weq.variables() {
                         self.ineq_vars.insert(v);
@@ -150,10 +155,14 @@ impl FragmentFinder {
                     self.in_re_vars.extend(weq.variables());
                 }
             }
-            AtomKind::FactorConstraint(refc) => {
-                self.in_re_vars.insert(refc.of().clone());
+            Atom::FactorConstraint(refc) => {
+                if let Some(v) = refc.of().as_variable() {
+                    self.in_re_vars.insert(v);
+                } else {
+                    panic!("Not in canonical form: {}", refc)
+                }
             }
-            AtomKind::Linear(lc) => {
+            Atom::Linear(lc) => {
                 self.lin_vars.extend(lc.variables());
             }
             _ => (),
@@ -218,7 +227,11 @@ pub struct BoundInferer {
 
 impl BoundInferer {
     fn add_reg(&mut self, reg: &RegularConstraint, pol: bool, ctx: &mut Context) {
-        let v = reg.lhs().clone();
+        let v = if let Some(v) = reg.lhs().as_variable() {
+            v
+        } else {
+            panic!("Not in canonical form: {}", reg)
+        };
         let re = reg.re().clone();
         self.reg.add_reg(v, re, pol, ctx);
     }
@@ -239,7 +252,7 @@ impl BoundInferer {
         }
     }
 
-    fn add_linear_constraint(&mut self, lc: &LinearConstraint) {
+    fn add_linear_constraint(&mut self, lc: &LIAConstraint) {
         self.lin.add_linear(lc.clone());
     }
 
@@ -252,15 +265,19 @@ impl BoundInferer {
 
         // skip this if there is a conflict
         let pol = lit.polarity();
-        match lit.atom().kind() {
-            AtomKind::Boolvar(_) => (),
-            AtomKind::InRe(reg) => self.add_reg(reg, pol, ctx),
-            AtomKind::WordEquation(weq) => self.add_weq(weq, pol, ctx),
-            AtomKind::FactorConstraint(rfac) => {
+        match lit.atom().as_ref() {
+            Atom::Boolvar(_) => (),
+            Atom::InRe(reg) => self.add_reg(reg, pol, ctx),
+            Atom::WordEquation(weq) => self.add_weq(weq, pol, ctx),
+            Atom::FactorConstraint(rfac) => {
                 let re = rfac.as_regex(ctx);
-                self.reg.add_reg(rfac.of().clone(), re, pol, ctx);
+                if let Some(v) = rfac.of().as_variable() {
+                    self.reg.add_reg(v, re, pol, ctx);
+                } else {
+                    panic!("Not in canonical form: {}", lit)
+                }
             }
-            AtomKind::Linear(lc) => {
+            Atom::Linear(lc) => {
                 let lc = if pol { lc.clone() } else { lc.negate() };
 
                 if let Some(as_reg) = lc_to_reg(&lc, ctx) {
@@ -271,6 +288,7 @@ impl BoundInferer {
 
                 self.add_linear_constraint(&lc)
             }
+            Atom::True | Atom::False => panic!("Not in canonical form: {}", lit),
         }
         self.fragment.and(&lit);
     }
@@ -312,14 +330,14 @@ impl BoundInferer {
                         if let Some(max) = nfa.longest_path() {
                             // This is none if the nfa contains cycles
                             // Add "|v| <= max" to the bounds
-                            let lhs = LinearArithTerm::from_var(v.clone());
-                            let lc = LinearConstraint::new(lhs, ArithOperator::Leq, max as i64);
+                            let lhs = LIATerm::from_var(v.clone());
+                            let lc = LIAConstraint::new(lhs, LIAOp::Leq, max as i64);
                             self.lin.add_linear(lc);
                         }
                         if let Some(min) = nfa.shortest_path() {
                             // Add "|v| >= max" to the bounds
-                            let lhs = LinearArithTerm::from_var(v.clone());
-                            let lc = LinearConstraint::new(lhs, ArithOperator::Geq, min as i64);
+                            let lhs = LIATerm::from_var(v.clone());
+                            let lc = LIAConstraint::new(lhs, LIAOp::Geq, min as i64);
                             self.lin.add_linear(lc);
                         } else {
                             // The automaton is empty, there is no solution
@@ -361,35 +379,35 @@ impl BoundInferer {
     }
 }
 
-fn lc_to_reg(lc: &LinearConstraint, ctx: &mut Context) -> Option<RegularConstraint> {
+fn lc_to_reg(lc: &LIAConstraint, ctx: &mut Context) -> Option<RegularConstraint> {
     if lc.lhs().len() == 1 {
         if let LinearSummand::Mult(VariableTerm::Len(x), s) = lc.lhs().iter().next().unwrap() {
             // This is a constraint of the form `s|x| # rhs`, we can rewrite this as a regular constraint
             let (r, op, s) = match (lc.rhs() >= 0, *s >= 0) {
                 (true, true) => (lc.rhs() as u32, lc.operator(), *s as u32),
-                (false, false) if lc.operator() != ArithOperator::Eq => {
+                (false, false) if lc.operator() != LIAOp::Eq => {
                     (-lc.rhs() as u32, lc.operator().flip(), -*s as u32)
                 }
-                (false, false) if lc.operator() == ArithOperator::Eq => {
+                (false, false) if lc.operator() == LIAOp::Eq => {
                     (-lc.rhs() as u32, lc.operator(), -*s as u32)
                 }
                 _ => return None,
             };
             let builder = ctx.re_builder();
             let re = match op {
-                ArithOperator::Eq => {
+                LIAOp::Eq => {
                     if r % s == 0 {
                         builder.pow(builder.allchar(), r / s)
                     } else {
                         builder.none()
                     }
                 }
-                ArithOperator::Ineq => return None,
-                ArithOperator::Leq => {
+                LIAOp::Ineq => return None,
+                LIAOp::Leq => {
                     let u = r / s;
                     builder.loop_(builder.allchar(), 0, u)
                 }
-                ArithOperator::Less => {
+                LIAOp::Less => {
                     let u = r / s;
                     if r % s == 0 {
                         builder.loop_(builder.allchar(), 0, u - 1)
@@ -397,18 +415,21 @@ fn lc_to_reg(lc: &LinearConstraint, ctx: &mut Context) -> Option<RegularConstrai
                         builder.loop_(builder.allchar(), 0, u)
                     }
                 }
-                ArithOperator::Geq => {
+                LIAOp::Geq => {
                     let l = r.div_ceil(s);
                     let lower = builder.pow(builder.allchar(), l);
                     builder.concat(smallvec![lower, builder.all()])
                 }
-                ArithOperator::Greater => {
+                LIAOp::Greater => {
                     let l = r.div_ceil(s);
                     let lower = builder.pow(builder.allchar(), l + 1);
                     builder.concat(smallvec![lower, builder.all()])
                 }
             };
-            return Some(RegularConstraint::new(x.clone(), re));
+            return Some(RegularConstraint::new(
+                Rc::new(Pattern::variable(x.clone())),
+                re,
+            ));
         }
     }
     None

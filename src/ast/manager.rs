@@ -392,7 +392,7 @@ impl AstBuilder {
         let mut const_str = SmtString::empty();
         for node in flattened {
             if let Some(s) = node.as_str_const() {
-                const_str.append(s);
+                const_str.append(&s);
             } else {
                 if !const_str.is_empty() {
                     folded.push(self.const_string(const_str.clone()));

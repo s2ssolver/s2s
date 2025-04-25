@@ -5,13 +5,13 @@ use rustsat_cadical::CaDiCaL;
 
 use super::DomainEncoding;
 
-use crate::context::{Sort, Sorted, Variable};
+use crate::ast::VarSubstitution;
+use crate::context::{Context, Sort, Sorted, Variable};
 use crate::domain::Domain;
 use crate::encode::EncodingSink;
 use crate::interval::Interval;
 use crate::sat::{plit, PVar};
 use crate::{
-    ast::canonical::Assignment,
     encode::{card::IncrementalEO, EncodingResult},
     sat::pvar,
 };
@@ -51,13 +51,12 @@ impl IntDomain {
         self.encodings.get(&(var.clone(), value)).cloned()
     }
 
-    pub(crate) fn get_model(&self, solver: &CaDiCaL) -> Assignment {
-        let mut model = Assignment::default();
+    pub(crate) fn get_model(&self, solver: &CaDiCaL, ctx: &mut Context) -> VarSubstitution {
+        let mut model = VarSubstitution::default();
         let sol = solver.full_solution().expect("No solution found");
         for (var, l, v) in self.iter() {
             if sol.lit_value(plit(*v)).to_bool_with_def(false) {
-                let ok = model.assign(var.clone(), l);
-                assert!(ok.is_none());
+                model.add(var.clone(), ctx.ast().const_int(l));
             }
         }
         model

@@ -4,20 +4,12 @@ use smt_str::re::{ReOp, Regex};
 use crate::{
     abstraction::{build_abstraction, LitDefinition},
     alphabet,
-    ast::{
-        canonical::{
-            ArithOperator, Assignment, AtomKind, LinearArithTerm, LinearConstraint, Literal,
-            WordEquation,
-        },
-        get_entailed_literals,
-        normal::to_nnf,
-        smt::to_script,
-        Node, NodeKind, VarSubstitution,
-    },
-    bounds::{BoundInferer, InferringStrategy, LinearRefiner},
+    ast::{get_entailed_literals, normal::to_nnf, smt::to_script, Node, NodeKind, VarSubstitution},
+    bounds::{InferringStrategy, LinearRefiner},
     context::{Context, Sort, Sorted},
     domain::Domain,
     interval::Interval,
+    ir::{Atom, LIAConstraint, LIAOp, LIATerm, Literal, WordEquation},
     preprocess::{canonicalize, Preprocessor},
     solver::Solver,
     SolverAnswer, SolverOptions,
@@ -120,6 +112,7 @@ impl Engine {
         // Canonicalize.
         // This brings the formula into a normal that the solver understands.
         let canonical = canonicalize(&preprocessed, ctx);
+
         log::debug!("Canonicalized formula: {}", canonical);
 
         Ok((canonical, prepr_subst))
@@ -137,12 +130,12 @@ impl Engine {
         }
 
         // Infer alphabet
-        let alphabet = alphabet::infer(fm);
+        let alphabet = alphabet::infer(fm, ctx);
         log::info!("Inferred alphabet of size {}", alphabet.len(),);
         log::debug!("Alphabet: {}", alphabet);
 
         // Build abstraction
-        let abstraction = build_abstraction(fm)?;
+        let abstraction = build_abstraction(fm, ctx)?;
 
         // Initialize domain for all variables
         let init_dom = match self.init_domain_approx(fm, ctx) {
@@ -200,7 +193,7 @@ impl Engine {
                     let h = model.clone().into();
                     log::debug!("Found model for over-approximation");
                     log::trace!("Model: {}", model);
-                    if self.check_assignment(&fm, &h) {
+                    if self.check_assignment(&fm, &h, ctx) {
                         // If the model satisfies the formula, we are done
                         return Ok(SolverAnswer::Sat(Some(model)));
                     } else {
@@ -256,7 +249,7 @@ impl Engine {
     fn pick_defs(
         &self,
         _fm: &Node,
-        _assign: &Assignment,
+        _assign: &VarSubstitution,
         defs: &[LitDefinition],
     ) -> Vec<LitDefinition> {
         let mut boolvars = Vec::new();
@@ -271,10 +264,10 @@ impl Engine {
         // Lenght constraints
         let mut lc = Vec::new();
         for d in defs {
-            let lit = d.defined();
-            match lit.atom().kind() {
-                AtomKind::Boolvar(_) => boolvars.push(d.clone()),
-                AtomKind::WordEquation(weq) => match weq {
+            let lit = d.defined_lit();
+            match lit.atom().as_ref() {
+                Atom::Boolvar(_) => boolvars.push(d.clone()),
+                Atom::WordEquation(weq) => match weq {
                     WordEquation::ConstantEquality(_, _) => unreachable!(),
                     WordEquation::VarEquality(_, _) => simple_eqs.push(d.clone()),
                     WordEquation::VarAssignment(_, _) => simple_eqs.push(d.clone()),
@@ -286,15 +279,16 @@ impl Engine {
                         }
                     }
                 },
-                AtomKind::InRe(inre) => {
+                Atom::InRe(inre) => {
                     if inre.re().simple() {
                         simple_inres.push(d.clone());
                     } else {
                         extended_inres.push(d.clone());
                     }
                 }
-                AtomKind::FactorConstraint(_) => simple_inres.push(d.clone()),
-                AtomKind::Linear(_) => lc.push(d.clone()),
+                Atom::FactorConstraint(_) => simple_inres.push(d.clone()),
+                Atom::Linear(_) => lc.push(d.clone()),
+                Atom::True | Atom::False => todo!("should not happen"),
             }
         }
         let mut result = boolvars;
@@ -313,7 +307,7 @@ impl Engine {
         // add extended inres
         let posneg: (Vec<LitDefinition>, Vec<LitDefinition>) = extended_inres
             .into_iter()
-            .partition(|d| d.defined().polarity());
+            .partition(|d| d.defined_lit().polarity());
         // first only the positiv
         result.extend(posneg.0);
         if !result.is_empty() {
@@ -327,76 +321,37 @@ impl Engine {
     /// Initialize the domain of all variables in the formula.
     /// The domain is the range of values that a variable can take.
     /// The domain is encoded as the first step of the encoding.
-    fn _init_domain_exact(&self, fm: &Node, ctx: &mut Context) -> Option<Domain> {
-        let mut inferer = BoundInferer::default();
-        for lit in get_entailed_literals(fm) {
-            inferer.add_literal(lit.clone(), ctx)
-        }
-
-        let init_bounds = inferer.infer()?;
-        // Clamp all bounds and add Booleans to the domain
-        let mut domain = Domain::default();
-        for v in fm.variables() {
-            match v.sort() {
-                Sort::Int | Sort::String => {
-                    let lower = init_bounds
-                        .get(&v)
-                        .and_then(|b| b.lower_finite())
-                        .unwrap_or(0);
-                    let upper = init_bounds
-                        .get(&v)
-                        .and_then(|b| b.upper_finite())
-                        .unwrap_or(self.options.init_upper_bound)
-                        .max(lower) // at least lower
-                        .max(1); // at least 1
-                    let interval = Interval::new(lower, upper);
-                    // Clamp the bound to max
-                    let interval = interval.intersect(self.options.max_bounds);
-                    match v.sort() {
-                        Sort::Int => domain.set_int(v.clone(), interval),
-                        Sort::String => domain.set_string(v.clone(), interval),
-                        _ => unreachable!(),
-                    };
-                }
-                Sort::Bool => domain.set_bool(v.clone()),
-                Sort::RegLan => unreachable!(),
-            };
-        }
-        Some(domain)
-    }
-
-    /// Initialize the domain of all variables in the formula.
-    /// The domain is the range of values that a variable can take.
-    /// The domain is encoded as the first step of the encoding.
-    fn init_domain_approx(&self, fm: &Node, _ctx: &mut Context) -> Option<Domain> {
+    fn init_domain_approx(&self, fm: &Node, ctx: &mut Context) -> Option<Domain> {
         let mut seen: IndexSet<Literal> = IndexSet::new();
         let mut refiner = LinearRefiner::default();
-        for lit in get_entailed_literals(fm) {
+        let entailed_lits = get_entailed_literals(fm)
+            .into_iter()
+            .filter_map(|n| ctx.to_ir(&n));
+        for lit in entailed_lits {
             seen.insert(lit.clone());
             if seen.contains(&lit.flip_polarity()) {
                 return None;
             }
-            match lit.atom().kind() {
-                AtomKind::InRe(inre) if lit.polarity() => {
+            match lit.atom().as_ref() {
+                Atom::InRe(inre) if lit.polarity() => {
+                    let v = if let Some(v) = inre.lhs().as_variable() {
+                        v
+                    } else {
+                        // not canonical
+                        continue;
+                    };
                     let re = inre.re();
                     if let Some(s) = re_smallest(re) {
-                        let lc = LinearConstraint::new(
-                            LinearArithTerm::from_var(inre.lhs().clone()),
-                            ArithOperator::Geq,
-                            s as i64,
-                        );
+                        let lc =
+                            LIAConstraint::new(LIATerm::from_var(v.clone()), LIAOp::Geq, s as i64);
                         refiner.add_linear(lc);
                     }
                     if let Some(s) = re_longest(re) {
-                        let lc = LinearConstraint::new(
-                            LinearArithTerm::from_var(inre.lhs().clone()),
-                            ArithOperator::Leq,
-                            s as i64,
-                        );
+                        let lc = LIAConstraint::new(LIATerm::from_var(v), LIAOp::Leq, s as i64);
                         refiner.add_linear(lc);
                     }
                 }
-                AtomKind::WordEquation(weq) if lit.polarity() => refiner.add_weq(weq),
+                Atom::WordEquation(weq) if lit.polarity() => refiner.add_weq(weq),
                 _ => (),
             }
         }
@@ -438,8 +393,9 @@ impl Engine {
     /// Returns true if the assignment satisfies the formula.
     /// Returns false if the assignment does not satisfy the formula.
     /// Also returns false if the assignment is is incomplete, i.e., if it does not assign a value to all variables.
-    fn check_assignment(&self, fm: &Node, assign: &Assignment) -> bool {
-        assign.satisfies(fm).unwrap_or(false)
+    fn check_assignment(&self, fm: &Node, assign: &VarSubstitution, ctx: &mut Context) -> bool {
+        let applied = assign.apply(fm, ctx);
+        applied.as_bool_const().unwrap_or(false)
     }
 }
 
