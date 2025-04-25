@@ -10,6 +10,7 @@ const DEFAULT_MAX_BLOCKING: usize = 100;
 const DEFAULT_GET_MODEL: bool = false;
 const DEFAULT_MAX_BOOL_GUESS: usize = 10;
 const DEFAULT_GUESS_BOOLS: bool = true;
+const DEFAULT_COMPRESSION: bool = true;
 
 #[derive(Debug, Clone)]
 pub struct SolverOptions {
@@ -47,6 +48,9 @@ pub struct SolverOptions {
     /// The maximum number of Boolean variables to guess a value for.
     pub max_bool_guesses: usize,
 
+    /// Whether to perform the range-compressions
+    pub compress: bool,
+
     /// The maximum number of blocking assignments the over-approximation before returning `unknown`.
     pub max_blocking: usize,
 }
@@ -66,6 +70,7 @@ impl Default for SolverOptions {
             max_blocking: DEFAULT_MAX_BLOCKING,
             print_preprocessed: false,
             max_bool_guesses: DEFAULT_MAX_BOOL_GUESS,
+            compress: DEFAULT_COMPRESSION,
         }
     }
 }

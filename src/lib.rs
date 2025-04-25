@@ -36,6 +36,7 @@ pub use context::Context;
 
 pub use engine::Engine as Blastr;
 use smt::{Interpreter, Script};
+pub use solver::BoundStep;
 pub use solver::{SolverAnswer, SolverOptions};
 
 /// Solves an SMT problem over the theory of strings.

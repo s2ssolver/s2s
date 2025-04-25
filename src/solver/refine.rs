@@ -41,7 +41,7 @@ pub enum BoundStep {
 
 impl Default for BoundStep {
     fn default() -> Self {
-        BoundStep::ConstantOffset(20)
+        BoundStep::ConstantOffset(10)
     }
 }
 
