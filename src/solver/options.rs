@@ -4,7 +4,6 @@ use super::refine::BoundStep;
 
 const DEFAULT_SIMPLIFY: bool = true;
 const DEFAULT_PREPROCESS_PASSES: usize = 20;
-const DEFAULT_CHECK_MODEL: bool = false;
 const DEFAULT_UNSAT_ON_MAX_BOUND: bool = false;
 const DEFAULT_MAX_BLOCKING: usize = 100;
 const DEFAULT_GET_MODEL: bool = false;
@@ -30,7 +29,6 @@ pub struct SolverOptions {
     /// Use `unsat_on_max_bound` to change this behavior to return `unsat` instead.
     pub max_bounds: Interval,
     pub step: BoundStep,
-    pub check_model: bool,
     /// Wheter to print the model after solving.
     /// This is only used if the solver returns `sat`.
     pub get_model: bool,
@@ -62,7 +60,6 @@ impl Default for SolverOptions {
             simp_max_passes: DEFAULT_PREPROCESS_PASSES,
             max_bounds: Interval::unbounded(),
             step: BoundStep::default(),
-            check_model: DEFAULT_CHECK_MODEL,
             guess_bools: DEFAULT_GUESS_BOOLS,
             get_model: DEFAULT_GET_MODEL,
             unsat_on_max_bound: DEFAULT_UNSAT_ON_MAX_BOUND,
