@@ -8,6 +8,7 @@ const DEFAULT_GET_MODEL: bool = false;
 const DEFAULT_MAX_BOOL_GUESS: usize = 10;
 const DEFAULT_GUESS_BOOLS: bool = true;
 const DEFAULT_COMPRESSION: bool = true;
+const DEFAULT_CEGAR: bool = true;
 
 #[derive(Debug, Clone)]
 pub struct Options {
@@ -26,7 +27,11 @@ pub struct Options {
     /// If no solution is found within this bound, the solver returns `unknown`.
     /// Use `unsat_on_max_bound` to change this behavior to return `unsat` instead.
     pub max_bounds: Interval,
+    /// The step size by which bounds are increased on unsat
     pub step: BoundStep,
+    /// If `true` solves over approximations and gradually encodes more literals if a counter-exmample is found
+    /// If `false` will directly encode all literals in the formula.
+    pub cegar: bool,
     /// Wheter to print the model after solving.
     /// This is only used if the solver returns `sat`.
     pub get_model: bool,
@@ -66,6 +71,7 @@ impl Default for Options {
             print_preprocessed: false,
             max_bool_guesses: DEFAULT_MAX_BOOL_GUESS,
             compress: DEFAULT_COMPRESSION,
+            cegar: DEFAULT_CEGAR,
         }
     }
 }

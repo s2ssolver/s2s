@@ -186,7 +186,7 @@ impl Engine {
         &mut self,
         fm: Node,
         mut solver: Solver,
-        mut defs: Vec<LitDefinition>,
+        mut unencoded_defs: Vec<LitDefinition>,
         mngr: &mut NodeManager,
     ) -> Result<SolverAnswer, Error> {
         let mut blocked = 0;
@@ -206,7 +206,7 @@ impl Engine {
                         // Over-approximation is SAT, but model does not satisfy the formula
                         // Pick the next definitions to encode
                         log::info!("Model does not satisfy the formula");
-                        let next = self.pick_defs(&fm, &h, &defs);
+                        let next = self.pick_defs(&fm, &h, &unencoded_defs);
                         if next.is_empty() {
                             // In the future, this should block the current assignment and continue to search for a new model
                             // But we freeze the bounds to the current ones and return if no model can be found after max_blocking attemps
@@ -227,7 +227,7 @@ impl Engine {
                             for d in next {
                                 log::info!("Adding literal: {}", d);
                                 solver.add_definition(&d);
-                                defs.retain(|def| def.defining() != d.defining());
+                                unencoded_defs.retain(|def| def.defining() != d.defining());
                             }
                         }
                     }
@@ -258,6 +258,10 @@ impl Engine {
         _assign: &Assignment,
         defs: &[LitDefinition],
     ) -> Vec<LitDefinition> {
+        if !self.options.cegar {
+            return defs.to_vec();
+        }
+
         let mut boolvars = Vec::new();
         // "x=y" and "x=w"
         let mut simple_eqs = Vec::new();

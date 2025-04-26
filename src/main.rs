@@ -24,6 +24,10 @@ struct Args {
     #[arg(long)]
     dry: bool,
 
+    /// If set, does not solve over-approxmation but encodes the complete formula directly
+    #[arg(long)]
+    skip_cegar: bool,
+
     /// The maximum variable bound to check before returning `unknown`
     #[arg(short = 'B', long, value_enum, default_value = None)]
     max_bound: Option<u16>,
