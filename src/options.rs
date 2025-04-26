@@ -1,6 +1,4 @@
-use crate::interval::Interval;
-
-use super::refine::BoundStep;
+use crate::{interval::Interval, BoundStep};
 
 const DEFAULT_SIMPLIFY: bool = true;
 const DEFAULT_PREPROCESS_PASSES: usize = 20;
@@ -12,7 +10,7 @@ const DEFAULT_GUESS_BOOLS: bool = true;
 const DEFAULT_COMPRESSION: bool = true;
 
 #[derive(Debug, Clone)]
-pub struct SolverOptions {
+pub struct Options {
     /// Whether to use a dry-run mode.
     /// In dry-run mode, the solver does not actually solve the instance, but only preprocesses it.
     /// If after preprcessing the formula is not trivially sat/unsat, the solver returns `Unknown`.
@@ -52,7 +50,7 @@ pub struct SolverOptions {
     /// The maximum number of blocking assignments the over-approximation before returning `unknown`.
     pub max_blocking: usize,
 }
-impl Default for SolverOptions {
+impl Default for Options {
     fn default() -> Self {
         Self {
             dry: false,
@@ -72,7 +70,7 @@ impl Default for SolverOptions {
     }
 }
 
-impl SolverOptions {
+impl Options {
     pub fn set_max_bound(&mut self, b: u16) {
         self.max_bounds = Interval::new(-(b as i32), b as i32)
     }

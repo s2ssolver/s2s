@@ -19,7 +19,7 @@ use crate::{
     },
     preprocess::{canonicalize, Preprocessor},
     solver::Solver,
-    SolverAnswer, SolverOptions,
+    Options, SolverAnswer,
 };
 
 use crate::error::PublicError as Error;
@@ -29,7 +29,7 @@ use crate::error::PublicError as Error;
 /// It takes a series of formulas and checks their satisfiability.
 /// The engine responsible for preprocessing and solving the formulas.
 pub struct Engine {
-    options: SolverOptions,
+    options: Options,
 
     /// The newly asserted formulas for the next satisfiability check.
     /// When `check` is called, the the solver will check the satisfiability of the conjunction of all assertions.
@@ -43,7 +43,7 @@ pub struct Engine {
 }
 
 impl Engine {
-    pub fn with_options(options: SolverOptions) -> Self {
+    pub fn with_options(options: Options) -> Self {
         Self {
             options,
             result: SolverAnswer::Sat(None), // trivially sat

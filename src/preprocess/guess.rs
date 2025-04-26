@@ -6,17 +6,17 @@ use indexmap::IndexSet;
 
 use crate::{
     node::{Node, NodeKind, NodeManager, Sorted, VarSubstitution, Variable},
-    SolverOptions,
+    Options,
 };
 
 use super::simp::{SimpResult, Simplifier};
 
 pub(super) struct BoolVarGuesser {
-    options: SolverOptions,
+    options: Options,
 }
 
 impl BoolVarGuesser {
-    pub fn new(options: SolverOptions) -> Self {
+    pub fn new(options: Options) -> Self {
         Self { options }
     }
 

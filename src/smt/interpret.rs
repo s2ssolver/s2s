@@ -2,18 +2,18 @@ use crate::{
     engine::Engine,
     node::{Node, NodeManager},
     smt::{Command, Script, ToSmt},
-    Error, SolverAnswer, SolverOptions,
+    Error, SolverAnswer, Options,
 };
 
 /// Interpreter for SMT-LIB scripts.
 pub struct Interpreter<'a> {
     mngr: &'a mut NodeManager,
-    options: SolverOptions,
+    options: Options,
     engine: Engine,
 }
 
 impl<'a> Interpreter<'a> {
-    pub fn new(options: SolverOptions, mngr: &'a mut NodeManager) -> Self {
+    pub fn new(options: Options, mngr: &'a mut NodeManager) -> Self {
         let engine = Engine::with_options(options.clone());
         Self {
             mngr,

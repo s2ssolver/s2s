@@ -2,7 +2,7 @@ use std::{path::Path, process::exit, time::Instant};
 
 use clap::Parser as ClapParser;
 
-use blastr::{solve_smt, BoundStep, SolverOptions};
+use blastr::{solve_smt, BoundStep, Options};
 
 /// The command line interface for the solver
 #[derive(ClapParser, Debug)]
@@ -81,8 +81,8 @@ fn main() {
     log::info!("Done ({}ms).", ts.elapsed().as_millis());
 }
 
-fn convert_options(options: &Args) -> SolverOptions {
-    let mut opts = SolverOptions::default();
+fn convert_options(options: &Args) -> Options {
+    let mut opts = Options::default();
     if options.dry {
         opts.dry = true;
     }

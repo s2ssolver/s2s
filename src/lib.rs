@@ -23,6 +23,7 @@ pub mod node;
 mod preprocess;
 mod sat;
 
+pub mod options;
 pub mod smt;
 mod solver;
 
@@ -32,16 +33,17 @@ pub use error::PublicError as Error;
 
 pub use engine::Engine as Blastr;
 use node::NodeManager;
+pub use options::Options;
 use smt::{Interpreter, Script};
 pub use solver::BoundStep;
-pub use solver::{SolverAnswer, SolverOptions};
+pub use solver::SolverAnswer;
 
 /// Solves an SMT problem over the theory of strings.
 /// The input problem must be in SMT-LIB format.
 /// Returns the result of the satisfiability check.
 /// Optionally, the solver can be configured with additional options.
 /// If no options are given, the solver uses the default options.
-pub fn solve_smt(smt: impl BufRead, options: SolverOptions) -> Result<(), Error> {
+pub fn solve_smt(smt: impl BufRead, options: Options) -> Result<(), Error> {
     let mut mngr = NodeManager::default();
 
     let t = Instant::now();
