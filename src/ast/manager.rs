@@ -540,12 +540,26 @@ impl AstBuilder {
     /// Addition
     pub fn add(&mut self, rs: Vec<Node>) -> Node {
         debug_assert!(rs.iter().all(|n| n.sort().is_int()));
-        if rs.is_empty() {
+        let mut res = Vec::with_capacity(rs.len());
+        let mut c = 0;
+
+        for r in rs {
+            if let Some(i) = r.as_int_const() {
+                c += i;
+            } else {
+                res.push(r);
+            }
+        }
+        if c != 0 {
+            res.push(self.const_int(c));
+        }
+
+        if res.is_empty() {
             self.const_int(0)
-        } else if rs.len() == 1 {
-            rs[0].clone()
+        } else if res.len() == 1 {
+            res[0].clone()
         } else {
-            self.intern_node(NodeKind::Add, rs)
+            self.intern_node(NodeKind::Add, res)
         }
     }
 

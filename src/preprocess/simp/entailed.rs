@@ -72,17 +72,13 @@ impl EntailmentRule for EntailedAssigments {
             let lhs = node.children().first().unwrap();
             let rhs = node.children().last().unwrap();
             if let NodeKind::Variable(v) = lhs.kind() {
-                if rhs.size() < 10 || rhs.is_const() {
-                    let mut subs = VarSubstitution::default();
-                    subs.add(v.clone(), rhs.clone());
-                    return Some(subs);
-                }
+                let mut subs = VarSubstitution::default();
+                subs.add(v.clone(), rhs.clone());
+                return Some(subs);
             } else if let NodeKind::Variable(v) = rhs.kind() {
-                if lhs.size() < 10 || lhs.is_const() {
-                    let mut subs = VarSubstitution::default();
-                    subs.add(v.clone(), lhs.clone());
-                    return Some(subs);
-                }
+                let mut subs = VarSubstitution::default();
+                subs.add(v.clone(), lhs.clone());
+                return Some(subs);
             }
         }
         None

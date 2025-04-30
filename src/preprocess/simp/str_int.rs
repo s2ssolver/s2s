@@ -8,7 +8,7 @@ use crate::ast::{Node, NodeKind};
 #[derive(Debug, Clone, Copy)]
 pub(super) struct ToIntConstant;
 impl EquivalenceRule for ToIntConstant {
-    fn apply(&self, node: &Node, _: &IndexSet<Node>, ctx: &mut Context) -> Option<Node> {
+    fn apply(&self, node: &Node, _: bool, _: &IndexSet<Node>, ctx: &mut Context) -> Option<Node> {
         if let NodeKind::ToInt = *node.kind() {
             let ch = node.children().first().unwrap();
             if let Some(s) = ch.as_str_const() {
@@ -27,7 +27,7 @@ impl EquivalenceRule for ToIntConstant {
 #[derive(Debug, Clone, Copy)]
 pub(super) struct FromIntConstant;
 impl EquivalenceRule for FromIntConstant {
-    fn apply(&self, node: &Node, _: &IndexSet<Node>, ctx: &mut Context) -> Option<Node> {
+    fn apply(&self, node: &Node, _: bool, _: &IndexSet<Node>, ctx: &mut Context) -> Option<Node> {
         if let NodeKind::FromInt = *node.kind() {
             let ch = node.children().first().unwrap();
             if let Some(i) = ch.as_int_const() {
@@ -54,7 +54,7 @@ impl EquivalenceRule for FromIntConstant {
 #[derive(Debug, Clone, Copy)]
 pub(super) struct VarEqConstantToInt;
 impl EquivalenceRule for VarEqConstantToInt {
-    fn apply(&self, node: &Node, _: &IndexSet<Node>, ctx: &mut Context) -> Option<Node> {
+    fn apply(&self, node: &Node, _: bool, _: &IndexSet<Node>, ctx: &mut Context) -> Option<Node> {
         if let NodeKind::Eq = *node.kind() {
             let lhs = node.children().first().unwrap();
             let rhs = node.children().last().unwrap();
@@ -164,7 +164,7 @@ mod tests {
         let re = ctx.ast().const_regex(re);
         let expected = ctx.ast().in_re(x_node, re);
 
-        let got = VarEqConstantToInt.apply(&eq, &IndexSet::new(), &mut ctx);
+        let got = VarEqConstantToInt.apply(&eq, true, &IndexSet::new(), &mut ctx);
         assert_eq!(got, Some(expected));
     }
 
@@ -186,7 +186,7 @@ mod tests {
         let re = ctx.ast().const_regex(re);
         let expected = ctx.ast().in_re(x_node, re);
 
-        let got = VarEqConstantToInt.apply(&eq, &IndexSet::new(), &mut ctx);
+        let got = VarEqConstantToInt.apply(&eq, true, &IndexSet::new(), &mut ctx);
         assert_eq!(got, Some(expected));
     }
 
@@ -208,7 +208,7 @@ mod tests {
         let re = ctx.ast().const_regex(re);
         let expected = ctx.ast().in_re(x_node, re);
 
-        let got = VarEqConstantToInt.apply(&eq, &IndexSet::new(), &mut ctx);
+        let got = VarEqConstantToInt.apply(&eq, true, &IndexSet::new(), &mut ctx);
         assert_eq!(got, Some(expected));
     }
 
@@ -226,7 +226,7 @@ mod tests {
 
         let eq = ctx.ast().eq(scaled, four.clone());
 
-        let got = VarEqConstantToInt.apply(&eq, &IndexSet::new(), &mut ctx);
+        let got = VarEqConstantToInt.apply(&eq, true, &IndexSet::new(), &mut ctx);
         assert_eq!(got, Some(ctx.ast().ffalse()));
     }
 
@@ -243,7 +243,7 @@ mod tests {
         let four = ctx.ast().const_int(5);
 
         let eq = ctx.ast().eq(scaled, four.clone());
-        let got = VarEqConstantToInt.apply(&eq, &IndexSet::new(), &mut ctx);
+        let got = VarEqConstantToInt.apply(&eq, true, &IndexSet::new(), &mut ctx);
         assert_eq!(got, None);
     }
 
@@ -261,7 +261,7 @@ mod tests {
 
         let eq = ctx.ast().eq(scaled, four.clone());
 
-        let got = VarEqConstantToInt.apply(&eq, &IndexSet::new(), &mut ctx);
+        let got = VarEqConstantToInt.apply(&eq, true, &IndexSet::new(), &mut ctx);
         assert_eq!(got, None);
     }
 }

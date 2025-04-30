@@ -392,11 +392,12 @@ impl MatchEncoder {
                                 for c in dom.alphabet().iter() {
                                     let cand_c = rhs.at(pos, c);
                                     let sub_c = dom.string().get_sub(v, 0, c).unwrap();
-                                    sink.add_clause(clause![
-                                        nlit(m_var),
-                                        nlit(cand_c),
-                                        plit(sub_c)
-                                    ]);
+                                    // This clause is redundant and does not seem to guide the sat solver
+                                    // sink.add_clause(clause![
+                                    //     nlit(m_var),
+                                    //     nlit(cand_c),
+                                    //     plit(sub_c)
+                                    // ]);
                                     sink.add_clause(clause![
                                         nlit(m_var),
                                         plit(cand_c),
@@ -411,7 +412,6 @@ impl MatchEncoder {
                                 sink.add_clause(clause![nlit(m_var), plit(sub_c)]);
                             }
                         }
-
                         sink.add_clause(clause![nlit(starts_at), nlit(has_length), plit(m_var)]);
                     } else if len > 1 {
                         let m_var = pvar();
@@ -435,11 +435,12 @@ impl MatchEncoder {
                                 for c in dom.alphabet().iter() {
                                     let cand_c = wenc.at(pos + (len - 1), c);
                                     let sub_c = dom.string().get_sub(v, len - 1, c).unwrap();
-                                    sink.add_clause(clause![
-                                        nlit(m_var),
-                                        nlit(cand_c),
-                                        plit(sub_c)
-                                    ]);
+                                    // This clause is redundant and does not seem to guide the sat solver
+                                    // sink.add_clause(clause![
+                                    //     nlit(m_var),
+                                    //     nlit(cand_c),
+                                    //     plit(sub_c)
+                                    // ]);
                                     sink.add_clause(clause![
                                         nlit(m_var),
                                         plit(cand_c),

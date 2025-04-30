@@ -10,9 +10,7 @@ mod simp;
 use std::time::Instant;
 
 use crate::{
-    ast::{error::NodeError, normal::to_nnf, Node, VarSubstitution},
-    context::Context,
-    SolverOptions,
+    ast::{error::NodeError, normal::to_nnf, Node, VarSubstitution}, Context, Options
 };
 pub use canonicalize::canonicalize;
 
@@ -24,11 +22,11 @@ use simp::Simplifier;
 #[derive(Default)]
 pub struct Preprocessor {
     subs: VarSubstitution,
-    options: SolverOptions,
+    options: Options,
 }
 
 impl Preprocessor {
-    pub fn new(options: SolverOptions) -> Self {
+    pub fn new(options: Options) -> Self {
         Self {
             options,
             subs: VarSubstitution::default(),

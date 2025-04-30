@@ -1,5 +1,4 @@
 mod encoder;
-mod options;
 mod refine;
 
 use core::panic;
@@ -9,13 +8,13 @@ use crate::{
     ast::VarSubstitution,
     context::{Context, Sort},
     domain::Domain,
+    Options,
 };
 use encoder::DefintionEncoder;
 
 use indexmap::IndexMap;
 use itertools::Itertools;
 
-pub use options::SolverOptions;
 use refine::BoundRefiner;
 pub use refine::BoundStep;
 use rustsat::types::Lit;
@@ -95,7 +94,7 @@ impl std::fmt::Display for SolverAnswer {
 /// After each call to `solve`, more definitions can be added to the solver.
 /// The solver works incrementally, so adding definitions does not require a full restart.
 pub(crate) struct Solver {
-    options: SolverOptions,
+    options: Options,
 
     cadical: Box<CaDiCaL<'static, 'static>>,
 
@@ -113,7 +112,7 @@ pub(crate) struct Solver {
 
 impl Solver {
     pub fn new(
-        options: SolverOptions,
+        options: Options,
         skeleton: PFormula,
         alphabet: Rc<Alphabet>,
         init_bounds: Domain,

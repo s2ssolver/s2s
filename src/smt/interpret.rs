@@ -3,18 +3,18 @@ use crate::{
     context::Context,
     engine::Engine,
     smt::{Command, Script, ToSmt},
-    Error, SolverAnswer, SolverOptions,
+    Error, Options, SolverAnswer,
 };
 
 /// Interpreter for SMT-LIB scripts.
 pub struct Interpreter<'a> {
     ctx: &'a mut Context,
-    options: SolverOptions,
+    options: Options,
     engine: Engine,
 }
 
 impl<'a> Interpreter<'a> {
-    pub fn new(options: SolverOptions, ctx: &'a mut Context) -> Self {
+    pub fn new(options: Options, ctx: &'a mut Context) -> Self {
         let engine = Engine::with_options(options.clone());
         Self {
             ctx,

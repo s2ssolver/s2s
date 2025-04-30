@@ -25,6 +25,7 @@ mod sat;
 
 pub(crate) mod context;
 pub mod ir;
+pub mod options;
 pub mod smt;
 mod solver;
 
@@ -35,16 +36,18 @@ pub use error::PublicError as Error;
 pub use context::Context;
 
 pub use engine::Engine as Blastr;
+
+pub use options::Options;
 use smt::{Interpreter, Script};
 pub use solver::BoundStep;
-pub use solver::{SolverAnswer, SolverOptions};
+pub use solver::SolverAnswer;
 
 /// Solves an SMT problem over the theory of strings.
 /// The input problem must be in SMT-LIB format.
 /// Returns the result of the satisfiability check.
 /// Optionally, the solver can be configured with additional options.
 /// If no options are given, the solver uses the default options.
-pub fn solve_smt(smt: impl BufRead, options: SolverOptions) -> Result<(), Error> {
+pub fn solve_smt(smt: impl BufRead, options: Options) -> Result<(), Error> {
     let mut ctx = Context::default();
 
     let t = Instant::now();

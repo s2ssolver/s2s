@@ -2,7 +2,7 @@ use std::{path::Path, process::exit, time::Instant};
 
 use clap::Parser as ClapParser;
 
-use blastr::{solve_smt, BoundStep, SolverOptions};
+use blastr::{solve_smt, BoundStep, Options};
 
 /// The command line interface for the solver
 #[derive(ClapParser, Debug)]
@@ -23,6 +23,10 @@ struct Args {
     /// If this is set to true, the solver will not actually solve the instance, but terminate after preprocessing.
     #[arg(long)]
     dry: bool,
+
+    /// If set, does not solve over-approxmation but encodes the complete formula directly
+    #[arg(long)]
+    skip_cegar: bool,
 
     /// The maximum variable bound to check before returning `unknown`
     #[arg(short = 'B', long, value_enum, default_value = None)]
@@ -81,8 +85,8 @@ fn main() {
     log::info!("Done ({}ms).", ts.elapsed().as_millis());
 }
 
-fn convert_options(options: &Args) -> SolverOptions {
-    let mut opts = SolverOptions::default();
+fn convert_options(options: &Args) -> Options {
+    let mut opts = Options::default();
     if options.dry {
         opts.dry = true;
     }

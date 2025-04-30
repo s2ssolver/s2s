@@ -18,7 +18,7 @@ mod weq;
 use std::fmt::Debug;
 
 use elim::EliminateEntailed;
-use indexmap::{IndexMap, IndexSet};
+use indexmap::{indexset, IndexMap, IndexSet};
 
 use crate::{
     ast::{get_entailed, Node, NodeKind, VarSubstitution},
@@ -31,11 +31,30 @@ use crate::{
 trait EquivalenceRule: Debug {
     /// Apply the rewrite rule to the given node.
     /// Returns a either a new node or [None] if the rule does not apply.
-    /// The new node is simplified and logically equivalent to the original node.
+    /// The new node is simplified and logically equivalent to the original node (within the path context).
+    ///
+    /// The `decision` are the branch decisions consistings of the those nodes that must be to be true in order to reach the current node.
+    /// In other, if a satisfiying assignment for the formula assigns true to the current node occurrend, then all nodes in this set neccessarily need to be true as well.
+    /// Note that this only applies to the **current occurrenc** if the node, not of other occurrence of the same nodes elsewhere in the AST.
+    /// Especially, if the rule simplifies based on this set, then `universal` must return `false`.
+    ///
+    /// The `asserted` is true extaclty if the current node is asserted on the top level or reachable trough following only ANDs
     ///
     /// Additionally, the simplifier passes the set of currenly asserted nodes to the rule.
     /// The facts are the nodes that must be true for the current node to be true.
-    fn apply(&self, node: &Node, facts: &IndexSet<Node>, ctx: &mut Context) -> Option<Node>;
+    fn apply(
+        &self,
+        node: &Node,
+        asserted: bool,
+        decisions: &IndexSet<Node>,
+        ctx: &mut Context,
+    ) -> Option<Node>;
+
+    /// Returns true the rule is universal, meaning that all equal nodes in the AST can be replaced by the rules result.
+    /// If the rule is context-aware this needs to return "false"
+    fn universal(&self) -> bool {
+        true
+    }
 }
 
 /// A rewrite rule that infers a substitution from the given node, that can be applied globally.
@@ -140,13 +159,14 @@ impl Simplifier {
 
         // Apply equivalence rules
         let mut applied = false;
-        simped_node = match self.pass_equivalence(&simped_node, &Vec::new(), ctx) {
-            Some(rw) => {
-                applied = true;
-                rw
-            }
-            None => node.clone(),
-        };
+        simped_node =
+            match self.pass_equivalence(&simped_node, &Vec::new(), true, &indexset! {}, ctx) {
+                Some(rw) => {
+                    applied = true;
+                    rw
+                }
+                None => node.clone(),
+            };
 
         // Apply entailment rules
         if let Some(rw) = self.pass_entailment(&simped_node, ctx) {
@@ -161,7 +181,14 @@ impl Simplifier {
         }
     }
 
-    fn pass_equivalence(&mut self, node: &Node, path: &[&Node], ctx: &mut Context) -> Option<Node> {
+    fn pass_equivalence(
+        &mut self,
+        node: &Node,
+        path: &[&Node],
+        mut asserted: bool,
+        decisions: &IndexSet<Node>,
+        ctx: &mut Context,
+    ) -> Option<Node> {
         if let Some(rw) = self.rewrite_cache.get(node) {
             return Some(rw.clone());
         }
@@ -173,8 +200,21 @@ impl Simplifier {
         let mut path_ch = path.to_vec();
         path_ch.push(node);
 
+        // The path conditions for the child node of this
+        let mut new_decisions = decisions.clone();
+        if *node.kind() == NodeKind::And {
+            new_decisions.extend(get_entailed(node));
+        } else {
+            asserted = false;
+        };
+
         for child in node.children() {
-            match self.pass_equivalence(child, &path_ch, ctx) {
+            if !decisions.contains(child) {
+                // if the path conditions contained the child, we can keep it as a condition for this node to be true
+                // Otherwise its needs to be remove since that would mean in order for child to be true, child must be true (a tautology).
+                new_decisions.remove(child);
+            }
+            match self.pass_equivalence(child, &path_ch, asserted, &new_decisions, ctx) {
                 Some(new_child) => {
                     applied_children.push(new_child.clone());
                     applied = true;
@@ -185,40 +225,29 @@ impl Simplifier {
 
         // Apply all rules to node
         let mut new_node = if applied {
-            ctx.ast().create_node(node.kind().clone(), applied_children)
+            let temp = ctx.ast().create_node(node.kind().clone(), applied_children);
+            temp
         } else {
             node.clone()
         };
 
-        /// Returns all nodes that must be true for the current node to be true.
-        fn get_asserted(path: &[&Node]) -> IndexSet<Node> {
-            let mut asserted = IndexSet::new();
-            if path.len() == 1 {
-                // if the node is a leaf, we need to add it to the asserted set
-                asserted.insert(path[0].clone());
-            }
-            for &node in path.iter() {
-                if *node.kind() == NodeKind::And {
-                    asserted.insert(node.clone());
-                }
-            }
-            asserted
-        }
-
-        let facts = get_asserted(path);
-        // remove self from the asserted set, otherwise we might get unsound results.
-        // we dont with this approach?
-        // asserted.remove(node);
+        let mut cachable = true;
 
         for rule in self.equiv_rules.iter() {
-            if let Some(rw) = rule.apply(&new_node, &facts, ctx) {
-                log::debug!("({:?}) {} ==> {}", rule, new_node, rw);
-                new_node = rw;
-                applied = true;
+            if let Some(rw) = rule.apply(&new_node, asserted, &decisions, ctx) {
+                if rw != new_node {
+                    log::debug!("({:?}) {} ==> {}", rule, new_node, rw);
+                    new_node = rw;
+                    cachable &= rule.universal();
+                    applied = true;
+                }
             }
         }
+
         // Also cache if not applied to not traverse the same node again
-        self.rewrite_cache.insert(node.clone(), new_node.clone());
+        if cachable {
+            self.rewrite_cache.insert(node.clone(), new_node.clone());
+        }
 
         if applied {
             Some(new_node)
@@ -304,9 +333,11 @@ impl Default for Simplifier {
             Box::new(int::EqualityTrivial),
             Box::new(int::DistributeNeg),
             // does not seem to help
-            Box::new(int::NormalizeIneq),
+            //Box::new(int::NormalizeIneq),
             Box::new(int::NotComparison),
             Box::new(fwd::LinIntForward),
+            Box::new(fwd::PathPruning),
+            //            Box::new(fwd::LengthConflict),
             Box::new(strlen::StringLengthAddition),
             Box::new(strlen::ConstStringLength),
             Box::new(strlen::LengthTrivial),
