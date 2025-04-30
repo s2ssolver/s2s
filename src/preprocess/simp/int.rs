@@ -11,7 +11,13 @@ use super::*;
 #[derive(Debug, Clone, Copy)]
 pub(super) struct FoldConstantInts;
 impl EquivalenceRule for FoldConstantInts {
-    fn apply(&self, node: &Node, _: &IndexSet<Node>, mngr: &mut NodeManager) -> Option<Node> {
+    fn apply(
+        &self,
+        node: &Node,
+        _: bool,
+        _: &IndexSet<Node>,
+        mngr: &mut NodeManager,
+    ) -> Option<Node> {
         if node.is_const() {
             return None; // already a fully simplified constant
         }
@@ -31,7 +37,13 @@ impl EquivalenceRule for FoldConstantInts {
 #[derive(Debug, Clone, Copy)]
 pub(super) struct LessTrivial;
 impl EquivalenceRule for LessTrivial {
-    fn apply(&self, node: &Node, _: &IndexSet<Node>, mngr: &mut NodeManager) -> Option<Node> {
+    fn apply(
+        &self,
+        node: &Node,
+        _: bool,
+        _: &IndexSet<Node>,
+        mngr: &mut NodeManager,
+    ) -> Option<Node> {
         if *node.kind() == NodeKind::Lt {
             // strictly less
             debug_assert!(node.children().len() == 2);
@@ -77,7 +89,13 @@ impl EquivalenceRule for LessTrivial {
 #[derive(Debug, Clone, Copy)]
 pub(super) struct DistributeNeg;
 impl EquivalenceRule for DistributeNeg {
-    fn apply(&self, node: &Node, _: &IndexSet<Node>, mngr: &mut NodeManager) -> Option<Node> {
+    fn apply(
+        &self,
+        node: &Node,
+        _: bool,
+        _: &IndexSet<Node>,
+        mngr: &mut NodeManager,
+    ) -> Option<Node> {
         if *node.kind() == NodeKind::Neg {
             debug_assert!(node.children().len() == 1);
             let child = node.children().first().unwrap();
@@ -101,7 +119,8 @@ impl EquivalenceRule for GreaterTrivial {
     fn apply(
         &self,
         node: &Node,
-        asserted: &IndexSet<Node>,
+        a: bool,
+        pa: &IndexSet<Node>,
         mngr: &mut NodeManager,
     ) -> Option<Node> {
         if *node.kind() == NodeKind::Gt || *node.kind() == NodeKind::Ge {
@@ -120,7 +139,7 @@ impl EquivalenceRule for GreaterTrivial {
             };
             let swapped = mngr.create_node(swapped_op, vec![rhs.clone(), lhs.clone()]);
 
-            return LessTrivial.apply(&swapped, asserted, mngr);
+            return LessTrivial.apply(&swapped, a, pa, mngr);
         }
 
         None
@@ -131,7 +150,13 @@ impl EquivalenceRule for GreaterTrivial {
 #[derive(Debug, Clone, Copy)]
 pub(super) struct EqualityTrivial;
 impl EquivalenceRule for EqualityTrivial {
-    fn apply(&self, node: &Node, _: &IndexSet<Node>, mngr: &mut NodeManager) -> Option<Node> {
+    fn apply(
+        &self,
+        node: &Node,
+        _: bool,
+        _: &IndexSet<Node>,
+        mngr: &mut NodeManager,
+    ) -> Option<Node> {
         if *node.kind() == NodeKind::Eq {
             debug_assert!(node.children().len() == 2);
             let lhs = node.children().first().unwrap();
@@ -162,7 +187,13 @@ impl EquivalenceRule for EqualityTrivial {
 #[derive(Debug, Clone, Copy)]
 pub(super) struct NotComparison;
 impl EquivalenceRule for NotComparison {
-    fn apply(&self, node: &Node, _: &IndexSet<Node>, mngr: &mut NodeManager) -> Option<Node> {
+    fn apply(
+        &self,
+        node: &Node,
+        _: bool,
+        _: &IndexSet<Node>,
+        mngr: &mut NodeManager,
+    ) -> Option<Node> {
         if let NodeKind::Not = *node.kind() {
             let child = node.children().first().unwrap();
             match child.kind() {
@@ -190,7 +221,13 @@ impl EquivalenceRule for NotComparison {
 #[derive(Debug, Clone, Copy)]
 pub(super) struct NormalizeIneq;
 impl EquivalenceRule for NormalizeIneq {
-    fn apply(&self, node: &Node, _: &IndexSet<Node>, mngr: &mut NodeManager) -> Option<Node> {
+    fn apply(
+        &self,
+        node: &Node,
+        _: bool,
+        _: &IndexSet<Node>,
+        mngr: &mut NodeManager,
+    ) -> Option<Node> {
         if let Some(normed) = normalize_ineq(node) {
             let mut new_children = Vec::new();
             for (k, v) in &normed.lhs.coeffs {

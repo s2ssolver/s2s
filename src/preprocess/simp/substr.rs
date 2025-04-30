@@ -5,7 +5,13 @@ use crate::node::{Node, NodeKind, NodeManager};
 #[derive(Debug, Clone, Copy)]
 pub(super) struct SubstrConst;
 impl EquivalenceRule for SubstrConst {
-    fn apply(&self, node: &Node, _: &IndexSet<Node>, mngr: &mut NodeManager) -> Option<Node> {
+    fn apply(
+        &self,
+        node: &Node,
+        _: bool,
+        _: &IndexSet<Node>,
+        mngr: &mut NodeManager,
+    ) -> Option<Node> {
         if let NodeKind::SubStr = node.kind() {
             let w = &node.children()[0];
             let s = &node.children()[1];
@@ -30,7 +36,13 @@ impl EquivalenceRule for SubstrConst {
 #[derive(Debug, Clone, Copy)]
 pub(super) struct AtConst;
 impl EquivalenceRule for AtConst {
-    fn apply(&self, node: &Node, _: &IndexSet<Node>, mngr: &mut NodeManager) -> Option<Node> {
+    fn apply(
+        &self,
+        node: &Node,
+        _: bool,
+        _: &IndexSet<Node>,
+        mngr: &mut NodeManager,
+    ) -> Option<Node> {
         if let NodeKind::At = node.kind() {
             let w = &node.children()[0];
             let s = &node.children()[1];
@@ -53,7 +65,13 @@ impl EquivalenceRule for AtConst {
 #[derive(Debug, Clone, Copy)]
 pub(super) struct SubstrNegative;
 impl EquivalenceRule for SubstrNegative {
-    fn apply(&self, node: &Node, _: &IndexSet<Node>, mngr: &mut NodeManager) -> Option<Node> {
+    fn apply(
+        &self,
+        node: &Node,
+        _: bool,
+        _: &IndexSet<Node>,
+        mngr: &mut NodeManager,
+    ) -> Option<Node> {
         if let NodeKind::SubStr = node.kind() {
             let l = &node.children()[2];
             if let NodeKind::Int(l) = l.kind() {
@@ -70,7 +88,13 @@ impl EquivalenceRule for SubstrNegative {
 #[derive(Debug, Clone, Copy)]
 pub(super) struct AtNegative;
 impl EquivalenceRule for AtNegative {
-    fn apply(&self, node: &Node, _: &IndexSet<Node>, mngr: &mut NodeManager) -> Option<Node> {
+    fn apply(
+        &self,
+        node: &Node,
+        _: bool,
+        _: &IndexSet<Node>,
+        mngr: &mut NodeManager,
+    ) -> Option<Node> {
         if let NodeKind::At = node.kind() {
             let s = &node.children()[1];
             if let NodeKind::Int(s) = s.kind() {

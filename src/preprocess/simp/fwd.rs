@@ -1,12 +1,47 @@
 use indexmap::IndexSet;
 
 use crate::{
+    bounds::{BoundInferer, InferringStrategy},
     interval::Interval,
-    node::{Node, NodeKind, NodeManager},
-    preprocess::simp::int::{normalize_ineq, LinearIntRealtion},
+    node::{Node, NodeKind, NodeManager, Sorted},
+    preprocess::{
+        canonicalize,
+        simp::int::{normalize_ineq, LinearIntRealtion},
+    },
 };
 
 use super::EquivalenceRule;
+
+/// If on a path we already decided for a node to be true, then replaces this occurrens with true.
+/// If we decided for the negatios of the node, replaces it with false instead.
+#[derive(Debug, Clone, Copy)]
+pub(super) struct PathPruning;
+
+impl EquivalenceRule for PathPruning {
+    fn apply(
+        &self,
+        node: &Node,
+        _: bool,
+        decisions: &IndexSet<Node>,
+        mngr: &mut NodeManager,
+    ) -> Option<Node> {
+        if node.sort().is_bool() {
+            if decisions.contains(node) {
+                Some(mngr.ttrue())
+            } else if decisions.contains(&mngr.not(node.clone())) {
+                Some(mngr.ffalse())
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    }
+
+    fn universal(&self) -> bool {
+        false
+    }
+}
 
 /// Compares a (linear) integer (in)equalities with an asserted fact.
 /// If both have the same left-hand side, it checks if they are conflicting or if one implies the other.
@@ -98,7 +133,8 @@ impl EquivalenceRule for LinIntForward {
     fn apply(
         &self,
         node: &Node,
-        asserted: &IndexSet<Node>,
+        _: bool,
+        decisions: &IndexSet<Node>,
         mngr: &mut NodeManager,
     ) -> Option<Node> {
         match node.kind() {
@@ -108,7 +144,7 @@ impl EquivalenceRule for LinIntForward {
             | NodeKind::Ge
             | NodeKind::Eq
             | NodeKind::Not => {
-                for fact in asserted.iter().filter(|a| *a != node) {
+                for fact in decisions.iter() {
                     if let Some(equiv) = LinIntForward::apply(fact, node, mngr) {
                         return Some(equiv);
                     }
@@ -119,4 +155,9 @@ impl EquivalenceRule for LinIntForward {
 
         None
     }
+
+    fn universal(&self) -> bool {
+        false
+    }
+}
 }

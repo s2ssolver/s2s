@@ -7,7 +7,7 @@ use crate::node::{Node, NodeKind, NodeManager};
 #[derive(Debug, Clone, Copy)]
 pub(super) struct ReplaceIdem;
 impl EquivalenceRule for ReplaceIdem {
-    fn apply(&self, node: &Node, _: &IndexSet<Node>, _: &mut NodeManager) -> Option<Node> {
+    fn apply(&self, node: &Node, _: bool, _: &IndexSet<Node>, _: &mut NodeManager) -> Option<Node> {
         match node.kind() {
             NodeKind::Replace | NodeKind::ReplaceAll => {
                 debug_assert_eq!(node.children().len(), 3);
@@ -29,7 +29,13 @@ impl EquivalenceRule for ReplaceIdem {
 #[derive(Debug, Clone, Copy)]
 pub(super) struct ReplaceInEpsilon;
 impl EquivalenceRule for ReplaceInEpsilon {
-    fn apply(&self, node: &Node, _: &IndexSet<Node>, mngr: &mut NodeManager) -> Option<Node> {
+    fn apply(
+        &self,
+        node: &Node,
+        _: bool,
+        _: &IndexSet<Node>,
+        mngr: &mut NodeManager,
+    ) -> Option<Node> {
         match node.kind() {
             NodeKind::Replace | NodeKind::ReplaceAll => {
                 debug_assert_eq!(node.children().len(), 3);
@@ -60,7 +66,7 @@ impl EquivalenceRule for ReplaceInEpsilon {
 #[derive(Debug, Clone, Copy)]
 pub(super) struct ReplaceSelf;
 impl EquivalenceRule for ReplaceSelf {
-    fn apply(&self, node: &Node, _: &IndexSet<Node>, _: &mut NodeManager) -> Option<Node> {
+    fn apply(&self, node: &Node, _: bool, _: &IndexSet<Node>, _: &mut NodeManager) -> Option<Node> {
         match node.kind() {
             NodeKind::Replace | NodeKind::ReplaceAll => {
                 debug_assert_eq!(node.children().len(), 3);
@@ -83,7 +89,13 @@ impl EquivalenceRule for ReplaceSelf {
 #[derive(Debug, Clone, Copy)]
 pub(super) struct ReplaceEpsilon;
 impl EquivalenceRule for ReplaceEpsilon {
-    fn apply(&self, node: &Node, _: &IndexSet<Node>, mngr: &mut NodeManager) -> Option<Node> {
+    fn apply(
+        &self,
+        node: &Node,
+        _: bool,
+        _: &IndexSet<Node>,
+        mngr: &mut NodeManager,
+    ) -> Option<Node> {
         match node.kind() {
             NodeKind::Replace | NodeKind::ReplaceAll => {
                 debug_assert_eq!(node.children().len(), 3);

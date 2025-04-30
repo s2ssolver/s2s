@@ -18,7 +18,13 @@ use smallvec::smallvec;
 #[derive(Debug, Clone, Copy)]
 pub(super) struct ConstStringLength;
 impl EquivalenceRule for ConstStringLength {
-    fn apply(&self, node: &Node, _: &IndexSet<Node>, mngr: &mut NodeManager) -> Option<Node> {
+    fn apply(
+        &self,
+        node: &Node,
+        _: bool,
+        _: &IndexSet<Node>,
+        mngr: &mut NodeManager,
+    ) -> Option<Node> {
         if *node.kind() == NodeKind::Length {
             debug_assert!(node.children().len() == 1);
             let child = node.children().first().unwrap();
@@ -36,7 +42,13 @@ impl EquivalenceRule for ConstStringLength {
 #[derive(Debug, Clone, Copy)]
 pub(super) struct StringLengthAddition;
 impl EquivalenceRule for StringLengthAddition {
-    fn apply(&self, node: &Node, _: &IndexSet<Node>, mngr: &mut NodeManager) -> Option<Node> {
+    fn apply(
+        &self,
+        node: &Node,
+        _: bool,
+        _: &IndexSet<Node>,
+        mngr: &mut NodeManager,
+    ) -> Option<Node> {
         if *node.kind() == NodeKind::Length {
             debug_assert!(node.children().len() == 1);
             let child = node.children().first().unwrap();
@@ -61,7 +73,13 @@ impl EquivalenceRule for StringLengthAddition {
 #[derive(Debug, Clone, Copy)]
 pub(super) struct LengthTrivial;
 impl EquivalenceRule for LengthTrivial {
-    fn apply(&self, node: &Node, _: &IndexSet<Node>, mngr: &mut NodeManager) -> Option<Node> {
+    fn apply(
+        &self,
+        node: &Node,
+        _: bool,
+        _: &IndexSet<Node>,
+        mngr: &mut NodeManager,
+    ) -> Option<Node> {
         match node.kind() {
             NodeKind::Eq | NodeKind::Lt | NodeKind::Le | NodeKind::Gt | NodeKind::Ge => {
                 let lhs = node.children().first().unwrap();
@@ -146,7 +164,13 @@ impl EquivalenceRule for LengthTrivial {
 #[allow(dead_code)]
 pub(super) struct LengthToReg;
 impl EquivalenceRule for LengthToReg {
-    fn apply(&self, node: &Node, _: &IndexSet<Node>, mngr: &mut NodeManager) -> Option<Node> {
+    fn apply(
+        &self,
+        node: &Node,
+        _: bool,
+        _: &IndexSet<Node>,
+        mngr: &mut NodeManager,
+    ) -> Option<Node> {
         let normed = normalize_ineq(node)?;
         if normed.lhs().coeffs.len() == 1 {
             // This is a constraint of the form `s|x| # rhs`, we can rewrite this as a regular constraint
@@ -346,7 +370,13 @@ impl EntailmentRule for ZeroLengthEpsilon {
 pub(super) struct TrivialLenghtConstraints;
 
 impl EquivalenceRule for TrivialLenghtConstraints {
-    fn apply(&self, node: &Node, _: &IndexSet<Node>, mngr: &mut NodeManager) -> Option<Node> {
+    fn apply(
+        &self,
+        node: &Node,
+        _: bool,
+        _: &IndexSet<Node>,
+        mngr: &mut NodeManager,
+    ) -> Option<Node> {
         let normed = normalize_ineq(node)?;
 
         let all_str_len = normed

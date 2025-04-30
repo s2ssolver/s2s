@@ -14,7 +14,13 @@ use smt_str::SmtChar;
 #[derive(Debug, Clone, Copy)]
 pub(super) struct StripLCP;
 impl EquivalenceRule for StripLCP {
-    fn apply(&self, node: &Node, _: &IndexSet<Node>, mngr: &mut NodeManager) -> Option<Node> {
+    fn apply(
+        &self,
+        node: &Node,
+        _: bool,
+        _: &IndexSet<Node>,
+        mngr: &mut NodeManager,
+    ) -> Option<Node> {
         if *node.kind() == NodeKind::Eq && node.children()[0].sort().is_string() {
             debug_assert!(node.children().len() == 2);
             debug_assert!(node.children()[0].sort().is_string());
@@ -50,12 +56,13 @@ impl EquivalenceRule for StripLCS {
     fn apply(
         &self,
         node: &Node,
-        asserted: &IndexSet<Node>,
+        a: bool,
+        pa: &IndexSet<Node>,
         mngr: &mut NodeManager,
     ) -> Option<Node> {
         if *node.kind() == NodeKind::Eq && node.children()[0].sort().is_string() {
             let reversed = reverse(node, mngr);
-            if let Some(stripped_rev) = StripLCP.apply(&reversed, asserted, mngr) {
+            if let Some(stripped_rev) = StripLCP.apply(&reversed, a, pa, mngr) {
                 return Some(reverse(&stripped_rev, mngr));
             };
         }
@@ -68,7 +75,13 @@ impl EquivalenceRule for StripLCS {
 #[derive(Debug, Clone, Copy)]
 pub(super) struct ConstMismatch;
 impl EquivalenceRule for ConstMismatch {
-    fn apply(&self, node: &Node, _: &IndexSet<Node>, mngr: &mut NodeManager) -> Option<Node> {
+    fn apply(
+        &self,
+        node: &Node,
+        _: bool,
+        _: &IndexSet<Node>,
+        mngr: &mut NodeManager,
+    ) -> Option<Node> {
         if *node.kind() == NodeKind::Eq {
             debug_assert!(node.children().len() == 2);
             let lhs = &node.children()[0];
@@ -106,7 +119,13 @@ impl EquivalenceRule for ConstMismatch {
 #[derive(Debug, Clone, Copy)]
 pub(super) struct LengthReasoning;
 impl EquivalenceRule for LengthReasoning {
-    fn apply(&self, node: &Node, _: &IndexSet<Node>, mngr: &mut NodeManager) -> Option<Node> {
+    fn apply(
+        &self,
+        node: &Node,
+        _: bool,
+        _: &IndexSet<Node>,
+        mngr: &mut NodeManager,
+    ) -> Option<Node> {
         if *node.kind() == NodeKind::Eq {
             debug_assert!(node.children().len() == 2);
             let lhs = &node.children()[0];
@@ -211,7 +230,13 @@ impl ParikhMatrixMismatch {
 }
 
 impl EquivalenceRule for ParikhMatrixMismatch {
-    fn apply(&self, node: &Node, _: &IndexSet<Node>, mngr: &mut NodeManager) -> Option<Node> {
+    fn apply(
+        &self,
+        node: &Node,
+        _: bool,
+        _: &IndexSet<Node>,
+        mngr: &mut NodeManager,
+    ) -> Option<Node> {
         if node.kind() == &NodeKind::Eq {
             let lhs = &node.children()[0];
             let rhs = &node.children()[1];
@@ -288,7 +313,7 @@ mod tests {
         let mut mngr = NodeManager::default();
 
         let equation = parse_equation("abx", "aby", &mut mngr);
-        let result = StripLCP.apply(&equation, &IndexSet::new(), &mut mngr);
+        let result = StripLCP.apply(&equation, true, &IndexSet::new(), &mut mngr);
         let expected = parse_equation("x", "y", &mut mngr);
 
         assert_eq!(result, Some(expected));
@@ -298,7 +323,7 @@ mod tests {
     fn test_strip_common_prefix_with_variables() {
         let mut mngr = NodeManager::default();
         let equation = parse_equation("abX", "abY", &mut mngr);
-        let result = StripLCP.apply(&equation, &IndexSet::new(), &mut mngr);
+        let result = StripLCP.apply(&equation, true, &IndexSet::new(), &mut mngr);
 
         let expected = parse_equation("X", "Y", &mut mngr);
         assert_eq!(result, Some(expected));
@@ -310,7 +335,7 @@ mod tests {
 
         let equation = parse_equation("aX", "bY", &mut mngr);
 
-        let result = StripLCP.apply(&equation, &IndexSet::new(), &mut mngr);
+        let result = StripLCP.apply(&equation, true, &IndexSet::new(), &mut mngr);
 
         // No common prefix, so no rewrite should happen
         assert_eq!(result, None);
@@ -321,7 +346,7 @@ mod tests {
         let mut mngr = NodeManager::default();
         let equation = parse_equation("aX", "abcY", &mut mngr);
 
-        let result = StripLCP.apply(&equation, &IndexSet::new(), &mut mngr);
+        let result = StripLCP.apply(&equation, true, &IndexSet::new(), &mut mngr);
         let expected = parse_equation("X", "bcY", &mut mngr);
         assert_eq!(result, Some(expected));
     }
@@ -331,7 +356,7 @@ mod tests {
         let mut mngr = NodeManager::default();
         let equation = parse_equation("abcX", "yX", &mut mngr);
 
-        let result = ConstMismatch.apply(&equation, &IndexSet::new(), &mut mngr);
+        let result = ConstMismatch.apply(&equation, true, &IndexSet::new(), &mut mngr);
 
         // Expect the result to be `false` due to mismatch in first characters "a" and "x"
         assert_eq!(result, Some(mngr.ffalse()));
@@ -342,7 +367,7 @@ mod tests {
         let mut mngr = NodeManager::default();
         let equation = parse_equation("Xab", "Xac", &mut mngr);
 
-        let result = ConstMismatch.apply(&equation, &IndexSet::new(), &mut mngr);
+        let result = ConstMismatch.apply(&equation, true, &IndexSet::new(), &mut mngr);
 
         assert_eq!(result, Some(mngr.ffalse()));
     }
@@ -353,7 +378,7 @@ mod tests {
 
         let equation = parse_equation("Xab", "XaY", &mut mngr);
 
-        let result = ConstMismatch.apply(&equation, &IndexSet::new(), &mut mngr);
+        let result = ConstMismatch.apply(&equation, true, &IndexSet::new(), &mut mngr);
 
         assert_eq!(result, None);
     }
@@ -364,7 +389,7 @@ mod tests {
 
         let equation = parse_equation("", "", &mut mngr);
 
-        let result = ConstMismatch.apply(&equation, &IndexSet::new(), &mut mngr);
+        let result = ConstMismatch.apply(&equation, true, &IndexSet::new(), &mut mngr);
 
         assert_eq!(result, None);
     }
