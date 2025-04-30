@@ -160,4 +160,3 @@ impl EquivalenceRule for LinIntForward {
         false
     }
 }
-}
