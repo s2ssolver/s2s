@@ -108,7 +108,7 @@ impl IndependentVariableAssignment {
                 let ok = if pol {
                     regex.accepts(&rhs)
                 } else {
-                    regex.accepts(&rhs)
+                    !regex.accepts(&rhs)
                 };
                 debug_assert!(ok, "Sample invalid word '{}' for ({}) '{}' ", rhs, pol, rhs);
                 if !ok {
