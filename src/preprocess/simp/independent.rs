@@ -87,31 +87,33 @@ impl IndependentVariableAssignment {
         match lhs.kind() {
             NodeKind::Variable(v) if self.independent(v) => {
                 let mut subs = VarSubstitution::default();
-
                 let rhs = match sample_regex(regex, ctx.re_builder(), 1000, !pol) {
                     smt_str::sampling::SampleResult::Sampled(s) => s,
                     _ => {
                         // Fallback: sample from NFA
+                        log::debug!(
+                            "Could not sample from regex directly, falling back to NFA sampling"
+                        );
                         let nfa = ctx.get_nfa(regex);
                         match sample_nfa(&nfa, 1000, !pol) {
                             smt_str::sampling::SampleResult::Sampled(s) => s,
                             _ => {
-                                log::debug!("Could not sampel from {}", regex);
+                                log::debug!("Could not sample from {}", regex);
                                 return None;
                             }
                         }
                     }
                 };
 
-                if pol {
-                    debug_assert!(
-                        regex.accepts(&rhs),
-                        "Regex: {} does not accept '{}'",
-                        regex,
-                        rhs
-                    );
+                let ok = if pol {
+                    regex.accepts(&rhs)
                 } else {
-                    debug_assert!(!regex.accepts(&rhs), "Regex: {} accepts '{}'", regex, rhs);
+                    regex.accepts(&rhs)
+                };
+                debug_assert!(ok, "Sample invalid word '{}' for ({}) '{}' ", rhs, pol, rhs);
+                if !ok {
+                    log::warn!("Sample invalid word '{}' for ({}) '{}' ", rhs, pol, rhs);
+                    return None;
                 }
 
                 let rhs = ctx.ast().const_string(rhs);
