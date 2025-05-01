@@ -175,30 +175,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "blastr"
-version = "0.1.0"
-dependencies = [
- "clap 4.5.31",
- "env_logger 0.10.2",
- "indexmap 1.9.3",
- "itertools 0.10.5",
- "log",
- "num-bigint",
- "num-integer",
- "num-traits",
- "quickcheck",
- "quickcheck_macros",
- "rustsat",
- "rustsat-cadical",
- "serial_test",
- "smallvec",
- "smt-str",
- "smt2parser",
- "test-generator",
- "thiserror 1.0.69",
-]
-
-[[package]]
 name = "bumpalo"
 version = "3.17.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1456,6 +1432,30 @@ name = "rustversion"
 version = "1.0.20"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "eded382c5f5f786b989652c49544c4877d9f015cc22e145a5ea8ea66c2921cd2"
+
+[[package]]
+name = "s2s"
+version = "0.1.0"
+dependencies = [
+ "clap 4.5.31",
+ "env_logger 0.10.2",
+ "indexmap 1.9.3",
+ "itertools 0.10.5",
+ "log",
+ "num-bigint",
+ "num-integer",
+ "num-traits",
+ "quickcheck",
+ "quickcheck_macros",
+ "rustsat",
+ "rustsat-cadical",
+ "serial_test",
+ "smallvec",
+ "smt-str",
+ "smt2parser",
+ "test-generator",
+ "thiserror 1.0.69",
+]
 
 [[package]]
 name = "scopeguard"

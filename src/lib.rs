@@ -35,7 +35,7 @@ pub use error::PublicError as Error;
 
 pub use context::Context;
 
-pub use engine::Engine as Blastr;
+pub use engine::Engine as s2s;
 
 pub use options::Options;
 use smt::{Interpreter, Script};

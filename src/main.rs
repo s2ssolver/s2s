@@ -2,7 +2,7 @@ use std::{path::Path, process::exit, time::Instant};
 
 use clap::Parser as ClapParser;
 
-use blastr::{solve_smt, BoundStep, Options};
+use s2s::{solve_smt, BoundStep, Options};
 
 /// The command line interface for the solver
 #[derive(ClapParser, Debug)]

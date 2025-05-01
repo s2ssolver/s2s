@@ -1,8 +1,8 @@
-# Blastr
+# s2s
 
 [![Build](https://github.com/splortsolver/s2s/actions/workflows/build.yml/badge.svg)](https://github.com/splortsolver/s2s/actions/workflows/build.yml)
 
-**Blastr** is an SMT solver for the quantifier-free theory of strings combined with linear integer arithmetic (QF_SLIA).  
+**s2s** is an SMT solver for the quantifier-free theory of strings combined with linear integer arithmetic (QF_SLIA).  
 It currently supports a limited subset of SMT-LIB constraints.
 
 ⚠️ **Work in Progress**  
@@ -19,12 +19,12 @@ This project is experimental, under active development, and subject to frequent 
     - Windows is currently not supported
 3. Clone the repository and build the project using `cargo build --release`
 
-The compiled binary will be located at `target/release/blastr`.
+The compiled binary will be located at `target/release/s2s`.
 
 ## Usage
 
 ```bash
-blastr [OPTIONS] <FILE>
+s2s [OPTIONS] <FILE>
 ```
 
 - `<FILE>` is the path to an SMT-LIB file (QF_SLIA).
