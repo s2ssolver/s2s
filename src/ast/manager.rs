@@ -1,4 +1,4 @@
-use std::rc::Rc;
+use std::{collections::VecDeque, rc::Rc};
 
 use indexmap::{IndexMap, IndexSet};
 
@@ -337,7 +337,7 @@ impl AstBuilder {
                     let mut children = r.children().to_vec();
                     let r = children.pop().unwrap();
                     let l = children.pop().unwrap();
-                    let not_r = self.neg(r);
+                    let not_r = self.not(r);
                     self.and(vec![l, not_r])
                 }
                 _ => self.intern_node(NodeKind::Not, vec![r]),
@@ -352,7 +352,9 @@ impl AstBuilder {
     /// ## Simplifications
     /// If `simplify` is enabled, performs the following simplifications:
     /// - Returns `true` if `l` is `false`
-    /// - Return `r` if `l` is `true`
+    /// - Returns `r` if `l` is `true`
+    /// - Returns `not(l)` if `r` is `false`
+    /// - Returns `true` if `r` is `true`
     pub fn imp(&mut self, l: Node, r: Node) -> Node {
         if self.simplify {
             if let Some(b) = l.as_bool_const() {
@@ -362,16 +364,57 @@ impl AstBuilder {
                     return self.ttrue();
                 }
             }
+            if let Some(b) = r.as_bool_const() {
+                if b {
+                    return self.ttrue();
+                } else {
+                    return self.not(l);
+                }
+            }
         }
         self.intern_node(NodeKind::Imp, vec![l, r])
     }
 
     /// Boolean equivalence
+    ///
+    /// ## Simplifications
+    /// If `simplify` is enabled, performs the following simplifications:
+    /// - Returns `true` if `l` and `r` are syntactially equivalent
+    /// - Returns `false` if `l` and `r` are constants and not equivalent equivalent
     pub fn equiv(&mut self, l: Node, r: Node) -> Node {
+        debug_assert!(l.sort().is_bool());
+        debug_assert!(r.sort().is_bool());
+
+        if self.simplify {
+            if l == r {
+                return self.ttrue();
+            } else if let (Some(l), Some(r)) = (l.as_bool_const(), r.as_bool_const()) {
+                if l == r {
+                    return self.ttrue();
+                } else {
+                    return self.ffalse();
+                }
+            }
+        }
         self.intern_node(NodeKind::Equiv, vec![l, r])
     }
 
+    /// IF-THEN-ELSE Expression
+    ///
+    /// Creates an `ite(i, t, e)` expression that evaluates to `t` if `i` is `true` and to `e` otherwise.
+    ///
+    /// ## Simplifications
+    /// If `simplify` is enabled and `i` is a boolean constant, returns `t` or `e` accordingly
     pub fn ite(&mut self, ifc: Node, then_branch: Node, else_branch: Node) -> Node {
+        if self.simplify {
+            if let Some(b) = ifc.as_bool_const() {
+                if b {
+                    return then_branch;
+                } else {
+                    return else_branch;
+                }
+            }
+        }
         self.intern_node(NodeKind::Ite, vec![ifc, then_branch, else_branch])
     }
 
@@ -481,31 +524,109 @@ impl AstBuilder {
         }
     }
 
+    /// String length
+    ///
+    /// ## Simplifications
+    /// If `simplify` is enabled:
+    /// - Returns `str.len(t1) + ... + str.len(tn)` if the argument is `(str.++ t1 ... tn)`
+    /// - Replaces `str.len(w)` with the length of `w` if it is a constant
     pub fn str_len(&mut self, s: Node) -> Node {
-        if let Some(s) = s.as_str_const() {
-            let len = s.len();
-            return self.const_int(len as i64);
+        if self.simplify {
+            if let NodeKind::Concat = *s.kind() {
+                let mut sumands = Vec::with_capacity(s.children().len());
+                for c in s.children() {
+                    sumands.push(self.str_len(c.clone()));
+                }
+                return self.add(sumands);
+            } else if let Some(w) = s.as_str_const() {
+                return self.const_int(w.len() as i64);
+            }
         }
         self.intern_node(NodeKind::Length, vec![s])
     }
 
+    /// str.prefixof
+    ///
+    /// ## Simplifications
+    /// If `simplify` is enabled an both arguments are constants, folds the term.
     pub fn prefix_of(&mut self, l: Node, r: Node) -> Node {
+        if self.simplify {
+            if let (Some(l), Some(r)) = (l.as_str_const(), r.as_str_const()) {
+                if r.starts_with(&l) {
+                    return self.ttrue();
+                } else {
+                    return self.ffalse();
+                }
+            }
+        }
         self.intern_node(NodeKind::PrefixOf, vec![l, r])
     }
 
+    /// str.suffixof
+    ///
+    /// ## Simplifications
+    /// If `simplify` is enabled an both arguments are constants, folds the term.
     pub fn suffix_of(&mut self, l: Node, r: Node) -> Node {
+        if self.simplify {
+            if let (Some(l), Some(r)) = (l.as_str_const(), r.as_str_const()) {
+                if r.ends_with(&l) {
+                    return self.ttrue();
+                } else {
+                    return self.ffalse();
+                }
+            }
+        }
         self.intern_node(NodeKind::SuffixOf, vec![l, r])
     }
 
+    /// str.contains
+    ///
+    /// ## Simplifications
+    /// If `simplify` is enabled an both arguments are constants, folds the term.
     pub fn contains(&mut self, l: Node, r: Node) -> Node {
+        if self.simplify {
+            if let (Some(l), Some(r)) = (l.as_str_const(), r.as_str_const()) {
+                if l.contains(&r) {
+                    return self.ttrue();
+                } else {
+                    return self.ffalse();
+                }
+            }
+        }
         self.intern_node(NodeKind::Contains, vec![l, r])
     }
 
-    pub fn substr(&mut self, s: Node, start: Node, end: Node) -> Node {
-        self.intern_node(NodeKind::SubStr, vec![s, start, end])
+    /// str.substr
+    ///
+    /// ## Simplifications
+    /// If `simplify` is enabled and the arguments are constants, folds the term.
+    pub fn substr(&mut self, s: Node, start: Node, len: Node) -> Node {
+        if self.simplify {
+            if let (Some(start), Some(len)) = (start.as_int_const(), len.as_int_const()) {
+                if start < 0 || len < 0 {
+                    return self.empty_string();
+                }
+                if let Some(s) = s.as_str_const() {
+                    return self.const_string(s.drop(start as usize).take(len as usize));
+                }
+            }
+        }
+
+        self.intern_node(NodeKind::SubStr, vec![s, start, len])
     }
 
+    /// str.substr
+    ///
+    /// ## Simplifications
+    /// If `simplify` is enabled an the arguments are constants, folds the term.
     pub fn at(&mut self, s: Node, i: Node) -> Node {
+        if let Some(i) = i.as_int_const() {
+            if i < 0 {
+                return self.empty_string();
+            } else if let Some(s) = s.as_str_const() {
+                return self.const_string(s.drop(i as usize).take(1));
+            }
+        }
         self.intern_node(NodeKind::At, vec![s, i])
     }
 
@@ -541,15 +662,19 @@ impl AstBuilder {
     pub fn add(&mut self, rs: Vec<Node>) -> Node {
         debug_assert!(rs.iter().all(|n| n.sort().is_int()));
         let mut res = Vec::with_capacity(rs.len());
+        let mut q = VecDeque::from_iter(rs);
         let mut c = 0;
 
-        for r in rs {
+        while let Some(r) = q.pop_front() {
             if let Some(i) = r.as_int_const() {
                 c += i;
+            } else if let NodeKind::Add = *r.kind() {
+                q.extend(r.children().into_iter().cloned());
             } else {
                 res.push(r);
             }
         }
+
         if c != 0 {
             res.push(self.const_int(c));
         }
@@ -578,6 +703,20 @@ impl AstBuilder {
     /// Subtraction
     pub fn sub(&mut self, rs: Vec<Node>) -> Node {
         debug_assert!(rs.iter().all(|n| n.sort().is_int()));
+
+        if self.simplify {
+            let mut as_sum = Vec::with_capacity(rs.len());
+            if let Some(f) = rs.first() {
+                as_sum.push(f.clone());
+            } else {
+                return self.const_int(0);
+            };
+            for r in rs.into_iter().skip(1) {
+                as_sum.push(self.neg(r));
+            }
+            return self.add(as_sum);
+        }
+
         if rs.is_empty() {
             self.const_int(0)
         } else if rs.len() == 1 {
@@ -589,7 +728,12 @@ impl AstBuilder {
 
     /// Negation
     pub fn neg(&mut self, r: Node) -> Node {
-        debug_assert!(r.sort().is_int());
+        debug_assert!(
+            r.sort().is_int(),
+            "`neg` needs sort Int but got {}: {}",
+            r.sort(),
+            r
+        );
         if let Some(i) = r.as_int_const() {
             self.const_int(-i)
         } else if *r.kind() == NodeKind::Neg {
