@@ -158,7 +158,7 @@ impl AstBuilder {
         };
         let key = (kind.clone(), children.clone());
         let res = if let Some(rc_node) = self.node_registry.get(&key) {
-            return rc_node.clone();
+            rc_node.clone()
         } else {
             let node = OwnedNode::new(self.next_id, kind, children);
             let rc_node = Rc::new(node.clone());
@@ -189,10 +189,8 @@ impl AstBuilder {
             }
         }
         log::trace!("GC: Removing {} nodes", to_remove.len());
-        for _key in to_remove {
-            // Remove the node from the node registry
-            log::warn!("GC disabled")
-            // self.node_registry.remove(&key);
+        for key in to_remove {
+            self.node_registry.remove(&key);
         }
     }
 
@@ -335,10 +333,12 @@ impl AstBuilder {
                     self.lt(l, r)
                 }
                 NodeKind::Imp => {
+                    // -(L -> R) <==> -(-L \/ R) <==> L /\ -R
                     let mut children = r.children().to_vec();
                     let r = children.pop().unwrap();
                     let l = children.pop().unwrap();
-                    self.imp(l, r)
+                    let not_r = self.neg(r);
+                    self.and(vec![l, not_r])
                 }
                 _ => self.intern_node(NodeKind::Not, vec![r]),
             }
