@@ -23,7 +23,7 @@ use crate::{
     context::{Context, Sorted, Variable},
     interval::BoundValue,
     ir::{
-        Atom, LIAConstraint, LIAOp, LIATerm, LinearSummand, Literal, Pattern, RegularConstraint,
+        Atom, LIAConstraint, LIAOp, LIATerm, Literal, Monomial, Pattern, RegularConstraint,
         VariableTerm, WordEquation,
     },
 };
@@ -381,7 +381,7 @@ impl BoundInferer {
 
 fn lc_to_reg(lc: &LIAConstraint, ctx: &mut Context) -> Option<RegularConstraint> {
     if lc.lhs().len() == 1 {
-        if let LinearSummand::Mult(VariableTerm::Len(x), s) = lc.lhs().iter().next().unwrap() {
+        if let Monomial::Mult(VariableTerm::Len(x), s) = lc.lhs().iter().next().unwrap() {
             // This is a constraint of the form `s|x| # rhs`, we can rewrite this as a regular constraint
             let (r, op, s) = match (lc.rhs() >= 0, *s >= 0) {
                 (true, true) => (lc.rhs() as u32, lc.operator(), *s as u32),

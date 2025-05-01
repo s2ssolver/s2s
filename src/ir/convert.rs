@@ -6,7 +6,7 @@ use crate::{
 };
 
 use super::{
-    Atom, LIAConstraint, LIAOp, LIATerm, LinearSummand, Literal, Pattern, RegularConstraint,
+    Atom, LIAConstraint, LIAOp, LIATerm, Literal, Monomial, Pattern, RegularConstraint,
     RegularFactorConstraint, Symbol, WordEquation,
 };
 
@@ -244,14 +244,14 @@ fn normalize_lia_constraint(l: LIATerm, op: LIAOp, r: LIATerm) -> LIAConstraint 
 
     for s in l.into_summands() {
         match &s {
-            LinearSummand::Mult(_, _) => lhs.add_summand(s),
-            LinearSummand::Const(c) => rhs -= c,
+            Monomial::Mult(_, _) => lhs.add_summand(s),
+            Monomial::Const(c) => rhs -= c,
         }
     }
     for s in r.into_summands() {
         match s {
-            LinearSummand::Mult(v, c) => lhs.add_summand(LinearSummand::Mult(v, -c)),
-            LinearSummand::Const(c) => rhs += c,
+            Monomial::Mult(v, c) => lhs.add_summand(Monomial::Mult(v, -c)),
+            Monomial::Const(c) => rhs += c,
         }
     }
 

@@ -6,7 +6,7 @@ use rustsat::types::Clause;
 use crate::context::*;
 use crate::{
     domain::Domain,
-    ir::{LIAConstraint, LIAOp, LinearSummand},
+    ir::{LIAConstraint, LIAOp, Monomial},
     sat::{nlit, plit, pvar, PVar},
 };
 
@@ -53,7 +53,7 @@ impl MddEncoder {
         let mut max = node.value;
         for lev in node.level..self.linear.lhs().len() {
             match &self.linear.lhs()[lev] {
-                LinearSummand::Mult(v, coeff) => {
+                Monomial::Mult(v, coeff) => {
                     let bound = if v.is_int() {
                         dom.get_int(v.variable())
                     } else {
@@ -69,7 +69,7 @@ impl MddEncoder {
                     min += lo;
                     max += hi;
                 }
-                LinearSummand::Const(_) => unreachable!(),
+                Monomial::Const(_) => unreachable!(),
             }
         }
         let rhs = self.linear.rhs();
@@ -131,7 +131,7 @@ impl EncodeLiteral for MddEncoder {
             let node_var = node.borrow().bool_var;
 
             match &self.linear.lhs()[level] {
-                LinearSummand::Mult(var, coeff) => {
+                Monomial::Mult(var, coeff) => {
                     let v = var.variable();
                     let current_bound = if v.sort().is_string() {
                         dom.get_string(v)
@@ -211,7 +211,7 @@ impl EncodeLiteral for MddEncoder {
                         node.lo_hi = Some((current_l_bound, current_u_bound));
                     }
                 }
-                LinearSummand::Const(_) => {
+                Monomial::Const(_) => {
                     todo!("Consts not supported: {}", self.linear)
                 }
             }

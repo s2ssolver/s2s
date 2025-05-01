@@ -40,71 +40,71 @@ impl Display for VariableTerm {
 /// Represents a single summand in a linear expression.
 /// A `LinearSummand` can either be a scaled variable term or a constant value.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum LinearSummand {
+pub enum Monomial {
     /// Multiply a variable term with a constant
     Mult(VariableTerm, i64),
     /// A constant
     Const(i64),
 }
 
-impl LinearSummand {
+impl Monomial {
     /// Create a linear summand from a constant value
     pub fn constant(n: i64) -> Self {
-        LinearSummand::Const(n)
+        Monomial::Const(n)
     }
 
     /// Create a linear summand from a scaled integer variable
     pub fn int_variable(x: Rc<Variable>, c: i64) -> Self {
         assert!(x.sort().is_int(), "Variable must be of sort int");
-        LinearSummand::Mult(VariableTerm::Int(x), c)
+        Monomial::Mult(VariableTerm::Int(x), c)
     }
 
     /// Create a linear summand from a scaled length variable
     pub fn len_variable(x: Rc<Variable>, c: i64) -> Self {
         assert!(x.sort().is_string(), "Variable must be of sort string");
-        LinearSummand::Mult(VariableTerm::Len(x), c)
+        Monomial::Mult(VariableTerm::Len(x), c)
     }
 
     pub fn is_constant(&self) -> bool {
         match self {
-            LinearSummand::Const(_) | LinearSummand::Mult(_, 0) => true, // 0*x = 0
-            LinearSummand::Mult(_, _) => false,
+            Monomial::Const(_) | Monomial::Mult(_, 0) => true, // 0*x = 0
+            Monomial::Mult(_, _) => false,
         }
     }
 
     pub fn multiply(&self, c: i64) -> Self {
         match self {
-            LinearSummand::Mult(x, c2) => LinearSummand::Mult(x.clone(), c * c2),
-            LinearSummand::Const(c2) => LinearSummand::Const(c * c2),
+            Monomial::Mult(x, c2) => Monomial::Mult(x.clone(), c * c2),
+            Monomial::Const(c2) => Monomial::Const(c * c2),
         }
     }
 
     pub fn flip_sign(&self) -> Self {
         match self {
-            LinearSummand::Mult(x, c) => LinearSummand::Mult(x.clone(), -c),
-            LinearSummand::Const(c) => LinearSummand::Const(-c),
+            Monomial::Mult(x, c) => Monomial::Mult(x.clone(), -c),
+            Monomial::Const(c) => Monomial::Const(-c),
         }
     }
 }
 
-impl Display for LinearSummand {
+impl Display for Monomial {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            LinearSummand::Mult(x, c) => {
+            Monomial::Mult(x, c) => {
                 if *c == 1 {
                     write!(f, "{}", x)
                 } else {
                     write!(f, "{}*{}", c, x)
                 }
             }
-            LinearSummand::Const(c) => write!(f, "{}", c),
+            Monomial::Const(c) => write!(f, "{}", c),
         }
     }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default, Hash)]
 pub struct LIATerm {
-    factors: Vec<LinearSummand>,
+    factors: Vec<Monomial>,
     canonical: bool,
 }
 
@@ -121,11 +121,11 @@ impl LIATerm {
     pub fn from_var(x: Rc<Variable>) -> Self {
         match x.sort() {
             Sort::Int => Self {
-                factors: vec![LinearSummand::Mult(VariableTerm::Int(x), 1)],
+                factors: vec![Monomial::Mult(VariableTerm::Int(x), 1)],
                 canonical: true,
             },
             Sort::String => Self {
-                factors: vec![LinearSummand::Mult(VariableTerm::Len(x), 1)],
+                factors: vec![Monomial::Mult(VariableTerm::Len(x), 1)],
                 canonical: true,
             },
             _ => panic!("Variable must be of sort int or string"),
@@ -137,7 +137,7 @@ impl LIATerm {
     pub fn from_var_len(x: Rc<Variable>) -> Self {
         assert!(x.sort().is_string(), "Variable must be of sort string");
         Self {
-            factors: vec![LinearSummand::Mult(VariableTerm::Len(x), 1)],
+            factors: vec![Monomial::Mult(VariableTerm::Len(x), 1)],
             canonical: true,
         }
     }
@@ -145,13 +145,13 @@ impl LIATerm {
     /// Create a linear arithmetic term from a constant
     pub fn from_const(c: i64) -> Self {
         Self {
-            factors: vec![LinearSummand::Const(c)],
+            factors: vec![Monomial::Const(c)],
             canonical: true,
         }
     }
 
     /// Add a single summand to the term
-    pub fn add_summand(&mut self, f: LinearSummand) {
+    pub fn add_summand(&mut self, f: Monomial) {
         self.factors.push(f);
         self.canonical = false;
     }
@@ -174,19 +174,19 @@ impl LIATerm {
             for r in right.iter() {
                 // multiply l and r
                 match (l, r) {
-                    (LinearSummand::Mult(_, 0), LinearSummand::Mult(_, _))
-                    | (LinearSummand::Mult(_, _), LinearSummand::Mult(_, 0)) => {
-                        res.add_summand(LinearSummand::Const(0));
+                    (Monomial::Mult(_, 0), Monomial::Mult(_, _))
+                    | (Monomial::Mult(_, _), Monomial::Mult(_, 0)) => {
+                        res.add_summand(Monomial::Const(0));
                     }
-                    (LinearSummand::Mult(_, _), LinearSummand::Mult(_, _)) => {
+                    (Monomial::Mult(_, _), Monomial::Mult(_, _)) => {
                         return None;
                     }
-                    (LinearSummand::Mult(x, c), LinearSummand::Const(s))
-                    | (LinearSummand::Const(s), LinearSummand::Mult(x, c)) => {
-                        res.add_summand(LinearSummand::Mult(x.clone(), c * s));
+                    (Monomial::Mult(x, c), Monomial::Const(s))
+                    | (Monomial::Const(s), Monomial::Mult(x, c)) => {
+                        res.add_summand(Monomial::Mult(x.clone(), c * s));
                     }
-                    (LinearSummand::Const(s1), LinearSummand::Const(s2)) => {
-                        res.add_summand(LinearSummand::Const(s1 * s2));
+                    (Monomial::Const(s1), Monomial::Const(s2)) => {
+                        res.add_summand(Monomial::Const(s1 * s2));
                     }
                 }
             }
@@ -206,11 +206,11 @@ impl LIATerm {
     pub fn sub(&mut self, other: Self) {
         for smd in other.into_summands() {
             match smd {
-                LinearSummand::Mult(x, c) => {
-                    self.add_summand(LinearSummand::Mult(x, -c));
+                Monomial::Mult(x, c) => {
+                    self.add_summand(Monomial::Mult(x, -c));
                 }
-                LinearSummand::Const(c) => {
-                    self.add_summand(LinearSummand::Const(-c));
+                Monomial::Const(c) => {
+                    self.add_summand(Monomial::Const(-c));
                 }
             }
         }
@@ -222,11 +222,11 @@ impl LIATerm {
         self.canonical = false;
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = &LinearSummand> {
+    pub fn iter(&self) -> impl Iterator<Item = &Monomial> {
         self.factors.iter()
     }
 
-    pub fn into_summands(self) -> impl Iterator<Item = LinearSummand> {
+    pub fn into_summands(self) -> impl Iterator<Item = Monomial> {
         self.factors.into_iter()
     }
 
@@ -234,10 +234,10 @@ impl LIATerm {
         let mut vars = IndexSet::new();
         for f in self.iter() {
             match f {
-                LinearSummand::Mult(x, _) => {
+                Monomial::Mult(x, _) => {
                     vars.insert(x.clone());
                 }
-                LinearSummand::Const(_) => {}
+                Monomial::Const(_) => {}
             }
         }
         vars
@@ -266,11 +266,11 @@ impl LIATerm {
         let mut residual = 0;
         for f in self.factors.iter() {
             match f {
-                LinearSummand::Mult(x, c) => {
+                Monomial::Mult(x, c) => {
                     let entry = factors.entry(x.clone()).or_insert(0);
                     *entry += c;
                 }
-                LinearSummand::Const(c) => {
+                Monomial::Const(c) => {
                     residual += c;
                 }
             }
@@ -278,11 +278,11 @@ impl LIATerm {
         self.factors.clear();
         for (x, c) in factors {
             if c != 0 {
-                self.factors.push(LinearSummand::Mult(x, c));
+                self.factors.push(Monomial::Mult(x, c));
             }
         }
         if residual != 0 {
-            self.factors.push(LinearSummand::Const(residual));
+            self.factors.push(Monomial::Const(residual));
         }
         self.canonical = true;
     }
@@ -292,11 +292,11 @@ impl LIATerm {
         let mut res = self.clone();
         for f in other.iter() {
             match f {
-                LinearSummand::Mult(x, c) => {
-                    res.add_summand(LinearSummand::Mult(x.clone(), -c));
+                Monomial::Mult(x, c) => {
+                    res.add_summand(Monomial::Mult(x.clone(), -c));
                 }
-                LinearSummand::Const(c) => {
-                    res.add_summand(LinearSummand::Const(-c));
+                Monomial::Const(c) => {
+                    res.add_summand(Monomial::Const(-c));
                 }
             }
         }
@@ -316,9 +316,9 @@ impl LIATerm {
         let mut c = 0;
         for f in self.iter() {
             match f {
-                LinearSummand::Mult(_, 0) => (),
-                LinearSummand::Mult(_, _) => return None,
-                LinearSummand::Const(c2) => c += c2,
+                Monomial::Mult(_, 0) => (),
+                Monomial::Mult(_, _) => return None,
+                Monomial::Const(c2) => c += c2,
             }
         }
         Some(c)
@@ -328,7 +328,7 @@ impl LIATerm {
     pub fn as_variable(&self) -> Option<&Variable> {
         if self.factors.len() == 1 {
             match &self.factors[0] {
-                LinearSummand::Mult(VariableTerm::Int(x), 1) => Some(x),
+                Monomial::Mult(VariableTerm::Int(x), 1) => Some(x),
                 _ => None,
             }
         } else {
@@ -338,7 +338,7 @@ impl LIATerm {
 }
 
 impl Index<usize> for LIATerm {
-    type Output = LinearSummand;
+    type Output = Monomial;
 
     fn index(&self, index: usize) -> &Self::Output {
         &self.factors[index]
@@ -417,10 +417,10 @@ impl LIAConstraint {
         let mut vars = IndexSet::new();
         for f in self.lhs.iter() {
             match f {
-                LinearSummand::Mult(x, _) => {
+                Monomial::Mult(x, _) => {
                     vars.insert(x.variable().clone());
                 }
-                LinearSummand::Const(_) => {}
+                Monomial::Const(_) => {}
             }
         }
         vars
@@ -460,8 +460,8 @@ impl LIAConstraint {
         let mut lhs_new = LIATerm::new();
         for f in self.lhs.iter() {
             match f {
-                LinearSummand::Mult(_, _) => lhs_new.add_summand(f.clone()),
-                LinearSummand::Const(c) => rhs_new -= c,
+                Monomial::Mult(_, _) => lhs_new.add_summand(f.clone()),
+                Monomial::Const(c) => rhs_new -= c,
             }
         }
         self.lhs = if lhs_new.is_empty() {

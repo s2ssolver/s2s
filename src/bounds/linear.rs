@@ -7,7 +7,7 @@ use indexmap::{IndexMap, IndexSet};
 use crate::{
     context::{Sorted, Variable},
     interval::{BoundValue, Interval},
-    ir::{LIAConstraint, LIAOp, LIATerm, LinearSummand, Symbol, WordEquation},
+    ir::{LIAConstraint, LIAOp, LIATerm, Monomial, Symbol, WordEquation},
 };
 
 use super::{Bounds, InferringStrategy};
@@ -157,9 +157,9 @@ impl LinearRefiner {
         let mut dividend = LIATerm::from_const(lc.rhs());
         for t in lc.lhs().iter() {
             match t {
-                LinearSummand::Const(_) => dividend.add_summand(t.flip_sign()),
-                LinearSummand::Mult(v, coeff) if v.variable() == var => divisor += coeff,
-                LinearSummand::Mult(_, _) => dividend.add_summand(t.flip_sign()),
+                Monomial::Const(_) => dividend.add_summand(t.flip_sign()),
+                Monomial::Mult(v, coeff) if v.variable() == var => divisor += coeff,
+                Monomial::Mult(_, _) => dividend.add_summand(t.flip_sign()),
             }
         }
 
@@ -209,8 +209,8 @@ impl LinearRefiner {
         let mut smallest = 0;
         for t in term.iter() {
             match t {
-                LinearSummand::Const(c) => smallest += c,
-                LinearSummand::Mult(v, coeff) => {
+                Monomial::Const(c) => smallest += c,
+                Monomial::Mult(v, coeff) => {
                     if *coeff >= 0 {
                         // Add the smallest possible value of the variable
                         let lb = self.lb(v.variable().as_ref(), bounds);
@@ -251,8 +251,8 @@ impl LinearRefiner {
         let mut largest = 0;
         for t in term.iter() {
             match t {
-                LinearSummand::Const(c) => largest += c,
-                LinearSummand::Mult(v, coeff) => {
+                Monomial::Const(c) => largest += c,
+                Monomial::Mult(v, coeff) => {
                     if *coeff >= 0 {
                         // add the greatest possible value of the variable
                         let ub = self.ub(v.variable().as_ref(), bounds);
@@ -326,7 +326,7 @@ pub fn length_abstraction(weq: &WordEquation) -> LIAConstraint {
 
     let mut lhs = LIATerm::new();
     for (v, c) in var_occurrences {
-        lhs.add_summand(LinearSummand::len_variable(v.clone(), c));
+        lhs.add_summand(Monomial::len_variable(v.clone(), c));
     }
     LIAConstraint::new(lhs, LIAOp::Eq, constant_counter)
 }
