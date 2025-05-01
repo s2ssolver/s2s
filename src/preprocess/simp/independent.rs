@@ -2,6 +2,7 @@
 
 use std::rc::Rc;
 
+use smt_str::sampling::sample_nfa;
 use smt_str::{re::Regex, sampling::sample_regex};
 
 use crate::ast::NodeKind;
@@ -89,13 +90,16 @@ impl IndependentVariableAssignment {
 
                 let rhs = match sample_regex(regex, ctx.re_builder(), 1000, !pol) {
                     smt_str::sampling::SampleResult::Sampled(s) => s,
-                    smt_str::sampling::SampleResult::Empty => {
-                        log::debug!("Failed to sample from {}: Language is empty", regex);
-                        return None;
-                    }
-                    smt_str::sampling::SampleResult::MaxDepth => {
-                        log::debug!("Failed to sample from {}: Max depth reached", regex);
-                        return None;
+                    _ => {
+                        // Fallback: sample from NFA
+                        let nfa = ctx.get_nfa(regex);
+                        match sample_nfa(&nfa, 1000, !pol) {
+                            smt_str::sampling::SampleResult::Sampled(s) => s,
+                            _ => {
+                                log::debug!("Could not sampel from {}", regex);
+                                return None;
+                            }
+                        }
                     }
                 };
 
