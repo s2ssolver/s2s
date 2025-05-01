@@ -87,11 +87,15 @@ impl IndependentVariableAssignment {
             NodeKind::Variable(v) if self.independent(v) => {
                 let mut subs = VarSubstitution::default();
 
-                let rhs = match sample_regex(regex, ctx.re_builder(), 100, !pol) {
-                    Some(w) => w,
-                    None => {
-                        log::warn!("Could not sample from\n{}", regex);
-                        return Some(subs); // short circuit here
+                let rhs = match sample_regex(regex, ctx.re_builder(), 1000, !pol) {
+                    smt_str::sampling::SampleResult::Sampled(s) => s,
+                    smt_str::sampling::SampleResult::Empty => {
+                        log::debug!("Failed to sample from {}: Language is empty", regex);
+                        return None;
+                    }
+                    smt_str::sampling::SampleResult::MaxDepth => {
+                        log::debug!("Failed to sample from {}: Max depth reached", regex);
+                        return None;
                     }
                 };
 

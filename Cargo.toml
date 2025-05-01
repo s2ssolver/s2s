@@ -19,7 +19,7 @@ smallvec = "1.10.0"
 thiserror = "1.0.63"
 num-traits = "0.2.19"
 num-integer = "0.1.46"
-smt-str = { version = "0.2.1", features = ["full"] }
+smt-str = { version = "0.2.2", features = ["full"] }
 rustsat = "0.6.6"
 rustsat-cadical = {version = "0.4.6", features= ["v2-1-3"]}
 
