@@ -669,7 +669,7 @@ impl AstBuilder {
             if let Some(i) = r.as_int_const() {
                 c += i;
             } else if let NodeKind::Add = *r.kind() {
-                q.extend(r.children().into_iter().cloned());
+                q.extend(r.children().iter().cloned());
             } else {
                 res.push(r);
             }

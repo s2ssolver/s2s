@@ -313,12 +313,12 @@ mod test {
             if s.len() == 1 {
                 let c = s.first().unwrap();
                 if c >= l && c <= u {
-                    assert!(!elimenated.accepts(&s));
+                    assert!(!elimenated.accepts(s));
                 } else {
-                    assert!(elimenated.accepts(&s));
+                    assert!(elimenated.accepts(s));
                 }
             } else {
-                assert!(elimenated.accepts(&s));
+                assert!(elimenated.accepts(s));
             }
         }
 

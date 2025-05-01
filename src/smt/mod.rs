@@ -109,7 +109,7 @@ impl ToSmt for VarSubstitution {
                 node.to_smt()
             ));
         }
-        result.push_str(")");
+        result.push(')');
         result
     }
 }

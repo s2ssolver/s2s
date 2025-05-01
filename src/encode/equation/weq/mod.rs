@@ -40,8 +40,8 @@ mod testutils {
     }
 
     pub(crate) fn is_solution(eq: &WordEquation, sol: &VarSubstitution) -> bool {
-        let lhs_const = apply_sub(&eq.lhs(), &sol);
-        let rhs_const = apply_sub(&eq.rhs(), &sol);
+        let lhs_const = apply_sub(&eq.lhs(), sol);
+        let rhs_const = apply_sub(&eq.rhs(), sol);
         match (lhs_const, rhs_const) {
             (Some(l), Some(r)) => l == r,
             _ => false,

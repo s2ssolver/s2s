@@ -106,7 +106,7 @@ fn convert_options(options: &Args) -> Options {
         opts.unsat_on_max_bound = true;
     }
     if let Some(bs) = &options.step {
-        let step = match parse_step(&bs) {
+        let step = match parse_step(bs) {
             Some(step) => step,
             None => {
                 log::warn!("Invalid bound step: {}. Falling back to default", bs);
@@ -129,17 +129,15 @@ fn convert_options(options: &Args) -> Options {
 
 fn parse_step(f: &str) -> Option<BoundStep> {
     if f.starts_with("+") {
-        match usize::from_str_radix(&f.chars().skip(1).collect::<String>(), 10) {
+        match f.chars().skip(1).collect::<String>().parse::<usize>() {
             Ok(offset) => Some(BoundStep::ConstantOffset(offset)),
             Err(_) => None,
         }
+    } else if f == "square" {
+        Some(BoundStep::NextSquare)
+    } else if f == "double" {
+        Some(BoundStep::Double)
     } else {
-        if f == "square" {
-            Some(BoundStep::NextSquare)
-        } else if f == "double" {
-            Some(BoundStep::Double)
-        } else {
-            None
-        }
+        None
     }
 }

@@ -105,13 +105,12 @@ pub fn build_abstraction(node: &Node, ctx: &mut Context) -> Result<Abstraction, 
     fn do_abstract(
         fm: &Node,
         atom_defs: &mut IndexMap<Node, (PVar, Polarity)>,
-        ctx: &mut Context,
     ) -> Result<PFormula, NodeError> {
         match fm.kind() {
             NodeKind::And | NodeKind::Or => {
                 let mut ps = Vec::new();
                 for c in fm.children() {
-                    ps.push(do_abstract(c, atom_defs, ctx)?);
+                    ps.push(do_abstract(c, atom_defs)?);
                 }
                 let res = match fm.kind() {
                     NodeKind::Or => PFormula::Or(ps),
@@ -153,7 +152,7 @@ pub fn build_abstraction(node: &Node, ctx: &mut Context) -> Result<Abstraction, 
         }
     }
     let mut atom_defs = IndexMap::new();
-    let skeleton = do_abstract(node, &mut atom_defs, ctx)?;
+    let skeleton = do_abstract(node, &mut atom_defs)?;
     let mut defs = Vec::with_capacity(atom_defs.len());
     for (atom, (v, pol)) in atom_defs {
         // check if this atom it supported

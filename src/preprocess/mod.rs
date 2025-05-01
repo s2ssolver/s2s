@@ -87,7 +87,7 @@ impl Preprocessor {
 
     fn range_compression(&mut self, root: &Node, ctx: &mut Context) -> Node {
         let mut compressor = RangeCompressor::default();
-        compressor.compress(&root, ctx)
+        compressor.compress(root, ctx)
     }
 
     pub fn applied_substitutions(&self) -> &VarSubstitution {

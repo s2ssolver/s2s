@@ -190,7 +190,7 @@ impl Engine {
                 SolverAnswer::Sat(h) => {
                     // SAT, check if the model is a solution for the original formula
                     let model = h.unwrap();
-                    let h = model.clone().into();
+                    let h = model.clone();
                     log::debug!("Found model for over-approximation");
                     log::trace!("Model: {}", model);
                     if self.check_assignment(&fm, &h, ctx) {

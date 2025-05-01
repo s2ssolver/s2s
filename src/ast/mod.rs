@@ -490,7 +490,7 @@ impl OwnedNode {
             NodeKind::FromInt => {
                 let i = self[0].as_int_const()?;
                 if i < 0 {
-                    return Some(SmtString::empty());
+                    Some(SmtString::empty())
                 } else {
                     Some(i.to_string().into()) // TODO: Double check if this is correct
                 }

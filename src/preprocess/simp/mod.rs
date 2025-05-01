@@ -236,7 +236,7 @@ impl Simplifier {
         let mut cachable = true;
 
         for rule in self.equiv_rules.iter() {
-            if let Some(rw) = rule.apply(&new_node, asserted, &decisions, ctx) {
+            if let Some(rw) = rule.apply(&new_node, asserted, decisions, ctx) {
                 if rw != new_node {
                     log::debug!("({:?}) {} ==> {}", rule, new_node, rw);
                     new_node = rw;

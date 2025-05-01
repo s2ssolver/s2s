@@ -362,7 +362,7 @@ impl NFAEncoder {
     pub(super) fn new(var: Rc<Variable>, nfa: Rc<NFA>, pol: bool) -> Self {
         let delta_inv = precompute_delta_inv(&nfa).unwrap();
         Self {
-            var: var,
+            var,
             nfa,
             delta_inv,
             sign: pol,

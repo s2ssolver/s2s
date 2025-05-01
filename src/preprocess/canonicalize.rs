@@ -209,7 +209,7 @@ impl Canonicalizer {
         let prefix = node.children().first().unwrap();
         let of = node.children().last().unwrap();
         // If `prefix`  is constant, then this is a regular expression constraint "of \in prefix.*"
-        if let Some(_) = prefix.as_str_const() {
+        if prefix.as_str_const().is_some() {
             let v = if let Some(v) = of.as_variable() {
                 debug_assert!(v.sort().is_string());
                 v.clone()
@@ -236,7 +236,7 @@ impl Canonicalizer {
         let of = node.children().last().unwrap();
         // If `s`  is constant, then this is a regular expression constraint r \in .*s
         // These are supported native, only `of` needs to be a single variable in canonical form
-        if let Some(_) = suffix.as_str_const() {
+        if suffix.as_str_const().is_some() {
             let v = if let Some(v) = of.as_variable() {
                 debug_assert!(v.sort().is_string());
                 v.clone()
@@ -266,7 +266,7 @@ impl Canonicalizer {
         // If `s`  is constant, then this is a regular expression constraint r \in .*s.*
         // These are supported natively and do not require conversion.
         // We only need to ensure that `r` is just a single variable
-        if let Some(_) = needle.as_str_const() {
+        if needle.as_str_const().is_some() {
             let v = if let Some(v) = hay.as_variable() {
                 debug_assert!(v.sort().is_string());
                 v.clone()
@@ -318,7 +318,7 @@ impl Canonicalizer {
                 Some(ctx.ast().concat(res))
             }
             _ => {
-                let v = self.define_with_var(&node, ctx);
+                let v = self.define_with_var(node, ctx);
                 Some(ctx.ast().variable(v))
             }
         }
