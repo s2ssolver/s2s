@@ -203,18 +203,20 @@ impl Simplifier {
         // The path conditions for the child node of this
         let mut new_decisions = decisions.clone();
         if *node.kind() == NodeKind::And {
-            new_decisions.extend(get_entailed(node));
+            let entailed = get_entailed(node);
+            new_decisions.extend(entailed);
         } else {
             asserted = false;
         };
 
         for child in node.children() {
+            // We remove the current child from the decisions if it was not implied in an earlier level.
+            // Otherwise keeping it would that the node implies itself, which is always true.
+            let mut child_decisions = new_decisions.clone();
             if !decisions.contains(child) {
-                // if the path conditions contained the child, we can keep it as a condition for this node to be true
-                // Otherwise its needs to be remove since that would mean in order for child to be true, child must be true (a tautology).
-                new_decisions.remove(child);
+                child_decisions.remove(child);
             }
-            match self.pass_equivalence(child, &path_ch, asserted, &new_decisions, ctx) {
+            match self.pass_equivalence(child, &path_ch, asserted, &child_decisions, ctx) {
                 Some(new_child) => {
                     applied_children.push(new_child.clone());
                     applied = true;
@@ -244,8 +246,9 @@ impl Simplifier {
             }
         }
 
-        // Also cache if not applied to not traverse the same node again
-        if cachable {
+        // Only cache if we rewritten the node and if that rewrite can be applied to every other occurrence of the same node
+        // Do not cache if we haven't rewritten since we still might rewrite the node at different occurrence.
+        if applied && cachable {
             self.rewrite_cache.insert(node.clone(), new_node.clone());
         }
 
@@ -374,6 +377,7 @@ impl Default for Simplifier {
             Box::new(levis::LevisRule),
             Box::new(entailed::EntailedBooleanVars),
             Box::new(entailed::EntailedAssigments),
+            Box::new(entailed::EntailedEquivalence),
         ];
 
         Simplifier {
