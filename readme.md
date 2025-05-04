@@ -1,6 +1,7 @@
 # s2s
 
 [![Build](https://github.com/splortsolver/s2s/actions/workflows/build.yml/badge.svg)](https://github.com/splortsolver/s2s/actions/workflows/build.yml)
+![Static Badge](https://img.shields.io/badge/license-MIT%20or%20Apache%202.0-blue)
 
 **s2s** is an SMT solver for the quantifier-free theory of strings combined with linear integer arithmetic (QF_SLIA).  
 It encodes the problem into propositional logic and calls a SAT solver to check satisfiability.
@@ -68,3 +69,12 @@ error: no model to get
 ```
 
 More example problems are in `res/tests_sat/` and `rest/tests_unsat/`.
+
+## License
+
+Licensed under either of:
+
+- [MIT License](https://opensource.org/licenses/MIT)
+- [Apache License, Version 2.0](https://www.apache.org/licenses/LICENSE-2.0)
+
+at your option.
