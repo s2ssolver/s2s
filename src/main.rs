@@ -36,12 +36,14 @@ struct Args {
     #[arg(long, short = 'b')]
     init_bound: Option<i32>,
 
-    /// The step size. Must be one of the following:
+    /// Controls the step size.
     ///
-    /// - `+<C>` where <C> is a positive integer: Relaxes bounds with constant <C>
+    /// Must be one of the following:
+    ///
+    /// - `+<C>` where `<C>` is a positive integer: Relaxes bounds with constant <C>
     /// - `square`: Jumps to next perfect square
     /// - `double`: Doubles the bounds
-    #[arg(long)]
+    #[arg(long, verbatim_doc_comment)]
     step: Option<String>,
 
     /// If set, returns `unsat` instead of `unknown` if the maximum bound set by `max_bound` is reached
@@ -57,7 +59,7 @@ struct Args {
     #[arg(long)]
     print_preprocessed: bool,
 
-    /// The input file to use, must be either in SMT2 or WOORPJE format, according to the `format` argument
+    /// The input file to use, must be in SMT 2.6 format
     file: String,
 }
 
