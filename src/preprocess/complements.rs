@@ -21,7 +21,7 @@ impl ReCompRemover {
     /// - comp(A&B) with comp(A) | comp(B)
     /// - comp(epsilon) with epsilon All+
     /// - comp(All) with none
-    /// - comp(Any) with (epsilon|Any+)
+    /// - comp(Any) with (epsilon|(Any.Any+)) (either empty word or word of length at least 2)
     /// - comp(av) = epsilon | (comp a . All) | (a . comp v) where a is the first character of the word and v the rest
     ///
     /// Additionally, if `fold_ranges` is set to true, also removes complements from range operations as follows
@@ -50,7 +50,8 @@ impl ReCompRemover {
                     ReOp::All => builder.none(),
                     ReOp::Any => {
                         let anyplus = builder.plus(builder.allchar());
-                        builder.union(smallvec![builder.epsilon(), anyplus])
+                        let anypluslus = builder.concat(smallvec![builder.allchar(), anyplus]);
+                        builder.union(smallvec![builder.epsilon(), anypluslus])
                     }
                     ReOp::Union(rs) => self.comp_union(rs.to_vec(), builder, fold_ranges)?,
                     ReOp::Inter(rs) => self.comp_inter(rs.to_vec(), builder, fold_ranges)?,
